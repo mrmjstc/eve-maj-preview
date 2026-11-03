@@ -7,6 +7,7 @@ const files = @import("config/files.zig");
 const global = @import("config/global.zig");
 const characters_mod = @import("config/characters.zig");
 const system_colors = @import("config/system_colors.zig");
+const avoided_systems = @import("config/avoided_systems.zig");
 const hotkeys_mod = @import("config/hotkeys.zig");
 const spaces = @import("config/spaces.zig");
 const migrate = @import("config/migrate.zig");
@@ -14,6 +15,7 @@ const chatlog_mod = @import("config/chatlog.zig");
 const activity = @import("config/activity.zig");
 const notifications = @import("config/notifications.zig");
 const window_filters = @import("config/window_filters.zig");
+const chat_alerts = @import("config/chat_alerts.zig");
 const thumbnail_mod = @import("config/thumbnail.zig");
 const display_mod = @import("config/display.zig");
 const behavior = @import("config/behavior.zig");
@@ -67,6 +69,7 @@ pub const CharacterConfig = characters_mod.CharacterConfig;
 pub const buildCharacterOrderMap = characters_mod.buildCharacterOrderMap;
 pub const orderMapLessThan = characters_mod.orderMapLessThan;
 pub const SystemColorConfig = system_colors.SystemColorConfig;
+pub const AvoidedSystemConfig = avoided_systems.AvoidedSystemConfig;
 pub const HotkeyGroupConfig = hotkeys_mod.HotkeyGroupConfig;
 pub const ThumbnailSpace = spaces.ThumbnailSpace;
 pub const migrateProfileJson = migrate.profile;
@@ -81,6 +84,7 @@ pub const IskRateUnit = activity.IskRateUnit;
 pub const NotificationTypeConfig = notifications.NotificationTypeConfig;
 pub const NotificationConfig = notifications.NotificationConfig;
 pub const WindowFilterConfig = window_filters.WindowFilterConfig;
+pub const ChatAlertConfig = chat_alerts.ChatAlertConfig;
 pub const StateVisualConfig = thumbnail_mod.StateVisualConfig;
 pub const ThumbnailState = thumbnail_mod.ThumbnailState;
 pub const ThumbnailConfig = thumbnail_mod.ThumbnailConfig;
@@ -139,8 +143,10 @@ pub const Config = struct {
     windowFilters: std.ArrayList(WindowFilterConfig) = .empty,
     characters: std.ArrayList(CharacterConfig) = .empty,
     systemColors: std.ArrayList(SystemColorConfig) = .empty,
+    avoidedSystems: std.ArrayList(AvoidedSystemConfig) = .empty,
     hotkeyGroups: std.ArrayList(HotkeyGroupConfig) = .empty,
     thumbnailSpaces: std.ArrayList(ThumbnailSpace) = .empty,
+    chatAlerts: std.ArrayList(ChatAlertConfig) = .empty,
     hotkeys: HotkeysConfig = .{},
 
     pub const runtime_fields = .{ "allocator", "profile_name" };
@@ -227,6 +233,14 @@ pub const Config = struct {
 
         try self.characters.append(self.allocator, .{ .name = owned_name });
         return &self.characters.items[self.characters.items.len - 1];
+    }
+
+    /// Searched linearly: the list is capped at types.MAX_AVOIDED_SYSTEMS.
+    pub fn avoidedSystemIndex(self: *const Config, system_id: u32) ?usize {
+        for (self.avoidedSystems.items, 0..) |avoided, index| {
+            if (avoided.systemId == system_id) return index;
+        }
+        return null;
     }
 
     /// Exact names beat patterns regardless of row order; ties within each group go to the first row.
@@ -347,6 +361,7 @@ pub const Config = struct {
         ranges.clamp(Config, self);
         for (self.characters.items) |*character| character.validate();
         for (self.thumbnailSpaces.items) |*space| space.validate();
+        for (self.chatAlerts.items) |*rule| rule.validate();
         spaces.keepOneOfEachSpecialSpace(self.thumbnailSpaces.items);
     }
 
@@ -383,6 +398,22 @@ test "findSystemColor prefers an exact name over an earlier pattern" {
     try testing.expectEqual(@as(?u32, 0xFF000002), config.findSystemColor("Jita"));
     try testing.expectEqual(@as(?u32, 0xFF000001), config.findSystemColor("J123456"));
     try testing.expectEqual(@as(?u32, null), config.findSystemColor("Amarr"));
+}
+
+test "avoided systems load from a profile and save back the same" {
+    var config = try testConfig(
+        \\{"avoidedSystems": [{"systemId": 30000142}, {"systemId": 30002187}]}
+    );
+    defer config.deinit();
+
+    try testing.expectEqual(@as(?usize, 1), config.avoidedSystemIndex(30002187));
+    try testing.expectEqual(@as(?usize, null), config.avoidedSystemIndex(30005196));
+
+    const json = try config.toJsonString(testing.allocator);
+    defer testing.allocator.free(json);
+    var reloaded = try testConfig(json);
+    defer reloaded.deinit();
+    try testing.expectEqual(@as(usize, 2), reloaded.avoidedSystems.items.len);
 }
 
 test "groupBadgeLabel names badge groups, numbering unnamed ones from 1" {

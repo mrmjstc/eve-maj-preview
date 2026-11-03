@@ -114,13 +114,13 @@ pub const Encoded = struct {
     }
 
     fn lobby(self: *Encoded, value: Lobby) void {
-        for (value.seats) |seat| self.int(u8, @intFromEnum(seat));
+        for (value.seats) |seat| self.int(u8, @backingInt(seat));
         self.int(u8, value.round_count);
     }
 
     fn pilot(self: *Encoded, value: Pilot) void {
         self.int(u8, value.seat);
-        self.int(u8, @intFromEnum(value.tank_style));
+        self.int(u8, @backingInt(value.tank_style));
         self.int(u8, value.name.length);
         @memcpy(self.buf[self.length..][0..value.name.length], value.name.slice());
         self.length += value.name.length;
@@ -131,7 +131,7 @@ pub const Encoded = struct {
         self.int(u16, value.turn);
         self.float(value.shot.angle_degrees);
         self.float(value.shot.power);
-        self.int(u8, @intFromEnum(value.weapon));
+        self.int(u8, @backingInt(value.weapon));
     }
 };
 
@@ -198,7 +198,7 @@ comptime {
 
 pub fn encode(message: Message) Encoded {
     var encoded: Encoded = .{};
-    encoded.int(u8, @intFromEnum(message));
+    encoded.int(u8, @backingInt(message));
     switch (message) {
         .keepalive, .restart => {},
         .lobby => |lobby| encoded.lobby(lobby),
@@ -322,7 +322,7 @@ test "a pilot with the longest name fits a frame" {
 }
 
 test "a pilot message with broken UTF-8, a seat past the last, no such style or a length past its bytes is refused" {
-    const tag = @intFromEnum(std.meta.Tag(Message).pilot);
+    const tag = @backingInt(std.meta.Tag(Message).pilot);
     try testing.expectError(error.InvalidValue, decode(&.{ tag, 1, 0, 2, 0xC3, 0x28 }));
     try testing.expectError(error.InvalidValue, decode(&.{ tag, wire.MAX_SEATS, 0, 0 }));
     try testing.expectError(error.InvalidValue, decode(&.{ tag, 1, 99, 0 }));

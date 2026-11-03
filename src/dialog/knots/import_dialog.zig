@@ -29,7 +29,7 @@ const Group = struct { label: []const u8, ids: []const []const u8 };
 /// EVE-Maj profile sections grouped like the sidebar's tabs, by Config field name; a section left out lands in "Other".
 const MAJ_GROUPS = [_]Group{
     .{ .label = "Clients", .ids = &.{ "characters", "hotkeyGroups", "windowFilters", "exclusion" } },
-    .{ .label = "Display", .ids = &.{ "display", "thumbnail", "thumbnailSpaces", "snapping", "autoMovePosition" } },
+    .{ .label = "Display", .ids = &.{ "display", "thumbnail", "thumbnailSpaces", "snapping", "autoMovePosition", "avoidedSystems" } },
     .{ .label = "Input", .ids = &.{ "hotkeys", "interaction", "autoMinimize", "closeAll" } },
     .{ .label = "Alerts", .ids = &.{ "chatlog", "travel", "systemColors" } },
     .{ .label = "Overlays", .ids = &.{ "mining", "combat", "bounty", "resources", "ping" } },
@@ -47,7 +47,7 @@ const Section = struct {
 /// What the app found in the file; everything borrows from g_arena.
 const Analysis = struct {
     format: []const u8,
-    profiles: []const []const u8,
+    profile_names: []const []const u8,
     source_index: u32,
     sections: []Section,
 };
@@ -152,7 +152,7 @@ pub fn applyImport() !void {
     for (analysis.sections) |section| {
         if (section.is_available and section.is_chosen) try chosen.append(arena(), section.id);
     }
-    const source: ?[]const u8 = if (analysis.profiles.len > 0) analysis.profiles[analysis.source_index] else null;
+    const source: ?[]const u8 = if (analysis.profile_names.len > 0) analysis.profile_names[analysis.source_index] else null;
     const built = try importer.build(arena(), text, source, chosen.items, lang.text("Cycle Group {n}"), session.profile().ptr);
     try session.applyOps(arena(), built.ops);
     const notes = try arena().alloc([]const u8, built.notes.len);
@@ -176,15 +176,15 @@ fn fileStep(context: *ui.Frame) !void {
 }
 
 fn optionsStep(context: *ui.Frame, analysis: *Analysis) !void {
-    if (analysis.profiles.len > 1) {
+    if (analysis.profile_names.len > 1) {
         try context.e(Text{ .selectable = false, .key = .src(@src()), .content = lang.text("Old profile to import from"), .style = &style.inline_label });
-        const values = try context.arena().alloc(u32, analysis.profiles.len);
+        const values = try context.arena().alloc(u32, analysis.profile_names.len);
         for (values, 0..) |*value, index| value.* = @intCast(index);
-        const response = try context.interact(SelectInput(u32){ .key = .src(@src()), .labels = analysis.profiles, .values = values, .initial_selected = analysis.source_index, .style = &style.select_fill, .parts = .{ .popup = &style.select_popup } });
+        const response = try context.interact(SelectInput(u32){ .key = .src(@src()), .labels = analysis.profile_names, .values = values, .initial_selected = analysis.source_index, .style = &style.select_fill, .parts = .{ .popup = &style.select_popup } });
         if (response.selected) |selected| {
             if (selected.value != analysis.source_index) {
                 // An EVE-X file's profiles each have their own sections.
-                analyze(analysis.profiles[selected.value]);
+                analyze(analysis.profile_names[selected.value]);
                 context.requestRedraw();
                 return;
             }
@@ -421,7 +421,7 @@ fn analyzeFile(source_profile: ?[]const u8) !void {
         g_new_name.clearRetainingCapacity();
         try g_new_name.appendSlice(g_allocator, stringAt(root, "defaultName") orelse lang.text("Imported"));
     }
-    g_analysis = .{ .format = format, .profiles = profile_names.items, .source_index = source_index, .sections = sections.items };
+    g_analysis = .{ .format = format, .profile_names = profile_names.items, .source_index = source_index, .sections = sections.items };
     g_file_status = if (std.mem.eql(u8, format, "maj"))
         "Detected EVE-Maj Preview profile file."
     else if (std.mem.eql(u8, format, "evex"))

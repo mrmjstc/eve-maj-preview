@@ -9,6 +9,10 @@ pub const VK_F1: u32 = 0x70;
 pub const VK_TAB: u32 = 0x09;
 pub const VK_PAUSE: u32 = 0x13;
 pub const VK_CAPITAL: u32 = 0x14;
+pub const VK_KANA: u32 = 0x15;
+pub const VK_KANJI: u32 = 0x19;
+pub const VK_CONVERT: u32 = 0x1C;
+pub const VK_NONCONVERT: u32 = 0x1D;
 pub const VK_SHIFT: u32 = 0x10;
 pub const VK_CONTROL: u32 = win32.VK_CONTROL;
 /// Reserved/unassigned in the Windows VK table, so no physical key generates it.
@@ -37,10 +41,15 @@ pub const VK_OEM_MINUS: u32 = 0xBD;
 pub const VK_OEM_PERIOD: u32 = 0xBE;
 pub const VK_OEM_2: u32 = 0xBF;
 pub const VK_OEM_3: u32 = 0xC0;
+pub const VK_ABNT_C1: u32 = 0xC1;
+pub const VK_ABNT_C2: u32 = 0xC2;
 pub const VK_OEM_4: u32 = 0xDB;
 pub const VK_OEM_5: u32 = 0xDC;
 pub const VK_OEM_6: u32 = 0xDD;
 pub const VK_OEM_7: u32 = 0xDE;
+pub const VK_OEM_8: u32 = 0xDF;
+/// The extra key beside left Shift on ISO keyboards, `<` on most of them.
+pub const VK_OEM_102: u32 = 0xE2;
 pub const VK_MBUTTON: u32 = 0x04;
 pub const VK_XBUTTON1: u32 = 0x05;
 pub const VK_XBUTTON2: u32 = 0x06;
@@ -69,8 +78,19 @@ pub const MOD_SHIFT: u32 = 0x0004;
 pub const MOD_WIN: u32 = 0x0008;
 const MODIFIER_BIT_OFFSET: u5 = 8;
 
+/// Fits one character from displayKeyName.
+pub const DISPLAY_CHARACTER_SIZE = 2;
+
 const VK_MASK: u32 = 0xFF;
 const MOD_MASK: u32 = 0x0F;
+/// MapVirtualKeyW sets this on a dead key's character.
+const DEAD_KEY_BIT: u32 = 0x8000_0000;
+/// End of the Cyrillic block, the last the dialog's font covers without gaps.
+const LAST_DRAWABLE_CHARACTER: u32 = 0x052F;
+const NO_BREAK_SPACE: u32 = 0xA0;
+const SOFT_HYPHEN: u32 = 0xAD;
+/// VkKeyScanW's shift state for a character typed with Shift or nothing.
+const SCAN_SHIFT_ONLY: u16 = 0x01;
 
 /// The prefix each modifier flag is written with, in the order they're written.
 const MODIFIER_NAMES = [_]struct { flag: u32, name: []const u8 }{
@@ -82,7 +102,7 @@ const MODIFIER_NAMES = [_]struct { flag: u32, name: []const u8 }{
 
 const KeyName = struct { vk_code: u32, name: []const u8 };
 
-/// Every key a binding can use, in the spelling it's shown and typed in; the config dialog's recorder offers exactly these.
+/// Every key a binding can use, named as on a US layout unless only other layouts have it; the config dialog's recorder offers exactly these.
 const KEY_NAMES: []const KeyName = blk: {
     @setEvalBranchQuota(10_000);
     var list: []const KeyName = &.{};
@@ -101,6 +121,10 @@ const KEY_NAMES: []const KeyName = blk: {
         .{ .vk_code = VK_BACK, .name = "Backspace" },
         .{ .vk_code = VK_PAUSE, .name = "Pause" },
         .{ .vk_code = VK_CAPITAL, .name = "CapsLock" },
+        .{ .vk_code = VK_KANA, .name = "Kana" },
+        .{ .vk_code = VK_KANJI, .name = "Kanji" },
+        .{ .vk_code = VK_CONVERT, .name = "Convert" },
+        .{ .vk_code = VK_NONCONVERT, .name = "NonConvert" },
         .{ .vk_code = VK_NUMLOCK, .name = "NumLock" },
         .{ .vk_code = VK_SCROLL, .name = "ScrollLock" },
         .{ .vk_code = VK_SNAPSHOT, .name = "PrintScreen" },
@@ -144,6 +168,10 @@ const KEY_NAMES: []const KeyName = blk: {
         .{ .vk_code = VK_OEM_5, .name = "\\" },
         .{ .vk_code = VK_OEM_6, .name = "]" },
         .{ .vk_code = VK_OEM_7, .name = "'" },
+        .{ .vk_code = VK_OEM_8, .name = "!" },
+        .{ .vk_code = VK_OEM_102, .name = "<" },
+        .{ .vk_code = VK_ABNT_C1, .name = "AbntC1" },
+        .{ .vk_code = VK_ABNT_C2, .name = "AbntC2" },
     };
     break :blk list;
 };
@@ -201,22 +229,48 @@ pub fn keyName(vk_code: u32) ?[]const u8 {
     return null;
 }
 
+/// The name to show for a key: what it types on this thread's keyboard layout if that varies by layout, else keyName's. `buf` backs the character.
+pub fn displayKeyName(vk_code: u32, buf: *[DISPLAY_CHARACTER_SIZE]u8) ?[]const u8 {
+    if (isLayoutKey(vk_code)) {
+        if (characterLabel(win32.MapVirtualKeyW(vk_code, win32.MAPVK_VK_TO_CHAR) & ~DEAD_KEY_BIT, buf)) |label| return label;
+    }
+    return keyName(vk_code);
+}
+
 /// e.g. "Ctrl+F9"; a key without a name is written "VK<hex>".
 pub fn writeVirtualKey(writer: anytype, combined: u32) !void {
-    const modifiers = extractModifiers(combined);
-    for (MODIFIER_NAMES) |modifier| {
-        if (modifiers & modifier.flag != 0) try writer.print("{s}+", .{modifier.name});
-    }
-    const vk_code = extractVk(combined);
-    if (keyName(vk_code)) |name| {
-        try writer.writeAll(name);
-    } else {
-        try writer.print("VK{X}", .{vk_code});
-    }
+    try writeCombo(writer, combined, keyName(extractVk(combined)));
+}
+
+/// writeVirtualKey for showing to the user, naming the key as displayKeyName does; read back with parseTypedKey.
+pub fn writeDisplayKey(writer: anytype, combined: u32) !void {
+    var buf: [DISPLAY_CHARACTER_SIZE]u8 = undefined;
+    try writeCombo(writer, combined, displayKeyName(extractVk(combined), &buf));
 }
 
 /// A combined value (see combineKey) from "F9", "Ctrl+Alt+F9" or the old "0x0278" form; null when unbindable, which the caller logs, except a lone modifier, logged here.
 pub fn parseVirtualKey(key_text: []const u8) ?u32 {
+    return parseCombo(key_text, parseBaseKey);
+}
+
+/// parseVirtualKey for typed text: a lone character is the key that types it on this thread's layout, as writeDisplayKey shows it.
+pub fn parseTypedKey(key_text: []const u8) ?u32 {
+    return parseCombo(key_text, parseTypedBaseKey);
+}
+
+fn writeCombo(writer: anytype, combined: u32, name: ?[]const u8) !void {
+    const modifiers = extractModifiers(combined);
+    for (MODIFIER_NAMES) |modifier| {
+        if (modifiers & modifier.flag != 0) try writer.print("{s}+", .{modifier.name});
+    }
+    if (name) |text| {
+        try writer.writeAll(text);
+    } else {
+        try writer.print("VK{X}", .{extractVk(combined)});
+    }
+}
+
+fn parseCombo(key_text: []const u8, parse_key: *const fn ([]const u8) ?u32) ?u32 {
     if (key_text.len == 0) return null;
 
     if (key_text.len >= 3 and key_text[0] == '0' and (key_text[1] == 'x' or key_text[1] == 'X')) {
@@ -229,8 +283,9 @@ pub fn parseVirtualKey(key_text: []const u8) ?u32 {
         return null;
     }
 
-    // Combo format: everything before the last '+' is modifiers, the final token is the key.
-    if (std.mem.findScalarLast(u8, key_text, '+')) |last_plus| {
+    // Combo format: everything before the last '+' is modifiers, the final token is the key; a trailing '+' is itself the key, as in "Ctrl++".
+    const delimiters_end = if (key_text[key_text.len - 1] == '+') key_text.len - 1 else key_text.len;
+    if (std.mem.findScalarLast(u8, key_text[0..delimiters_end], '+')) |last_plus| {
         const key_part = std.mem.trim(u8, key_text[last_plus + 1 ..], " ");
         var modifiers: u32 = 0;
         var it = std.mem.splitScalar(u8, key_text[0..last_plus], '+');
@@ -241,7 +296,7 @@ pub fn parseVirtualKey(key_text: []const u8) ?u32 {
             modifiers |= modifier_bit;
         }
 
-        const vk_code = parseBaseKey(key_part) orelse return null;
+        const vk_code = parse_key(key_part) orelse return null;
 
         // e.g. "Shift+Shift" would otherwise parse into a binding that can never fire (its own bit is always excluded from the match).
         const is_self_referential = switch (vk_code) {
@@ -259,7 +314,7 @@ pub fn parseVirtualKey(key_text: []const u8) ?u32 {
         return combineKey(vk_code, modifiers);
     }
 
-    return parseBaseKey(key_text);
+    return parse_key(key_text);
 }
 
 fn parseModifierToken(token: []const u8) ?u32 {
@@ -270,17 +325,21 @@ fn parseModifierToken(token: []const u8) ?u32 {
     return null;
 }
 
-/// A name from KEY_NAMES, or one of the aliases hand-edited profiles may use (a shifted OEM character, "Control", "LWin", "RWin").
+/// A name from KEY_NAMES, writeVirtualKey's "VK<hex>", or one of the aliases hand-edited profiles may use (a shifted OEM character, "Control", "LWin", "RWin").
 fn parseBaseKey(key_text: []const u8) ?u32 {
     for (KEY_NAMES) |key| {
         if (std.ascii.eqlIgnoreCase(key.name, key_text)) return key.vk_code;
     }
 
+    if (key_text.len > 2 and std.ascii.startsWithIgnoreCase(key_text, "VK")) {
+        const vk_code = std.fmt.parseInt(u8, key_text[2..], 16) catch return null;
+        return if (vk_code >= 0x01 and vk_code <= 0xFE) vk_code else null;
+    }
+
     if (key_text.len == 1) {
-        // '+' is the combo delimiter, so only '=' maps to VK_OEM_PLUS.
         const shifted_vk: ?u32 = switch (key_text[0]) {
             ':' => VK_OEM_1,
-            '<' => VK_OEM_COMMA,
+            '+' => VK_OEM_PLUS,
             '_' => VK_OEM_MINUS,
             '>' => VK_OEM_PERIOD,
             '?' => VK_OEM_2,
@@ -297,6 +356,47 @@ fn parseBaseKey(key_text: []const u8) ?u32 {
     if (std.ascii.eqlIgnoreCase(key_text, "lwin") or std.ascii.eqlIgnoreCase(key_text, "rwin")) return VK_LWIN;
 
     return null;
+}
+
+/// A character typeable on this thread's layout, else what parseBaseKey makes of the text.
+fn parseTypedBaseKey(key_text: []const u8) ?u32 {
+    if (loneCharacter(key_text)) |character| {
+        if (character <= std.math.maxInt(u16)) {
+            if (keyFromScan(@bitCast(win32.VkKeyScanW(@intCast(character))))) |vk_code| return vk_code;
+        }
+    }
+    return parseBaseKey(key_text);
+}
+
+fn loneCharacter(key_text: []const u8) ?u21 {
+    if (key_text.len == 0) return null;
+    const length = std.unicode.utf8ByteSequenceLength(key_text[0]) catch return null;
+    if (key_text.len != length) return null;
+    return std.unicode.utf8Decode(key_text) catch return null;
+}
+
+/// The key in VkKeyScanW's result, or null for no key, or one needing Ctrl or Alt (AltGr), which a character alone can't say.
+fn keyFromScan(scan: u16) ?u32 {
+    const vk_code: u32 = scan & VK_MASK;
+    if (vk_code == VK_MASK or scan >> 8 & ~SCAN_SHIFT_ONLY != 0) return null;
+    return vk_code;
+}
+
+/// Keys that type a different character from one layout to another; letters and digits keep their name, as games and shortcuts call them.
+fn isLayoutKey(vk_code: u32) bool {
+    return switch (vk_code) {
+        VK_OEM_1...VK_ABNT_C2, VK_OEM_4...VK_OEM_8, VK_OEM_102 => true,
+        else => false,
+    };
+}
+
+/// `character` as UTF-8, or null when it's blank or the dialog's font can't draw it.
+fn characterLabel(character: u32, buf: *[DISPLAY_CHARACTER_SIZE]u8) ?[]const u8 {
+    const is_ascii = character > ' ' and character < 0x7F;
+    const is_extended = character > NO_BREAK_SPACE and character <= LAST_DRAWABLE_CHARACTER and character != SOFT_HYPHEN;
+    if (!is_ascii and !is_extended) return null;
+    const length = std.unicode.utf8Encode(@intCast(character), buf) catch unreachable;
+    return buf[0..length];
 }
 
 const testing = std.testing;
@@ -338,6 +438,26 @@ test "parseVirtualKey accepts shifted OEM characters as their key" {
     try testing.expectEqual(combineKey(VK_OEM_4, MOD_ALT), parseVirtualKey("Alt+{").?);
 }
 
+test "parseVirtualKey reads the keys US layouts lack" {
+    try testing.expectEqual(VK_OEM_102, parseVirtualKey("<").?);
+    try testing.expectEqual(combineKey(VK_OEM_8, MOD_CONTROL), parseVirtualKey("Ctrl+!").?);
+}
+
+test "parseVirtualKey takes a trailing plus as the key" {
+    try testing.expectEqual(VK_OEM_PLUS, parseVirtualKey("+").?);
+    try testing.expectEqual(combineKey(VK_OEM_PLUS, MOD_CONTROL), parseVirtualKey("Ctrl++").?);
+    try testing.expectEqual(combineKey(VK_OEM_PLUS, MOD_CONTROL | MOD_ALT), parseVirtualKey("Ctrl+Alt++").?);
+    try testing.expect(parseVirtualKey("Ctrl+") == null);
+    try testing.expect(parseVirtualKey("Hyper++") == null);
+}
+
+test "parseVirtualKey reads VK hex but only as a real key" {
+    try testing.expectEqual(@as(u32, 0xE9), parseVirtualKey("VKE9").?);
+    try testing.expect(parseVirtualKey("VK00") == null);
+    try testing.expect(parseVirtualKey("VKFF") == null);
+    try testing.expect(parseVirtualKey("VKZZ") == null);
+}
+
 test "parseVirtualKey rejects unknown names and self-referential modifiers" {
     try testing.expect(parseVirtualKey("") == null);
     try testing.expect(parseVirtualKey("Hyper+F9") == null);
@@ -349,7 +469,7 @@ test "parseVirtualKey rejects unknown names and self-referential modifiers" {
 
 test "writeVirtualKey writes back what parseVirtualKey reads" {
     var buf: [64]u8 = undefined;
-    for ([_][]const u8{ "Ctrl+Shift+F9", "Alt+Numpad5", "Ctrl+Alt+Shift+Win+PageDown", "XButton1", "Shift+;" }) |text| {
+    for ([_][]const u8{ "Ctrl+Shift+F9", "Alt+Numpad5", "Ctrl+Alt+Shift+Win+PageDown", "XButton1", "Shift+;", "Ctrl+<", "Ctrl+VKE9" }) |text| {
         try testing.expectEqualStrings(text, try formatKey(&buf, parseVirtualKey(text).?));
     }
 }
@@ -357,6 +477,36 @@ test "writeVirtualKey writes back what parseVirtualKey reads" {
 test "writeVirtualKey writes a key without a name as hex" {
     var buf: [64]u8 = undefined;
     try testing.expectEqualStrings("Ctrl+VKE8", try formatKey(&buf, combineKey(VK_FOCUS_GRANT, MOD_CONTROL)));
+}
+
+test "characterLabel encodes printable characters and refuses the rest" {
+    var buf: [DISPLAY_CHARACTER_SIZE]u8 = undefined;
+    try testing.expectEqualStrings("<", characterLabel('<', &buf).?);
+    try testing.expectEqualStrings("Ü", characterLabel(0xDC, &buf).?);
+    try testing.expectEqualStrings("Ж", characterLabel(0x416, &buf).?);
+    for ([_]u32{ 0, ' ', 0x7F, NO_BREAK_SPACE, SOFT_HYPHEN, 0x3042 }) |character| {
+        try testing.expect(characterLabel(character, &buf) == null);
+    }
+}
+
+test "keyFromScan keeps plain and shifted keys only" {
+    try testing.expectEqual(VK_OEM_102, keyFromScan(0x00E2).?);
+    try testing.expectEqual(VK_OEM_102, keyFromScan(0x01E2).?);
+    try testing.expect(keyFromScan(0x0637) == null);
+    try testing.expect(keyFromScan(0xFFFF) == null);
+}
+
+test "loneCharacter reads exactly one UTF-8 character" {
+    try testing.expectEqual(@as(u21, '<'), loneCharacter("<").?);
+    try testing.expectEqual(@as(u21, 0xFC), loneCharacter("ü").?);
+    try testing.expect(loneCharacter("") == null);
+    try testing.expect(loneCharacter("F9") == null);
+    try testing.expect(loneCharacter("üü") == null);
+}
+
+test "isLayoutKey covers the OEM keys, not letters or digits" {
+    try testing.expect(isLayoutKey(VK_OEM_1) and isLayoutKey(VK_ABNT_C2) and isLayoutKey(VK_OEM_8) and isLayoutKey(VK_OEM_102));
+    try testing.expect(!isLayoutKey('A') and !isLayoutKey('1') and !isLayoutKey(VK_FOCUS_GRANT) and !isLayoutKey(VK_F1));
 }
 
 test "isMouseHookVk covers the mouse buttons and wheel only" {

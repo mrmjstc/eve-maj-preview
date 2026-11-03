@@ -4,7 +4,19 @@ const gamelog_events = @import("../notifications/gamelog_events.zig");
 
 /// Longer lines are dropped; combat lines with colour tags run to 2-3KB.
 pub const MAX_LINE_LENGTH = 4000;
+/// The channel of `Local_...` logs, which every character follows for its system.
+pub const LOCAL_CHANNEL = "Local";
 const LOCAL_CHANGE = "EVE System > Channel changed to Local";
+/// EVE's own lines, such as a channel's MOTD on joining, which are never someone talking.
+const SYSTEM_SPEAKER = "EVE System";
+/// "YYYYMMDD" in a log's name.
+const STAMP_DATE_LENGTH = 8;
+/// "YYYYMMDD_HHMMSS" in a log's name.
+const STAMP_LENGTH = 15;
+/// "_YYYYMMDD_HHMMSS_" between a channel and a character ID.
+const FILE_STAMP_LENGTH = STAMP_LENGTH + 2;
+/// Puts YYYYMMDD above HHMMSS in one timestamp number.
+const DATE_SHIFT = 1000000;
 const JUMP = "Jumping from ";
 const UNDOCK = "Undocking from ";
 /// EVE's tag on jump and undock lines.
@@ -20,6 +32,20 @@ pub const Activity = enum { event, mining, bounty };
 pub const GameLine = struct {
     system: ?SystemChange = null,
     activity: ?Activity = null,
+};
+
+pub const ChatMessage = struct {
+    /// Borrows from the parsed line.
+    speaker: []const u8,
+    /// Borrows from the parsed line.
+    body: []const u8,
+};
+
+pub const ChannelFile = struct {
+    /// Borrows from the file name.
+    channel: []const u8,
+    /// See logFileTimestamp.
+    timestamp: u64,
 };
 
 /// With its line's timestamp, so chatlog and gamelog finds can be compared for recency.
@@ -86,6 +112,33 @@ pub fn parseChatLine(line: []const u8) ?[]const u8 {
     return localSystem(message);
 }
 
+/// "[ time ] Some Pilot > text"; null for EVE's own lines, or an empty message.
+pub fn parseChatMessage(line: []const u8) ?ChatMessage {
+    const stamped = std.mem.trimStart(u8, line, "\u{FEFF}");
+    if (!std.mem.startsWith(u8, stamped, "[ ")) return null;
+    const close = std.mem.find(u8, stamped, " ] ") orelse return null;
+    const rest = stamped[close + " ] ".len ..];
+    // The first arrow: pilot names can't hold one, but a message can.
+    const arrow = std.mem.find(u8, rest, " > ") orelse return null;
+    const speaker = rest[0..arrow];
+    if (std.mem.eql(u8, speaker, SYSTEM_SPEAKER)) return null;
+    const body = std.mem.trim(u8, rest[arrow + " > ".len ..], " \t");
+    if (speaker.len == 0 or body.len == 0) return null;
+    return .{ .speaker = speaker, .body = body };
+}
+
+/// EVE pads linked items with two spaces; cut to `out`'s length, and the result points into it.
+pub fn collapseSpaces(text: []const u8, out: []u8) []const u8 {
+    var length: usize = 0;
+    for (text, 0..) |byte, index| {
+        if (length == out.len) break;
+        if (byte == ' ' and index > 0 and text[index - 1] == ' ') continue;
+        out[length] = byte;
+        length += 1;
+    }
+    return out[0..length];
+}
+
 /// Dispatches on the message's first characters, so each line is scanned once.
 pub fn parseGameLine(line: []const u8) GameLine {
     const close = std.mem.find(u8, line, "] ") orelse return .{};
@@ -134,11 +187,11 @@ pub fn lastSystemInGame(text: []const u8) ?SystemMatch {
     while (true) {
         const jump = std.mem.findLast(u8, text[0..end], JUMP);
         const undock = std.mem.findLast(u8, text[0..end], UNDOCK);
-        const use_jump = if (jump) |j| (if (undock) |u| j > u else true) else false;
-        const match_index = (if (use_jump) jump else undock) orelse return null;
+        const is_jump_later = if (jump) |j| (if (undock) |u| j > u else true) else false;
+        const match_index = (if (is_jump_later) jump else undock) orelse return null;
         const line_start = if (std.mem.findScalarLast(u8, text[0..match_index], '\n')) |newline| newline + 1 else 0;
         if (isTimestampPrefix(text[line_start..match_index])) {
-            const system = (if (use_jump) jumpDestination(text[match_index..]) else undockDestination(text[match_index..])) orelse return null;
+            const system = (if (is_jump_later) jumpDestination(text[match_index..]) else undockDestination(text[match_index..])) orelse return null;
             return .{ .system = system, .event_timestamp = lineTimestamp(text, match_index) };
         }
         end = line_start;
@@ -153,17 +206,29 @@ pub fn logFileTimestamp(file_name: []const u8, is_chatlog: bool) u64 {
         if (!std.mem.startsWith(u8, stamp, "Local_")) return 0;
         stamp = stamp["Local_".len..];
     }
-    if (stamp.len < 15 or stamp[8] != '_') return 0;
-    if (stamp.len > 15 and (stamp[15] != '_' or characterIdFromFileName(stamp) == null)) return 0;
-    const date = std.fmt.parseInt(u64, stamp[0..8], 10) catch return 0;
-    const time = std.fmt.parseInt(u64, stamp[9..15], 10) catch return 0;
-    return date * 1000000 + time;
+    if (stamp.len < STAMP_LENGTH or stamp[STAMP_DATE_LENGTH] != '_') return 0;
+    if (stamp.len > STAMP_LENGTH and (stamp[STAMP_LENGTH] != '_' or characterIdFromFileName(stamp) == null)) return 0;
+    const date = std.fmt.parseInt(u64, stamp[0..STAMP_DATE_LENGTH], 10) catch return 0;
+    const time = std.fmt.parseInt(u64, stamp[STAMP_DATE_LENGTH + 1 .. STAMP_LENGTH], 10) catch return 0;
+    return date * DATE_SHIFT + time;
+}
+
+/// "<channel>_YYYYMMDD_HHMMSS_<id>.txt", read from its end, since a channel's name can hold anything; null for any other name.
+pub fn channelFile(file_name: []const u8) ?ChannelFile {
+    const id = characterIdFromFileName(file_name) orelse return null;
+    const stem_length = withoutTxt(file_name).len;
+    if (stem_length <= id.len + FILE_STAMP_LENGTH) return null;
+    const channel_end = stem_length - id.len - FILE_STAMP_LENGTH;
+    if (file_name[channel_end] != '_') return null;
+    const timestamp = logFileTimestamp(file_name[channel_end + 1 ..], false);
+    if (timestamp == 0) return null;
+    return .{ .channel = file_name[0..channel_end], .timestamp = timestamp };
 }
 
 /// UTC Unix seconds for a logFileTimestamp; null for 0 or an impossible date.
 pub fn logTimestampToUnixSeconds(timestamp: u64) ?i64 {
-    const date: i64 = @intCast(timestamp / 1000000);
-    const time: i64 = @intCast(timestamp % 1000000);
+    const date: i64 = @intCast(timestamp / DATE_SHIFT);
+    const time: i64 = @intCast(timestamp % DATE_SHIFT);
     const year = @divTrunc(date, 10000);
     const month = @mod(@divTrunc(date, 100), 100);
     const day = @mod(date, 100);
@@ -220,7 +285,7 @@ fn lineTimestamp(text: []const u8, match_index: usize) u64 {
     const hour = std.fmt.parseInt(u64, inner[11..13], 10) catch return 0;
     const minute = std.fmt.parseInt(u64, inner[14..16], 10) catch return 0;
     const second = std.fmt.parseInt(u64, inner[17..19], 10) catch return 0;
-    return (year * 10000 + month * 100 + day) * 1000000 + (hour * 10000 + minute * 100 + second);
+    return (year * 10000 + month * 100 + day) * DATE_SHIFT + (hour * 10000 + minute * 100 + second);
 }
 
 /// `text` starts at "EVE System > Channel changed to Local"; the system follows the colon.
@@ -268,6 +333,25 @@ fn withoutTxt(file_name: []const u8) []const u8 {
 
 const testing = std.testing;
 
+const Collector = struct {
+    lines: *std.ArrayList([]const u8),
+    long_lines: *usize,
+
+    /// Test only: an out-of-memory here fails the run, as a handler can't return an error.
+    fn onLine(self: Collector, line: []const u8) void {
+        self.lines.append(testing.allocator, testing.allocator.dupe(u8, line) catch unreachable) catch unreachable;
+    }
+
+    fn onLongLine(self: Collector, _: usize) void {
+        self.long_lines.* += 1;
+    }
+};
+
+fn freeLines(lines: *std.ArrayList([]const u8)) void {
+    for (lines.items) |line| testing.allocator.free(line);
+    lines.deinit(testing.allocator);
+}
+
 test "parseChatLine reads the system from a Local channel change" {
     try testing.expectEqualStrings("Jita", parseChatLine("\u{FEFF}[ 2026.09.21 21:10:31 ] EVE System > Channel changed to Local : Jita").?);
     try testing.expect(parseChatLine("[ 2026.09.21 21:10:31 ] Someone > Channel changed to Local : Jita") == null);
@@ -276,6 +360,41 @@ test "parseChatLine reads the system from a Local channel change" {
 test "parseChatLine ignores a Local change typed by a player" {
     try testing.expect(parseChatLine("\u{FEFF}[ 2026.09.21 21:10:31 ] Some Pilot > EVE System > Channel changed to Local : Jita") == null);
     try testing.expect(parseChatLine("\u{FEFF}[ 2026.09.21 21:10:31 ] Some Pilot > [ 2099.01.01 00:00:00 ] EVE System > Channel changed to Local : Jita") == null);
+}
+
+test "parseChatMessage splits a pilot's line at the first arrow" {
+    const message = parseChatMessage("\u{FEFF}[ 2026.10.29 21:27:13 ] Some Pilot > C-J6MT > MR4-MY hostile").?;
+    try testing.expectEqualStrings("Some Pilot", message.speaker);
+    try testing.expectEqualStrings("C-J6MT > MR4-MY hostile", message.body);
+}
+
+test "parseChatMessage skips EVE's own lines and anything that isn't a message" {
+    try testing.expect(parseChatMessage("[ 2026.10.29 21:27:12 ] EVE System > Channel MOTD: Jita is lovely") == null);
+    try testing.expect(parseChatMessage("[ 2026.10.29 21:27:13 ] Some Pilot >  ") == null);
+    try testing.expect(parseChatMessage("          Channel Name:    Local") == null);
+}
+
+test "collapseSpaces leaves one space between EVE's linked items" {
+    var buffer: [64]u8 = undefined;
+    try testing.expectEqualStrings("7L3-JS ExEgle Fenrir Hammer cyclone", collapseSpaces("7L3-JS  ExEgle    Fenrir Hammer cyclone", &buffer));
+    try testing.expectEqualStrings("HED-GP clr", collapseSpaces("HED-GP clr", &buffer));
+    try testing.expectEqualStrings("", collapseSpaces("", &buffer));
+    var short: [4]u8 = undefined;
+    try testing.expectEqualStrings("a b ", collapseSpaces("a  b  cdef", &short));
+}
+
+test "channelFile reads a channel name holding underscores, spaces or an ampersand" {
+    const file = channelFile("I. Delve & Q_Intel_20260507_175255_2120480881.txt").?;
+    try testing.expectEqualStrings("I. Delve & Q_Intel", file.channel);
+    try testing.expectEqual(@as(u64, 20260507175255), file.timestamp);
+    try testing.expectEqualStrings("Local", channelFile("Local_20261029_212708_2122627139.txt").?.channel);
+}
+
+test "channelFile rejects names EVE didn't write" {
+    try testing.expect(channelFile("20261029_212708_2122627139.txt") == null);
+    try testing.expect(channelFile("Corp_20261029_212708.txt") == null);
+    try testing.expect(channelFile("Corp_notastamp_123456_2122627139.txt") == null);
+    try testing.expect(channelFile("Corp_20261029_212708_2122627139 (1).txt") == null);
 }
 
 test "parseGameLine reads EVE's (None) jump lines and untagged ones" {
@@ -396,24 +515,6 @@ test "logTimestampToUnixSeconds rejects 0 and impossible times" {
 test "listenerName reads gamelog and chatlog headers" {
     try testing.expectEqualStrings("Test Client 10", listenerName("  Gamelog\r\n  Listener: Test Client 10\r\n  Session Started: 2026.09.06").?);
     try testing.expectEqualStrings("Test Client 10", listenerName("          Channel Name:    Local\n          Listener:        Test Client 10\n").?);
-}
-
-const Collector = struct {
-    lines: *std.ArrayList([]const u8),
-    long_lines: *usize,
-
-    fn onLine(self: Collector, line: []const u8) void {
-        self.lines.append(testing.allocator, testing.allocator.dupe(u8, line) catch unreachable) catch unreachable;
-    }
-
-    fn onLongLine(self: Collector, _: usize) void {
-        self.long_lines.* += 1;
-    }
-};
-
-fn freeLines(lines: *std.ArrayList([]const u8)) void {
-    for (lines.items) |line| testing.allocator.free(line);
-    lines.deinit(testing.allocator);
 }
 
 test "LineAssembler joins a line split across reads" {

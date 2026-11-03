@@ -373,8 +373,8 @@ fn refresh() void {
     }
 }
 
-fn alphabetically(_: void, a: []const u8, b: []const u8) bool {
-    return std.ascii.lessThanIgnoreCase(a, b);
+fn alphabetically(_: void, first: []const u8, second: []const u8) bool {
+    return std.ascii.lessThanIgnoreCase(first, second);
 }
 
 fn freeProfiles() void {

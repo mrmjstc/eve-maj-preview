@@ -7,6 +7,8 @@ const ranges_mod = @import("ranges.zig");
 
 pub const NotificationTypeConfig = struct {
     enabled: bool = true,
+    /// Off leaves its border, sound, speech and history entry, for an alert with no words on screen.
+    show_text: bool = true,
     duration_ms: u32 = 10000,
     suppress_when_focused: bool = false,
     suppress_when_clicked: bool = false,
@@ -15,6 +17,8 @@ pub const NotificationTypeConfig = struct {
     throttle_ms: u32 = 10000,
     border_color: ?u32 = null,
     text_color: ?u32 = null,
+    /// Chat intel only: draws the system its text starts with in that system's name colour.
+    color_system_name: bool = false,
     show_border: bool = false,
     flash_border: bool = false,
     tts_enabled: bool = false,
@@ -30,12 +34,14 @@ pub const NotificationTypeConfig = struct {
         return .{ .primary = self.custom_text, .alt = self.custom_text_alt };
     }
 
+    /// Chat alerts have no throttle: it would drop a different message, and each rule has a cooldown instead.
     fn defaultFor(notification_type: notification.NotificationType) NotificationTypeConfig {
-        return if (notification.isUserAction(notification_type)) .{ .duration_ms = 3000, .throttle_ms = 0 } else .{};
+        if (notification.isUserAction(notification_type)) return .{ .duration_ms = 3000, .throttle_ms = 0 };
+        return if (notification.notificationCategory(notification_type) == .Chat) .{ .throttle_ms = 0 } else .{};
     }
 
     /// A const, not a fn: evaluated once instead of per comptime Wire field default, which exceeded the branch quota.
-    pub const defaults_by_type = blk: {
+    pub const DEFAULTS_BY_TYPE = blk: {
         var map = std.enums.EnumArray(notification.NotificationType, NotificationTypeConfig).initFill(.{});
         for (std.enums.values(notification.NotificationType)) |notification_type| map.set(notification_type, defaultFor(notification_type));
         break :blk map;
@@ -57,7 +63,7 @@ pub const NotificationTypeConfig = struct {
 pub const NotificationTypeConfigs = struct {
     const Map = std.enums.EnumArray(notification.NotificationType, NotificationTypeConfig);
 
-    map: Map = NotificationTypeConfig.defaults_by_type,
+    map: Map = NotificationTypeConfig.DEFAULTS_BY_TYPE,
 
     pub fn get(self: *const NotificationTypeConfigs, notification_type: notification.NotificationType) NotificationTypeConfig {
         return self.map.get(notification_type);
@@ -87,12 +93,12 @@ pub const NotificationTypeConfigs = struct {
     }
 
     pub const Wire = struct {
-        map: std.enums.EnumArray(notification.NotificationType, NotificationTypeConfig.Wire) = default_wire_map,
+        map: std.enums.EnumArray(notification.NotificationType, NotificationTypeConfig.Wire) = DEFAULT_WIRE_MAP,
 
-        const default_wire_map = blk: {
+        const DEFAULT_WIRE_MAP = blk: {
             @setEvalBranchQuota(10_000_000);
             var map = std.enums.EnumArray(notification.NotificationType, NotificationTypeConfig.Wire).initFill(.{});
-            for (std.enums.values(notification.NotificationType)) |notification_type| map.set(notification_type, wire.encode(NotificationTypeConfig, NotificationTypeConfig.defaults_by_type.get(notification_type)));
+            for (std.enums.values(notification.NotificationType)) |notification_type| map.set(notification_type, wire.encode(NotificationTypeConfig, NotificationTypeConfig.DEFAULTS_BY_TYPE.get(notification_type)));
             break :blk map;
         };
 

@@ -7,6 +7,7 @@ test {
     _ = @import("arguments.zig");
     _ = @import("barrage/game.zig");
     _ = @import("barrage/messages.zig");
+    _ = @import("chatlog/alert_rules.zig");
     _ = @import("chatlog/lines.zig");
     _ = @import("chatlog/queue.zig");
     _ = @import("chatlog/utf16.zig");
@@ -45,6 +46,18 @@ test {
     _ = @import("layout/region_grid.zig");
     _ = @import("layout/spaces.zig");
     _ = @import("layout/zoom.zig");
+    _ = @import("map/connections.zig");
+    _ = @import("map/evestars.zig");
+    _ = @import("map/incursions.zig");
+    _ = @import("map/intel_pins.zig");
+    _ = @import("map/jump_range.zig");
+    _ = @import("map/layout.zig");
+    _ = @import("map/overview.zig");
+    _ = @import("map/search.zig");
+    _ = @import("map/stats.zig");
+    _ = @import("map/storms.zig");
+    _ = @import("map/system_links.zig");
+    _ = @import("map/universe.zig");
     _ = @import("multiplayer/wire.zig");
     _ = @import("notifications/gamelog_events.zig");
     _ = @import("notifications/notification.zig");
@@ -54,15 +67,20 @@ test {
     _ = @import("notifications/worker.zig");
     _ = @import("panels/history_look.zig");
     _ = @import("panels/list_look.zig");
+    _ = @import("panels/map_look.zig");
+    _ = @import("panels/panel_look.zig");
+    _ = @import("panels/popup_look.zig");
     _ = @import("platform/virtual_keys.zig");
     _ = @import("protocol/url.zig");
     _ = @import("thumbnail/draw.zig");
     _ = @import("thumbnail/state.zig");
     _ = @import("travel/stragglers.zig");
     _ = @import("util/color.zig");
+    _ = @import("util/fixed_text.zig");
     _ = @import("util/format.zig");
     _ = @import("util/pixel_buffer.zig");
     _ = @import("util/rgba.zig");
     _ = @import("util/schedule.zig");
     _ = @import("util/strings.zig");
+    _ = @import("util/utf8.zig");
 }

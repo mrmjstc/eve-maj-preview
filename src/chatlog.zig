@@ -7,8 +7,10 @@ const tracker_mod = @import("activity/tracker.zig");
 const activity_lines = @import("activity/lines.zig");
 const scout = @import("clients/scout.zig");
 const config = @import("config.zig");
+const universe = @import("map/universe.zig");
 const character_ids_mod = @import("chatlog/character_ids.zig");
 const lines = @import("chatlog/lines.zig");
+const alert_rules_mod = @import("chatlog/alert_rules.zig");
 const tail = @import("chatlog/tail.zig");
 const discovery = @import("chatlog/discovery.zig");
 const queue = @import("chatlog/queue.zig");
@@ -16,6 +18,7 @@ const log = @import("log.zig");
 
 const CharacterIds = character_ids_mod.CharacterIds;
 const LogFile = tail.LogFile;
+const RuleSet = alert_rules_mod.RuleSet;
 const slog = log.Scoped("chatlog");
 
 /// Shorter lines can't hold a timestamp and a message.
@@ -23,16 +26,27 @@ const MIN_LINE_LENGTH = 25;
 /// Per worker loop, so a rescan of many characters doesn't keep commands waiting.
 const RESCAN_BUDGET_NS = 100 * std.time.ns_per_ms;
 
+const ClientSystem = struct {
+    /// Owned; freed with the monitor's allocator.
+    character_name: []const u8,
+    /// Null off the gate map, as in a wormhole.
+    system: ?universe.SystemIndex,
+    /// See lines.SystemMatch; a quiet log can be read after a newer one.
+    event_timestamp: u64,
+};
+
 /// What the worker found since the last drain, for the main thread to route to the clients; free with deinit and the monitor's allocator.
 pub const Findings = struct {
     system_updates: std.ArrayList(queue.SystemUpdate) = .empty,
     notifications: std.ArrayList(queue.NotificationEvent) = .empty,
     session_starts: std.ArrayList(queue.SessionStart) = .empty,
+    intel_sightings: std.ArrayList(queue.IntelSighting) = .empty,
 
     pub fn deinit(self: *Findings, allocator: std.mem.Allocator) void {
         freeAll(queue.SystemUpdate, allocator, &self.system_updates);
         freeAll(queue.NotificationEvent, allocator, &self.notifications);
         freeAll(queue.SessionStart, allocator, &self.session_starts);
+        freeAll(queue.IntelSighting, allocator, &self.intel_sightings);
     }
 };
 
@@ -53,6 +67,10 @@ pub const ChatlogMonitor = struct {
     bounty_tracker: ?*tracker_mod.BountyTracker = null,
     /// Owned and freed in deinit; read by the worker, and set only while it's stopped.
     damage_alert_excluded_weapons: []const u8 = "",
+    /// Owned; freed in deinit; read by the worker, and set only while it's stopped.
+    alert_rules: ?RuleSet = null,
+    /// Set with alert_rules; the worker clears it once it has followed the channels they name.
+    has_stale_channels: bool = false,
     /// Read by the worker; set by applySettings only while it's stopped.
     idle_poll_threshold: u32 = 20,
     /// Read by the worker; set by applySettings only while it's stopped.
@@ -74,6 +92,8 @@ pub const ChatlogMonitor = struct {
     notifications: queue.Queue(queue.NotificationEvent),
     /// Worker to main thread.
     session_starts: queue.Queue(queue.SessionStart),
+    /// Worker to main thread.
+    intel_sightings: queue.Queue(queue.IntelSighting),
 
     /// Main thread only: characters added and not yet removed, so each is sent to the worker once.
     requested: std.StringHashMap(void),
@@ -90,6 +110,14 @@ pub const ChatlogMonitor = struct {
     rescan_names: std.ArrayList([]u8) = .empty,
     /// Worker only.
     rescan_index: usize = 0,
+    /// Worker only: searched linearly, as there's one per client.
+    client_systems: std.ArrayList(ClientSystem) = .empty,
+    /// Worker only: chat alerts raised lately, so other clients' copies and cooldowns stay quiet.
+    recent_hits: alert_rules_mod.RecentHits = .{},
+    /// Worker only: intel lines seen lately, so other clients' copies aren't listed again.
+    recent_sightings: alert_rules_mod.RecentHits = .{},
+    /// Worker only.
+    next_alert_group: u64 = 0,
 
     const LineHandler = struct {
         monitor: *ChatlogMonitor,
@@ -121,6 +149,7 @@ pub const ChatlogMonitor = struct {
             .system_updates = .init(allocator, io),
             .notifications = .init(allocator, io),
             .session_starts = .init(allocator, io),
+            .intel_sightings = .init(allocator, io),
             .requested = .init(allocator),
             .monitored_paths = .init(allocator),
             .wanted = .init(allocator),
@@ -136,6 +165,7 @@ pub const ChatlogMonitor = struct {
         self.system_updates.deinit();
         self.notifications.deinit();
         self.session_starts.deinit();
+        self.intel_sightings.deinit();
         freeKeys(self.allocator, &self.requested);
         freeKeys(self.allocator, &self.wanted);
         freeKeys(self.allocator, &self.monitored_paths);
@@ -145,6 +175,9 @@ pub const ChatlogMonitor = struct {
         for (self.log_files.items) |*file| file.deinit(self.allocator, self.io);
         self.log_files.deinit(self.allocator);
         if (self.damage_alert_excluded_weapons.len > 0) self.allocator.free(self.damage_alert_excluded_weapons);
+        if (self.alert_rules) |*rules| rules.deinit();
+        for (self.client_systems.items) |client| self.allocator.free(client.character_name);
+        self.client_systems.deinit(self.allocator);
     }
 
     fn freeKeys(allocator: std.mem.Allocator, map: *std.StringHashMap(void)) void {
@@ -177,6 +210,27 @@ pub const ChatlogMonitor = struct {
         };
         if (self.damage_alert_excluded_weapons.len > 0) self.allocator.free(self.damage_alert_excluded_weapons);
         self.damage_alert_excluded_weapons = owned;
+    }
+
+    /// Copied, since the worker reads them while a dialog preview may replace the config's; only while the worker is stopped.
+    pub fn setChatAlerts(self: *ChatlogMonitor, settings: *const config.Config) void {
+        if (!self.isWorkerStopped("chat alerts")) return;
+        var muted: std.ArrayList([]const u8) = .empty;
+        defer muted.deinit(self.allocator);
+        for (settings.characters.items) |character| {
+            if (!character.notificationsMuted and !character.excludeFromChatAlerts) continue;
+            muted.append(self.allocator, character.name) catch |err| {
+                slog.err("Failed to copy chat alert rules, keeping the previous ones: {}", .{err});
+                return;
+            };
+        }
+        const rules = RuleSet.init(self.allocator, settings.chatAlerts.items, muted.items) catch |err| {
+            slog.err("Failed to copy chat alert rules, keeping the previous ones: {}", .{err});
+            return;
+        };
+        if (self.alert_rules) |*previous| previous.deinit();
+        self.alert_rules = rules;
+        self.has_stale_channels = true;
     }
 
     /// Borrows the trackers; only while the worker is stopped.
@@ -251,6 +305,7 @@ pub const ChatlogMonitor = struct {
         drainLogged(queue.SystemUpdate, &self.system_updates, &findings.system_updates, "system updates");
         drainLogged(queue.NotificationEvent, &self.notifications, &findings.notifications, "notifications");
         drainLogged(queue.SessionStart, &self.session_starts, &findings.session_starts, "session starts");
+        drainLogged(queue.IntelSighting, &self.intel_sightings, &findings.intel_sightings, "intel sightings");
         return findings;
     }
 
@@ -286,6 +341,7 @@ pub const ChatlogMonitor = struct {
         self.want(character_name);
         self.followNewestLog(character_name, true);
         self.followNewestLog(character_name, false);
+        self.followChannels(character_name);
     }
 
     fn want(self: *ChatlogMonitor, character_name: []const u8) void {
@@ -303,14 +359,57 @@ pub const ChatlogMonitor = struct {
     fn followNewestLog(self: *ChatlogMonitor, character_name: []const u8, is_chatlog: bool) void {
         const path = self.finder.find(character_name, is_chatlog) orelse return;
         defer self.allocator.free(path);
-        self.addLogFile(path, character_name, is_chatlog) catch |err| {
+        self.addLogFile(path, character_name, if (is_chatlog) lines.LOCAL_CHANNEL else "", is_chatlog) catch |err| {
             slog.err("Failed to follow {s} '{s}' for '{s}': {}", .{ if (is_chatlog) "chatlog" else "gamelog", path, character_name, err });
         };
+    }
+
+    /// Needs the character's Local log, which dates its session.
+    fn followChannels(self: *ChatlogMonitor, character_name: []const u8) void {
+        const rules = if (self.alert_rules) |*rules| rules else return;
+        if (rules.rules.len == 0) return;
+        const session_start = self.sessionStart(character_name) orelse return;
+
+        var logs = self.finder.findChannels(character_name, session_start, rules);
+        defer {
+            for (logs.items) |*channel_log| channel_log.deinit(self.allocator);
+            logs.deinit(self.allocator);
+        }
+        for (logs.items) |channel_log| {
+            self.addLogFile(channel_log.path, character_name, channel_log.channel, true) catch |err| {
+                slog.err("Failed to follow channel '{s}' for '{s}': {}", .{ channel_log.channel, character_name, err });
+            };
+        }
+    }
+
+    /// UTC Unix seconds; EVE opens a character's channel logs as it opens Local.
+    fn sessionStart(self: *const ChatlogMonitor, character_name: []const u8) ?i64 {
+        for (self.log_files.items) |*file| {
+            if (!file.is_chatlog or file.isChannelLog() or !std.mem.eql(u8, file.character_name, character_name)) continue;
+            return lines.logTimestampToUnixSeconds(lines.logFileTimestamp(std.Io.Dir.path.basename(file.path), true));
+        }
+        return null;
+    }
+
+    /// After the rules change, as nothing else lets go of a channel that's still written to.
+    fn dropUnfollowedChannels(self: *ChatlogMonitor) void {
+        var i: usize = 0;
+        while (i < self.log_files.items.len) {
+            const file = &self.log_files.items[i];
+            const is_followed = if (self.alert_rules) |*rules| rules.followsChannel(file.channel_name) else false;
+            if (!file.isChannelLog() or is_followed) {
+                i += 1;
+                continue;
+            }
+            slog.info("Stopped monitoring channel '{s}' for {s}", .{ file.channel_name, file.character_name });
+            self.dropLogFile(i);
+        }
     }
 
     fn unfollow(self: *ChatlogMonitor, character_name: []const u8) void {
         slog.debug("Worker: Remove character {s}", .{character_name});
         if (self.wanted.fetchRemove(character_name)) |entry| self.allocator.free(entry.key);
+        self.forgetClientSystem(character_name);
 
         var i: usize = 0;
         while (i < self.log_files.items.len) {
@@ -348,14 +447,14 @@ pub const ChatlogMonitor = struct {
         removed.deinit(self.allocator, self.io);
     }
 
-    fn addLogFile(self: *ChatlogMonitor, path: []const u8, character_name: []const u8, is_chatlog: bool) !void {
+    fn addLogFile(self: *ChatlogMonitor, path: []const u8, character_name: []const u8, channel_name: []const u8, is_chatlog: bool) !void {
         if (self.monitored_paths.contains(path)) return;
 
-        // A newer file for the same character and kind replaces the old one: EVE started a new session.
+        // A newer file for the same character and channel replaces the old one: EVE started a new session.
         var i: usize = 0;
         while (i < self.log_files.items.len) {
             const file = &self.log_files.items[i];
-            if (file.is_chatlog != is_chatlog or !std.mem.eql(u8, file.character_name, character_name)) {
+            if (file.is_chatlog != is_chatlog or !std.mem.eql(u8, file.character_name, character_name) or !std.mem.eql(u8, file.channel_name, channel_name)) {
                 i += 1;
                 continue;
             }
@@ -364,7 +463,7 @@ pub const ChatlogMonitor = struct {
         }
 
         {
-            var file = try LogFile.init(self.allocator, path, character_name, is_chatlog);
+            var file = try LogFile.init(self.allocator, path, character_name, channel_name, is_chatlog);
             errdefer file.deinit(self.allocator, self.io);
             try self.log_files.append(self.allocator, file);
         }
@@ -405,7 +504,13 @@ pub const ChatlogMonitor = struct {
         const start_time_ns = std.Io.Timestamp.now(self.io, .awake).toNanoseconds();
 
         if (!self.rescan_changes.hasAny()) {
-            const changes = self.finder.changes();
+            var changes = self.finder.changes();
+            if (self.has_stale_channels) {
+                self.has_stale_channels = false;
+                self.dropUnfollowedChannels();
+                // The logs of a newly named channel already exist, so the folder won't signal them.
+                changes.chatlog_changed = true;
+            }
             if (!changes.hasAny()) return;
             self.rescan_changes = changes;
             self.rescan_index = 0;
@@ -430,7 +535,10 @@ pub const ChatlogMonitor = struct {
             const name = names[self.rescan_index];
             if (!self.wanted.contains(name)) continue;
             // addLogFile skips a file already followed.
-            if (self.rescan_changes.chatlog_changed) self.followNewestLog(name, true);
+            if (self.rescan_changes.chatlog_changed) {
+                self.followNewestLog(name, true);
+                self.followChannels(name);
+            }
             if (self.rescan_changes.gamelog_changed) self.followNewestLog(name, false);
         }
 
@@ -442,6 +550,7 @@ pub const ChatlogMonitor = struct {
     }
 
     fn queueSystemUpdate(self: *ChatlogMonitor, character_name: []const u8, system_name: []const u8, event_timestamp: u64, is_jump: bool) void {
+        self.recordClientSystem(character_name, system_name, event_timestamp);
         const system_update = self.copySystemUpdate(character_name, system_name, event_timestamp, is_jump) catch |err| {
             slog.err("Failed to copy system update for '{s}': {}", .{ character_name, err });
             return;
@@ -449,6 +558,35 @@ pub const ChatlogMonitor = struct {
         self.system_updates.push(system_update) catch |err| {
             slog.err("Failed to queue system update for '{s}': {}", .{ character_name, err });
         };
+    }
+
+    fn recordClientSystem(self: *ChatlogMonitor, character_name: []const u8, system_name: []const u8, event_timestamp: u64) void {
+        const system = universe.findSystem(system_name);
+        for (self.client_systems.items) |*client| {
+            if (!std.mem.eql(u8, client.character_name, character_name)) continue;
+            if (event_timestamp != 0 and event_timestamp < client.event_timestamp) return;
+            client.system = system;
+            client.event_timestamp = event_timestamp;
+            return;
+        }
+
+        const owned_name = self.allocator.dupe(u8, character_name) catch |err| {
+            slog.warn("Failed to remember where '{s}' is for chat alerts: {}", .{ character_name, err });
+            return;
+        };
+        self.client_systems.append(self.allocator, .{ .character_name = owned_name, .system = system, .event_timestamp = event_timestamp }) catch |err| {
+            slog.warn("Failed to remember where '{s}' is for chat alerts: {}", .{ character_name, err });
+            self.allocator.free(owned_name);
+        };
+    }
+
+    fn forgetClientSystem(self: *ChatlogMonitor, character_name: []const u8) void {
+        for (self.client_systems.items, 0..) |client, index| {
+            if (!std.mem.eql(u8, client.character_name, character_name)) continue;
+            self.allocator.free(client.character_name);
+            _ = self.client_systems.swapRemove(index);
+            return;
+        }
     }
 
     fn copySystemUpdate(self: *const ChatlogMonitor, character_name: []const u8, system_name: []const u8, event_timestamp: u64, is_jump: bool) !queue.SystemUpdate {
@@ -471,7 +609,7 @@ pub const ChatlogMonitor = struct {
 
     /// Gated by the type's settings in ThumbnailSet.notify, once the main thread delivers it.
     fn queueNotification(self: *ChatlogMonitor, character_name: []const u8, notification: notification_mod.Notification) void {
-        var event: queue.NotificationEvent = .{ .character_name = "", .notification = .{ .notification_type = notification.notification_type, .state = notification.state } };
+        var event: queue.NotificationEvent = .{ .character_name = "", .notification = .{ .notification_type = notification.notification_type, .state = notification.state, .chat_rule_index = notification.chat_rule_index, .alert_group = notification.alert_group } };
         self.copyNotificationEvent(&event, character_name, notification) catch |err| {
             event.deinit(self.allocator);
             slog.err("Failed to copy {s} notification for '{s}': {}", .{ @tagName(notification.notification_type), character_name, err });
@@ -487,6 +625,9 @@ pub const ChatlogMonitor = struct {
         event.character_name = try self.allocator.dupe(u8, character_name);
         if (notification.source) |source| event.notification.source = try self.allocator.dupe(u8, source);
         if (notification.target) |target| event.notification.target = try self.allocator.dupe(u8, target);
+        if (notification.channel) |channel| event.notification.channel = try self.allocator.dupe(u8, channel);
+        if (notification.message) |message| event.notification.message = try self.allocator.dupe(u8, message);
+        if (notification.jumps) |jumps| event.notification.jumps = try self.allocator.dupe(u8, jumps);
     }
 
     /// Only the first few and then every 100th, since a malformed log can produce thousands.
@@ -505,7 +646,10 @@ pub const ChatlogMonitor = struct {
         }
 
         if (file.is_chatlog) {
-            if (lines.parseChatLine(line)) |system| self.handleSystemChange(file, system, .chatlog, lines.leadingTimestamp(line));
+            if (!file.isChannelLog()) {
+                if (lines.parseChatLine(line)) |system| self.handleSystemChange(file, system, .chatlog, lines.leadingTimestamp(line));
+            }
+            self.handleChatMessage(file, line);
             return;
         }
 
@@ -516,6 +660,85 @@ pub const ChatlogMonitor = struct {
             .mining => self.handleMiningEvent(file, line),
             .bounty => self.handleBountyEvent(file, line),
         };
+    }
+
+    /// A client's own characters don't alert themselves.
+    fn handleChatMessage(self: *ChatlogMonitor, file: *const LogFile, line: []const u8) void {
+        const rules = if (self.alert_rules) |*rules| rules else return;
+        if (!rules.followsChannel(file.channel_name)) return;
+        var message = lines.parseChatMessage(line) orelse return;
+        var body_buf: [lines.MAX_LINE_LENGTH]u8 = undefined;
+        message.body = lines.collapseSpaces(message.body, &body_buf);
+        self.queueIntelSightings(rules, file.channel_name, message);
+        if (self.wanted.contains(message.speaker)) return;
+
+        var client_buf: [alert_rules_mod.MAX_CLIENTS]alert_rules_mod.Client = undefined;
+        const clients = self.alertableClients(rules, &client_buf);
+        const hit = rules.firstHit(file.channel_name, message, clients) orelse return;
+
+        const now_ms = win32.Ticks.now().ms;
+        if (self.recent_hits.isRepeat(alert_rules_mod.messageKey(message), now_ms, alert_rules_mod.DUPLICATE_WINDOW_MS)) return;
+        if (self.recent_hits.isRepeat(hit.cooldown_key, now_ms, hit.cooldown_ms)) return;
+
+        var jumps_buf: [3]u8 = undefined;
+        // A u8 is at most three digits.
+        const jumps: ?[]const u8 = if (hit.jumps) |count| std.mem.print(&jumps_buf, "{d}", .{count}) catch unreachable else null;
+        const notification: notification_mod.Notification = .{
+            .notification_type = hit.notification_type,
+            .source = message.speaker,
+            .target = hit.term,
+            .channel = file.channel_name,
+            .message = message.body,
+            .jumps = jumps,
+            .chat_rule_index = hit.rule_index,
+            .alert_group = self.next_alert_group,
+        };
+        self.next_alert_group += 1;
+        slog.debug("Chat alert ({s}) in '{s}': {s}", .{ @tagName(hit.notification_type), file.channel_name, hit.term });
+
+        if (hit.nearest_clients.count() == 0) {
+            const character_name = fallbackClient(rules, file.character_name, clients) orelse return;
+            self.queueNotification(character_name, notification);
+            return;
+        }
+        var nearest = hit.nearest_clients.iterator(.{});
+        while (nearest.next()) |index| self.queueNotification(clients[index].character_name, notification);
+    }
+
+    /// One per system named, however far off: the map and Intel Panel show intel a client's alert range doesn't reach.
+    fn queueIntelSightings(self: *ChatlogMonitor, rules: *const RuleSet, channel: []const u8, message: lines.ChatMessage) void {
+        var mention_buf: [alert_rules_mod.MAX_MENTIONS]universe.SystemIndex = undefined;
+        const report = rules.intelReport(channel, message, &mention_buf);
+        if (report.systems.len == 0) return;
+        if (self.recent_sightings.isRepeat(alert_rules_mod.messageKey(message), win32.Ticks.now().ms, alert_rules_mod.DUPLICATE_WINDOW_MS)) return;
+        for (report.systems, 0..) |system, index| {
+            const owned = self.allocator.dupe(u8, message.body) catch |err| {
+                slog.warn("Failed to copy intel for the map: {}", .{err});
+                return;
+            };
+            self.intel_sightings.push(.{ .system = system, .message = owned, .is_clear = report.is_clear and index == 0, .is_pinned = index < report.pin_count, .is_message_first = index == 0 }) catch |err| {
+                slog.warn("Failed to queue intel for the map: {}", .{err});
+            };
+        }
+    }
+
+    /// Borrows names from client_systems.
+    fn alertableClients(self: *const ChatlogMonitor, rules: *const RuleSet, buffer: []alert_rules_mod.Client) []const alert_rules_mod.Client {
+        var client_count: usize = 0;
+        for (self.client_systems.items) |client| {
+            if (client_count == buffer.len) break;
+            const system = client.system orelse continue;
+            if (rules.isMuted(client.character_name)) continue;
+            buffer[client_count] = .{ .character_name = client.character_name, .system = system };
+            client_count += 1;
+        }
+        return buffer[0..client_count];
+    }
+
+    /// The client that logged the line, or another if that one is muted, since its alert would never show.
+    fn fallbackClient(rules: *const RuleSet, listener: []const u8, clients: []const alert_rules_mod.Client) ?[]const u8 {
+        if (!rules.isMuted(listener)) return listener;
+        return if (clients.len > 0) clients[0].character_name else null;
     }
 
     /// Ignores an undock or Local change that repeats the last system, but never a jump; `system` is borrowed and copied into the queued events.

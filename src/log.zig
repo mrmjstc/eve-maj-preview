@@ -43,10 +43,10 @@ var g_log_mutex: std.Io.Mutex = .init;
 var g_log_file: ?std.Io.File = null;
 /// Buffers debug/info lines, so the frequent debug-level scan tick costs a memcpy rather than a write syscall.
 var g_log_buf: [16 * 1024]u8 = undefined;
-var g_log_buf_len: usize = 0;
+var g_log_buf_length: usize = 0;
 /// The console's copy of the lines, written out together by flushConsole: each console write costs far more than a file write.
 var g_console_buf: [16 * 1024]u8 = undefined;
-var g_console_buf_len: usize = 0;
+var g_console_buf_length: usize = 0;
 
 pub fn setLevel(level: LogLevel) void {
     g_level.store(level, .monotonic);
@@ -106,12 +106,12 @@ pub fn deinitFile() void {
 }
 
 /// Retries tryLock briefly rather than locking, so a crash inside the logger can't deadlock.
-pub fn writeCrashLine(comptime fmt: []const u8, args: anytype) void {
+pub fn writeCrashLine(comptime text_format: []const u8, args: anytype) void {
     const lock_retries = 20;
-    var attempt: u32 = 0;
+    var attempt_count: u32 = 0;
     while (!g_log_mutex.tryLock()) {
-        attempt += 1;
-        if (attempt >= lock_retries) return;
+        attempt_count += 1;
+        if (attempt_count >= lock_retries) return;
         std.Io.sleep(g_io, .fromMilliseconds(1), .awake) catch {};
     }
     defer g_log_mutex.unlock(g_io);
@@ -120,32 +120,32 @@ pub fn writeCrashLine(comptime fmt: []const u8, args: anytype) void {
     flushConsoleLocked();
     var timestamp_buf: [23]u8 = undefined;
     var line_buf: [512]u8 = undefined;
-    appendLocked(formatLine(&line_buf, "[{s}][CRASH] " ++ fmt ++ "\n", .{formatTimestamp(&timestamp_buf)} ++ args));
+    appendLocked(formatLine(&line_buf, "[{s}][CRASH] " ++ text_format ++ "\n", .{formatTimestamp(&timestamp_buf)} ++ args));
 }
 
 pub fn Scoped(comptime scope: []const u8) type {
     return struct {
-        inline fn logImpl(comptime level: LogLevel, comptime fmt: []const u8, args: anytype) void {
+        inline fn logImpl(comptime level: LogLevel, comptime text_format: []const u8, args: anytype) void {
             if (shouldLog(level)) {
                 var timestamp_buf: [23]u8 = undefined;
-                writeLine(level, formatTimestamp(&timestamp_buf), scope, fmt, args);
+                writeLine(level, formatTimestamp(&timestamp_buf), scope, text_format, args);
             }
         }
 
-        pub inline fn debug(comptime fmt: []const u8, args: anytype) void {
-            logImpl(.debug, fmt, args);
+        pub inline fn debug(comptime text_format: []const u8, args: anytype) void {
+            logImpl(.debug, text_format, args);
         }
 
-        pub inline fn info(comptime fmt: []const u8, args: anytype) void {
-            logImpl(.info, fmt, args);
+        pub inline fn info(comptime text_format: []const u8, args: anytype) void {
+            logImpl(.info, text_format, args);
         }
 
-        pub inline fn warn(comptime fmt: []const u8, args: anytype) void {
-            logImpl(.warn, fmt, args);
+        pub inline fn warn(comptime text_format: []const u8, args: anytype) void {
+            logImpl(.warn, text_format, args);
         }
 
-        pub inline fn err(comptime fmt: []const u8, args: anytype) void {
-            logImpl(.err, fmt, args);
+        pub inline fn err(comptime text_format: []const u8, args: anytype) void {
+            logImpl(.err, text_format, args);
         }
     };
 }
@@ -211,9 +211,9 @@ fn formatTimestamp(buf: *[23]u8) []const u8 {
 }
 
 /// Keeps what fits of an overlong line, marked as cut, rather than losing it.
-fn formatLine(buf: []u8, comptime fmt: []const u8, args: anytype) []const u8 {
+fn formatLine(buf: []u8, comptime text_format: []const u8, args: anytype) []const u8 {
     var writer: std.Io.Writer = .fixed(buf);
-    writer.print(fmt, args) catch {
+    writer.print(text_format, args) catch {
         @memcpy(buf[buf.len - TRUNCATED_MARKER.len ..], TRUNCATED_MARKER);
         return buf;
     };
@@ -248,34 +248,34 @@ fn appendLocked(bytes: []const u8) void {
 
 /// Caller holds g_log_mutex.
 fn flushLocked() void {
-    if (g_log_buf_len == 0) return;
-    defer g_log_buf_len = 0;
-    appendLocked(g_log_buf[0..g_log_buf_len]);
+    if (g_log_buf_length == 0) return;
+    defer g_log_buf_length = 0;
+    appendLocked(g_log_buf[0..g_log_buf_length]);
 }
 
 /// Caller holds g_log_mutex.
 fn flushConsoleLocked() void {
-    if (g_console_buf_len == 0) return;
-    defer g_console_buf_len = 0;
-    if (g_is_console_shown) std.debug.print("{s}", .{g_console_buf[0..g_console_buf_len]});
+    if (g_console_buf_length == 0) return;
+    defer g_console_buf_length = 0;
+    if (g_is_console_shown) std.debug.print("{s}", .{g_console_buf[0..g_console_buf_length]});
 }
 
 /// Buffers the line for the file, and the console while it's shown; warnings and errors flush at once, so they survive a crash right after.
-inline fn writeLine(comptime level: LogLevel, timestamp: []const u8, comptime scope: []const u8, comptime fmt: []const u8, args: anytype) void {
+inline fn writeLine(comptime level: LogLevel, timestamp: []const u8, comptime scope: []const u8, comptime text_format: []const u8, args: anytype) void {
     g_log_mutex.lock(g_io) catch return;
     defer g_log_mutex.unlock(g_io);
 
     var line_buf: [2048]u8 = undefined;
-    const line = formatLine(&line_buf, "[{s}][{s}][{s}] " ++ fmt ++ "\n", .{ timestamp, comptime level.asString(), scope } ++ args);
+    const line = formatLine(&line_buf, "[{s}][{s}][{s}] " ++ text_format ++ "\n", .{ timestamp, comptime level.asString(), scope } ++ args);
 
-    if (line.len > g_log_buf.len - g_log_buf_len) flushLocked();
-    @memcpy(g_log_buf[g_log_buf_len..][0..line.len], line);
-    g_log_buf_len += line.len;
+    if (line.len > g_log_buf.len - g_log_buf_length) flushLocked();
+    @memcpy(g_log_buf[g_log_buf_length..][0..line.len], line);
+    g_log_buf_length += line.len;
 
     if (g_is_console_shown) {
-        if (line.len > g_console_buf.len - g_console_buf_len) flushConsoleLocked();
-        @memcpy(g_console_buf[g_console_buf_len..][0..line.len], line);
-        g_console_buf_len += line.len;
+        if (line.len > g_console_buf.len - g_console_buf_length) flushConsoleLocked();
+        @memcpy(g_console_buf[g_console_buf_length..][0..line.len], line);
+        g_console_buf_length += line.len;
     }
 
     if (comptime @backingInt(level) >= @backingInt(LogLevel.warn)) {

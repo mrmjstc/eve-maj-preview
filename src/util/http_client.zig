@@ -30,6 +30,8 @@ pub const FetchOptions = struct {
     payload: ?[]const u8 = null,
     /// Borrows from the caller.
     extra_headers: []const Header = &.{},
+    /// How long the response may take, for a server that works before it answers; null for TIMEOUT_MS.
+    receive_timeout_ms: ?c_int = null,
 };
 
 pub const Response = struct {
@@ -38,6 +40,8 @@ pub const Response = struct {
     body: []u8,
     /// Where the response came from, after any redirects; owned, freed in deinit.
     url: [:0]u8,
+    /// From a Retry-After header given in seconds.
+    retry_after_seconds: ?u32 = null,
 
     pub fn deinit(self: *const Response, allocator: std.mem.Allocator) void {
         allocator.free(self.body);
@@ -49,6 +53,7 @@ const RequestError = error{
     InvalidUrl,
     ConnectFailed,
     OpenRequestFailed,
+    SetTimeoutsFailed,
     SendRequestFailed,
     ReceiveResponseFailed,
     QueryStatusFailed,
@@ -106,15 +111,15 @@ pub const Session = struct {
 
     /// Sets `win32_error` when a WinHTTP call fails, since the handle cleanup that follows would overwrite GetLastError.
     fn sendUnlogged(self: *const Session, allocator: std.mem.Allocator, url: []const u8, options: FetchOptions, win32_error: *DWORD) !Response {
-        const url_w = try std.unicode.utf8ToUtf16LeAllocZ(allocator, url);
-        defer allocator.free(url_w);
+        const wide_url = try std.unicode.utf8ToUtf16LeAllocZ(allocator, url);
+        defer allocator.free(wide_url);
 
         var parts: win32.URL_COMPONENTS = .{
             .dwHostNameLength = POINT_INTO_INPUT,
             .dwUrlPathLength = POINT_INTO_INPUT,
             .dwExtraInfoLength = POINT_INTO_INPUT,
         };
-        if (!win32.toBool(win32.WinHttpCrackUrl(url_w.ptr, @intCast(url_w.len), 0, &parts))) return winHttpFailure(win32_error, error.InvalidUrl);
+        if (!win32.toBool(win32.WinHttpCrackUrl(wide_url.ptr, @intCast(wide_url.len), 0, &parts))) return winHttpFailure(win32_error, error.InvalidUrl);
         const host_ptr = parts.lpszHostName orelse return error.InvalidUrl;
         const host = try allocator.dupeSentinel(WCHAR, host_ptr[0..parts.dwHostNameLength], 0);
         defer allocator.free(host);
@@ -131,6 +136,10 @@ pub const Session = struct {
         const flags: DWORD = if (parts.nScheme == win32.INTERNET_SCHEME_HTTPS) win32.WINHTTP_FLAG_SECURE else 0;
         const request = win32.WinHttpOpenRequest(connection, verb, object, null, null, null, flags) orelse return winHttpFailure(win32_error, error.OpenRequestFailed);
         defer _ = win32.WinHttpCloseHandle(request);
+
+        if (options.receive_timeout_ms) |timeout_ms| {
+            if (!win32.toBool(win32.WinHttpSetTimeouts(request, TIMEOUT_MS, TIMEOUT_MS, TIMEOUT_MS, timeout_ms))) return winHttpFailure(win32_error, error.SetTimeoutsFailed);
+        }
 
         const headers = try headerBlock(allocator, options);
         defer allocator.free(headers);
@@ -152,7 +161,7 @@ pub const Session = struct {
         const body = try readBody(allocator, request, win32_error);
         errdefer allocator.free(body);
         const final_url = try finalUrl(allocator, request, win32_error);
-        return .{ .status = status, .body = body, .url = final_url };
+        return .{ .status = status, .body = body, .url = final_url, .retry_after_seconds = retryAfterSeconds(request) };
     }
 };
 
@@ -160,6 +169,14 @@ pub const Session = struct {
 fn winHttpFailure(win32_error: *DWORD, err: RequestError) RequestError {
     win32_error.* = win32.GetLastError();
     return if (win32_error.* == win32.ERROR_WINHTTP_TIMEOUT) error.TimedOut else err;
+}
+
+/// Null when the header is absent or holds a date, which is most replies, so it isn't a failure.
+fn retryAfterSeconds(request: HINTERNET) ?u32 {
+    var seconds: DWORD = 0;
+    var size: DWORD = @sizeOf(DWORD);
+    const has_seconds = win32.toBool(win32.WinHttpQueryHeaders(request, win32.WINHTTP_QUERY_RETRY_AFTER | win32.WINHTTP_QUERY_FLAG_NUMBER, null, &seconds, &size, null));
+    return if (has_seconds) seconds else null;
 }
 
 /// "Name: value\r\n" lines for WinHttpSendRequest; caller frees.
@@ -190,6 +207,6 @@ fn finalUrl(allocator: std.mem.Allocator, request: HINTERNET, win32_error: *DWOR
     var buf: [MAX_URL_LENGTH]WCHAR = undefined;
     var size_bytes: DWORD = @sizeOf(@TypeOf(buf));
     if (!win32.toBool(win32.WinHttpQueryOption(request, win32.WINHTTP_OPTION_URL, &buf, &size_bytes))) return winHttpFailure(win32_error, error.QueryUrlFailed);
-    const url_w = std.mem.sliceTo(buf[0 .. size_bytes / @sizeOf(WCHAR)], 0);
-    return std.unicode.utf16LeToUtf8AllocZ(allocator, url_w);
+    const wide_url = std.mem.sliceTo(buf[0 .. size_bytes / @sizeOf(WCHAR)], 0);
+    return std.unicode.utf16LeToUtf8AllocZ(allocator, wide_url);
 }

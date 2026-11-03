@@ -60,6 +60,7 @@ pub const CharacterConfig = struct {
     excludeFromMinimize: bool = false,
     excludeFromCloseAll: bool = false,
     excludeFromAutoMove: bool = false,
+    excludeFromChatAlerts: bool = false,
     hideThumbnail: bool = false,
     notificationsMuted: bool = false,
     opacity: ?u8 = null,
@@ -92,15 +93,15 @@ pub fn buildCharacterOrderMap(characters: []const CharacterConfig, allocator: st
 }
 
 /// Names missing from order_map sort last; ties fall back to array position.
-pub fn orderMapLessThan(order_map: *const std.StringHashMap(usize), a_name: []const u8, b_name: []const u8, a_index: usize, b_index: usize) bool {
-    const a_order = order_map.get(a_name);
-    const b_order = order_map.get(b_name);
-    if (a_order) |a_rank| {
-        if (b_order) |b_rank| {
-            if (a_rank != b_rank) return a_rank < b_rank;
+pub fn orderMapLessThan(order_map: *const std.StringHashMap(usize), first_name: []const u8, second_name: []const u8, first_index: usize, second_index: usize) bool {
+    const first_order = order_map.get(first_name);
+    const second_order = order_map.get(second_name);
+    if (first_order) |first_rank| {
+        if (second_order) |second_rank| {
+            if (first_rank != second_rank) return first_rank < second_rank;
         } else return true;
-    } else if (b_order != null) return false;
-    return a_index < b_index;
+    } else if (second_order != null) return false;
+    return first_index < second_index;
 }
 
 const testing = std.testing;

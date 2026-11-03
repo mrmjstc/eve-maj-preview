@@ -8,12 +8,12 @@ pub fn indexOfString(list: []const []const u8, name: []const u8) ?usize {
     return null;
 }
 
-/// `text`'s first `max_len` bytes, shortened further so a multi-byte UTF-8 character isn't cut in two.
-pub fn utf8Prefix(text: []const u8, max_len: usize) []const u8 {
-    if (text.len <= max_len) return text;
-    var len = max_len;
-    while (len > 0 and (text[len] & 0xC0) == 0x80) len -= 1;
-    return text[0..len];
+/// `text`'s first `max_length` bytes, shortened further so a multi-byte UTF-8 character isn't cut in two.
+pub fn utf8Prefix(text: []const u8, max_length: usize) []const u8 {
+    if (text.len <= max_length) return text;
+    var length = max_length;
+    while (length > 0 and (text[length] & 0xC0) == 0x80) length -= 1;
+    return text[0..length];
 }
 
 const testing = std.testing;

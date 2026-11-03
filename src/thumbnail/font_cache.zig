@@ -62,8 +62,8 @@ pub const FontCache = struct {
             slog.debug("Font cache invalidated for slot {} @ {} DPI (settings changed)", .{ slot, dpi });
         }
 
-        const font_name_z = try self.allocator.dupeSentinel(u8, font_name, 0);
-        defer self.allocator.free(font_name_z);
+        const terminated_name = try self.allocator.dupeSentinel(u8, font_name, 0);
+        defer self.allocator.free(terminated_name);
 
         // Copied, since font_name may be freed under a cached entry.
         const name_copy = try self.allocator.dupe(u8, font_name);
@@ -83,7 +83,7 @@ pub const FontCache = struct {
             win32.CLIP_DEFAULT_PRECIS,
             win32.CLEARTYPE_QUALITY,
             win32.DEFAULT_PITCH,
-            font_name_z,
+            terminated_name,
         ) orelse return error.CreateFontFailed;
 
         self.allocator.free(entry.name);

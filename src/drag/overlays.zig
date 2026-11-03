@@ -139,9 +139,9 @@ pub const GhostOverlay = struct {
 
             pixel_buffer.drawRectOutline(overlay.canvas(), local_x, local_y, rect_width, rect_height, OUTLINE_THICKNESS, outline_color);
 
-            const dims = draw.measureText(overlay.mem_dc, group.names);
+            const dimensions = draw.measureText(overlay.mem_dc, group.names);
             draw.renderText(overlay.mem_dc, group.names, local_x, local_y, text_color);
-            pixel_buffer.fixTextAlphaRect(overlay.canvas(), local_x, local_y, dims.width, dims.height);
+            pixel_buffer.fixTextAlphaRect(overlay.canvas(), local_x, local_y, dimensions.width, dimensions.height);
         }
 
         gdi_overlay.presentLayered(hwnd, overlay, 255);

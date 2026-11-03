@@ -25,7 +25,7 @@ pub const SystemColorConfig = struct {
 };
 
 /// Case-insensitive glob: `*` any run, `?` any character, `#` any digit.
-fn globMatch(pattern: []const u8, text: []const u8) bool {
+pub fn globMatch(pattern: []const u8, text: []const u8) bool {
     var pattern_index: usize = 0;
     var text_index: usize = 0;
     var star_pattern_index: ?usize = null;

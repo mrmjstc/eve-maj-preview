@@ -3,6 +3,7 @@ const std = @import("std");
 const win32 = @import("win32.zig");
 const fonts = @import("fonts.zig");
 const pixel_buffer = @import("../util/pixel_buffer.zig");
+const utf8 = @import("../util/utf8.zig");
 const log = @import("../log.zig");
 
 const slog = log.Scoped("gdi_overlay");
@@ -15,6 +16,7 @@ const HINT_LINE_PADDING_X = 5;
 const HINT_LINE_PADDING_Y = 2;
 /// Longest hint line drawn, in bytes.
 const HINT_TEXT_MAX = 256;
+const ELLIPSIS = "...";
 
 /// A top-down 32bpp DIB section selected into its own memory DC, drawn with GDI and then presented as a layered window's alpha-blended source.
 pub const OverlayBitmap = struct {
@@ -33,17 +35,17 @@ pub const OverlayBitmap = struct {
         const mem_dc = win32.CreateCompatibleDC(screen_dc) orelse return error.CreateDCFailed;
         errdefer _ = win32.DeleteDC(mem_dc);
 
-        var bmi = std.mem.zeroes(win32.BITMAPINFO);
-        bmi.bmiHeader.biSize = @sizeOf(win32.BITMAPINFOHEADER);
-        bmi.bmiHeader.biWidth = width;
+        var bitmap_info = std.mem.zeroes(win32.BITMAPINFO);
+        bitmap_info.bmiHeader.biSize = @sizeOf(win32.BITMAPINFOHEADER);
+        bitmap_info.bmiHeader.biWidth = width;
         // Negative height selects top-down row order.
-        bmi.bmiHeader.biHeight = -height;
-        bmi.bmiHeader.biPlanes = 1;
-        bmi.bmiHeader.biBitCount = 32;
-        bmi.bmiHeader.biCompression = win32.BI_RGB;
+        bitmap_info.bmiHeader.biHeight = -height;
+        bitmap_info.bmiHeader.biPlanes = 1;
+        bitmap_info.bmiHeader.biBitCount = 32;
+        bitmap_info.bmiHeader.biCompression = win32.BI_RGB;
 
         var pixels: ?*anyopaque = null;
-        const bitmap = win32.CreateDIBSection(mem_dc, &bmi, win32.DIB_RGB_COLORS, &pixels, null, 0) orelse return error.CreateBitmapFailed;
+        const bitmap = win32.CreateDIBSection(mem_dc, &bitmap_info, win32.DIB_RGB_COLORS, &pixels, null, 0) orelse return error.CreateBitmapFailed;
         errdefer _ = win32.DeleteObject(bitmap);
 
         const pixel_data: [*]u32 = @ptrCast(@alignCast(pixels orelse return error.CreateBitmapFailed));
@@ -113,11 +115,11 @@ pub const CachedFont = struct {
         if (self.handle) |old| _ = win32.DeleteObject(old);
         self.handle = null;
 
-        const name_z = allocator.dupeSentinel(u8, name, 0) catch |err| {
+        const terminated_name = allocator.dupeSentinel(u8, name, 0) catch |err| {
             slog.err("Failed to allocate {s} font name: {}", .{ context, err });
             return err;
         };
-        defer allocator.free(name_z);
+        defer allocator.free(terminated_name);
 
         const name_copy = allocator.dupe(u8, name) catch |err| {
             slog.err("Failed to allocate {s} font name: {}", .{ context, err });
@@ -138,7 +140,7 @@ pub const CachedFont = struct {
             win32.CLIP_DEFAULT_PRECIS,
             win32.CLEARTYPE_QUALITY,
             win32.DEFAULT_PITCH,
-            name_z,
+            terminated_name,
         );
         // Cached anyway, so a failing font isn't retried and logged every frame.
         if (self.handle == null) slog.err("Failed to create {s} font '{s}'", .{ context, name });
@@ -256,18 +258,18 @@ pub fn toColorRef(color: u32) u32 {
 /// Truncated to fit.
 pub fn toBufZ(comptime buf_size: usize, text: []const u8) [buf_size:0]u8 {
     var buf: [buf_size:0]u8 = undefined;
-    const copy_len = @min(text.len, buf_size - 1);
-    @memcpy(buf[0..copy_len], text[0..copy_len]);
-    buf[copy_len] = 0;
+    const copy_length = @min(text.len, buf_size - 1);
+    @memcpy(buf[0..copy_length], text[0..copy_length]);
+    buf[copy_length] = 0;
     return buf;
 }
 
 /// Measures `text` (truncated to `buf_size - 1` bytes) using the currently selected font; a failed measure reads as empty, since it runs every render.
 pub fn measureTextSize(comptime buf_size: usize, dc: win32.HDC, text: []const u8) win32.SIZE {
     const buf = toBufZ(buf_size, text);
-    const copy_len = @min(text.len, buf_size - 1);
-    var size = win32.SIZE{ .cx = 0, .cy = 0 };
-    _ = win32.GetTextExtentPoint32A(dc, &buf, @intCast(copy_len), &size);
+    const copy_length = @min(text.len, buf_size - 1);
+    var size: win32.SIZE = .{ .cx = 0, .cy = 0 };
+    _ = win32.GetTextExtentPoint32A(dc, &buf, @intCast(copy_length), &size);
     return size;
 }
 
@@ -279,10 +281,10 @@ pub fn measureTextWidth(comptime buf_size: usize, dc: win32.HDC, text: []const u
 /// Up to `buf_size - 1` bytes of `text`, in the selected font on a transparent background; `color` is 0xAARRGGBB.
 pub fn drawText(comptime buf_size: usize, dc: win32.HDC, x: i32, y: i32, text: []const u8, color: u32) void {
     const buf = toBufZ(buf_size, text);
-    const copy_len = @min(text.len, buf_size - 1);
+    const copy_length = @min(text.len, buf_size - 1);
     _ = win32.SetBkMode(dc, win32.TRANSPARENT);
     _ = win32.SetTextColor(dc, toColorRef(color));
-    _ = win32.TextOutA(dc, x, y, &buf, @intCast(copy_len));
+    _ = win32.TextOutA(dc, x, y, &buf, @intCast(copy_length));
 }
 
 /// Null if `name` isn't installed, which CreateFontA would hide by substituting a face; matched by prefix, as GDI may name a variable font's weight ("Cascadia Code SemiBold").
@@ -291,11 +293,11 @@ pub fn createInstalledFont(dc: win32.HDC, name: [:0]const u8, height_px: i32, we
 
     const old_font = win32.SelectObject(dc, font);
     var face = std.mem.zeroes([64]u8);
-    const face_len = win32.GetTextFaceA(dc, face.len - 1, &face);
+    const face_length = win32.GetTextFaceA(dc, face.len - 1, &face);
     if (old_font) |previous_font| _ = win32.SelectObject(dc, previous_font);
 
     // Read up to the NUL: whether GetTextFaceA's count includes it varies.
-    if (face_len > 0 and std.ascii.startsWithIgnoreCase(std.mem.sliceTo(&face, 0), name)) return font;
+    if (face_length > 0 and std.ascii.startsWithIgnoreCase(std.mem.sliceTo(&face, 0), name)) return font;
     _ = win32.DeleteObject(font);
     return null;
 }
@@ -325,9 +327,9 @@ pub fn drawButtonFace(bitmap: *const OverlayBitmap, rect: win32.RECT, label: []c
 
 /// Pushes the bitmap to a layered window at its origin using per-pixel alpha, scaled by `opacity`.
 pub fn presentLayered(hwnd: win32.HWND, bitmap: *const OverlayBitmap, opacity: u8) void {
-    const window_size = win32.SIZE{ .cx = @intCast(bitmap.width), .cy = @intCast(bitmap.height) };
-    const source_point = win32.POINT{ .x = 0, .y = 0 };
-    var blend = win32.BLENDFUNCTION{
+    const window_size: win32.SIZE = .{ .cx = @intCast(bitmap.width), .cy = @intCast(bitmap.height) };
+    const source_point: win32.POINT = .{ .x = 0, .y = 0 };
+    var blend: win32.BLENDFUNCTION = .{
         .BlendOp = win32.AC_SRC_OVER,
         .BlendFlags = 0,
         .SourceConstantAlpha = opacity,
@@ -341,26 +343,21 @@ pub fn presentLayered(hwnd: win32.HWND, bitmap: *const OverlayBitmap, opacity: u
 pub fn truncateTextToFit(comptime buf_size: usize, dc: win32.HDC, out: *[buf_size:0]u8, text: []const u8, max_width: usize) []const u8 {
     var buf: [buf_size:0]u8 = undefined;
     // -4 leaves room for the "..." suffix.
-    const original_len = @min(text.len, buf_size - 4);
-    @memcpy(buf[0..original_len], text[0..original_len]);
-    buf[original_len] = 0;
+    const original_length = @min(text.len, buf_size - 4);
+    @memcpy(buf[0..original_length], text[0..original_length]);
+    buf[original_length] = 0;
     // A failed measure reads as empty, like measureTextSize's.
-    var size = win32.SIZE{ .cx = 0, .cy = 0 };
-    _ = win32.GetTextExtentPoint32A(dc, &buf, @intCast(original_len), &size);
-    if (@as(usize, @intCast(@max(0, size.cx))) <= max_width) {
-        @memcpy(out[0..original_len], text[0..original_len]);
-        out[original_len] = 0;
-        return out[0..original_len];
-    }
+    var size: win32.SIZE = .{ .cx = 0, .cy = 0 };
+    _ = win32.GetTextExtentPoint32A(dc, &buf, @intCast(original_length), &size);
+    if (@as(usize, @intCast(@max(0, size.cx))) <= max_width) return writeFitted(buf_size, out, text[0..original_length], "");
 
-    const ellipsis = "...";
-    var ellipsis_size = win32.SIZE{ .cx = 0, .cy = 0 };
-    _ = win32.GetTextExtentPoint32A(dc, ellipsis, ellipsis.len, &ellipsis_size);
+    var ellipsis_size: win32.SIZE = .{ .cx = 0, .cy = 0 };
+    _ = win32.GetTextExtentPoint32A(dc, ELLIPSIS, ELLIPSIS.len, &ellipsis_size);
     const budget: i32 = @as(i32, @intCast(max_width)) - ellipsis_size.cx;
     if (budget <= 0) return out[0..0];
 
     var low: usize = 0;
-    var high: usize = original_len;
+    var high: usize = original_length;
     while (low < high) {
         const middle = (low + high + 1) / 2;
         @memcpy(buf[0..middle], text[0..middle]);
@@ -372,11 +369,30 @@ pub fn truncateTextToFit(comptime buf_size: usize, dc: win32.HDC, out: *[buf_siz
             high = middle - 1;
         }
     }
+    return writeFitted(buf_size, out, text[0..low], ELLIPSIS);
+}
 
-    @memcpy(out[0..low], text[0..low]);
-    @memcpy(out[low .. low + ellipsis.len], ellipsis);
-    out[low + ellipsis.len] = 0;
-    return out[0 .. low + ellipsis.len];
+/// Like truncateTextToFit, for UTF-8 text such as chat; it never cuts a character in half.
+pub fn truncateUtf8ToFit(comptime buf_size: usize, dc: win32.HDC, out: *[buf_size:0]u8, text: []const u8, max_width: usize) []const u8 {
+    // -4 leaves room for the "..." suffix.
+    const original_length = utf8.prefixLength(text, buf_size - 4);
+    if (@as(usize, @intCast(@max(0, measureTextSizeUtf8(buf_size, dc, text[0..original_length]).cx))) <= max_width) return writeFitted(buf_size, out, text[0..original_length], "");
+
+    const budget: i32 = @as(i32, @intCast(max_width)) - measureTextSizeUtf8(buf_size, dc, ELLIPSIS).cx;
+    if (budget <= 0) return out[0..0];
+
+    var low: usize = 0;
+    var high: usize = original_length;
+    while (low < high) {
+        const middle = (low + high + 1) / 2;
+        const candidate = utf8.prefixLength(text, middle);
+        if (candidate > low and measureTextSizeUtf8(buf_size, dc, text[0..candidate]).cx <= budget) {
+            low = candidate;
+        } else {
+            high = middle - 1;
+        }
+    }
+    return writeFitted(buf_size, out, text[0..low], ELLIPSIS);
 }
 
 /// `background` may be null for a layered/owner-drawn window that paints its own background.
@@ -387,7 +403,7 @@ pub fn registerWindowClass(
     background: ?win32.HBRUSH,
 ) !void {
     const cursor = win32.LoadCursorA(null, win32.IDC_ARROW);
-    const window_class = win32.WNDCLASSEXA{
+    const window_class: win32.WNDCLASSEXA = .{
         .cbSize = @sizeOf(win32.WNDCLASSEXA),
         .style = 0,
         .lpfnWndProc = window_proc,
@@ -408,16 +424,16 @@ pub fn registerWindowClass(
 }
 
 /// Like `measureTextSize`, for UTF-8 text such as translated labels.
-fn measureTextSizeUtf8(comptime buf_size: usize, dc: win32.HDC, text: []const u8) win32.SIZE {
+pub fn measureTextSizeUtf8(comptime buf_size: usize, dc: win32.HDC, text: []const u8) win32.SIZE {
     var wide: [buf_size]u16 = undefined;
     const unit_count = toWide(buf_size, text, &wide);
-    var size = win32.SIZE{ .cx = 0, .cy = 0 };
+    var size: win32.SIZE = .{ .cx = 0, .cy = 0 };
     _ = win32.GetTextExtentPoint32W(dc, &wide, @intCast(unit_count), &size);
     return size;
 }
 
 /// Like `drawText`, for UTF-8 text such as translated labels.
-fn drawTextUtf8(comptime buf_size: usize, dc: win32.HDC, x: i32, y: i32, text: []const u8, color: u32) void {
+pub fn drawTextUtf8(comptime buf_size: usize, dc: win32.HDC, x: i32, y: i32, text: []const u8, color: u32) void {
     var wide: [buf_size]u16 = undefined;
     const unit_count = toWide(buf_size, text, &wide);
     _ = win32.SetBkMode(dc, win32.TRANSPARENT);
@@ -425,11 +441,20 @@ fn drawTextUtf8(comptime buf_size: usize, dc: win32.HDC, x: i32, y: i32, text: [
     _ = win32.TextOutW(dc, x, y, &wide, @intCast(unit_count));
 }
 
+/// `kept` then `suffix` into `out`, NUL-terminated; both must fit.
+fn writeFitted(comptime buf_size: usize, out: *[buf_size:0]u8, kept: []const u8, suffix: []const u8) []const u8 {
+    const length = kept.len + suffix.len;
+    @memcpy(out[0..kept.len], kept);
+    @memcpy(out[kept.len..length], suffix);
+    out[length] = 0;
+    return out[0..length];
+}
+
 /// UTF-8 to UTF-16 into `out`, truncating to `buf_size` bytes; returns the number of UTF-16 units written.
 fn toWide(comptime buf_size: usize, text: []const u8, out: *[buf_size]u16) usize {
-    const len = @min(text.len, buf_size);
-    if (len == 0) return 0;
-    const written = win32.MultiByteToWideChar(win32.CP_UTF8, 0, text.ptr, @intCast(len), out, @intCast(buf_size));
+    const length = @min(text.len, buf_size);
+    if (length == 0) return 0;
+    const written = win32.MultiByteToWideChar(win32.CP_UTF8, 0, text.ptr, @intCast(length), out, @intCast(buf_size));
     return @intCast(@max(0, written));
 }
 

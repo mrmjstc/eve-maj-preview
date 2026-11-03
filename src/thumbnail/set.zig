@@ -18,6 +18,9 @@ const arrange = @import("arrange.zig");
 const renderer_mod = @import("renderer.zig");
 const dispatch = @import("../notifications/dispatch.zig");
 const notification_mod = @import("../notifications/notification.zig");
+const universe = @import("../map/universe.zig");
+const intel_pins = @import("../map/intel_pins.zig");
+const connections = @import("../map/connections.zig");
 const log = @import("../log.zig");
 
 const slog = log.Scoped("thumbnail_set");
@@ -101,7 +104,7 @@ pub const ThumbnailSet = struct {
 
     /// Passed in, since input handling sits above thumbnail/.
     pub const Callbacks = struct {
-        window_procs: window.WindowProcs,
+        window_procedures: window.WindowProcs,
         /// The EVENT_OBJECT_DESTROY hook on our own process's windows.
         destroy_hook: win32.WINEVENTPROC,
     };
@@ -135,7 +138,7 @@ pub const ThumbnailSet = struct {
             .view_mode = config.display.viewMode,
         };
 
-        try window.registerClasses(instance, callbacks.window_procs);
+        try window.registerClasses(instance, callbacks.window_procedures);
 
         // Own process only: removeDestroyedOverlay acts on our overlay windows alone.
         thumbnail_set.destroy_event_hook = win32.setWinEventHookForProcess(win32.EVENT_OBJECT_DESTROY, callbacks.destroy_hook, win32.GetCurrentProcessId());
@@ -169,6 +172,11 @@ pub const ThumbnailSet = struct {
     /// For a global user action: kept out of history, and its sound and speech play once.
     pub fn notifyAll(self: *ThumbnailSet, notification: notification_mod.Notification) void {
         dispatch.notifyAll(self.dispatchContext(), self.thumbnails.items, notification);
+    }
+
+    /// For the Intel Panel, which lists every report; `message` is copied.
+    pub fn listIntel(self: *ThumbnailSet, system: universe.SystemIndex, message: []const u8) void {
+        dispatch.listIntel(self.dispatchContext(), self.thumbnails.items, system, message);
     }
 
     pub fn showTestNotification(self: *ThumbnailSet, notification_type: notification_mod.NotificationType, type_config: config_mod.NotificationTypeConfig) !void {
@@ -399,19 +407,30 @@ pub const ThumbnailSet = struct {
         slog.debug("Updated system for {s}: {s}", .{ thumbnail.character_name, system_name });
     }
 
+    /// Call every tick, since pins fade with nothing to announce it.
+    pub fn updateConnections(self: *ThumbnailSet, pins: *const intel_pins.IntelPins, now_ms: u64) void {
+        const thumbnail_config = &self.config.thumbnail;
+        const shrink_ms: u64 = @as(u64, @intCast(@max(0, self.config.display.mapPanelIntelShrinkSec))) * std.time.ms_per_s;
+        const intel: ?connections.IntelView = if (thumbnail_config.showSystemConnectionIntel) .{ .pins = pins, .shrink_ms = shrink_ms } else null;
+        for (self.thumbnails.items) |*thumbnail| {
+            const start = if (thumbnail_config.showSystemConnections) universe.findSystem(thumbnail.system_name) else null;
+            if (thumbnail.connections.refresh(start, thumbnail_config.systemConnectionJumps, intel, now_ms)) thumbnail.needs_render = true;
+        }
+    }
+
     /// Past `max_immediate`, the rest stay dirty for the next tick.
     pub fn renderDirtyThumbnails(self: *ThumbnailSet, max_immediate: ?usize) void {
-        var rendered: usize = 0;
+        var rendered_count: usize = 0;
         for (self.thumbnails.items) |*thumbnail| {
             if (!thumbnail.needs_render) continue;
 
             if (max_immediate) |cap| {
-                if (rendered >= cap) continue;
+                if (rendered_count >= cap) continue;
             }
 
             self.renderThumbnailLogged(thumbnail, "dirty thumbnail");
             thumbnail.needs_render = false;
-            rendered += 1;
+            rendered_count += 1;
         }
     }
 
@@ -519,8 +538,8 @@ pub const ThumbnailSet = struct {
         self.store.setCharacterPositions(entries.items);
     }
 
-    fn dispatchContext(self: *const ThumbnailSet) dispatch.Context {
-        return .{ .allocator = self.allocator, .config = self.config, .records = self.notification_records, .active_source_hwnd = self.active_source_hwnd };
+    fn dispatchContext(self: *ThumbnailSet) dispatch.Context {
+        return .{ .allocator = self.allocator, .config = self.config, .auto_colors = &self.auto_colors, .records = self.notification_records, .active_source_hwnd = self.active_source_hwnd };
     }
 
     fn destroyThumbnail(self: *ThumbnailSet, thumbnail: ThumbnailWindow) void {

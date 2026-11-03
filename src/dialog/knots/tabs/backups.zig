@@ -91,9 +91,9 @@ fn openFolder() void {
 fn showFolder() !void {
     const dir = try config.profileBackupDir(g_allocator, session.runningApp().io);
     defer g_allocator.free(dir);
-    const dir_z = try g_allocator.dupeSentinel(u8, dir, 0);
-    defer g_allocator.free(dir_z);
-    if (!win32.shellOpen(dir_z.ptr, null)) return error.ShellOpenFailed;
+    const terminated_dir = try g_allocator.dupeSentinel(u8, dir, 0);
+    defer g_allocator.free(terminated_dir);
+    if (!win32.shellOpen(terminated_dir.ptr, null)) return error.ShellOpenFailed;
 }
 
 /// "2026-10-10 02:40", in UTC.

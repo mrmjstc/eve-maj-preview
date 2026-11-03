@@ -94,18 +94,18 @@ pub const ListWindow = struct {
         const AlphabeticalContext = struct {
             thumbnails: []const ThumbnailWindow,
 
-            fn lessThan(context: @This(), a_index: usize, b_index: usize) bool {
-                const a = &context.thumbnails[a_index];
-                const b = &context.thumbnails[b_index];
-                switch (std.ascii.orderIgnoreCase(a.cached_display_name, b.cached_display_name)) {
+            fn lessThan(context: @This(), first_index: usize, second_index: usize) bool {
+                const first = &context.thumbnails[first_index];
+                const second = &context.thumbnails[second_index];
+                switch (std.ascii.orderIgnoreCase(first.cached_display_name, second.cached_display_name)) {
                     .lt => return true,
                     .gt => return false,
                     .eq => {},
                 }
-                switch (std.ascii.orderIgnoreCase(a.character_name, b.character_name)) {
+                switch (std.ascii.orderIgnoreCase(first.character_name, second.character_name)) {
                     .lt => return true,
                     .gt => return false,
-                    .eq => return a_index < b_index,
+                    .eq => return first_index < second_index,
                 }
             }
         };
@@ -113,8 +113,8 @@ pub const ListWindow = struct {
             thumbnails: []const ThumbnailWindow,
             order_map: *const std.StringHashMap(usize),
 
-            fn lessThan(context: @This(), a_index: usize, b_index: usize) bool {
-                return config_mod.orderMapLessThan(context.order_map, context.thumbnails[a_index].character_name, context.thumbnails[b_index].character_name, a_index, b_index);
+            fn lessThan(context: @This(), first_index: usize, second_index: usize) bool {
+                return config_mod.orderMapLessThan(context.order_map, context.thumbnails[first_index].character_name, context.thumbnails[second_index].character_name, first_index, second_index);
             }
         };
 
@@ -196,6 +196,8 @@ pub const ListWindow = struct {
                 hashString(&hasher, notification.text);
                 hasher.update(std.mem.asBytes(&notification.border_color_override));
                 hasher.update(std.mem.asBytes(&notification.text_color_override));
+                hasher.update(std.mem.asBytes(&notification.shows_text));
+                if (notification.lead) |lead| hasher.update(std.mem.asBytes(&lead.color));
             }
         }
 
@@ -304,7 +306,7 @@ pub const ListWindow = struct {
             list_look.activeTint(active_color)
         else
             null;
-        if (tint) |row_bg| pixel_buffer.fillRect(bitmap.canvas(), @intCast(column_left), @intCast(row_top), @intCast(sizes.column_width), @intCast(sizes.row_height), row_bg);
+        if (tint) |row_color| pixel_buffer.fillRect(bitmap.canvas(), @intCast(column_left), @intCast(row_top), @intCast(sizes.column_width), @intCast(sizes.row_height), row_color);
 
         const badge_color: u32 = if (is_excluded)
             list_look.BADGE_EXCLUDED
@@ -344,11 +346,17 @@ pub const ListWindow = struct {
         const small_y = row_top + @divTrunc(sizes.row_height - text.small_height, 2);
         const right_x = column_left + sizes.column_width - list_look.PADDING_X;
 
-        // One slot only: the newest notification wins, then stats, then exclusion, then the system.
+        // One slot only: the newest notification with text wins, then stats, then exclusion, then the system.
         var notification_buffer: [TEXT_BUFFER_SIZE]u8 = undefined;
-        const newest = if (display.listViewShowNotifications) thumbnail.notifications.newest() else null;
+        const newest = if (display.listViewShowNotifications) thumbnail.notifications.newestWithText() else null;
         if (newest) |notification| {
-            drawTextRight(dc, template.oneLine(notification.text, &notification_buffer), right_x, small_y, notification.text_color_override orelse display.listViewNotificationColor, text_left);
+            const line = template.oneLine(notification.text, &notification_buffer);
+            const line_color = notification.text_color_override orelse display.listViewNotificationColor;
+            if (notification.lead) |lead| {
+                drawTextWithLeadRight(dc, line, lead.length, lead.color, right_x, small_y, line_color, text_left);
+            } else {
+                drawTextRight(dc, line, right_x, small_y, line_color, text_left);
+            }
         } else if (readings.len > 0) {
             drawStatsRight(dc, display, readings, right_x, small_y, text_left);
         } else if (is_excluded) {
@@ -426,13 +434,13 @@ fn drawIndicator(bitmap: *const gdi_overlay.OverlayBitmap, style: types.ListIndi
 fn drawDot(canvas: pixel_buffer.Canvas, center_x: i32, center_y: i32, radius: i32, argb: u32) void {
     const width = canvas.width;
     const radius_squared = radius * radius;
-    var dy: i32 = -radius;
-    while (dy <= radius) : (dy += 1) {
-        var dx: i32 = -radius;
-        while (dx <= radius) : (dx += 1) {
-            if (dx * dx + dy * dy <= radius_squared) {
-                const x: i32 = center_x + dx;
-                const y: i32 = center_y + dy;
+    var delta_y: i32 = -radius;
+    while (delta_y <= radius) : (delta_y += 1) {
+        var delta_x: i32 = -radius;
+        while (delta_x <= radius) : (delta_x += 1) {
+            if (delta_x * delta_x + delta_y * delta_y <= radius_squared) {
+                const x: i32 = center_x + delta_x;
+                const y: i32 = center_y + delta_y;
                 if (x >= 0 and y >= 0 and @as(usize, @intCast(x)) < width and @as(usize, @intCast(y)) < canvas.height) {
                     canvas.pixels[@as(usize, @intCast(y)) * width + @as(usize, @intCast(x))] = argb;
                 }
@@ -444,10 +452,10 @@ fn drawDot(canvas: pixel_buffer.Canvas, center_x: i32, center_y: i32, radius: i3
 /// Ignores `color`'s alpha byte.
 fn drawText(dc: win32.HDC, text: []const u8, x: i32, y: i32, color: u32) void {
     _ = win32.SetBkMode(dc, win32.TRANSPARENT);
-    const text_z = gdi_overlay.toBufZ(TEXT_BUFFER_SIZE, text);
+    const terminated_text = gdi_overlay.toBufZ(TEXT_BUFFER_SIZE, text);
     const length = @min(text.len, TEXT_BUFFER_SIZE - 1);
     _ = win32.SetTextColor(dc, gdi_overlay.toColorRef(color & 0x00FF_FFFF));
-    _ = win32.TextOutA(dc, x, y, &text_z, @intCast(length));
+    _ = win32.TextOutA(dc, x, y, &terminated_text, @intCast(length));
 }
 
 fn lineHeight(dc: win32.HDC) i32 {
@@ -460,10 +468,17 @@ fn measureTextWidth(dc: win32.HDC, text: []const u8) usize {
 
 /// Right edge at `right_x`; skipped rather than drawn left of `min_x`, where it would overlap the name.
 fn drawTextRight(dc: win32.HDC, text: []const u8, right_x: i32, y: i32, rgb: u32, min_x: i32) void {
+    drawTextWithLeadRight(dc, text, 0, rgb, right_x, y, rgb, min_x);
+}
+
+/// Like drawTextRight, with the first `lead_length` bytes in `lead_color`.
+fn drawTextWithLeadRight(dc: win32.HDC, text: []const u8, lead_length: usize, lead_color: u32, right_x: i32, y: i32, rgb: u32, min_x: i32) void {
     const length = @min(text.len, TEXT_BUFFER_SIZE - 1);
     const x = right_x - @as(i32, @intCast(measureTextWidth(dc, text[0..length])));
     if (x < min_x) return;
-    drawText(dc, text[0..length], x, y, rgb);
+    const lead_end = @min(lead_length, length);
+    drawText(dc, text[0..lead_end], x, y, lead_color);
+    drawText(dc, text[lead_end..length], x + @as(i32, @intCast(measureTextWidth(dc, text[0..lead_end]))), y, rgb);
 }
 
 /// Each reading in its own colour, a space apart; skipped like drawTextRight past `min_x`.

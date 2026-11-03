@@ -201,8 +201,8 @@ fn cycleGroupMembers(arena: std.mem.Allocator, root: Value, group_number: usize)
         try members.append(arena, .{ .name = name, .order = values.number(entry.value_ptr.*) orelse 0 });
     }
     std.mem.sort(Member, members.items, {}, struct {
-        fn lessThan(_: void, a: Member, b: Member) bool {
-            return a.order < b.order;
+        fn lessThan(_: void, first: Member, second: Member) bool {
+            return first.order < second.order;
         }
     }.lessThan);
     const names = try arena.alloc([]const u8, members.items.len);

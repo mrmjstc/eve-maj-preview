@@ -1,6 +1,7 @@
 //! What the main thread and the chatlog worker send each other.
 const std = @import("std");
 const notification_mod = @import("../notifications/notification.zig");
+const universe = @import("../map/universe.zig");
 
 /// Main thread to worker; each name is owned by the command.
 pub const Command = union(enum) {
@@ -45,17 +46,37 @@ pub const SessionStart = struct {
     }
 };
 
+/// Worker to main thread: a system named in an intel channel, for the map and Intel Panel.
+pub const IntelSighting = struct {
+    system: universe.SystemIndex,
+    /// The whole message; owned, freed in deinit.
+    message: []const u8,
+    /// The message calls this system clear, rather than reporting something in it.
+    is_clear: bool,
+    /// It goes on the map; a rule's exclusions keep a line in the Intel Panel but off the map.
+    is_pinned: bool,
+    /// The first system its message names, so the Intel Panel lists the message once.
+    is_message_first: bool,
+
+    pub fn deinit(self: *IntelSighting, allocator: std.mem.Allocator) void {
+        allocator.free(self.message);
+    }
+};
+
 /// Worker to main thread, which renders the text from per-type config.
 pub const NotificationEvent = struct {
     /// Owned; freed in deinit.
     character_name: []const u8,
-    /// Its source and target are owned copies, freed in deinit.
+    /// Its source, target, channel, message and jumps are owned copies, freed in deinit.
     notification: notification_mod.Notification,
 
     pub fn deinit(self: *NotificationEvent, allocator: std.mem.Allocator) void {
         allocator.free(self.character_name);
         if (self.notification.source) |s| allocator.free(s);
         if (self.notification.target) |t| allocator.free(t);
+        if (self.notification.channel) |channel| allocator.free(channel);
+        if (self.notification.message) |message| allocator.free(message);
+        if (self.notification.jumps) |jumps| allocator.free(jumps);
     }
 };
 

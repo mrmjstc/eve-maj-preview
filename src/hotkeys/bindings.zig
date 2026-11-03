@@ -52,10 +52,12 @@ pub const GLOBAL_BINDINGS = [_]GlobalBinding{
     .{ .action = .toggle_travel_mode, .protocol = .toggle_travel_mode, .field = "hotkeyToggleTravelMode", .description = "toggle travel mode" },
     .{ .action = .toggle_notification_history, .protocol = .toggle_notification_history, .field = "hotkeyToggleNotificationHistory", .description = "show/hide the notification history" },
     .{ .action = .clear_notification_history, .protocol = .clear_notification_history, .field = "hotkeyClearNotificationHistory", .description = "clear the notification history" },
+    .{ .action = .toggle_map_panel, .protocol = .toggle_map_panel, .field = "hotkeyToggleMapPanel", .description = "show/hide the map panel" },
+    .{ .action = .toggle_intel_panel, .protocol = .toggle_intel_panel, .field = "hotkeyToggleIntelPanel", .description = "show/hide the intel panel" },
 };
 
 /// Also re-registered on its own while hotkeys are suspended, so it can resume them.
-pub const SUSPEND_BINDING = GlobalBinding{ .action = .suspend_hotkeys, .protocol = .suspend_hotkeys, .field = "hotkeySuspend", .description = "suspend/resume all hotkeys" };
+pub const SUSPEND_BINDING: GlobalBinding = .{ .action = .suspend_hotkeys, .protocol = .suspend_hotkeys, .field = "hotkeySuspend", .description = "suspend/resume all hotkeys" };
 
 /// Characters sharing one per-character hotkey.
 pub const CharacterGroup = struct {
@@ -113,6 +115,8 @@ pub const HotkeyAction = union(enum) {
     toggle_travel_mode: void,
     toggle_notification_history: void,
     clear_notification_history: void,
+    toggle_map_panel: void,
+    toggle_intel_panel: void,
     activate_app: struct {
         app_index: usize,
     },
@@ -156,11 +160,11 @@ pub fn fromProtocol(action: url.GlobalAction) HotkeyAction {
 
 comptime {
     for (std.enums.values(url.GlobalAction)) |tag| {
-        var matches: usize = 0;
+        var match_count: usize = 0;
         for (GLOBAL_BINDINGS) |binding| {
-            if (binding.protocol == tag) matches += 1;
+            if (binding.protocol == tag) match_count += 1;
         }
-        if (matches != 1) @compileError("url.GlobalAction." ++ @tagName(tag) ++ " must map to exactly one global binding");
+        if (match_count != 1) @compileError("url.GlobalAction." ++ @tagName(tag) ++ " must map to exactly one global binding");
     }
 }
 

@@ -387,7 +387,7 @@ test "insert gives each item its own id, appending unless given an index" {
 test "an item is reached by its id, wherever it has moved" {
     var fixture: Fixture = .init();
     defer fixture.deinit();
-    const a = (try fixture.edit(
+    const added = (try fixture.edit(
         \\{{"op":"insert","path":["items"],"value":{{"name":"A"}}}}
     , .{})).?;
     _ = try fixture.edit(
@@ -398,13 +398,13 @@ test "an item is reached by its id, wherever it has moved" {
     , .{});
     _ = try fixture.edit(
         \\{{"op":"move","path":["items",{d}],"index":2}}
-    , .{a});
+    , .{added});
     var buf: [3][]const u8 = undefined;
     try testing.expectEqualDeep(&[_][]const u8{ "B", "C", "A" }, fixture.names(&buf));
 
     _ = try fixture.edit(
         \\{{"op":"set","path":["items",{d},"opacity"],"value":100}}
-    , .{a});
+    , .{added});
     try testing.expectEqual(100, fixture.document.items.items[2].opacity);
 }
 

@@ -397,6 +397,14 @@ fn freeOwnedString(allocator: std.mem.Allocator, text: []const u8, default: []co
 
 const testing = std.testing;
 
+const TestWire = struct {
+    size: i32 = 5,
+    mode: enum { a, b } = .a,
+    color: Argb = .{ .value = 1 },
+    names: []const []const u8 = &.{},
+    inner: struct { x: i32 = 1, y: i32 = 2 } = .{},
+};
+
 test "parseHexColor reads 0x, # and bare hex" {
     try testing.expectEqual(@as(u32, 0xFF112233), try parseHexColor("0xFF112233"));
     try testing.expectEqual(@as(u32, 0xFF112233), try parseHexColor("0Xff112233"));
@@ -410,14 +418,6 @@ test "parseHexColor rejects short and non-hex input" {
     try testing.expectError(error.InvalidColorFormat, parseHexColor("0xZZZ"));
     try testing.expectError(error.InvalidColorFormat, parseHexColor("0x1FFFFFFFF"));
 }
-
-const TestWire = struct {
-    size: i32 = 5,
-    mode: enum { a, b } = .a,
-    color: Argb = .{ .value = 1 },
-    names: []const []const u8 = &.{},
-    inner: struct { x: i32 = 1, y: i32 = 2 } = .{},
-};
 
 test "parse keeps each readable setting and defaults the ones that aren't" {
     const json =

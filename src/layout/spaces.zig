@@ -171,15 +171,15 @@ fn orderMap(allocator: std.mem.Allocator, config: *const Config, space: *const T
         .HotkeyGroups => {
             var map: std.StringHashMap(usize) = .init(allocator);
             errdefer map.deinit();
-            var next: usize = 0;
+            var next_index: usize = 0;
             for ([_]bool{ true, false }) |wants_own_groups| {
                 for (config.hotkeyGroups.items) |group| {
                     if ((space.groupIndex(group.name) != null) != wants_own_groups) continue;
                     for (group.characters.items) |name| {
                         const entry = try map.getOrPut(name);
                         if (entry.found_existing) continue;
-                        entry.value_ptr.* = next;
-                        next += 1;
+                        entry.value_ptr.* = next_index;
+                        next_index += 1;
                     }
                 }
             }

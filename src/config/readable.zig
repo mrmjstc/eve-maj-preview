@@ -12,20 +12,20 @@ const Check = struct {
     skipped: ?*std.ArrayList([]const u8),
     /// Segments past the buffer are cut off.
     path_buf: [256]u8 = undefined,
-    path_len: usize = 0,
+    path_length: usize = 0,
 
     /// Returns the length to restore once done with the segment.
-    fn push(self: *Check, comptime fmt: []const u8, args: anytype) usize {
-        const start = self.path_len;
+    fn push(self: *Check, comptime text_format: []const u8, args: anytype) usize {
+        const start = self.path_length;
         const separator: []const u8 = if (start == 0) "" else ".";
         var writer: std.Io.Writer = .fixed(self.path_buf[start..]);
-        writer.print("{s}" ++ fmt, .{separator} ++ args) catch {};
-        self.path_len = start + writer.end;
+        writer.print("{s}" ++ text_format, .{separator} ++ args) catch {};
+        self.path_length = start + writer.end;
         return start;
     }
 
     fn drop(self: *const Check, comptime outcome: []const u8) void {
-        const path = self.path_buf[0..self.path_len];
+        const path = self.path_buf[0..self.path_length];
         slog.warn("Failed to read setting '{s}', " ++ outcome, .{path});
         const skipped = self.skipped orelse return;
         const owned = self.arena.dupe(u8, path) catch |err| {
@@ -45,7 +45,7 @@ const Check = struct {
                 var i: usize = 0;
                 while (i < value.array.items.len) {
                     const restore = self.push("{d}", .{i});
-                    defer self.path_len = restore;
+                    defer self.path_length = restore;
                     if (self.fits(info.child, &value.array.items[i])) {
                         i += 1;
                     } else {
@@ -59,7 +59,7 @@ const Check = struct {
                 var i: usize = 0;
                 while (i < value.object.count()) {
                     const restore = self.push("{s}", .{value.object.keys()[i]});
-                    defer self.path_len = restore;
+                    defer self.path_length = restore;
                     if (self.fits(W.MapValue, &value.object.values()[i])) {
                         i += 1;
                     } else {
@@ -72,7 +72,7 @@ const Check = struct {
                 var i: usize = 0;
                 while (i < value.array.items.len) {
                     const restore = self.push("{d}", .{i});
-                    defer self.path_len = restore;
+                    defer self.path_length = restore;
                     if (W.isReadableItem(value.array.items[i])) {
                         i += 1;
                     } else {
@@ -85,7 +85,7 @@ const Check = struct {
                 inline for (info.field_names, info.field_types) |name, F| {
                     if (value.object.getPtr(name)) |field_value| {
                         const restore = self.push("{s}", .{name});
-                        defer self.path_len = restore;
+                        defer self.path_length = restore;
                         if (!self.fits(F, field_value)) {
                             self.drop("using its default");
                             _ = value.object.orderedRemove(name);

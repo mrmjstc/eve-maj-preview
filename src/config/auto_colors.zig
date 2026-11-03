@@ -1,6 +1,6 @@
 //! The unique colours generated for systems and characters, kept in their own file.
 const std = @import("std");
-const color = @import("../util/color.zig");
+const color_mod = @import("../util/color.zig");
 const wire = @import("wire.zig");
 const files = @import("files.zig");
 const config_mod = @import("../config.zig");
@@ -14,8 +14,8 @@ const AUTO_COLORS_FILE = files.AUTO_COLORS_FILE;
 pub const AutoColorStore = struct {
     allocator: std.mem.Allocator,
     io: std.Io,
-    system: color.AutoColors = .{},
-    character: color.AutoColors = .{},
+    system: color_mod.AutoColors = .{},
+    character: color_mod.AutoColors = .{},
     is_loaded: bool = false,
 
     const File = struct {
@@ -47,7 +47,7 @@ pub const AutoColorStore = struct {
 
         self.load();
 
-        var overrides: [color.AutoColors.MAX_AVOIDED]u32 = undefined;
+        var overrides: [color_mod.AutoColors.MAX_AVOIDED]u32 = undefined;
         const override_count = @min(config.systemColors.items.len, overrides.len);
         for (config.systemColors.items[0..override_count], 0..) |system_color, i| overrides[i] = system_color.color;
 
@@ -78,7 +78,7 @@ pub const AutoColorStore = struct {
     fn characterColor(self: *AutoColorStore, config: *const config_mod.Config, character_name: []const u8) u32 {
         self.load();
 
-        var overrides: [color.AutoColors.MAX_AVOIDED]u32 = undefined;
+        var overrides: [color_mod.AutoColors.MAX_AVOIDED]u32 = undefined;
         var override_count: usize = 0;
         collect: for (config.characters.items) |character| {
             const border_color = if (character.borderColors) |border| border.activeBorderColor else null;
@@ -113,7 +113,7 @@ pub const AutoColorStore = struct {
         self.loadEntries(&self.character, parsed.value.characterColors);
     }
 
-    fn loadEntries(self: *AutoColorStore, store: *color.AutoColors, entries: []const Entry) void {
+    fn loadEntries(self: *AutoColorStore, store: *color_mod.AutoColors, entries: []const Entry) void {
         for (entries) |entry| {
             store.put(self.allocator, entry.name, entry.color.value) catch |err| {
                 slog.warn("Failed to load auto color '{s}': {}", .{ entry.name, err });
@@ -156,7 +156,7 @@ pub const AutoColorStore = struct {
         };
     }
 
-    fn entriesToWire(allocator: std.mem.Allocator, store: *const color.AutoColors) ![]const Entry {
+    fn entriesToWire(allocator: std.mem.Allocator, store: *const color_mod.AutoColors) ![]const Entry {
         const saved = try allocator.alloc(Entry, store.entries.items.len);
         for (store.entries.items, saved) |entry, *saved_entry| {
             saved_entry.* = .{ .name = entry.name, .color = .{ .value = entry.color } };

@@ -911,7 +911,7 @@ pub fn reorderFinish(context: *ui.Frame, base: ui.Key, count: usize) ?Move {
             ui_state.requestCursor(.move);
             // Rows above the gap swap at the lifted row's top and rows below at its bottom, so each swap falls halfway, wherever the row was grabbed.
             const top = @as(f32, @floatCast(mouse_y)) - drag.grab_y;
-            var slot: usize = 0;
+            var slot_index: usize = 0;
             var other_index: usize = 0;
             for (0..count) |index| {
                 if (index == drag.from) continue;
@@ -919,9 +919,9 @@ pub fn reorderFinish(context: *ui.Frame, base: ui.Key, count: usize) ?Move {
                 other_index += 1;
                 const measured = ui_state.state.get(.measured, base.indexed(index).hash()) orelse continue;
                 const edge = if (is_above_gap) top else top + drag.row_height;
-                if (edge > measured.box.y() + measured.box.h() / 2) slot += 1;
+                if (edge > measured.box.y() + measured.box.h() / 2) slot_index += 1;
             }
-            drag.insert = if (slot >= drag.from) slot + 1 else slot;
+            drag.insert = if (slot_index >= drag.from) slot_index + 1 else slot_index;
             context.requestRedraw();
         }
         drag.measured_slot = drag.drawn_slot;

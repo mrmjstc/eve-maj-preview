@@ -9,7 +9,6 @@ const crash = @import("crash.zig");
 const arguments = @import("arguments.zig");
 const app_mod = @import("app.zig");
 const config = @import("config.zig");
-const scout = @import("clients/scout.zig");
 const focus = @import("control/focus.zig");
 const chatlog = @import("chatlog.zig");
 const mouse_hook = @import("hotkeys/mouse_hook.zig");
@@ -76,7 +75,7 @@ fn mainImpl(init: std.process.Init) !void {
     config.migrateLegacyLayout(init.io);
 
     // toSlice's result spans several allocations, so it takes an arena.
-    var args_arena = std.heap.ArenaAllocator.init(allocator);
+    var args_arena: std.heap.ArenaAllocator = .init(allocator);
     defer args_arena.deinit();
     const parsed = arguments.parse(try init.minimal.args.toSlice(args_arena.allocator()));
 
@@ -101,7 +100,7 @@ fn mainImpl(init: std.process.Init) !void {
 
     fonts.loadBundled();
 
-    app.global_settings = try config.GlobalConfig.load(allocator, init.io);
+    app.global_settings = try .load(allocator, init.io);
     defer app.global_settings.deinit();
     // Before the chatlog monitor, whose shutdown defer then runs first.
     app.character_ids = .load(allocator, init.io);
@@ -115,7 +114,7 @@ fn mainImpl(init: std.process.Init) !void {
 
     const last_used = app.global_settings.lastUsedProfile;
     const profile_name = parsed.profile orelse if (last_used.len > 0) last_used else config.DEFAULT_PROFILE;
-    app.store = try config.ProfileStore.init(try config.loadProfile(allocator, init.io, profile_name), init.io);
+    app.store = try .init(try config.loadProfile(allocator, init.io, profile_name), init.io);
     defer app.store.deinit();
 
     // Not profile_name: loadProfile() may have fallen back to default, and this heals global settings to match.
@@ -126,6 +125,8 @@ fn mainImpl(init: std.process.Init) !void {
     app.instance = win32.GetModuleHandleA(null) orelse return error.GetModuleHandleFailed;
     app.notifications.start(allocator, &app.store, app.instance);
     defer app.notifications.deinit(allocator);
+    app.map_panel.start(allocator, &app.store, app.instance, &app.notifications.intel_history, &app.global_settings);
+    defer app.map_panel.deinit();
 
     if (app.global_settings.autoRegisterProtocol) registry.ensureRegistered();
 
@@ -134,7 +135,7 @@ fn mainImpl(init: std.process.Init) !void {
 
     if (app.global_settings.logLevel == .debug) log.openDebugConsole();
 
-    app.scout = scout.Scout.init(allocator, &app.store.saved);
+    app.scout = .init(allocator, &app.store.saved);
     app.scout.listenForEvents();
     defer app.scout.deinit();
 
@@ -278,13 +279,13 @@ fn setCwdToExecutableDir() void {
         return;
     };
 
-    var dir_z_buf: [std.Io.Dir.max_path_bytes + 1]u8 = undefined;
-    const executable_dir_z = std.mem.printSentinel(&dir_z_buf, "{s}", .{executable_dir}, 0) catch |err| {
+    var terminated_dir_buf: [std.Io.Dir.max_path_bytes + 1]u8 = undefined;
+    const terminated_dir = std.mem.printSentinel(&terminated_dir_buf, "{s}", .{executable_dir}, 0) catch |err| {
         slog.warn("Failed to null-terminate the executable directory path: {}", .{err});
         return;
     };
 
-    if (!win32.toBool(win32.SetCurrentDirectoryA(executable_dir_z))) {
+    if (!win32.toBool(win32.SetCurrentDirectoryA(terminated_dir))) {
         slog.warn("Failed to set the working directory to '{s}': error {d}", .{ executable_dir, win32.GetLastError() });
     }
 }

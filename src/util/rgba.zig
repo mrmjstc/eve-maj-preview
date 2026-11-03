@@ -8,9 +8,9 @@ pub fn roundCorners(pixels: []u8, width: u32, height: u32, radius: u32) void {
     const corner_radius: f32 = @floatFromInt(corner);
     for (0..corner) |y| {
         for (0..corner) |x| {
-            const dx = corner_radius - (@as(f32, @floatFromInt(x)) + 0.5);
-            const dy = corner_radius - (@as(f32, @floatFromInt(y)) + 0.5);
-            const coverage = std.math.clamp(corner_radius - @sqrt(dx * dx + dy * dy) + 0.5, 0, 1);
+            const delta_x = corner_radius - (@as(f32, @floatFromInt(x)) + 0.5);
+            const delta_y = corner_radius - (@as(f32, @floatFromInt(y)) + 0.5);
+            const coverage = std.math.clamp(corner_radius - @sqrt(delta_x * delta_x + delta_y * delta_y) + 0.5, 0, 1);
             if (coverage >= 1) continue;
             const right = width - 1 - x;
             const bottom = height - 1 - y;

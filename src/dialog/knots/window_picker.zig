@@ -84,8 +84,8 @@ fn runningWindows(arena: std.mem.Allocator) ![]const RunningWindow {
     _ = win32.EnumWindows(collectWindow, win32.ptrToLparam(&scan));
     if (scan.scan_error) |err| return err;
     std.sort.pdq(RunningWindow, scan.windows.items, {}, struct {
-        fn lessThan(_: void, a: RunningWindow, b: RunningWindow) bool {
-            return std.mem.lessThan(u8, a.executable, b.executable);
+        fn lessThan(_: void, first: RunningWindow, second: RunningWindow) bool {
+            return std.mem.lessThan(u8, first.executable, second.executable);
         }
     }.lessThan);
     return scan.windows.items;

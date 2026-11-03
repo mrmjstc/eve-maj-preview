@@ -26,7 +26,9 @@ const characters = @import("tabs/characters.zig");
 const behavior = @import("tabs/behavior.zig");
 const notifications = @import("tabs/notifications.zig");
 const event_alerts = @import("tabs/event_alerts.zig");
+const chat_alerts = @import("tabs/chat_alerts.zig");
 const notification_history = @import("tabs/notification_history.zig");
+const map_panel = @import("tabs/map_panel.zig");
 const mining = @import("tabs/mining.zig");
 const placement = @import("tabs/placement.zig");
 
@@ -62,10 +64,12 @@ const Tab = enum {
     hotkey_groups,
     appearance,
     placement,
+    map_panel,
     hotkeys,
     behavior,
     notifications,
     event_alerts,
+    chat_alerts,
     notification_history,
     mining,
     general,
@@ -78,11 +82,13 @@ const Tab = enum {
             .hotkey_groups => "Hotkey Groups",
             .appearance => "Appearance",
             .placement => "Placement",
+            .map_panel => "Map",
             .hotkeys => "Hotkeys",
             .behavior => "Behavior",
             .notifications => "Notifications",
-            .event_alerts => "Event Alerts",
-            .notification_history => "Notification History",
+            .event_alerts => "Game Events",
+            .chat_alerts => "Chat Events",
+            .notification_history => "History Panel",
             .mining => "Mining",
             .general => "General",
             .about => "About",
@@ -93,9 +99,9 @@ const Tab = enum {
     fn category(self: Tab) Category {
         return switch (self) {
             .characters, .hotkey_groups => .clients,
-            .appearance, .placement => .display,
+            .appearance, .placement, .map_panel => .display,
             .hotkeys, .behavior => .input,
-            .notifications, .event_alerts, .notification_history => .alerts,
+            .notifications, .event_alerts, .chat_alerts, .notification_history => .alerts,
             .mining => .overlays,
             .about, .backups, .general => .app,
         };
@@ -107,10 +113,12 @@ const Tab = enum {
             .hotkey_groups => .split_square,
             .appearance => .thumbnail,
             .placement => .tiles,
+            .map_panel => .map,
             .hotkeys => .keyboard,
             .behavior => .pointer,
             .notifications => .envelope,
             .event_alerts => .bell,
+            .chat_alerts => .speech,
             .notification_history => .clock,
             .mining => .pickaxe,
             .general => .gear,
@@ -122,23 +130,23 @@ const Tab = enum {
     fn isAdvanced(self: Tab) bool {
         return switch (self) {
             .mining => true,
-            .characters, .hotkey_groups, .appearance, .placement, .hotkeys, .behavior, .notifications, .event_alerts, .notification_history, .general, .about, .backups => false,
+            .characters, .hotkey_groups, .appearance, .placement, .map_panel, .hotkeys, .behavior, .notifications, .event_alerts, .chat_alerts, .notification_history, .general, .about, .backups => false,
         };
     }
 
     fn needsThumbnails(self: Tab) bool {
         return switch (self) {
             .placement => true,
-            .characters, .hotkey_groups, .appearance, .hotkeys, .behavior, .notifications, .event_alerts, .notification_history, .mining, .general, .about, .backups => false,
+            .characters, .hotkey_groups, .appearance, .map_panel, .hotkeys, .behavior, .notifications, .event_alerts, .chat_alerts, .notification_history, .mining, .general, .about, .backups => false,
         };
     }
 
     /// Fills the content area itself instead of scrolling in it.
     fn fills(self: Tab) bool {
         return switch (self) {
-            .characters, .hotkey_groups, .event_alerts => true,
+            .characters, .hotkey_groups, .event_alerts, .chat_alerts => true,
             .placement => placement.fillsWindow(),
-            .appearance, .hotkeys, .behavior, .notifications, .notification_history, .mining, .general, .about, .backups => false,
+            .appearance, .map_panel, .hotkeys, .behavior, .notifications, .notification_history, .mining, .general, .about, .backups => false,
         };
     }
 
@@ -243,10 +251,12 @@ fn showTab(context: *ui.Frame, tab: Tab) !void {
         .backups => try backups.show(context),
         .appearance => try display.show(context),
         .placement => try placement.show(context),
+        .map_panel => try map_panel.show(context),
         .characters => try characters.show(context),
         .behavior => try behavior.show(context),
         .notifications => try notifications.show(context),
         .event_alerts => try event_alerts.show(context),
+        .chat_alerts => try chat_alerts.show(context),
         .notification_history => try notification_history.show(context),
         .mining => try mining.show(context),
         .general => try general.show(context),

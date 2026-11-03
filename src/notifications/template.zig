@@ -1,7 +1,7 @@
 //! Fills a notification's custom text with the event's values; no I/O.
 const std = @import("std");
 
-pub const Field = enum { source, target, character };
+pub const Field = enum { source, target, character, channel, message, jumps };
 
 pub const Placeholder = struct {
     name: []const u8,
@@ -13,35 +13,41 @@ pub const Values = struct {
     source: ?[]const u8 = null,
     target: ?[]const u8 = null,
     character: ?[]const u8 = null,
+    channel: ?[]const u8 = null,
+    message: ?[]const u8 = null,
+    jumps: ?[]const u8 = null,
 
     fn get(self: Values, field: Field) ?[]const u8 {
         return switch (field) {
             .source => self.source,
             .target => self.target,
             .character => self.character,
+            .channel => self.channel,
+            .message => self.message,
+            .jumps => self.jumps,
         };
     }
 };
 
 const Output = struct {
     buf: []u8,
-    len: usize = 0,
+    length: usize = 0,
     is_full: bool = false,
 
     fn write(self: *Output, bytes: []const u8) void {
         if (self.is_full) return;
         var byte_count = bytes.len;
-        if (byte_count > self.buf.len - self.len) {
-            byte_count = self.buf.len - self.len;
+        if (byte_count > self.buf.len - self.length) {
+            byte_count = self.buf.len - self.length;
             while (byte_count > 0 and isContinuationByte(bytes[byte_count])) byte_count -= 1;
             self.is_full = true;
         }
-        @memcpy(self.buf[self.len..][0..byte_count], bytes[0..byte_count]);
-        self.len += byte_count;
+        @memcpy(self.buf[self.length..][0..byte_count], bytes[0..byte_count]);
+        self.length += byte_count;
     }
 
     fn slice(self: *const Output) []const u8 {
-        return self.buf[0..self.len];
+        return self.buf[0..self.length];
     }
 };
 
@@ -79,13 +85,13 @@ pub fn render(template: []const u8, placeholders: []const Placeholder, values: V
 
 /// For displays with one row per notification: line breaks become spaces, truncated on a UTF-8 boundary; the result points into `buf`.
 pub fn oneLine(text: []const u8, buf: []u8) []const u8 {
-    var copy_len = @min(text.len, buf.len);
-    if (copy_len < text.len) {
-        while (copy_len > 0 and isContinuationByte(text[copy_len])) copy_len -= 1;
+    var copy_length = @min(text.len, buf.len);
+    if (copy_length < text.len) {
+        while (copy_length > 0 and isContinuationByte(text[copy_length])) copy_length -= 1;
     }
-    @memcpy(buf[0..copy_len], text[0..copy_len]);
-    std.mem.replaceScalar(u8, buf[0..copy_len], '\n', ' ');
-    return buf[0..copy_len];
+    @memcpy(buf[0..copy_length], text[0..copy_length]);
+    std.mem.replaceScalar(u8, buf[0..copy_length], '\n', ' ');
+    return buf[0..copy_length];
 }
 
 fn find(placeholders: []const Placeholder, name: []const u8) ?Placeholder {

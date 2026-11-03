@@ -37,6 +37,8 @@ const COMBO_KEY_BASE = 20;
 const OR_KEY_BASE = 30;
 /// A combo's caps start here, clear of its button's own indexed keys.
 const KEYCAP_KEY_BASE = 100;
+/// Fits MAX_KEYS of the longest combo, "Ctrl+Alt+Shift+Win+MediaPlayPause".
+const MANUAL_TEXT_SIZE = 128;
 /// How writeHolders names each of a hotkey group's keys.
 const GROUP_KEY_LABELS = [_]struct { field: []const u8, label: []const u8 }{
     .{ .field = "forwardKey", .label = "Group '{name}' (forward)" },
@@ -293,7 +295,7 @@ pub fn writeHolders(arena: std.mem.Allocator, writer: *std.Io.Writer, combo: u32
     }
 }
 
-/// Combos as the app spells them, e.g. "Ctrl+1, 1".
+/// Combos as the keyboard layout names them, e.g. "Ctrl+1, 1".
 pub fn writeKeys(writer: *std.Io.Writer, keys: KeyList) !void {
     try writeCombos(writer, keys.slice());
 }
@@ -301,7 +303,7 @@ pub fn writeKeys(writer: *std.Io.Writer, keys: KeyList) !void {
 pub fn writeCombos(writer: *std.Io.Writer, combos: []const u32) !void {
     for (combos, 0..) |combo, index| {
         if (index > 0) try writer.writeAll(", ");
-        try vk.writeVirtualKey(writer, combo);
+        try vk.writeDisplayKey(writer, combo);
     }
 }
 
@@ -500,7 +502,9 @@ fn capWidth(context: *ui.Frame, name: []const u8, keycaps: *const style.Keycaps)
 /// `combo`'s key as its cap shows it; a key without a name is written as hex, made in the frame's arena.
 fn keyCapName(context: *ui.Frame, combo: u32) ![]const u8 {
     const virtual_key = vk.extractVk(combo);
-    return vk.keyName(virtual_key) orelse std.fmt.allocPrint(context.arena(), "VK{X}", .{virtual_key});
+    var buf: [vk.DISPLAY_CHARACTER_SIZE]u8 = undefined;
+    const name = vk.displayKeyName(virtual_key, &buf) orelse return std.fmt.allocPrint(context.arena(), "VK{X}", .{virtual_key});
+    return context.arena().dupe(u8, name);
 }
 
 fn orText(context: *ui.Frame, key: ui.Key, keycaps: *const style.Keycaps) !void {
@@ -609,12 +613,17 @@ fn startManual(id: u64, current: KeyList) !void {
 fn commitManual(ref: anytype, comptime field_name: []const u8) void {
     const edit = g_manual orelse return;
     defer endManual();
+    // A layout can put one character on two keys, so text left alone mustn't parse back onto the other.
+    var unedited_buf: [MANUAL_TEXT_SIZE]u8 = undefined;
+    var unedited: std.Io.Writer = .fixed(&unedited_buf);
+    writeKeys(&unedited, ref.get(field_name)) catch unreachable;
+    if (std.mem.eql(u8, edit.text.items, unedited.buffered())) return;
     var keys: KeyList = .empty;
     var parts = std.mem.splitSequence(u8, edit.text.items, ", ");
     while (parts.next()) |part| {
         const trimmed = std.mem.trim(u8, part, " ");
         if (trimmed.len == 0) continue;
-        const combo = vk.parseVirtualKey(trimmed) orelse {
+        const combo = vk.parseTypedKey(trimmed) orelse {
             slog.warn("Failed to set hotkey: '{s}' is not a key the app can bind", .{trimmed});
             return;
         };

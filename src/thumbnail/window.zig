@@ -7,6 +7,7 @@ const state = @import("state.zig");
 const overlay = @import("overlay.zig");
 const stack = @import("../notifications/stack.zig");
 const scout = @import("../clients/scout.zig");
+const connections_mod = @import("../map/connections.zig");
 const log = @import("../log.zig");
 
 const ThumbnailState = config_mod.ThumbnailState;
@@ -155,6 +156,8 @@ pub const ThumbnailWindow = struct {
     system_name: []const u8,
     /// YYYYMMDD*1000000+HHMMSS of the event that set system_name; 0 if unreadable, which always applies.
     system_name_event_timestamp: u64 = 0,
+    /// Empty while showSystemConnections is off, or system_name isn't on the gate map; only ThumbnailSet.updateConnections writes it.
+    connections: connections_mod.Connections = .{},
     travel: LeftBehindState = .{},
     notifications: stack.NotificationStack = .{},
     last_click_time: win32.Ticks = .{},
@@ -206,15 +209,15 @@ pub const ThumbnailWindow = struct {
         self.render_cache.settings = null;
         const slot = switch (text) {
             .character_name => blk: {
-                self.render_cache.character_name.dims = null;
+                self.render_cache.character_name.dimensions = null;
                 break :blk &self.character_name;
             },
             .system_name => blk: {
-                self.render_cache.system_name.dims = null;
+                self.render_cache.system_name.dimensions = null;
                 break :blk &self.system_name;
             },
             .group_badge_label => blk: {
-                self.render_cache.group_badge.dims = null;
+                self.render_cache.group_badge.dimensions = null;
                 break :blk &self.cached_group_badge_label;
             },
         };
@@ -293,8 +296,8 @@ pub const ThumbnailWindow = struct {
     }
 
     fn setThumbnailRect(self: *const ThumbnailWindow, size: Size) void {
-        const props = thumbnailProps(size, win32.DWM_TNP_RECTDESTINATION);
-        _ = win32.DwmUpdateThumbnailProperties(self.thumbnail_id, &props);
+        const properties = thumbnailProperties(size, win32.DWM_TNP_RECTDESTINATION);
+        _ = win32.DwmUpdateThumbnailProperties(self.thumbnail_id, &properties);
     }
 };
 
@@ -322,18 +325,18 @@ pub const WindowProcs = struct {
 var g_has_registered_classes: bool = false;
 
 /// Once per process, since window classes outlive any one ThumbnailSet.
-pub fn registerClasses(instance: win32.HINSTANCE, procs: WindowProcs) !void {
+pub fn registerClasses(instance: win32.HINSTANCE, window_procedures: WindowProcs) !void {
     if (g_has_registered_classes) return;
 
     // Black, not white COLOR_WINDOW: shows through whenever DWM has no live thumbnail frame to composite.
-    const thumbnail_bg_brush = win32.CreateSolidBrush(0x00000000) orelse return error.CreateBrushFailed;
+    const thumbnail_background_brush = win32.CreateSolidBrush(0x00000000) orelse return error.CreateBrushFailed;
     // Owned by the class once registered.
-    gdi_overlay.registerWindowClass(instance, procs.thumbnail, WINDOW_CLASS_NAME, thumbnail_bg_brush) catch |err| {
-        _ = win32.DeleteObject(thumbnail_bg_brush);
+    gdi_overlay.registerWindowClass(instance, window_procedures.thumbnail, WINDOW_CLASS_NAME, thumbnail_background_brush) catch |err| {
+        _ = win32.DeleteObject(thumbnail_background_brush);
         return err;
     };
     // No background brush for a layered window.
-    try gdi_overlay.registerWindowClass(instance, procs.text, TEXT_WINDOW_CLASS_NAME, null);
+    try gdi_overlay.registerWindowClass(instance, window_procedures.text, TEXT_WINDOW_CLASS_NAME, null);
     g_has_registered_classes = true;
 }
 
@@ -341,16 +344,16 @@ pub fn registerClasses(instance: win32.HINSTANCE, procs: WindowProcs) !void {
 pub fn create(allocator: std.mem.Allocator, instance: win32.HINSTANCE, source_hwnd: win32.HWND, character_name: []const u8, options: CreateOptions) !Handles {
     const position = options.position;
     const size = options.size;
-    const name_z = try allocator.dupeSentinel(u8, character_name, 0);
-    defer allocator.free(name_z);
+    const window_title = try allocator.dupeSentinel(u8, character_name, 0);
+    defer allocator.free(window_title);
 
     // Both windows, since the topmost text_hwnd is the one that gets mouse messages.
-    const click_through_ex: win32.DWORD = if (options.is_click_through) win32.WS_EX_TRANSPARENT else 0;
+    const click_through_style: win32.DWORD = if (options.is_click_through) win32.WS_EX_TRANSPARENT else 0;
 
     const hwnd = win32.CreateWindowExA(
-        win32.WS_EX_TOPMOST | win32.WS_EX_TOOLWINDOW | win32.WS_EX_LAYERED | win32.WS_EX_NOACTIVATE | click_through_ex,
+        win32.WS_EX_TOPMOST | win32.WS_EX_TOOLWINDOW | win32.WS_EX_LAYERED | win32.WS_EX_NOACTIVATE | click_through_style,
         WINDOW_CLASS_NAME,
-        name_z.ptr,
+        window_title.ptr,
         win32.WS_POPUP,
         position.x,
         position.y,
@@ -369,14 +372,14 @@ pub fn create(allocator: std.mem.Allocator, instance: win32.HINSTANCE, source_hw
     if (win32.DwmRegisterThumbnail(hwnd, source_hwnd, &thumbnail_id) != 0) return error.DwmRegisterThumbnailFailed;
     errdefer _ = win32.DwmUnregisterThumbnail(thumbnail_id);
 
-    const props = thumbnailProps(size, win32.DWM_TNP_VISIBLE | win32.DWM_TNP_RECTDESTINATION | win32.DWM_TNP_SOURCECLIENTAREAONLY);
-    if (win32.DwmUpdateThumbnailProperties(thumbnail_id, &props) != 0) return error.DwmUpdateThumbnailPropertiesFailed;
+    const properties = thumbnailProperties(size, win32.DWM_TNP_VISIBLE | win32.DWM_TNP_RECTDESTINATION | win32.DWM_TNP_SOURCECLIENTAREAONLY);
+    if (win32.DwmUpdateThumbnailProperties(thumbnail_id, &properties) != 0) return error.DwmUpdateThumbnailPropertiesFailed;
 
     // Its own error name, since the error is the log's only clue to which window failed.
     const text_hwnd = win32.CreateWindowExA(
-        win32.WS_EX_LAYERED | win32.WS_EX_TOPMOST | win32.WS_EX_TOOLWINDOW | win32.WS_EX_NOACTIVATE | click_through_ex,
+        win32.WS_EX_LAYERED | win32.WS_EX_TOPMOST | win32.WS_EX_TOOLWINDOW | win32.WS_EX_NOACTIVATE | click_through_style,
         TEXT_WINDOW_CLASS_NAME,
-        name_z.ptr,
+        window_title.ptr,
         win32.WS_POPUP,
         position.x,
         position.y,
@@ -418,7 +421,7 @@ pub fn destroyHandles(handles: Handles) void {
 }
 
 /// rcSource stays zeroed, meaning the whole source window.
-pub fn thumbnailProps(size: Size, flags: u32) win32.DWM_THUMBNAIL_PROPERTIES {
+pub fn thumbnailProperties(size: Size, flags: u32) win32.DWM_THUMBNAIL_PROPERTIES {
     return .{
         .dwFlags = flags,
         .rcDestination = .{ .left = 0, .top = 0, .right = size.width, .bottom = size.height },

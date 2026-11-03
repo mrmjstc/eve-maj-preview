@@ -19,14 +19,14 @@ pub fn toggleMuted() void {
     slog.info("Audio alerts {s}", .{if (g_is_muted) "muted" else "unmuted"});
 }
 
-/// Speaks the phrase the popup shows and plays its sound, unless muted; each has its own switch and volume.
-pub fn play(notification_config: *const config.NotificationConfig, type_config: config.NotificationTypeConfig, text: []const u8, spoken_name: ?[]const u8) void {
+/// Speaks the phrase the popup shows and plays its sound, unless muted; each has its own switch and volume, and `is_minor` ones are first to go when they back up.
+pub fn play(notification_config: *const config.NotificationConfig, type_config: config.NotificationTypeConfig, text: []const u8, spoken_name: ?[]const u8, is_minor: bool) void {
     if (g_is_muted) return;
-    playUnmuted(notification_config, type_config, text, spoken_name);
+    playUnmuted(notification_config, type_config, text, spoken_name, is_minor);
 }
 
 /// play, ignoring the mute, for the config dialog's Test Notification.
-pub fn playUnmuted(notification_config: *const config.NotificationConfig, type_config: config.NotificationTypeConfig, text: []const u8, spoken_name: ?[]const u8) void {
+pub fn playUnmuted(notification_config: *const config.NotificationConfig, type_config: config.NotificationTypeConfig, text: []const u8, spoken_name: ?[]const u8, is_minor: bool) void {
     if (type_config.tts_enabled) {
         tts.setVoiceSettings(notification_config.tts_volume, notification_config.tts_rate);
         if (spoken_name) |name| {
@@ -35,15 +35,15 @@ pub fn playUnmuted(notification_config: *const config.NotificationConfig, type_c
                 slog.debug("Failed to fit '{s}' into the spoken alert, speaking it without: {}", .{ name, err });
                 break :blk text;
             };
-            tts.speakAlert(spoken, notification_config.tts_max_waiting);
+            tts.speakAlert(spoken, notification_config.tts_max_waiting, is_minor);
         } else {
-            tts.speakAlert(text, notification_config.tts_max_waiting);
+            tts.speakAlert(text, notification_config.tts_max_waiting, is_minor);
         }
     }
 
     if (type_config.sound_enabled) {
         if (type_config.sound_path) |path| {
-            sound.playAlert(path, type_config.sound_volume);
+            sound.playAlert(path, type_config.sound_volume, is_minor);
         }
     }
 }

@@ -128,23 +128,7 @@ pub fn Ref(comptime T: type) type {
             if (index >= list.items.len) return;
             const removed = list.orderedRemove(index);
             const allocator = documentAllocator(self.doc);
-            if (Item == []const u8) {
-                retireString(allocator, removed, "");
-            } else {
-                const info = @typeInfo(Item).@"struct";
-                inline for (info.field_names, info.field_types) |name, F| {
-                    if (F == []const u8) retireString(allocator, @field(removed, name), fieldDefault(Item, name));
-                    if (F == ?[]const u8) {
-                        if (@field(removed, name)) |text| retireString(allocator, text, fieldDefault(Item, name));
-                    }
-                    // A string list's strings may still be drawn this frame, but nothing reads the list itself again.
-                    if (F == std.ArrayList([]const u8)) {
-                        var strings = @field(removed, name);
-                        for (strings.items) |text| retireString(allocator, text, "");
-                        strings.deinit(allocator);
-                    }
-                }
-            }
+            if (Item == []const u8) retireString(allocator, removed, "") else retireStrings(Item, allocator, removed);
             edited(self.doc, comptime layoutFor(T, field, .none), self.layout);
         }
 
@@ -424,6 +408,24 @@ fn retireString(allocator: std.mem.Allocator, bytes: []const u8, default: []cons
     };
 }
 
+/// In nested sections too.
+fn retireStrings(comptime Item: type, allocator: std.mem.Allocator, value: Item) void {
+    const info = @typeInfo(Item).@"struct";
+    inline for (info.field_names, info.field_types) |name, F| {
+        if (F == []const u8) retireString(allocator, @field(value, name), fieldDefault(Item, name));
+        if (F == ?[]const u8) {
+            if (@field(value, name)) |text| retireString(allocator, text, fieldDefault(Item, name));
+        }
+        // A string list's strings may still be drawn this frame, but nothing reads the list itself again.
+        if (F == std.ArrayList([]const u8)) {
+            var strings = @field(value, name);
+            for (strings.items) |text| retireString(allocator, text, "");
+            strings.deinit(allocator);
+        }
+        if (comptime @typeInfo(F) == .@"struct" and @hasDecl(F, "Wire")) retireStrings(F, allocator, @field(value, name));
+    }
+}
+
 fn freeRetired() void {
     for (g_retired.items) |retired| retired.allocator.free(retired.bytes);
     g_retired.clearRetainingCapacity();
@@ -440,6 +442,6 @@ fn layoutFor(comptime T: type, comptime field: []const u8, comptime inherited: a
 }
 
 /// LiveLayout's tags run from narrowest to widest.
-fn wider(a: app_mod.LiveLayout, b: app_mod.LiveLayout) app_mod.LiveLayout {
-    return @fromBackingInt(@intCast(@max(@backingInt(a), @backingInt(b))));
+fn wider(first: app_mod.LiveLayout, second: app_mod.LiveLayout) app_mod.LiveLayout {
+    return @fromBackingInt(@intCast(@max(@backingInt(first), @backingInt(second))));
 }

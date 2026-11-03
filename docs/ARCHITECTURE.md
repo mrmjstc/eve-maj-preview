@@ -101,6 +101,7 @@ ThumbnailSet.updateNotifications
 ThumbnailSet.checkHoverZoom
 ChatlogMonitor.update + drain         -> deliverChatlogFindings -> Scout, ThumbnailSet
 NotificationCenter.update             History Panel
+MapPanel.update                       takes new stats, renders the map
 Trackers.tick                         throttled push of rates/resources into ThumbnailSet
 travel_left_behind.check              every ~2 s
 adjust tick interval
@@ -120,14 +121,16 @@ Throttled work uses `util/schedule.zig`: intervals measure from the tick's start
 | Update check | `update.zig`, one-shot at startup and each time the config dialog opens | Mutex-guarded `UpdateStatus` |
 | Clipboard upload | `hotkeys/paste_upload.zig`, one per press, at most 4 at once | None; slots claimed through atomics |
 | Dialog helpers | `pickers.zig`, `prices.zig`, `portraits.zig`, one-shot | `WM_KNOTS_COMMAND` |
+| Map stats | `map/stats_feed.zig`, one-shot every 15 minutes while the Map Panel shows | Atomic snapshot swap, taken on the tick |
+| Eve Stars calls | `map/evestars_feed.zig`, one-shot per character list or send, one at a time for each | Atomic reply swap, taken on the tick or the panel's 100ms timer |
 
 TTS and sound share `notifications/worker.zig`'s lazily started `Worker`. Alerts go through `pushAlert`, which drops the oldest waiting alerts past a limit (speech: the profile's `tts_max_waiting`; sound: 3); voice settings go through `push` and are never dropped.
 
-The one-shot threads (update check, clipboard uploads, dialog helpers) are started through `util/detached.zig`, which counts them; `main.zig` waits up to 2 s at exit for them to finish before tearing down what they use, and ends the process instead of returning if any are still running, since returning frees the allocator and `Io` they use.
+The one-shot threads (update check, clipboard uploads, dialog helpers, map stats) are started through `util/detached.zig`, which counts them; `main.zig` waits up to 2 s at exit for them to finish before tearing down what they use, and ends the process instead of returning if any are still running, since returning frees the allocator and `Io` they use.
 
 Cross-thread data:
 
-- Chatlog: `commands` (main → worker); `system_updates`, `notifications`, `session_starts` (worker → main). Every other `ChatlogMonitor` field is owned by one thread.
+- Chatlog: `commands` (main → worker); `system_updates`, `notifications`, `session_starts`, `intel_sightings` (worker → main). Every other `ChatlogMonitor` field is owned by one thread.
 - `activity/tracker.zig` trackers: written by the worker, read by main, each under its own mutex.
 - `CharacterIds`: locks its own map.
 - Hook bindings, held presses and the require-EVE-focus filter: hook thread only. Main changes them through `hook_thread.call`, which runs the change there and waits for it. The hook thread never logs while a hook is installed, since waiting on the log lock could stall it past `LowLevelHooksTimeout` and Windows would silently drop the hook: changes report their outcome for main to log, and failed `WM_HOTKEY` posts are counted for `App.tick` to log.
@@ -163,9 +166,13 @@ Rendering:
 - `thumbnail/overlay.zig`: builds `RenderSettings` (compared field by field at comptime) and paints them. The cache borrows thumbnail strings, so they're swapped only through `ThumbnailWindow.replaceText`, which nulls `render_cache.settings` first.
 - `thumbnail/draw.zig`: text, border and exclusion primitives.
 - `platform/gdi_overlay.zig`: DIB-backed layered windows, text helpers, `HintBox`, class registration.
-- `util/pixel_buffer.zig`: pure ARGB drawing (rects, rounded frames, alpha fix-up).
-- `platform/panel_window.zig`: `PanelWindow`, shared by the client list and History Panel.
+- `util/pixel_buffer.zig`: pure ARGB drawing (rects, anti-aliased lines and circles, rounded frames, alpha fix-up).
+- `platform/panel_window.zig`: `PanelWindow`, shared by the client list and the History, Intel and Map panels. The first three are borderless layered overlays presented through `UpdateLayeredWindow`; `initNative` makes the Map Panel a normal window with a title bar, painted on `WM_PAINT`.
 - `panels/list_view.zig` + `list_look.zig`: `ClientList` and `ThumbnailsAndList` view modes; App owns the window, built and torn down with the thumbnail set. `list_look` is pure and shared with the dialog preview.
+- `panels/panel_look.zig` + `panel_chrome.zig`: what the History, Map and Intel panels share, so they match: fonts, header, footer buttons, frame, and when they show.
+- `panels/history_rows.zig`: the rows the History and Intel panels list. The Map Panel draws them in a sidebar; `panels/intel_panel.zig` is the Intel Panel's own window for when it's detached.
+- `panels/map_panel.zig` + `map_look.zig`: the Map Panel; App owns it, so it survives thumbnail set rebuilds. Draws from `map/`: `universe.zig` (embedded map, built by `.claude/tools/build_universe.py`), `layout.zig` (positions, zoom and pan, and label placement on CCP's flattened map), `overview.zig` (New Eden as bubbles, for picking a region), `search.zig` (names in the embedded map), `jump_range.zig` (ship ranges and the systems in reach, by the embedded map's true 3D positions), `stats.zig` + `stats_feed.zig` (ESI figures, ESI's incursions through `incursions.zig`, and EVE-Scout's storms through `storms.zig`), `intel_pins.zig` (systems named in intel channels), `evestars.zig` + `evestars_feed.zig` + `destinations.zig` (the Eve Stars route API), `system_links.zig` (a system's pages on the web). Hover and panning redraw from `WM_MOUSEMOVE`, since the idle tick is a second apart, and `PanelWindow.present` paints at once, as `WM_PAINT` would otherwise wait out a moving mouse. Its menu and search results are drawn in the panel. Clicks on the map don't activate the window (`WM_MOUSEACTIVATE`), so the game keeps the keyboard, though its title bar activates as usual; the search takes the keyboard, unbinding the hotkeys while it's open.
+- `panels/popup_menu.zig` + `popup_look.zig`: a menu with two levels of submenu, drawn inside a panel, plus tooltip placement. The Map Panel's right-click menu and search results use it; a panel supplies its own rows and actions.
 - `thumbnail/hover_zoom.zig` + `layout/zoom.zig`: click-through enlarged copy under the cursor.
 
 Layout (`layout/`, mostly pure):
@@ -218,7 +225,7 @@ WM_HOTKEY -> timerWindowProc -> HotkeyManager.handleHotkeyPress -> runAction
 - `notifications/dispatch.zig`: shows a notification if `rules.zig` (pure) allows it; adds sound, speech, history and notified-queue entries.
 - `notifications/template.zig`: fills `{name}` placeholders in custom text (pure).
 - `notifications/stack.zig`: per-thumbnail on-screen stack, with throttle timestamps.
-- `notifications/center.zig` (`NotificationCenter` on `App`): `history.zig` ring buffer, `notified_queue.zig`, `panels/history_panel.zig`. Survives thumbnail set rebuilds.
+- `notifications/center.zig` (`NotificationCenter` on `App`): `history.zig` ring buffers (one more for the Intel Panel, fed by every chatlog intel sighting), `notified_queue.zig`, `panels/history_panel.zig`, `panels/intel_panel.zig`. Survives thumbnail set rebuilds.
 - `notifications/alert_effects.zig`: speech and sound, plus the session-only audio mute.
 - The chatlog worker queues `Notification` payloads; text is rendered on the main thread.
 - `travel/`: left-behind detection; `stragglers.zig` is pure.

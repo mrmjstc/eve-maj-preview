@@ -223,9 +223,9 @@ fn patchLine(allocator: std.mem.Allocator, line: []const u8) !PatchedLine {
         body = body[0 .. body.len - 1];
     }
 
-    var indent_len: usize = 0;
-    while (indent_len < body.len and body[indent_len] == ' ') indent_len += 1;
-    const rest = body[indent_len..];
+    var indent_length: usize = 0;
+    while (indent_length < body.len and body[indent_length] == ' ') indent_length += 1;
+    const rest = body[indent_length..];
 
     for (TARGET_KEYS) |key| {
         if (!std.mem.startsWith(u8, rest, key)) continue;
@@ -241,7 +241,7 @@ fn patchLine(allocator: std.mem.Allocator, line: []const u8) !PatchedLine {
 
         if (std.mem.eql(u8, value_text, LOWEST_QUALITY)) break;
 
-        const new_line = try allocator.print("{s}{s}: [{s}, " ++ LOWEST_QUALITY ++ "]{s}", .{ body[0..indent_len], key, id_text, line_ending });
+        const new_line = try allocator.print("{s}{s}: [{s}, " ++ LOWEST_QUALITY ++ "]{s}", .{ body[0..indent_length], key, id_text, line_ending });
         return .{ .text = new_line, .changed = true };
     }
 

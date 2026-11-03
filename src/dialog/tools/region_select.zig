@@ -157,9 +157,9 @@ var g_is_field_untouched = false;
 /// Zero-padded fixed-size copy of `text` (UTF-8), truncated at a character boundary so a NUL always fits.
 pub fn fixedText(comptime size: usize, text: []const u8) [size]u8 {
     var out = std.mem.zeroes([size]u8);
-    var len = @min(text.len, size - 1);
-    while (len > 0 and len < text.len and (text[len] & 0xC0) == 0x80) len -= 1;
-    @memcpy(out[0..len], text[0..len]);
+    var length = @min(text.len, size - 1);
+    while (length > 0 and length < text.len and (text[length] & 0xC0) == 0x80) length -= 1;
+    @memcpy(out[0..length], text[0..length]);
     return out;
 }
 
@@ -194,7 +194,7 @@ pub fn start(instance: win32.HINSTANCE, options: StartOptions, on_finished: *con
     g_edit_handle = .none;
     g_field_focus = null;
     // Sizes the text for the monitor the cursor is on until a region picks one.
-    g_ui_scale = if (cursorPos()) |pt| dpiScaleAt(pt) else 1.0;
+    g_ui_scale = if (cursorPos()) |point| dpiScaleAt(point) else 1.0;
 
     // A region that's mostly off the current screens clamps to nothing usable, so fall back to a fresh drag.
     g_is_edit_mode = false;
@@ -320,13 +320,13 @@ fn drawRegion(bitmap: *const gdi_overlay.OverlayBitmap, rect: win32.RECT, fill: 
     }
 }
 
-fn monitorBoundsAt(pt: win32.POINT) win32.RECT {
-    const monitor = win32.nearestMonitor(pt) orelse return g_virtual_screen;
+fn monitorBoundsAt(point: win32.POINT) win32.RECT {
+    const monitor = win32.nearestMonitor(point) orelse return g_virtual_screen;
     return win32.monitorRect(monitor) orelse g_virtual_screen;
 }
 
-fn dpiScaleAt(pt: win32.POINT) f32 {
-    const monitor = win32.nearestMonitor(pt) orelse return 1.0;
+fn dpiScaleAt(point: win32.POINT) f32 {
+    const monitor = win32.nearestMonitor(point) orelse return 1.0;
     return win32.dpiToScale(win32.monitorDpi(monitor));
 }
 
@@ -357,10 +357,10 @@ fn drawSizeLabel(bitmap: *const gdi_overlay.OverlayBitmap, selection: win32.RECT
 
     const bounds = monitorBoundsAt(g_current);
     const bounds_center = win32.rectCenter(bounds);
-    const in_right_half = g_current.x >= bounds_center.x;
-    const in_bottom_half = g_current.y >= bounds_center.y;
-    var x = if (in_right_half) g_current.x - LABEL_CURSOR_OFFSET - label_width else g_current.x + LABEL_CURSOR_OFFSET;
-    var y = if (in_bottom_half) g_current.y - LABEL_CURSOR_OFFSET - label_height else g_current.y + LABEL_CURSOR_OFFSET;
+    const is_in_right_half = g_current.x >= bounds_center.x;
+    const is_in_bottom_half = g_current.y >= bounds_center.y;
+    var x = if (is_in_right_half) g_current.x - LABEL_CURSOR_OFFSET - label_width else g_current.x + LABEL_CURSOR_OFFSET;
+    var y = if (is_in_bottom_half) g_current.y - LABEL_CURSOR_OFFSET - label_height else g_current.y + LABEL_CURSOR_OFFSET;
     x = @max(bounds.left, @min(x, bounds.right - label_width));
     y = @max(bounds.top, @min(y, bounds.bottom - label_height));
 
@@ -370,15 +370,15 @@ fn drawSizeLabel(bitmap: *const gdi_overlay.OverlayBitmap, selection: win32.RECT
     gdi_overlay.drawText(text_buf.len, bitmap.mem_dc, @intCast(local_x + LABEL_PADDING_X), @intCast(local_y + LABEL_PADDING_Y), text, g_label_color);
 }
 
-fn hitTestEditRect(pt: win32.POINT) Handle {
+fn hitTestEditRect(point: win32.POINT) Handle {
     const rect = g_edit_rect;
     const slop: i32 = @intCast(HANDLE_HIT_PX);
-    if (pt.x < rect.left - slop or pt.x > rect.right + slop or pt.y < rect.top - slop or pt.y > rect.bottom + slop) return .none;
+    if (point.x < rect.left - slop or point.x > rect.right + slop or point.y < rect.top - slop or point.y > rect.bottom + slop) return .none;
 
-    const distance_left = @abs(pt.x - rect.left);
-    const distance_right = @abs(pt.x - rect.right);
-    const distance_top = @abs(pt.y - rect.top);
-    const distance_bottom = @abs(pt.y - rect.bottom);
+    const distance_left = @abs(point.x - rect.left);
+    const distance_right = @abs(point.x - rect.right);
+    const distance_top = @abs(point.y - rect.top);
+    const distance_bottom = @abs(point.y - rect.bottom);
     const is_near_left = distance_left <= HANDLE_HIT_PX and distance_left <= distance_right;
     const is_near_right = distance_right <= HANDLE_HIT_PX and distance_right < distance_left;
     const is_near_top = distance_top <= HANDLE_HIT_PX and distance_top <= distance_bottom;
@@ -406,17 +406,17 @@ fn cursorForHandle(handle: Handle) ?win32.HCURSOR {
     };
 }
 
-fn applyEditDrag(pt: win32.POINT) void {
-    const dx = pt.x - g_edit_grab.x;
-    const dy = pt.y - g_edit_grab.y;
+fn applyEditDrag(point: win32.POINT) void {
+    const delta_x = point.x - g_edit_grab.x;
+    const delta_y = point.y - g_edit_grab.y;
     const bounds = g_bounds;
     var rect = g_edit_grab_rect;
 
     if (g_edit_handle == .move) {
         const width = win32.rectWidth(rect);
         const height = win32.rectHeight(rect);
-        var left = rect.left + dx;
-        var top = rect.top + dy;
+        var left = rect.left + delta_x;
+        var top = rect.top + delta_y;
         left += region_math.snapSpanOffset(left, left + width, .x, otherRegions(), bounds, region_math.SNAP_DISTANCE_PX);
         top += region_math.snapSpanOffset(top, top + height, .y, otherRegions(), bounds, region_math.SNAP_DISTANCE_PX);
         rect.left = std.math.clamp(left, bounds.left, bounds.right - width);
@@ -428,10 +428,10 @@ fn applyEditDrag(pt: win32.POINT) void {
         const moves_right = g_edit_handle == .right or g_edit_handle == .top_right or g_edit_handle == .bottom_right;
         const moves_top = g_edit_handle == .top or g_edit_handle == .top_left or g_edit_handle == .top_right;
         const moves_bottom = g_edit_handle == .bottom or g_edit_handle == .bottom_left or g_edit_handle == .bottom_right;
-        if (moves_left) rect.left = std.math.clamp(snapEdge(rect.left + dx, .x), bounds.left, rect.right - MIN_DRAG_PX);
-        if (moves_right) rect.right = std.math.clamp(snapEdge(rect.right + dx, .x), rect.left + MIN_DRAG_PX, bounds.right);
-        if (moves_top) rect.top = std.math.clamp(snapEdge(rect.top + dy, .y), bounds.top, rect.bottom - MIN_DRAG_PX);
-        if (moves_bottom) rect.bottom = std.math.clamp(snapEdge(rect.bottom + dy, .y), rect.top + MIN_DRAG_PX, bounds.bottom);
+        if (moves_left) rect.left = std.math.clamp(snapEdge(rect.left + delta_x, .x), bounds.left, rect.right - MIN_DRAG_PX);
+        if (moves_right) rect.right = std.math.clamp(snapEdge(rect.right + delta_x, .x), rect.left + MIN_DRAG_PX, bounds.right);
+        if (moves_top) rect.top = std.math.clamp(snapEdge(rect.top + delta_y, .y), bounds.top, rect.bottom - MIN_DRAG_PX);
+        if (moves_bottom) rect.bottom = std.math.clamp(snapEdge(rect.bottom + delta_y, .y), rect.top + MIN_DRAG_PX, bounds.bottom);
     }
     g_edit_rect = rect;
 }
@@ -444,8 +444,8 @@ fn snapEdge(value: i32, axis: region_math.Axis) i32 {
     return region_math.snapEdge(value, axis, otherRegions(), g_bounds, region_math.SNAP_DISTANCE_PX);
 }
 
-fn snapPoint(pt: win32.POINT) win32.POINT {
-    return .{ .x = snapEdge(pt.x, .x), .y = snapEdge(pt.y, .y) };
+fn snapPoint(point: win32.POINT) win32.POINT {
+    return .{ .x = snapEdge(point.x, .x), .y = snapEdge(point.y, .y) };
 }
 
 fn drawHandle(bitmap: *const gdi_overlay.OverlayBitmap, center_x: i32, center_y: i32) void {
@@ -517,20 +517,20 @@ fn controlRects(region: win32.RECT) Controls {
     };
 }
 
-fn buttonAt(pt: win32.POINT) ?Button {
+fn buttonAt(point: win32.POINT) ?Button {
     if (!g_is_edit_mode or g_edit_handle != .none) return null;
     const rects = controlRects(g_edit_rect).buttons;
     inline for (.{ Button.save, Button.cancel }) |button| {
-        if (win32.rectContains(rects[@backingInt(button)], pt)) return button;
+        if (win32.rectContains(rects[@backingInt(button)], point)) return button;
     }
     return null;
 }
 
-fn fieldAt(pt: win32.POINT) ?Field {
+fn fieldAt(point: win32.POINT) ?Field {
     if (!g_is_edit_mode or g_edit_handle != .none) return null;
     const rects = controlRects(g_edit_rect).fields;
     inline for (.{ Field.width, Field.height }) |field| {
-        if (win32.rectContains(rects[@backingInt(field)], pt)) return field;
+        if (win32.rectContains(rects[@backingInt(field)], point)) return field;
     }
     return null;
 }
@@ -712,9 +712,9 @@ fn maybeRedrawThrottled() void {
 }
 
 fn cursorPos() ?win32.POINT {
-    var pt: win32.POINT = undefined;
-    if (!win32.toBool(win32.GetCursorPos(&pt))) return null;
-    return pt;
+    var point: win32.POINT = undefined;
+    if (!win32.toBool(win32.GetCursorPos(&point))) return null;
+    return point;
 }
 
 fn finish(cancelled: bool) void {
@@ -749,15 +749,15 @@ fn wndProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win3
     switch (msg) {
         win32.WM_SETCURSOR => {
             if (g_is_edit_mode) {
-                const pt = cursorPos() orelse return 1;
+                const point = cursorPos() orelse return 1;
                 const cursor = if (g_edit_handle != .none)
                     cursorForHandle(g_edit_handle)
-                else if (fieldAt(pt) != null)
+                else if (fieldAt(point) != null)
                     g_ibeam_cursor
-                else if (buttonAt(pt) != null or g_pressed_button != null)
+                else if (buttonAt(point) != null or g_pressed_button != null)
                     g_hand_cursor
                 else
-                    cursorForHandle(hitTestEditRect(pt));
+                    cursorForHandle(hitTestEditRect(point));
                 _ = win32.SetCursor(cursor orelse return win32.DefWindowProcA(hwnd, msg, wParam, lParam));
                 return 1;
             }
@@ -766,37 +766,37 @@ fn wndProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win3
             return 1;
         },
         win32.WM_LBUTTONDOWN => {
-            const pt = cursorPos() orelse return 0;
+            const point = cursorPos() orelse return 0;
             if (g_is_edit_mode) {
-                if (fieldAt(pt)) |field| {
+                if (fieldAt(point)) |field| {
                     if (g_field_focus != field) focusField(field);
                     redraw();
                     return 0;
                 }
                 // Save commits a typed value in finish(), after the release has been matched to the button it pressed.
-                if (buttonAt(pt)) |button| {
+                if (buttonAt(point)) |button| {
                     g_pressed_button = button;
                     _ = win32.SetCapture(hwnd);
                     redraw();
                     return 0;
                 }
                 commitField();
-                const handle = hitTestEditRect(pt);
+                const handle = hitTestEditRect(point);
                 if (handle == .none) {
                     redraw();
                     return 0;
                 }
                 g_edit_handle = handle;
-                g_edit_grab = pt;
+                g_edit_grab = point;
                 g_edit_grab_rect = g_edit_rect;
-                g_current = pt;
+                g_current = point;
                 _ = win32.SetCapture(hwnd);
                 redraw();
                 return 0;
             }
-            g_bounds = monitorBoundsAt(pt);
-            g_ui_scale = dpiScaleAt(pt);
-            g_anchor = snapPoint(pt);
+            g_bounds = monitorBoundsAt(point);
+            g_ui_scale = dpiScaleAt(point);
+            g_anchor = snapPoint(point);
             g_current = g_anchor;
             g_is_dragging = true;
             _ = win32.SetCapture(hwnd);
@@ -804,9 +804,9 @@ fn wndProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win3
             return 0;
         },
         win32.WM_MOUSEMOVE => {
-            const pt = cursorPos() orelse return 0;
+            const point = cursorPos() orelse return 0;
             if (g_is_edit_mode and g_edit_handle == .none) {
-                const hovered = buttonAt(pt);
+                const hovered = buttonAt(point);
                 if (hovered != g_hovered_button) {
                     g_hovered_button = hovered;
                     redraw();
@@ -814,8 +814,8 @@ fn wndProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win3
                 return 0;
             }
             if (!g_is_dragging and g_edit_handle == .none) return 0;
-            g_current = pt;
-            if (g_is_edit_mode) applyEditDrag(pt) else g_current = snapPoint(pt);
+            g_current = point;
+            if (g_is_edit_mode) applyEditDrag(point) else g_current = snapPoint(point);
             maybeRedrawThrottled();
             return 0;
         },
@@ -824,7 +824,7 @@ fn wndProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win3
                 if (g_pressed_button) |pressed| {
                     g_pressed_button = null;
                     _ = win32.ReleaseCapture();
-                    const is_released_on_it = if (cursorPos()) |pt| buttonAt(pt) == pressed else false;
+                    const is_released_on_it = if (cursorPos()) |point| buttonAt(point) == pressed else false;
                     if (is_released_on_it) finish(pressed == .cancel) else redraw();
                     return 0;
                 }

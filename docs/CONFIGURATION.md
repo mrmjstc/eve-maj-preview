@@ -7,7 +7,7 @@ Every setting EVE-Maj Preview reads, by file and JSON key. The config dialog wri
 - [Files](#files)
 - [Loading rules](#loading-rules)
 - [Value formats](#value-formats)
-- [Profile](#profile): [top level](#top-level) · [thumbnail](#thumbnail) · [thumbnail.notifications](#thumbnailnotifications) · [timer](#timer) · [display](#display) · [thumbnailSpaces](#thumbnailspaces) · [snapping](#snapping) · [interaction](#interaction) · [exclusion](#exclusion) · [autoMinimize](#autominimize) · [autoMovePosition](#automoveposition) · [closeAll](#closeall) · [chatlog](#chatlog) · [combat](#combat) · [mining](#mining) · [bounty](#bounty) · [resources](#resources) · [ping](#ping) · [travel](#travel) · [hotkeys](#hotkeys) · [hotkeyGroups](#hotkeygroups) · [characters](#characters) · [systemColors](#systemcolors) · [windowFilters](#windowfilters)
+- [Profile](#profile): [top level](#top-level) · [thumbnail](#thumbnail) · [thumbnail.notifications](#thumbnailnotifications) · [timer](#timer) · [display](#display) · [thumbnailSpaces](#thumbnailspaces) · [snapping](#snapping) · [interaction](#interaction) · [exclusion](#exclusion) · [autoMinimize](#autominimize) · [autoMovePosition](#automoveposition) · [closeAll](#closeall) · [chatlog](#chatlog) · [combat](#combat) · [mining](#mining) · [bounty](#bounty) · [resources](#resources) · [ping](#ping) · [travel](#travel) · [hotkeys](#hotkeys) · [hotkeyGroups](#hotkeygroups) · [characters](#characters) · [systemColors](#systemcolors) · [avoidedSystems](#avoidedsystems) · [windowFilters](#windowfilters)
 - [Global settings](#global-settings)
 - [Command line and protocol](#command-line-and-protocol)
 
@@ -45,7 +45,7 @@ Profile file names: `<name>.json` with no path separators or `:*?"<>|`, not star
 | Format | Syntax |
 |---|---|
 | **colour** | `"0xAARRGGBB"`. Also accepted: `0X`, `#`, or no prefix. Six digits read as alpha `00`. Text colours ignore alpha (always opaque); borders, backgrounds and the exclusion overlay use it, so a 6-digit colour there is invisible. |
-| **keys** | A key name (`"F9"`), a combo (`"Ctrl+Alt+F9"`), a hex code (`"0x278"`), an array of up to 3 of these (any one triggers), or `null`/omitted for unbound. Saved back as hex: low byte = virtual key, bits 8–11 = modifiers (Alt `0x1`, Ctrl `0x2`, Shift `0x4`, Win `0x8`). Unreadable keys are skipped with a warning; extra keys past 3 and duplicates are dropped. |
+| **keys** | A key name (`"F9"`), a combo (`"Ctrl+Alt+F9"`), a hex code (`"0x278"`), an array of up to 3 of these (any one triggers), or `null`/omitted for unbound. Saved back as hex: low byte = virtual key, bits 8–11 = modifiers (Alt `0x1`, Ctrl `0x2`, Shift `0x4`, Win `0x8`). Punctuation names in a profile are US-layout keys, plus `<` and `!` for the keys it lacks, so use a hex code for others; the dialog shows and takes these keys by what they type on the current layout. Unreadable keys are skipped with a warning; extra keys past 3 and duplicates are dropped. |
 | **position** | `TopLeft` `TopCenter` `TopRight` `LeftCenter` `Center` `RightCenter` `BottomLeft` `BottomCenter` `BottomRight` |
 | **weight** | `Regular` `Bold` `Italic` `BoldItalic` |
 | **font size** | 6–72 |
@@ -67,7 +67,7 @@ Profile file names: `<name>.json` with no path separators or `:*?"<>|`, not star
 | `formatVersion` | int | `3` | Read only to migrate; rewritten on save. |
 | `accentColor` | colour | `0xFFD9A441` | Config dialog accent for this profile. No effect on overlays. |
 
-Sections: `thumbnail`, `timer`, `display`, `snapping`, `interaction`, `autoMinimize`, `autoMovePosition`, `exclusion`, `closeAll`, `chatlog`, `combat`, `mining`, `bounty`, `resources`, `ping`, `travel`, `hotkeys` (objects); `windowFilters`, `characters`, `systemColors`, `hotkeyGroups`, `thumbnailSpaces` (arrays).
+Sections: `thumbnail`, `timer`, `display`, `snapping`, `interaction`, `autoMinimize`, `autoMovePosition`, `exclusion`, `closeAll`, `chatlog`, `combat`, `mining`, `bounty`, `resources`, `ping`, `travel`, `hotkeys` (objects); `windowFilters`, `characters`, `systemColors`, `avoidedSystems`, `hotkeyGroups`, `thumbnailSpaces` (arrays).
 
 ### thumbnail
 
@@ -200,6 +200,7 @@ Event popups on thumbnails, from game and chat logs (needs [chatlog](#chatlog)) 
 | Key | Type | Default | Range | Notes |
 |---|---|---|---|---|
 | `enabled` | bool | `true` | | |
+| `show_text` | bool | `true` | | Show the text on thumbnails and the client list. Off keeps the border, sound, speech and history entry. |
 | `duration_ms` | int | `10000`; `3000` for user-action types | 0–60000 | |
 | `throttle_ms` | int | `10000`; `0` for user-action types | 0–300000 | Per thumbnail, from the last one shown. `0` = off. |
 | `suppress_when_focused` | bool | `false` | | Skip while that client has focus. |
@@ -209,6 +210,7 @@ Event popups on thumbnails, from game and chat logs (needs [chatlog](#chatlog)) 
 | `flash_border` | bool | `false` | | Blink the border 4× (150 ms phases) first. Needs `show_border`. |
 | `border_color` | colour? | `null` | | `null` = `alert` state / `borderColor`. |
 | `text_color` | colour? | `null` | | `null` = `color` (thumbnails) / `display.listViewNotificationColor` (Client List). |
+| `color_system_name` | bool | `false` | | Chat intel only: draw the system in its usual name colour when the text starts with it. |
 | `tts_enabled` | bool | `false` | | Speak it. No global switch. |
 | `sound_enabled` | bool | `false` | | Play `sound_path`. No global switch. |
 | `sound_path` | string? | `null` | | Absolute path to `.wav` or `.mp3`. |
@@ -320,6 +322,8 @@ Every type except `HotkeySuspend`, `ProfileSwitch` and `AutoMinimizeToggle` also
 | `notifInfoPanelHeight` | int | `400` | 60–2160 | |
 | `rememberNotifInfoPanelPosition` | bool | `true` | | Save position on drag. |
 | `hideNotifInfoPanelWhenNoCharacters` | bool | `true` | | |
+| `hideNotifInfoPanelWhenNoEveFocus` | bool | `false` | | Hide while no EVE client has focus; this app's own windows count as focus. The tray toggle or hotkey shows it until EVE next has focus. |
+| `notifInfoPanelHideDebounceMs` | int | `500` | 0–5000 | Delay before hiding. |
 | `notifInfoPanelOpacity` | int | `255` | opacity | |
 | `notifInfoPanelFontName` | string | `"Segoe UI"` | | |
 | `notifInfoPanelFontSize` | int | `13` | font size | |
@@ -330,6 +334,55 @@ Every type except `HotkeySuspend`, `ProfileSwitch` and `AutoMinimizeToggle` also
 | `notifInfoPanelMergeWindowSec` | int | `10` | 1–300 | Max gap to merge. |
 | `notifInfoPanelShowCategoryFilters` | bool | `true` | | |
 | `notifInfoPanelShowFleet`, `notifInfoPanelShowMining`, `notifInfoPanelShowCombat`, `notifInfoPanelShowNavigation`, `notifInfoPanelShowGeneral` | bool | `true` | | Category filters. |
+
+**Map**: a schematic of one region, with live stats, client positions and chat intel. Also toggled from the tray.
+
+| Key | Type | Default | Range | Notes |
+|---|---|---|---|---|
+| `showMapPanel` | bool | `false` | | Hiding the map from its window, the tray or a hotkey leaves this on. |
+| `mapPanelX`, `mapPanelY` | int | `330`, `60` | screen | |
+| `mapPanelWidth` | int | `760` | 300–3840 | Inside the window's frame, without the Intel Panel's sidebar. Saved when the window is resized. |
+| `mapPanelHeight` | int | `600` | 240–2160 | Inside the window's frame. Saved when the window is resized. |
+| `mapPanelAlwaysOnTop` | bool | `true` | | Keep the window above others, game clients included. |
+| `rememberMapPanelPosition` | bool | `true` | | Save position on drag. |
+| `hideMapPanelWhenNoCharacters` | bool | `false` | | |
+| `hideMapPanelWhenNoEveFocus` | bool | `false` | | As `hideNotifInfoPanelWhenNoEveFocus`. |
+| `mapPanelHideDebounceMs` | int | `500` | 0–5000 | Delay before hiding. |
+| `mapPanelOpacity` | int | `255` | opacity | |
+| `mapPanelFontName` | string | `"Segoe UI"` | | Names on the map only. Its header, buttons and tooltips use `notifInfoPanelFontName`, size and weight, so both panels match. |
+| `mapPanelFontSize` | int | `10` | font size | Names on the map only. |
+| `mapPanelFontWeight` | enum | `Regular` | weight | Names on the map only. |
+| `mapPanelRegionId` | int | `10000002` | | CCP's region ID; The Forge by default. Set by picking a region. |
+| `mapPanelFollowActive` | bool | `true` | | Open the active client's region when it changes. Needs log monitoring. |
+| `mapPanelMetric` | enum | `Security` | `Security`, `ShipKills`, `NpcKills`, `Jumps`, `Sovereignty` | What the markers show. |
+| `mapPanelShowCharacterNames` | bool | `true` | | Tag each system with a client in it; more than one shows as a count. |
+| `mapPanelLiveStats` | bool | `true` | | Fetch kills, jumps, sovereignty and incursions from ESI, and storms from EVE-Scout, every 15 minutes while the panel shows. |
+| `mapPanelShowStorms` | bool | `true` | | Mark metaliminal storms and the gates they cover. Needs `mapPanelLiveStats`. Off only hides them. |
+| `mapPanelShowIncursions` | bool | `true` | | Mark incursions, the systems they infest and where they stage. Needs `mapPanelLiveStats`. Off only hides them. |
+| `mapPanelShowIntel` | bool | `true` | | Highlight systems named in intel channels. Off only hides the pins. |
+| `mapPanelIntelShrinkSec` | int | `60` | 1–900 | Seconds a new intel pin's halo takes to shrink to its resting size. The pin itself lasts 15 minutes. |
+| `mapPanelIntelShowClear` | bool | `true` | | Turn a live pin yellow and restart its shrink and 15 minutes when intel calls its system `clear` or `clr`, even if the rule excludes those words. Only the first system a message names is cleared. Off, those messages are ignored. |
+| `mapPanelRoutePreference` | enum | `Shorter` | `Shorter`, `Safer`, `LessSecure` | How routes sent through Eve Stars are planned. Keep it the same as the game's autopilot setting. |
+| `mapPanelRouteAnsiblex` | bool | `false` | | Plan routes sent through Eve Stars through the account's Ansiblex gates. Keep the game's Ansiblex setting the same. |
+| `mapPanelRouteEveryWaypoint` | bool | `false` | | Set every system on a route sent through Eve Stars as a waypoint, so the game's autopilot settings can't change the way it flies. Uses more of each character's ESI limit, and takes longer. |
+| `mapPanelRouteAvoidZone1` … `5` | bool | `false` | | With `mapPanelRouteAnsiblex`: refuse gates landing in that zone. Zone 1 is within 5 ly of the owning alliance's capital, each next zone 5 ly further out, and zone 5 is over 20 ly. |
+
+**Intel Panel**: lists every report that names a system in a channel an intel rule follows, at any distance, against the nearest client. It uses the default wording, whatever a rule's `custom_text` or `text_color`, and the History Panel's font, timestamp and merge settings. A rule's exclusions don't apply here: `clr` and `nv` lines list too, though they stay off the map and don't alert. Clicking a row opens its system on the map. Also toggled from the tray. Clearing the history clears both.
+
+| Key | Type | Default | Range | Notes |
+|---|---|---|---|---|
+| `showIntelPanel` | bool | `false` | | Reports are collected whether or not this is on. Intel never goes to the History Panel. |
+| `intelPanelAttached` | bool | `true` | | Draw it as a sidebar inside the map's window, which grows by `intelPanelWidth`; the settings below marked *detached* don't apply. Turned off in the dialog, the panel stays up past its auto-hide, like the tray toggle. |
+| `intelPanelSide` | enum | `Right` | `Left`, `Right` | Which side of the map the sidebar sits on. |
+| `intelPanelX`, `intelPanelY` | int | `1100`, `60` | screen | *Detached.* |
+| `intelPanelWidth` | int | `340` | 160–3840 | |
+| `intelPanelHeight` | int | `400` | 120–2160 | *Detached.* |
+| `rememberIntelPanelPosition` | bool | `true` | | *Detached.* Save position on drag. |
+| `hideIntelPanelWhenNoCharacters` | bool | `false` | | *Detached.* |
+| `hideIntelPanelWhenNoEveFocus` | bool | `false` | | *Detached.* As `hideNotifInfoPanelWhenNoEveFocus`. |
+| `intelPanelHideDebounceMs` | int | `500` | 0–5000 | *Detached.* Delay before hiding. |
+| `intelPanelOpacity` | int | `255` | opacity | |
+| `intelPanelColorSystemNames` | bool | `true` | | Draw each row's system in its name colour: `systemColors`, then unique colours if on, then the default. Doesn't need a rule's `color_system_name`. |
 
 ### thumbnailSpaces
 
@@ -583,6 +636,8 @@ All values are **keys**.
 | `hotkeyToggleTravelMode` | keys | | Toggle `travel.enabled`. |
 | `hotkeyToggleNotificationHistory` | keys | | Show/hide the notification history panel. |
 | `hotkeyClearNotificationHistory` | keys | | Clear the notification history. |
+| `hotkeyToggleMapPanel` | keys | | Show/hide the map panel. |
+| `hotkeyToggleIntelPanel` | keys | | Show/hide the intel panel. |
 
 ### hotkeyGroups
 
@@ -620,6 +675,7 @@ Matched by exact `name`. Positions are saved automatically on drag.
 | `excludeFromMinimize` | bool | `false` | |
 | `excludeFromCloseAll` | bool | `false` | |
 | `excludeFromAutoMove` | bool | `false` | |
+| `excludeFromChatAlerts` | bool | `false` | This client never receives chat alerts. |
 | `hideThumbnail` | bool | `false` | Hide its thumbnail and list row; takes no space cell. |
 | `notificationsMuted` | bool | `false` | |
 
@@ -631,6 +687,14 @@ Matched by exact `name`. Positions are saved automatically on drag.
 | `color` | colour | `0` | |
 
 An exact name beats a pattern regardless of order; otherwise the first match wins. The key is `systemName`; an entry using `name` never matches.
+
+### avoidedSystems
+
+Systems that routes sent from the map keep out of. The map adds and removes them from its right-click menu, up to 64; entries past that are ignored. A destination in the list is left out of its own send.
+
+| Key | Type | Default | Notes |
+|---|---|---|---|
+| `systemId` | int | `0` | CCP's system ID. |
 
 ### windowFilters
 
@@ -679,6 +743,8 @@ A window must pass both lists; a filter with both empty matches nothing. Non-EVE
 | `urlHotkeys[].uploadClipboard` | bool | `false` | POST clipboard text to `url` as form field `Paste anything`, put the result URL on the clipboard and open it; falls back to opening `url`. For `adashboard.info`. |
 | `oreTable` | `[{name, price}]` | `[]` | ISK/unit overrides, 0–1e12. A name also covers its grade variants (`Veldspar` → `Veldspar II-Grade`). Others use built-in Jita prices. |
 | `orePricesFetchedAtSeconds` | int | `0` | Unix time of the last Fetch Prices. |
+| `evestarsEnabled` | bool | `true` | Off, the map drops its right-click destinations and Avoid System, whatever `evestarsToken` holds. |
+| `evestarsToken` | string | `""` | Eve Stars API token. Set, it adds the map's right-click destinations and Avoid System. Plain text in this file, left out of the log. |
 
 ## Command line and protocol
 
@@ -728,3 +794,5 @@ A window must pass both lists; a filter with both empty matches nothing. Non-EVE
 | `toggle_travel_mode` | `hotkeyToggleTravelMode` |
 | `toggle_notification_history` | `hotkeyToggleNotificationHistory` |
 | `clear_notification_history` | `hotkeyClearNotificationHistory` |
+| `toggle_map_panel` | `hotkeyToggleMapPanel` |
+| `toggle_intel_panel` | `hotkeyToggleIntelPanel` |

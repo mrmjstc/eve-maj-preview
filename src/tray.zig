@@ -30,7 +30,7 @@ const GroupCommand = struct {
 
 pub const TrayIcon = struct {
     hwnd: win32.HWND,
-    nid: win32.NOTIFYICONDATAA,
+    icon_data: win32.NOTIFYICONDATAA,
     allocator: std.mem.Allocator,
     owns_icon: bool,
     /// The profiles the menu last listed, which a profile item's ID indexes into; owned, freed by freeProfiles.
@@ -45,19 +45,19 @@ pub const TrayIcon = struct {
     pub fn init(allocator: std.mem.Allocator, hwnd: win32.HWND) !TrayIcon {
         var tray: TrayIcon = .{
             .hwnd = hwnd,
-            .nid = std.mem.zeroes(win32.NOTIFYICONDATAA),
+            .icon_data = std.mem.zeroes(win32.NOTIFYICONDATAA),
             .allocator = allocator,
             .owns_icon = false,
         };
 
-        tray.nid.cbSize = @sizeOf(win32.NOTIFYICONDATAA);
-        tray.nid.hWnd = hwnd;
-        tray.nid.uID = 1;
-        tray.nid.uFlags = win32.NIF_MESSAGE | win32.NIF_ICON | win32.NIF_TIP;
-        tray.nid.uCallbackMessage = win32.WM_TRAYICON;
+        tray.icon_data.cbSize = @sizeOf(win32.NOTIFYICONDATAA);
+        tray.icon_data.hWnd = hwnd;
+        tray.icon_data.uID = 1;
+        tray.icon_data.uFlags = win32.NIF_MESSAGE | win32.NIF_ICON | win32.NIF_TIP;
+        tray.icon_data.uCallbackMessage = win32.WM_TRAYICON;
 
         const app_icon = win32.LoadImageA(win32.GetModuleHandleA(null), @ptrFromInt(win32.APP_ICON_ID), win32.IMAGE_ICON, 16, 16, 0);
-        tray.nid.hIcon = if (app_icon) |icon| blk: {
+        tray.icon_data.hIcon = if (app_icon) |icon| blk: {
             tray.owns_icon = true;
             break :blk @ptrCast(icon);
         } else blk: {
@@ -68,12 +68,12 @@ pub const TrayIcon = struct {
             };
         };
         errdefer if (tray.owns_icon) {
-            _ = win32.DestroyIcon(tray.nid.hIcon);
+            _ = win32.DestroyIcon(tray.icon_data.hIcon);
         };
 
         const tip = "EVE-Maj Preview";
-        @memcpy(tray.nid.szTip[0..tip.len], tip);
-        tray.nid.szTip[tip.len] = 0;
+        @memcpy(tray.icon_data.szTip[0..tip.len], tip);
+        tray.icon_data.szTip[tip.len] = 0;
 
         tray.listenForTaskbarCreated();
         tray.show();
@@ -86,8 +86,8 @@ pub const TrayIcon = struct {
     }
 
     pub fn deinit(self: *TrayIcon) void {
-        if (self.is_shown) _ = win32.Shell_NotifyIconA(win32.NIM_DELETE, &self.nid);
-        if (self.owns_icon) _ = win32.DestroyIcon(self.nid.hIcon);
+        if (self.is_shown) _ = win32.Shell_NotifyIconA(win32.NIM_DELETE, &self.icon_data);
+        if (self.owns_icon) _ = win32.DestroyIcon(self.icon_data.hIcon);
         self.freeProfiles();
         slog.debug("System tray icon removed", .{});
     }
@@ -114,8 +114,8 @@ pub const TrayIcon = struct {
     /// NIM_MODIFY catches an add Explorer reported as failed but kept, which happens while it's busy at logon.
     fn show(self: *TrayIcon) void {
         self.last_show_attempt = win32.Ticks.now();
-        self.is_shown = win32.toBool(win32.Shell_NotifyIconA(win32.NIM_ADD, &self.nid)) or
-            win32.toBool(win32.Shell_NotifyIconA(win32.NIM_MODIFY, &self.nid));
+        self.is_shown = win32.toBool(win32.Shell_NotifyIconA(win32.NIM_ADD, &self.icon_data)) or
+            win32.toBool(win32.Shell_NotifyIconA(win32.NIM_MODIFY, &self.icon_data));
     }
 
     fn listenForTaskbarCreated(self: *TrayIcon) void {
@@ -184,6 +184,8 @@ pub const TrayIcon = struct {
 
         appendChecked(menu, app.notifications.panel.isVisible(config, scout.anyCharacterLoggedIn(app.scout.getWindows())), win32.IDM_TOGGLE_NOTIF_HISTORY, "Show Notification History");
         _ = win32.AppendMenuA(menu, win32.MF_STRING, win32.IDM_CLEAR_NOTIF_HISTORY, "Clear Notification History");
+        appendChecked(menu, app.map_panel.isVisible(config, scout.anyCharacterLoggedIn(app.scout.getWindows())), win32.IDM_TOGGLE_MAP_PANEL, "Show Map");
+        appendChecked(menu, app.isIntelPanelVisible(), win32.IDM_TOGGLE_INTEL_PANEL, "Show Intel Panel");
         appendChecked(menu, alert_effects.isMuted(), win32.IDM_TOGGLE_ALERT_MUTE, "Mute Audio Alerts");
         _ = win32.AppendMenuA(menu, win32.MF_SEPARATOR, 0, null);
 
@@ -222,12 +224,12 @@ pub const TrayIcon = struct {
         }
         const shown = self.profiles.items[0..@min(self.profiles.items.len, MAX_PROFILE_ITEMS)];
         for (shown, 0..) |profile, i| {
-            const profile_z = self.allocator.dupeSentinel(u8, profile, 0) catch |err| {
+            const terminated_profile = self.allocator.dupeSentinel(u8, profile, 0) catch |err| {
                 slog.warn("Failed to copy profile name '{s}' for tray menu: {}", .{ profile, err });
                 continue;
             };
-            defer self.allocator.free(profile_z);
-            appendChecked(profile_menu, std.mem.eql(u8, profile, current_profile), win32.IDM_PROFILE_BASE + i, profile_z);
+            defer self.allocator.free(terminated_profile);
+            appendChecked(profile_menu, std.mem.eql(u8, profile, current_profile), win32.IDM_PROFILE_BASE + i, terminated_profile);
         }
     }
 
@@ -244,12 +246,12 @@ pub const TrayIcon = struct {
         };
         for (groups[0..@min(groups.len, MAX_GROUP_ITEMS)], 0..) |*group, i| {
             var name_buf: [config_mod.HotkeyGroupConfig.DISPLAY_NAME_SIZE]u8 = undefined;
-            const name_z = self.allocator.dupeSentinel(u8, group.displayName(&name_buf, i), 0) catch |err| {
+            const terminated_name = self.allocator.dupeSentinel(u8, group.displayName(&name_buf, i), 0) catch |err| {
                 slog.warn("Failed to copy group name '{s}' for tray menu: {}", .{ group.name, err });
                 continue;
             };
-            defer self.allocator.free(name_z);
-            _ = win32.AppendMenuA(group_menu, win32.MF_STRING, id_base + i, name_z);
+            defer self.allocator.free(terminated_name);
+            _ = win32.AppendMenuA(group_menu, win32.MF_STRING, id_base + i, terminated_name);
         }
         _ = win32.AppendMenuA(menu, win32.MF_POPUP, @intFromPtr(group_menu), label);
     }
@@ -295,7 +297,15 @@ pub const TrayIcon = struct {
             },
             win32.IDM_CLEAR_NOTIF_HISTORY => {
                 slog.info("Clear notification history requested from system tray", .{});
-                app.notifications.history.clear();
+                app.notifications.clearHistories();
+            },
+            win32.IDM_TOGGLE_MAP_PANEL => {
+                slog.info("Toggle map panel requested from system tray", .{});
+                app.toggleMapPanel();
+            },
+            win32.IDM_TOGGLE_INTEL_PANEL => {
+                slog.info("Toggle intel panel requested from system tray", .{});
+                app.toggleIntelPanel();
             },
             win32.IDM_TOGGLE_ALERT_MUTE => alert_effects.toggleMuted(),
             win32.IDM_SUSPEND_HOTKEYS => {

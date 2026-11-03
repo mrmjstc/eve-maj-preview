@@ -247,6 +247,7 @@ const Command = struct {
     /// Owned by page_allocator.
     path: []const u8,
     volume_percent: u8,
+    is_minor: bool,
 
     pub fn deinit(self: Command) void {
         std.heap.page_allocator.free(self.path);
@@ -254,6 +255,10 @@ const Command = struct {
 
     pub fn isAlert(_: Command) bool {
         return true;
+    }
+
+    pub fn isMinorAlert(self: Command) bool {
+        return self.is_minor;
     }
 };
 
@@ -282,14 +287,14 @@ pub fn setIo(io: std.Io) void {
     g_worker.io = io;
 }
 
-/// Returns at once; alerts play in order, each in full.
-pub fn playAlert(path: []const u8, volume_percent: u8) void {
+/// Returns at once; alerts play in order, each in full, and a waiting `is_minor` one is the first dropped.
+pub fn playAlert(path: []const u8, volume_percent: u8, is_minor: bool) void {
     if (!g_worker.start()) return;
     const copy = std.heap.page_allocator.dupe(u8, path) catch |err| {
         slog.warn("Failed to queue sound alert '{s}': {}", .{ path, err });
         return;
     };
-    g_worker.pushAlert(.{ .path = copy, .volume_percent = volume_percent }, MAX_WAITING_ALERTS);
+    g_worker.pushAlert(.{ .path = copy, .volume_percent = volume_percent, .is_minor = is_minor }, MAX_WAITING_ALERTS);
 }
 
 /// Call once during app shutdown.

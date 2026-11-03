@@ -3,6 +3,7 @@ const types = @import("types.zig");
 const wire = @import("wire.zig");
 const ranges_mod = @import("ranges.zig");
 const notifications_mod = @import("notifications.zig");
+const connections = @import("../map/connections.zig");
 
 const NotificationConfig = notifications_mod.NotificationConfig;
 
@@ -52,6 +53,12 @@ pub const ThumbnailConfig = struct {
     showText: bool = true,
     showCharacterName: bool = true,
     showSystemName: bool = false,
+    /// Replaces the system name with a map of the systems a few gates out.
+    showSystemConnections: bool = false,
+    systemConnectionJumps: u8 = 1,
+    systemConnectionMapWidth: i32 = 180,
+    systemConnectionMapHeight: i32 = 140,
+    showSystemConnectionIntel: bool = true,
     characterNameColor: u32 = 0xFFFFFF,
     characterNameBgColor: u32 = 0xE6000000,
     useUniqueCharacterNameColors: bool = false,
@@ -132,6 +139,9 @@ pub const ThumbnailConfig = struct {
         .characterNameOffsetY = ranges_mod.TEXT_OFFSET,
         .systemNameOffsetX = ranges_mod.TEXT_OFFSET,
         .systemNameOffsetY = ranges_mod.TEXT_OFFSET,
+        .systemConnectionJumps = .{ 1, connections.MAX_JUMPS },
+        .systemConnectionMapWidth = .{ 80, ranges_mod.MAX_WINDOW_WIDTH },
+        .systemConnectionMapHeight = .{ 60, ranges_mod.MAX_WINDOW_HEIGHT },
         .quickGroupBadgeOffsetX = ranges_mod.TEXT_OFFSET,
         .quickGroupBadgeOffsetY = ranges_mod.TEXT_OFFSET,
         .sessionTimerOffsetX = ranges_mod.TEXT_OFFSET,

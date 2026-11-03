@@ -412,7 +412,7 @@ fn beginMatch(start: messages.Start) void {
         player_count += 1;
     }
     if (player_count < 2) {
-        slog.warn("Failed to start a Barrage match: only {d} seats are filled", .{player_count});
+        slog.warn("Failed to start a Barrage match: only {d} seats are filled_count", .{player_count});
         end("The host started a match without enough players.");
         return;
     }
@@ -427,11 +427,11 @@ fn beginMatch(start: messages.Start) void {
 
 /// The host's or practice player's Start.
 fn startMatch() void {
-    var filled: usize = 0;
+    var filled_count: usize = 0;
     for (g_lobby.seats) |seat| {
-        if (seat != .empty) filled += 1;
+        if (seat != .empty) filled_count += 1;
     }
-    if (filled < 2) {
+    if (filled_count < 2) {
         g_lobby_error = "Fill at least two seats, with pilots or the AI.";
         return;
     }

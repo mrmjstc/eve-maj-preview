@@ -165,9 +165,9 @@ const Look = struct {
         try self.painter.shape(points, self.color, self.fill);
     }
 
-    /// A point `dx` across from the tank's middle and `dy` up from its bottom.
-    fn point(self: *const Look, dx: f32, dy: f32) [2]f32 {
-        return .{ self.x + dx, self.y + dy };
+    /// A point `delta_x` across from the tank's middle and `delta_y` up from its bottom.
+    fn point(self: *const Look, delta_x: f32, delta_y: f32) [2]f32 {
+        return .{ self.x + delta_x, self.y + delta_y };
     }
 };
 

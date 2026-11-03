@@ -2,6 +2,7 @@
 const std = @import("std");
 const config_mod = @import("../config.zig");
 const profiles = @import("profiles.zig");
+const types = @import("types.zig");
 const wire = @import("wire.zig");
 const patch_mod = @import("patch.zig");
 const strings = @import("../util/strings.zig");
@@ -83,6 +84,15 @@ pub const ProfileStore = struct {
         return is_member;
     }
 
+    /// Returns whether `system_id` is now avoided, going by what the app shows; error.AvoidListFull past types.MAX_AVOIDED_SYSTEMS.
+    pub fn toggleAvoidedSystem(self: *ProfileStore, system_id: u32) !bool {
+        const is_avoided = self.live.avoidedSystemIndex(system_id) == null;
+        try setAvoided(&self.live, system_id, is_avoided);
+        try setAvoided(&self.saved, system_id, is_avoided);
+        self.persist();
+        return is_avoided;
+    }
+
     pub fn commit(self: *ProfileStore) !void {
         const fresh = try self.live.clone(self.live.allocator);
         self.saved.deinit();
@@ -99,7 +109,7 @@ pub const ProfileStore = struct {
     }
 
     pub fn isDirty(self: *const ProfileStore) bool {
-        var arena = std.heap.ArenaAllocator.init(self.live.allocator);
+        var arena: std.heap.ArenaAllocator = .init(self.live.allocator);
         defer arena.deinit();
         const live = self.live.toJsonString(arena.allocator()) catch |err| {
             slog.err("Failed to serialize the running profile to compare it: {}", .{err});
@@ -150,6 +160,17 @@ fn setMembership(config: *Config, group: *config_mod.HotkeyGroupConfig, characte
         try members.append(config.allocator, owned);
     } else if (!is_member) {
         if (index) |i| config.allocator.free(members.orderedRemove(i));
+    }
+}
+
+/// Idempotent, as unsaved dialog edits can leave the two copies disagreeing.
+fn setAvoided(config: *Config, system_id: u32, is_avoided: bool) !void {
+    const index = config.avoidedSystemIndex(system_id);
+    if (is_avoided and index == null) {
+        if (config.avoidedSystems.items.len >= types.MAX_AVOIDED_SYSTEMS) return error.AvoidListFull;
+        try config.avoidedSystems.append(config.allocator, .{ .systemId = system_id });
+    } else if (!is_avoided) {
+        if (index) |i| _ = config.avoidedSystems.orderedRemove(i);
     }
 }
 

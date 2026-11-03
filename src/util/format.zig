@@ -10,20 +10,20 @@ pub fn insertThousandsSeparators(buf: []u8, text: []const u8) []const u8 {
     const first_group = if (digit_end % 3 == 0) 3 else digit_end % 3;
     if (first_group > buf.len) return text;
     @memcpy(buf[0..first_group], text[0..first_group]);
-    var out_len = first_group;
+    var out_length = first_group;
 
     var i = first_group;
     while (i < digit_end) : (i += 3) {
-        if (out_len + 4 > buf.len) return text;
-        buf[out_len] = ',';
-        @memcpy(buf[out_len + 1 ..][0..3], text[i..][0..3]);
-        out_len += 4;
+        if (out_length + 4 > buf.len) return text;
+        buf[out_length] = ',';
+        @memcpy(buf[out_length + 1 ..][0..3], text[i..][0..3]);
+        out_length += 4;
     }
 
     const rest = text[digit_end..];
-    if (out_len + rest.len > buf.len) return text;
-    @memcpy(buf[out_len..][0..rest.len], rest);
-    return buf[0 .. out_len + rest.len];
+    if (out_length + rest.len > buf.len) return text;
+    @memcpy(buf[out_length..][0..rest.len], rest);
+    return buf[0 .. out_length + rest.len];
 }
 
 /// With k/m suffixes (2_450_000 -> "2.5m", 200_000 -> "200k", 850 -> "850"); "?" if `buf` is too small.

@@ -2,6 +2,7 @@
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const lines = @import("lines.zig");
+const alert_rules = @import("alert_rules.zig");
 const utf16 = @import("utf16.zig");
 const character_ids_mod = @import("character_ids.zig");
 const log = @import("../log.zig");
@@ -21,6 +22,19 @@ pub const Changes = struct {
 
     pub fn hasAny(self: Changes) bool {
         return self.chatlog_changed or self.gamelog_changed;
+    }
+};
+
+pub const ChannelLog = struct {
+    /// Owned; freed in deinit.
+    channel: []const u8,
+    /// Owned; freed in deinit.
+    path: []const u8,
+    timestamp: u64,
+
+    pub fn deinit(self: *const ChannelLog, allocator: std.mem.Allocator) void {
+        allocator.free(self.channel);
+        allocator.free(self.path);
     }
 };
 
@@ -102,6 +116,57 @@ pub const LogFinder = struct {
             // Stale: the cached ID matched nothing.
         }
         return self.findByHeader(dir, is_chatlog, character_name);
+    }
+
+    /// From this session on, so a channel left long ago isn't followed; the caller owns the list and each log.
+    pub fn findChannels(self: *const LogFinder, character_name: []const u8, session_start: i64, rules: *const alert_rules.RuleSet) std.ArrayList(ChannelLog) {
+        var logs: std.ArrayList(ChannelLog) = .empty;
+        const id = self.cachedId(character_name) orelse return logs;
+        defer self.allocator.free(id);
+
+        var pattern_buf: [64]u8 = undefined;
+        const pattern = std.mem.print(&pattern_buf, "*_{s}.txt", .{id}) catch |err| {
+            slog.warn("Failed to build channel log search for character ID '{s}': {}", .{ id, err });
+            return logs;
+        };
+
+        var files = FileNames.open(self.allocator, self.chatlog_dir, pattern) orelse return logs;
+        defer files.close();
+        while (files.next()) |name| {
+            const file = lines.channelFile(name) orelse continue;
+            if (std.mem.eql(u8, file.channel, lines.LOCAL_CHANNEL) or !rules.followsChannel(file.channel)) continue;
+            const file_id = lines.characterIdFromFileName(name) orelse continue;
+            if (!std.mem.eql(u8, file_id, id)) continue;
+            const started_at = lines.logTimestampToUnixSeconds(file.timestamp) orelse continue;
+            if (started_at < session_start) continue;
+            self.keepNewest(&logs, file, name);
+        }
+        return logs;
+    }
+
+    /// Searched linearly: a character is in a few dozen channels at most.
+    fn keepNewest(self: *const LogFinder, logs: *std.ArrayList(ChannelLog), file: lines.ChannelFile, name: []const u8) void {
+        for (logs.items) |*log_entry| {
+            if (!std.mem.eql(u8, log_entry.channel, file.channel)) continue;
+            if (file.timestamp <= log_entry.timestamp) return;
+            const path = self.joinPath(self.chatlog_dir, name) orelse return;
+            self.allocator.free(log_entry.path);
+            log_entry.path = path;
+            log_entry.timestamp = file.timestamp;
+            return;
+        }
+
+        const path = self.joinPath(self.chatlog_dir, name) orelse return;
+        const channel = self.allocator.dupe(u8, file.channel) catch |err| {
+            slog.warn("Failed to copy channel name '{s}': {}", .{ file.channel, err });
+            self.allocator.free(path);
+            return;
+        };
+        logs.append(self.allocator, .{ .channel = channel, .path = path, .timestamp = file.timestamp }) catch |err| {
+            slog.warn("Failed to remember the log of channel '{s}': {}", .{ file.channel, err });
+            self.allocator.free(channel);
+            self.allocator.free(path);
+        };
     }
 
     /// Caller frees.
@@ -234,14 +299,14 @@ const FileNames = struct {
             return null;
         };
         defer allocator.free(search);
-        const search_w = std.unicode.utf8ToUtf16LeAllocZ(allocator, search) catch |err| {
+        const wide_search = std.unicode.utf8ToUtf16LeAllocZ(allocator, search) catch |err| {
             slog.warn("Failed to convert log search path for '{s}' to UTF-16: {}", .{ dir, err });
             return null;
         };
-        defer allocator.free(search_w);
+        defer allocator.free(wide_search);
 
         var files: FileNames = .{ .handle = undefined, .find_data = undefined, .has_pending = true };
-        files.handle = win32.FindFirstFileW(search_w.ptr, &files.find_data);
+        files.handle = win32.FindFirstFileW(wide_search.ptr, &files.find_data);
         if (files.handle == win32.INVALID_HANDLE_VALUE) {
             // No match at all is also INVALID_HANDLE_VALUE.
             const error_code = win32.GetLastError();
@@ -264,8 +329,8 @@ const FileNames = struct {
             self.has_pending = false;
             if (self.find_data.dwFileAttributes & win32.FILE_ATTRIBUTE_DIRECTORY != 0) continue;
             const raw_name: []const u16 = self.find_data.cFileName[0..];
-            const name_len = std.mem.findScalar(u16, raw_name, 0) orelse raw_name.len;
-            const written = std.unicode.utf16LeToUtf8(&self.name_buf, raw_name[0..name_len]) catch |err| {
+            const name_length = std.mem.findScalar(u16, raw_name, 0) orelse raw_name.len;
+            const written = std.unicode.utf16LeToUtf8(&self.name_buf, raw_name[0..name_length]) catch |err| {
                 slog.warn("Failed to decode log file name: {}", .{err});
                 continue;
             };
@@ -276,13 +341,13 @@ const FileNames = struct {
 
 /// Null if the folder can't be watched (yet); the caller logs, since it's retried every worker loop.
 fn watchFolder(allocator: std.mem.Allocator, dir: []const u8) ?win32.HANDLE {
-    const dir_w = std.unicode.utf8ToUtf16LeAllocZ(allocator, dir) catch |err| {
+    const wide_dir = std.unicode.utf8ToUtf16LeAllocZ(allocator, dir) catch |err| {
         slog.debug("Failed to convert '{s}' to UTF-16 to watch it: {}", .{ dir, err });
         return null;
     };
-    defer allocator.free(dir_w);
+    defer allocator.free(wide_dir);
     // Only files being created or renamed, not written to.
-    const handle = win32.FindFirstChangeNotificationW(dir_w.ptr, win32.FALSE, win32.FILE_NOTIFY_CHANGE_FILE_NAME);
+    const handle = win32.FindFirstChangeNotificationW(wide_dir.ptr, win32.FALSE, win32.FILE_NOTIFY_CHANGE_FILE_NAME);
     if (handle == win32.INVALID_HANDLE_VALUE) return null;
     return handle;
 }

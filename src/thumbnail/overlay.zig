@@ -12,6 +12,10 @@ const font_cache_mod = @import("font_cache.zig");
 const window = @import("window.zig");
 const spaces = @import("../layout/spaces.zig");
 const pixel_buffer = @import("../util/pixel_buffer.zig");
+const universe = @import("../map/universe.zig");
+const layout_mod = @import("../map/layout.zig");
+const connections_mod = @import("../map/connections.zig");
+const map_look = @import("../panels/map_look.zig");
 const log = @import("../log.zig");
 
 const ThumbnailWindow = window.ThumbnailWindow;
@@ -32,11 +36,16 @@ const MAX_NOTIFICATION_LINES = stack.CAPACITY * MAX_LINES_PER_NOTIFICATION;
 const MAX_LINES = 1 + 1 + 1 + 1 + 2 + 2 + 1 + 3 + 1;
 const MAX_STACK_LINES = 3;
 const TEXT_BUFFER_SIZE = 32;
+/// Of the Map Panel's halo, so a new pin doesn't cover a map this small.
+const CONNECTION_HALO_SCALE: f32 = 0.5;
 
 /// One resolved line of the notification block.
 pub const NotificationLine = struct {
     text: []const u8 = "",
     color: u32 = 0xFFFFFF,
+    /// Bytes of `text` drawn in lead_color; 0 for none.
+    lead_length: usize = 0,
+    lead_color: u32 = 0,
 };
 
 /// All an overlay depends on except the stat config, which every config edit's cache clear covers.
@@ -49,8 +58,14 @@ pub const RenderSettings = struct {
     show_system_name: bool = false,
     /// Borrows from the thumbnail.
     system_name: []const u8 = "",
+    /// Shown in place of system_name unless empty.
+    connections: connections_mod.Connections = .{},
     character_name_color: u32 = 0xFFFFFF,
     system_name_color: u32 = 0xFFFFFF,
+    /// For every connection but the character's own system, which keeps system_name_color.
+    connection_color: u32 = 0xFFFFFF,
+    connection_map_width: i32 = 0,
+    connection_map_height: i32 = 0,
     character_name_bg_color: u32 = 0x80000000,
     system_name_bg_color: u32 = 0x80000000,
     /// Borrows from config.
@@ -148,20 +163,20 @@ pub const RenderSettings = struct {
     has_ping_data: bool = false,
 };
 
-/// Keyed by font only, so whoever changes the text clears `dims`.
+/// Keyed by font only, so whoever changes the text clears `dimensions`.
 const MeasuredText = struct {
-    dims: ?TextDimensions = null,
+    dimensions: ?TextDimensions = null,
     /// Borrows from config.
     font_name: []const u8 = "",
     font_size: i32 = 0,
     font_weight: types.FontWeight = .Regular,
 
     fn measure(self: *MeasuredText, layout: *Layout, font: win32.HFONT, text: []const u8, font_name: []const u8, font_size: i32, font_weight: types.FontWeight) TextDimensions {
-        if (self.dims) |cached| {
+        if (self.dimensions) |cached| {
             if (stringsEqualFast(self.font_name, font_name) and self.font_size == font_size and self.font_weight == font_weight) return cached;
         }
         const measured = layout.measure(font, text);
-        self.* = .{ .dims = measured, .font_name = font_name, .font_size = font_size, .font_weight = font_weight };
+        self.* = .{ .dimensions = measured, .font_name = font_name, .font_size = font_size, .font_weight = font_weight };
         return measured;
     }
 };
@@ -208,7 +223,7 @@ const Layout = struct {
     lines: [MAX_LINES]DrawLine = undefined,
     count: usize = 0,
     // The lines' formatted text lives here, so a Layout is never copied once built.
-    text_bufs: [MAX_LINES][TEXT_BUFFER_SIZE]u8 = undefined,
+    text_buffers: [MAX_LINES][TEXT_BUFFER_SIZE]u8 = undefined,
     texts_used: usize = 0,
     // The DC's own font, put back once rendering is done.
     original_font: ?win32.HANDLE = null,
@@ -227,18 +242,24 @@ const Layout = struct {
         return draw.measureText(self.dc, text);
     }
 
+    /// Without measureText's padding, for text sharing a line.
+    fn measureRun(self: *Layout, font: win32.HFONT, text: []const u8) TextDimensions {
+        const padded = self.measure(font, text);
+        return .{ .width = padded.width - draw.TEXT_PADDING_X * 2, .height = padded.height - draw.TEXT_PADDING_Y * 2 };
+    }
+
     /// Short stat text only, so it can't outgrow its buffer in practice; "---" if it somehow does.
-    fn print(self: *Layout, comptime fmt: []const u8, args: anytype) []const u8 {
-        return std.mem.print(self.nextTextBuf(), fmt, args) catch "---";
+    fn print(self: *Layout, comptime text_format: []const u8, args: anytype) []const u8 {
+        return std.mem.print(self.nextTextBuffer(), text_format, args) catch "---";
     }
 
-    fn nextTextBuf(self: *Layout) *[TEXT_BUFFER_SIZE]u8 {
+    fn nextTextBuffer(self: *Layout) *[TEXT_BUFFER_SIZE]u8 {
         defer self.texts_used += 1;
-        return &self.text_bufs[self.texts_used];
+        return &self.text_buffers[self.texts_used];
     }
 
-    fn position(self: *const Layout, anchor: TextPosition, dims: TextDimensions, offset_x: i32, offset_y: i32) TextOrigin {
-        return draw.calculateTextPosition(anchor, dims, .{ .width = self.width, .height = self.height }, offset_x, offset_y);
+    fn position(self: *const Layout, anchor: TextPosition, dimensions: TextDimensions, offset_x: i32, offset_y: i32) TextOrigin {
+        return draw.calculateTextPosition(anchor, dimensions, .{ .width = self.width, .height = self.height }, offset_x, offset_y);
     }
 
     fn add(self: *Layout, line: DrawLine) void {
@@ -246,34 +267,34 @@ const Layout = struct {
         self.count += 1;
     }
 
-    fn addAt(self: *Layout, font: win32.HFONT, text: []const u8, dims: TextDimensions, anchor: TextPosition, offset_x: i32, offset_y: i32, color: u32, bg_color: u32) void {
-        const origin = self.position(anchor, dims, offset_x, offset_y);
-        self.add(.{ .font = font, .text = text, .render_origin = origin, .background_origin = origin, .background_dimensions = dims, .color = color, .bg_color = bg_color });
+    fn addAt(self: *Layout, font: win32.HFONT, text: []const u8, dimensions: TextDimensions, anchor: TextPosition, offset_x: i32, offset_y: i32, color: u32, bg_color: u32) void {
+        const origin = self.position(anchor, dimensions, offset_x, offset_y);
+        self.add(.{ .font = font, .text = text, .render_origin = origin, .background_origin = origin, .background_dimensions = dimensions, .color = color, .bg_color = bg_color });
     }
 
     /// One block anchored at `anchor`, so Bottom and Center positions count every line.
     fn addStack(self: *Layout, font: win32.HFONT, texts: []const []const u8, anchor: TextPosition, offset_x: i32, offset_y: i32, color: u32, bg_color: u32) void {
-        var dims: [MAX_STACK_LINES]TextDimensions = undefined;
+        var dimensions: [MAX_STACK_LINES]TextDimensions = undefined;
         var block: TextDimensions = .{ .width = 0, .height = 0 };
         for (texts, 0..) |text, i| {
-            dims[i] = self.measure(font, text);
-            block.width = @max(block.width, dims[i].width);
-            block.height += dims[i].height;
+            dimensions[i] = self.measure(font, text);
+            block.width = @max(block.width, dimensions[i].width);
+            block.height += dimensions[i].height;
         }
         const origin = self.position(anchor, block, offset_x, offset_y);
         const horizontal_align = draw.horizontalAlignOf(anchor);
         var y = origin.y;
-        for (texts, dims[0..texts.len]) |text, line_dims| {
+        for (texts, dimensions[0..texts.len]) |text, line_dimensions| {
             self.add(.{
                 .font = font,
                 .text = text,
-                .render_origin = .{ .x = draw.alignedLineX(origin.x, block.width, line_dims.width, horizontal_align), .y = y },
+                .render_origin = .{ .x = draw.alignedLineX(origin.x, block.width, line_dimensions.width, horizontal_align), .y = y },
                 .background_origin = .{ .x = origin.x, .y = y },
-                .background_dimensions = .{ .width = block.width, .height = line_dims.height },
+                .background_dimensions = .{ .width = block.width, .height = line_dimensions.height },
                 .color = color,
                 .bg_color = bg_color,
             });
-            y += @as(i32, @intCast(line_dims.height));
+            y += @as(i32, @intCast(line_dimensions.height));
         }
     }
 };
@@ -282,7 +303,7 @@ const Layout = struct {
 const NotificationBlock = struct {
     font: win32.HFONT,
     origin: TextOrigin,
-    dims: TextDimensions,
+    dimensions: TextDimensions,
     line_heights: [MAX_NOTIFICATION_LINES]usize,
 };
 
@@ -306,12 +327,12 @@ const IskPeriod = struct { seconds: f32, suffix: []const u8 };
 const Border = struct { is_shown: bool, width: u8, color: u32, style: BorderStyle };
 const BorderFlags = struct { is_focused: bool, hides_all: bool };
 
-pub fn renderSettingsEqual(a: RenderSettings, b: RenderSettings) bool {
-    return a.show_thumbnail == b.show_thumbnail and visualEqual(a, b);
+pub fn renderSettingsEqual(first: RenderSettings, second: RenderSettings) bool {
+    return first.show_thumbnail == second.show_thumbnail and visualEqual(first, second);
 }
 
-pub fn renderSettingsOnlyVisibilityChanged(a: RenderSettings, b: RenderSettings) bool {
-    return a.show_thumbnail != b.show_thumbnail and visualEqual(a, b);
+pub fn renderSettingsOnlyVisibilityChanged(first: RenderSettings, second: RenderSettings) bool {
+    return first.show_thumbnail != second.show_thumbnail and visualEqual(first, second);
 }
 
 pub fn renderThumbnailOverlay(font_cache: *FontCache, thumbnail: *ThumbnailWindow, settings: RenderSettings, config: *const config_mod.Config) !void {
@@ -353,6 +374,8 @@ pub fn renderOverlay(font_cache: *FontCache, cache: *RenderCache, target_hwnd: w
         try addResources(&layout, fonts, config, stats, settings);
         try addPing(&layout, fonts, config, stats, settings);
     }
+    var connection_map: layout_mod.Layout = .{};
+    const connection_font = try layoutConnectionMap(&connection_map, &layout, fonts, settings);
     const notifications = try layoutNotifications(&layout, fonts, settings);
 
     const lines = layout.lines[0..layout.count];
@@ -360,8 +383,9 @@ pub fn renderOverlay(font_cache: *FontCache, cache: *RenderCache, target_hwnd: w
     for (lines) |line| {
         draw.fillTextBackground(overlay.canvas(), line.background_origin.x, line.background_origin.y, line.background_dimensions.width, line.background_dimensions.height, line.bg_color);
     }
+    if (connection_font != null) drawConnectionMap(overlay.canvas(), &connection_map, settings);
     if (notifications) |block| {
-        draw.fillTextBackground(overlay.canvas(), block.origin.x, block.origin.y, block.dims.width, block.dims.height, settings.notifications_bg_color);
+        draw.fillTextBackground(overlay.canvas(), block.origin.x, block.origin.y, block.dimensions.width, block.dimensions.height, settings.notifications_bg_color);
     }
 
     if (settings.show_border) {
@@ -372,11 +396,19 @@ pub fn renderOverlay(font_cache: *FontCache, cache: *RenderCache, target_hwnd: w
         layout.select(line.font);
         draw.renderText(overlay.mem_dc, line.text, line.render_origin.x, line.render_origin.y, line.color);
     }
+    if (connection_font) |font| {
+        layout.select(font);
+        renderConnectionLabels(overlay.mem_dc, &connection_map, settings);
+    }
     if (notifications) |block| {
         layout.select(block.font);
         var y = block.origin.y;
         for (settings.notification_lines[0..settings.notification_line_count], block.line_heights[0..settings.notification_line_count]) |line, line_height| {
-            draw.renderText(overlay.mem_dc, line.text, block.origin.x, y, line.color);
+            if (line.lead_length > 0) {
+                draw.renderTextWithLead(overlay.mem_dc, line.text, line.lead_length, line.lead_color, block.origin.x, y, line.color);
+            } else {
+                draw.renderText(overlay.mem_dc, line.text, block.origin.x, y, line.color);
+            }
             y += @as(i32, @intCast(line_height));
         }
     }
@@ -385,8 +417,12 @@ pub fn renderOverlay(font_cache: *FontCache, cache: *RenderCache, target_hwnd: w
     for (lines) |line| {
         pixel_buffer.fixTextAlphaRect(overlay.canvas(), line.background_origin.x, line.background_origin.y, line.background_dimensions.width, line.background_dimensions.height);
     }
+    if (connection_font != null) {
+        const area = connection_map.area;
+        pixel_buffer.fixTextAlphaRect(overlay.canvas(), area.left, area.top, @intCast(area.right - area.left), @intCast(area.bottom - area.top));
+    }
     if (notifications) |block| {
-        pixel_buffer.fixTextAlphaRect(overlay.canvas(), block.origin.x, block.origin.y, block.dims.width, block.dims.height);
+        pixel_buffer.fixTextAlphaRect(overlay.canvas(), block.origin.x, block.origin.y, block.dimensions.width, block.dimensions.height);
     }
 
     gdi_overlay.presentLayered(target_hwnd, overlay, settings.overlay_alpha);
@@ -417,6 +453,10 @@ pub fn createRenderSettings(config: *const config_mod.Config, thumbnail: *const 
         .display_name = thumbnail.cached_display_name,
         .show_system_name = show_text and thumbnail_config.showSystemName and thumbnail.system_name.len > 0,
         .system_name = thumbnail.system_name,
+        .connections = thumbnail.connections,
+        .connection_color = thumbnail_config.systemNameColor,
+        .connection_map_width = scalePixels(thumbnail_config.systemConnectionMapWidth, dpi_scale),
+        .connection_map_height = scalePixels(thumbnail_config.systemConnectionMapHeight, dpi_scale),
         // Unique character colours win over the state's text colour.
         .character_name_color = thumbnail.cached_character_color orelse state_config.textColor orelse thumbnail_config.characterNameColor,
         .system_name_color = thumbnail.cached_system_color,
@@ -504,66 +544,66 @@ pub fn createRenderSettings(config: *const config_mod.Config, thumbnail: *const 
 }
 
 /// All fields but show_thumbnail, walked at comptime so new fields are always compared.
-fn visualEqual(a: RenderSettings, b: RenderSettings) bool {
+fn visualEqual(first: RenderSettings, second: RenderSettings) bool {
     const info = @typeInfo(RenderSettings).@"struct";
     inline for (info.field_names, info.field_types) |name, F| {
         if (comptime std.mem.eql(u8, name, "show_thumbnail")) continue;
-        if (!valuesEqual(F, @field(a, name), @field(b, name))) return false;
+        if (!valuesEqual(F, @field(first, name), @field(second, name))) return false;
     }
     return true;
 }
 
-fn valuesEqual(comptime T: type, a: T, b: T) bool {
-    if (T == []const u8) return stringsEqualFast(a, b);
+fn valuesEqual(comptime T: type, first: T, second: T) bool {
+    if (T == []const u8) return stringsEqualFast(first, second);
     // The cached line's text may have been freed; notification_revision catches a change its address and length miss.
-    if (T == NotificationLine) return a.text.ptr == b.text.ptr and a.text.len == b.text.len and a.color == b.color;
+    if (T == NotificationLine) return first.text.ptr == second.text.ptr and first.text.len == second.text.len and first.color == second.color and first.lead_length == second.lead_length and first.lead_color == second.lead_color;
     switch (@typeInfo(T)) {
         .@"struct" => |info| {
             inline for (info.field_names, info.field_types) |name, F| {
-                if (!valuesEqual(F, @field(a, name), @field(b, name))) return false;
+                if (!valuesEqual(F, @field(first, name), @field(second, name))) return false;
             }
             return true;
         },
         .array => |info| {
-            for (a, b) |x, y| {
+            for (first, second) |x, y| {
                 if (!valuesEqual(info.child, x, y)) return false;
             }
             return true;
         },
-        else => return a == b,
+        else => return first == second,
     }
 }
 
 /// Unchanged config and notification slices keep their pointer and length, so those are checked first.
-fn stringsEqualFast(a: []const u8, b: []const u8) bool {
-    return (a.ptr == b.ptr and a.len == b.len) or std.mem.eql(u8, a, b);
+fn stringsEqualFast(first: []const u8, second: []const u8) bool {
+    return (first.ptr == second.ptr and first.len == second.len) or std.mem.eql(u8, first, second);
 }
 
 fn addCharacterName(layout: *Layout, fonts: Fonts, cache: *RenderCache, settings: RenderSettings) !void {
     if (!settings.show_character_name) return;
     const font = try fonts.get(.main, settings.character_name_font_name, settings.character_name_font_size, settings.character_name_font_weight);
-    const dims = cache.character_name.measure(layout, font, settings.display_name, settings.character_name_font_name, settings.character_name_font_size, settings.character_name_font_weight);
-    layout.addAt(font, settings.display_name, dims, settings.character_name_position, settings.character_name_offset_x, settings.character_name_offset_y, settings.character_name_color, settings.character_name_bg_color);
+    const dimensions = cache.character_name.measure(layout, font, settings.display_name, settings.character_name_font_name, settings.character_name_font_size, settings.character_name_font_weight);
+    layout.addAt(font, settings.display_name, dimensions, settings.character_name_position, settings.character_name_offset_x, settings.character_name_offset_y, settings.character_name_color, settings.character_name_bg_color);
 }
 
 fn addSystemName(layout: *Layout, fonts: Fonts, cache: *RenderCache, settings: RenderSettings) !void {
-    if (!settings.show_system_name) return;
+    if (!settings.show_system_name or settings.connections.count > 0) return;
     const font = try fonts.get(.system_name, settings.system_name_font_name, settings.system_name_font_size, settings.system_name_font_weight);
-    const dims = cache.system_name.measure(layout, font, settings.system_name, settings.system_name_font_name, settings.system_name_font_size, settings.system_name_font_weight);
-    layout.addAt(font, settings.system_name, dims, settings.system_name_position, settings.system_name_offset_x, settings.system_name_offset_y, settings.system_name_color, settings.system_name_bg_color);
+    const dimensions = cache.system_name.measure(layout, font, settings.system_name, settings.system_name_font_name, settings.system_name_font_size, settings.system_name_font_weight);
+    layout.addAt(font, settings.system_name, dimensions, settings.system_name_position, settings.system_name_offset_x, settings.system_name_offset_y, settings.system_name_color, settings.system_name_bg_color);
 }
 
 fn addGroupBadge(layout: *Layout, fonts: Fonts, cache: *RenderCache, settings: RenderSettings) !void {
     if (!settings.show_group_badge) return;
     const font = try fonts.get(.group_badge, settings.group_badge_font_name, settings.group_badge_font_size, settings.group_badge_font_weight);
-    const dims = cache.group_badge.measure(layout, font, settings.group_badge_text, settings.group_badge_font_name, settings.group_badge_font_size, settings.group_badge_font_weight);
-    layout.addAt(font, settings.group_badge_text, dims, settings.group_badge_position, settings.group_badge_offset_x, settings.group_badge_offset_y, settings.group_badge_color, settings.group_badge_bg_color);
+    const dimensions = cache.group_badge.measure(layout, font, settings.group_badge_text, settings.group_badge_font_name, settings.group_badge_font_size, settings.group_badge_font_weight);
+    layout.addAt(font, settings.group_badge_text, dimensions, settings.group_badge_position, settings.group_badge_offset_x, settings.group_badge_offset_y, settings.group_badge_color, settings.group_badge_bg_color);
 }
 
 fn addSessionTimer(layout: *Layout, fonts: Fonts, settings: RenderSettings) !void {
     if (!settings.show_session_timer) return;
     const font = try fonts.get(.session_timer, settings.session_timer_font_name, settings.session_timer_font_size, settings.session_timer_font_weight);
-    const text = format.formatSessionDuration(layout.nextTextBuf(), settings.session_minutes);
+    const text = format.formatSessionDuration(layout.nextTextBuffer(), settings.session_minutes);
     layout.addAt(font, text, layout.measure(font, text), settings.session_timer_position, settings.session_timer_offset_x, settings.session_timer_offset_y, settings.session_timer_color, settings.session_timer_bg_color);
 }
 
@@ -666,18 +706,111 @@ fn addPing(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, stat
     layout.addAt(font, text, layout.measure(font, text), ping.position, ping.offset_x, ping.offset_y, ping.color, settings.ping_bg_color);
 }
 
+/// Fills `map` and returns its labels' font; null while the plain system name shows instead.
+fn layoutConnectionMap(map: *layout_mod.Layout, layout: *Layout, fonts: Fonts, settings: RenderSettings) !?win32.HFONT {
+    const connections = settings.connections.slice();
+    if (!settings.show_system_name or connections.len == 0) return null;
+    const font = try fonts.get(.system_name, settings.system_name_font_name, settings.system_name_font_size, settings.system_name_font_weight);
+
+    var systems: [connections_mod.CAPACITY]universe.SystemIndex = undefined;
+    for (connections, 0..) |connection, index| systems[index] = connection.system;
+    const dimensions: TextDimensions = .{
+        .width = @min(@as(usize, @intCast(settings.connection_map_width)), layout.width),
+        .height = @min(@as(usize, @intCast(settings.connection_map_height)), layout.height),
+    };
+    const origin = layout.position(settings.system_name_position, dimensions, settings.system_name_offset_x, settings.system_name_offset_y);
+    const area: layout_mod.Box = .{ .left = origin.x, .top = origin.y, .right = origin.x + @as(i32, @intCast(dimensions.width)), .bottom = origin.y + @as(i32, @intCast(dimensions.height)) };
+    map.buildAround(systems[0..connections.len], area);
+
+    var node_widths: [connections_mod.CAPACITY]i32 = undefined;
+    var line_height: i32 = 0;
+    for (map.nodes[0..map.node_count], 0..) |node, index| {
+        const label = layout.measureRun(font, universe.systemName(node.system));
+        node_widths[index] = @intCast(label.width);
+        line_height = @max(line_height, @as(i32, @intCast(label.height)));
+    }
+    var exit_widths: [layout_mod.MAX_EXITS]i32 = undefined;
+    for (map.exits[0..map.exit_count], 0..) |exit, index| {
+        exit_widths[index] = @intCast(layout.measureRun(font, exitLabel(exit, settings)).width);
+    }
+
+    var connection_order: [connections_mod.CAPACITY]u16 = undefined;
+    var node_order: [connections_mod.CAPACITY]u16 = undefined;
+    var node_order_count: usize = 0;
+    for (settings.connections.labelOrder(&connection_order)) |connection_index| {
+        node_order[node_order_count] = map.nodeOf(connections[connection_index].system) orelse continue;
+        node_order_count += 1;
+    }
+    map.placeLabelsInOrder(node_order[0..node_order_count], &node_widths, &exit_widths, line_height);
+    return font;
+}
+
+fn hasIntel(connection: ?connections_mod.Connection) bool {
+    const marked = connection orelse return false;
+    return marked.intel_freshness_percent > 0;
+}
+
+/// The region it leads to, as on the Map Panel; with intel, the system the report names.
+fn exitLabel(exit: layout_mod.Exit, settings: RenderSettings) []const u8 {
+    return if (hasIntel(settings.connections.find(exit.destination))) universe.systemName(exit.destination) else universe.regionName(exit.region);
+}
+
+fn labelColor(connection: ?connections_mod.Connection, plain_color: u32) u32 {
+    const marked = connection orelse return plain_color;
+    return if (marked.intel_freshness_percent > 0) map_look.intelColor(marked.is_clear) else plain_color;
+}
+
+fn drawIntelHalo(canvas: pixel_buffer.Canvas, x: i32, y: i32, connection: ?connections_mod.Connection) void {
+    const marked = connection orelse return;
+    if (marked.intel_freshness_percent == 0) return;
+    const halo_radius = map_look.intelHaloRadius(marked.intel_shrink_percent, 100) * CONNECTION_HALO_SCALE;
+    map_look.drawIntelHalo(canvas, x, y, halo_radius, marked.is_clear, marked.intel_freshness_percent);
+}
+
+/// Layered like the Map Panel: halos, gates, then systems; no background, so the client shows through.
+fn drawConnectionMap(canvas: pixel_buffer.Canvas, map: *const layout_mod.Layout, settings: RenderSettings) void {
+    const nodes = map.nodes[0..map.node_count];
+    const exits = map.exits[0..map.exit_count];
+    for (nodes) |node| drawIntelHalo(canvas, node.x, node.y, settings.connections.find(node.system));
+    for (exits) |exit| drawIntelHalo(canvas, exit.x, exit.y, settings.connections.find(exit.destination));
+    for (map.edges[0..map.edge_count]) |edge| {
+        const first = nodes[edge.first_index];
+        const second = nodes[edge.second_index];
+        pixel_buffer.drawLine(canvas, first.x, first.y, second.x, second.y, if (edge.is_local) map_look.EDGE_LOCAL else map_look.EDGE_CROSS);
+    }
+    for (exits) |exit| map_look.drawExit(canvas, nodes[exit.from_index], exit, map_look.EXIT);
+    const marker_radius = map_look.markerRadius(0, 0);
+    for (nodes) |node| {
+        pixel_buffer.fillCircle(canvas, node.x, node.y, marker_radius, map_look.securityColor(universe.systemInfo(node.system).security_tenths));
+    }
+    pixel_buffer.drawRing(canvas, nodes[0].x, nodes[0].y, marker_radius + map_look.RING_GAP, map_look.RING_THICKNESS, map_look.FOCUS);
+}
+
+/// In the font already selected into `dc`; the character's own system keeps its colour unless intel names it.
+fn renderConnectionLabels(dc: win32.HDC, map: *const layout_mod.Layout, settings: RenderSettings) void {
+    for (map.nodes[0..map.node_count], 0..) |node, index| {
+        const label = node.label orelse continue;
+        const plain_color = if (index == 0) settings.system_name_color else settings.connection_color;
+        draw.renderText(dc, universe.systemName(node.system), label.left - draw.TEXT_PADDING_X, label.top - draw.TEXT_PADDING_Y, labelColor(settings.connections.find(node.system), plain_color));
+    }
+    for (map.exits[0..map.exit_count]) |exit| {
+        const label = exit.label orelse continue;
+        draw.renderText(dc, exitLabel(exit, settings), label.left - draw.TEXT_PADDING_X, label.top - draw.TEXT_PADDING_Y, labelColor(settings.connections.find(exit.destination), map_look.EXIT));
+    }
+}
+
 /// Not size-cached: the stack changes too often for a cache to hit.
 fn layoutNotifications(layout: *Layout, fonts: Fonts, settings: RenderSettings) !?NotificationBlock {
     if (!settings.show_notifications or settings.notification_line_count == 0) return null;
     const font = try fonts.get(.notification, settings.notifications_font_name, settings.notifications_font_size, settings.notifications_font_weight);
-    var block: NotificationBlock = .{ .font = font, .origin = undefined, .dims = .{ .width = 0, .height = 0 }, .line_heights = undefined };
+    var block: NotificationBlock = .{ .font = font, .origin = undefined, .dimensions = .{ .width = 0, .height = 0 }, .line_heights = undefined };
     for (settings.notification_lines[0..settings.notification_line_count], 0..) |line, i| {
-        const dims = layout.measure(font, line.text);
-        block.line_heights[i] = dims.height;
-        block.dims.width = @max(block.dims.width, dims.width);
-        block.dims.height += dims.height;
+        const dimensions = layout.measure(font, line.text);
+        block.line_heights[i] = dimensions.height;
+        block.dimensions.width = @max(block.dimensions.width, dimensions.width);
+        block.dimensions.height += dimensions.height;
     }
-    block.origin = layout.position(settings.notifications_position, block.dims, settings.notifications_offset_x, settings.notifications_offset_y);
+    block.origin = layout.position(settings.notifications_position, block.dimensions, settings.notifications_offset_x, settings.notifications_offset_y);
     return block;
 }
 
@@ -744,13 +877,19 @@ fn overlaySize(config: *const config_mod.Config, thumbnail: *const ThumbnailWind
 fn notificationLines(out: *[MAX_NOTIFICATION_LINES]NotificationLine, thumbnail: *const ThumbnailWindow, is_focused: bool, base_color: u32) usize {
     var count: usize = 0;
     for (thumbnail.notifications.items()) |entry| {
-        if (entry.suppress_when_focused and is_focused) continue;
+        if (!entry.shows_text or (entry.suppress_when_focused and is_focused)) continue;
         const color = entry.text_color_override orelse base_color;
         var lines = std.mem.splitScalar(u8, entry.text, '\n');
         var line_index: usize = 0;
         while (lines.next()) |line| : (line_index += 1) {
             if (line_index == MAX_LINES_PER_NOTIFICATION) break;
             out[count] = .{ .text = line, .color = color };
+            if (entry.lead) |lead| {
+                if (line_index == 0 and lead.length <= line.len) {
+                    out[count].lead_length = lead.length;
+                    out[count].lead_color = lead.color;
+                }
+            }
             count += 1;
         }
     }

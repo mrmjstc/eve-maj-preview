@@ -52,7 +52,7 @@ pub const HoverZoom = struct {
         }
         const bounds = monitors.nearestMonitorBounds(thumbnail.hwnd).bounds;
         const rect = zoom.zoomedRect(base, interaction.hoverZoomPercent, interaction.hoverZoomAnchor, bounds);
-        const size = window.Size{ .width = win32.rectWidth(rect), .height = win32.rectHeight(rect) };
+        const size: window.Size = .{ .width = win32.rectWidth(rect), .height = win32.rectHeight(rect) };
 
         var thumbnail_id: win32.HTHUMBNAIL = undefined;
         if (win32.DwmRegisterThumbnail(hwnd, thumbnail.source_hwnd, &thumbnail_id) != 0) {
@@ -61,8 +61,8 @@ pub const HoverZoom = struct {
         }
         self.thumbnail_id = thumbnail_id;
 
-        const props = window.thumbnailProps(size, win32.DWM_TNP_VISIBLE | win32.DWM_TNP_RECTDESTINATION | win32.DWM_TNP_SOURCECLIENTAREAONLY);
-        if (win32.DwmUpdateThumbnailProperties(thumbnail_id, &props) != 0) {
+        const properties = window.thumbnailProperties(size, win32.DWM_TNP_VISIBLE | win32.DWM_TNP_RECTDESTINATION | win32.DWM_TNP_SOURCECLIENTAREAONLY);
+        if (win32.DwmUpdateThumbnailProperties(thumbnail_id, &properties) != 0) {
             slog.warn("Failed to size the hover zoom thumbnail for '{s}'", .{thumbnail.character_name});
             self.hide();
             return;

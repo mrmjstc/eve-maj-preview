@@ -4,6 +4,9 @@ const fonts = @import("../platform/fonts.zig");
 /// Kept with the other setting types, though defined where platform/ can use it.
 pub const FontWeight = fonts.FontWeight;
 
+/// Past this, a sent route's address grows long; only the map adds to the list, and it refuses more.
+pub const MAX_AVOIDED_SYSTEMS = 64;
+
 pub const BorderStyle = enum {
     Solid,
     Dashed,
@@ -56,6 +59,13 @@ pub const TextPosition = enum {
     BottomCenter,
     BottomRight,
 };
+
+/// What the Map Panel's markers show; saved into profiles by name.
+pub const MapMetric = enum { Security, ShipKills, NpcKills, Jumps, Sovereignty };
+/// How routes sent from the Map Panel are planned, as the game's autopilot words it; saved into profiles by name.
+pub const RoutePreference = enum { Shorter, Safer, LessSecure };
+/// Which side of the Map Panel the Intel Panel sits on.
+pub const PanelSide = enum { Left, Right };
 
 /// In the order the Display tab offers them.
 pub const ViewMode = enum {

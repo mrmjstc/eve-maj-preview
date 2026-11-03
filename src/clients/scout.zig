@@ -190,8 +190,8 @@ pub const Scout = struct {
             if (window.logged_out_order != 0) try logged_out.append(allocator, window);
         }
         std.sort.pdq(EveWindow, logged_out.items, {}, struct {
-            fn lessThan(_: void, a: EveWindow, b: EveWindow) bool {
-                return a.logged_out_order < b.logged_out_order;
+            fn lessThan(_: void, first: EveWindow, second: EveWindow) bool {
+                return first.logged_out_order < second.logged_out_order;
             }
         }.lessThan);
 

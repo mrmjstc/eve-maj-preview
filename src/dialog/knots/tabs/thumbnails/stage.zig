@@ -283,7 +283,7 @@ fn focusedBorder(context: *ui.Frame, thumbnail: *const config.ThumbnailConfig, s
         .height = @intCast(height),
         .border_width = @intCast(border_width),
         .color = thumbnail.borderColor,
-        .style = @intFromEnum(thumbnail.borderStyle),
+        .style = @backingInt(thumbnail.borderStyle),
     };
     const image_style = try context.arena().create(ui.Style);
     image_style.* = .{
@@ -293,15 +293,17 @@ fn focusedBorder(context: *ui.Frame, thumbnail: *const config.ThumbnailConfig, s
     };
     try context.e(Image{
         .key = .str("knots.stage.border"),
-        .source = .{ .pixels = .{
-            .data = std.mem.sliceAsBytes(pixels),
-            .width = look.width,
-            .height = look.height,
-            // 0xAARRGGBB words sit in memory as B, G, R, A.
-            .format = .bgra8_srgb,
-            .upload_policy = .versioned,
-            .version = std.hash.Wyhash.hash(0, std.mem.asBytes(&look)),
-        } },
+        .source = .{
+            .pixels = .{
+                .data = std.mem.sliceAsBytes(pixels),
+                .width = look.width,
+                .height = look.height,
+                // 0xAARRGGBB words sit in memory as B, G, R, A.
+                .format = .bgra8_srgb,
+                .upload_policy = .versioned,
+                .version = std.hash.Wyhash.hash(0, std.mem.asBytes(&look)),
+            },
+        },
         .style = image_style,
     });
 }

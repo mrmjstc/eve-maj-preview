@@ -925,7 +925,7 @@ pub const roster_badge: Style = .{ .font_size = .xs, .foreground = .{ .color = M
 pub const roster_badge_warning: Style = roster_badge.with(.{ .foreground = .accent });
 /// A heading over a run of roster rows, its text lined up with theirs.
 pub const roster_category: Style = .{ .width = .grow(), .padding = .init(8, 6, 2, 6) };
-/// Before an Event Alerts row: filled while the event is enabled, a hollow ring while it's off.
+/// Before a Game Events row: filled while the event is enabled, a hollow ring while it's off.
 pub const event_dot_on: Style = .{ .width = .fixed(EVENT_DOT_SIZE), .height = .fixed(EVENT_DOT_SIZE), .radius = .{ .fixed = EVENT_DOT_SIZE / 2 }, .background = .accent };
 pub const event_dot_off: Style = event_dot_on.with(.{ .background = .transparent, .border_width = .all(1), .border_color = .{ .color = BORDER_STRONG } });
 pub const EVENT_DOT_SIZE = 6;
@@ -978,8 +978,9 @@ pub const inline_row: Style = .{ .width = .grow(), .direction = .row, .@"align" 
 /// Small buttons that insert a {placeholder}, at the right edge like an aligned row's controls.
 pub const chip_row: Style = .{ .width = .grow(), .direction = .row, .justify = .end, .padding = .xy(ROW_INSET, 0) };
 /// As wide as a custom text box and its clear button, so the chips start under the box.
-pub const chip_box: Style = .{ .width = .fixed(CUSTOM_TEXT_WIDTH + binding_row.gap.? + CONTROL_HEIGHT), .direction = .row, .gap = 4, .wrap = true };
-/// A notification's custom text box: wider than an even split with its short state label.
+pub const chip_box: Style = .{ .width = .fixed(CHIP_BOX_WIDTH), .direction = .row, .gap = 4 };
+pub const CHIP_BOX_WIDTH = CUSTOM_TEXT_WIDTH + binding_row.gap.? + CONTROL_HEIGHT;
+/// A short text box at a field group row's right edge, beside a short label, e.g. a notification's custom text.
 pub const custom_text_input: Style = text_input.with(.{ .width = .fixed(CUSTOM_TEXT_WIDTH) });
 const CUSTOM_TEXT_WIDTH = 190;
 pub const placeholder_chip: Style = plain_button.with(.{ .height = .fixed(22), .padding = .xy(6, 0), .font_size = .xs });
@@ -1131,7 +1132,7 @@ pub const barrage_panel: Style = modal.with(.{ .width = .fixed(BARRAGE_FIELD_WID
 pub const barrage_row: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 12 };
 /// Narrower than text_input_aligned, leaving room for the Join button beside it.
 pub const barrage_code_input: Style = text_input.with(.{ .width = .fixed(150) });
-pub const barrage_actions: Style =.{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 8 };
+pub const barrage_actions: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 8 };
 pub const barrage_name: Style = .{ .font = FONT_SEMIBOLD, .foreground = .{ .color = TEXT } };
 /// Wide enough that the seat buttons beside it line up.
 pub const barrage_seat_label: Style = barrage_name.with(.{ .width = .fixed(140) });
@@ -1319,6 +1320,7 @@ fn keycapsSized(comptime size: KeycapSize) Keycaps {
     };
 }
 
+/// A bad literal fails the build, as it runs at compile time.
 fn color(comptime hex: []const u8) Color {
     return Color.hex(hex) catch unreachable;
 }

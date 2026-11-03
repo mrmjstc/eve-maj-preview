@@ -297,8 +297,8 @@ fn orderCharacters(draft: *Draft, ini: *const Ini) !void {
         try order.appendSlice(draft.arena, group.members);
     }
     std.mem.sort(std.json.Value, characters.array.items, order.items, struct {
-        fn lessThan(names: []const []const u8, a: std.json.Value, b: std.json.Value) bool {
-            return groupRank(names, a) < groupRank(names, b);
+        fn lessThan(names: []const []const u8, first: std.json.Value, second: std.json.Value) bool {
+            return groupRank(names, first) < groupRank(names, second);
         }
     }.lessThan);
 }

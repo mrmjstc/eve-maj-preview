@@ -20,8 +20,10 @@ pub const ActiveNotification = struct {
     suppress_when_focused: bool,
     suppress_when_clicked: bool,
     reveals_thumbnail: bool = false,
+    shows_text: bool = true,
     border_color_override: ?u32 = null,
     text_color_override: ?u32 = null,
+    lead: ?notification.Lead = null,
     show_border: bool = true,
     flash_border: bool = false,
 
@@ -35,6 +37,7 @@ pub const ActiveNotification = struct {
             .suppress_when_focused = type_config.suppress_when_focused,
             .suppress_when_clicked = type_config.suppress_when_clicked,
             .reveals_thumbnail = type_config.show_hidden_thumbnail,
+            .shows_text = type_config.show_text,
             .border_color_override = type_config.border_color,
             .text_color_override = type_config.text_color,
             .show_border = type_config.show_border,
@@ -56,23 +59,31 @@ pub const ActiveNotification = struct {
 /// One thumbnail's on-screen notifications, newest first; owns each entry's text.
 pub const NotificationStack = struct {
     entries: [CAPACITY]ActiveNotification = undefined,
-    len: usize = 0,
+    entry_count: usize = 0,
     /// Bumped on every change, so a render can tell the entries changed without reading text that may since have been freed.
     revision: u32 = 0,
     /// Suppressed attempts don't update this, so throttle_ms anchors to the last one actually displayed.
     last_shown_by_type: std.enums.EnumArray(notification.NotificationType, win32.Ticks) = .initFill(.{}),
 
     pub fn items(self: *const NotificationStack) []const ActiveNotification {
-        return self.entries[0..self.len];
+        return self.entries[0..self.entry_count];
     }
 
     pub fn isEmpty(self: *const NotificationStack) bool {
-        return self.len == 0;
+        return self.entry_count == 0;
     }
 
     /// Governs the thumbnail's Alert border; older entries only add text lines.
     pub fn newest(self: *const NotificationStack) ?ActiveNotification {
-        return if (self.len > 0) self.entries[0] else null;
+        return if (self.entry_count > 0) self.entries[0] else null;
+    }
+
+    /// Can be older than newest(), whose border still leads.
+    pub fn newestWithText(self: *const NotificationStack) ?ActiveNotification {
+        for (self.items()) |entry| {
+            if (entry.shows_text) return entry;
+        }
+        return null;
     }
 
     pub fn revealsThumbnail(self: *const NotificationStack) bool {
@@ -94,17 +105,17 @@ pub const NotificationStack = struct {
 
     /// Inserts at the front, replacing any entry of the same type (bump-to-top) and evicting the oldest once full.
     pub fn push(self: *NotificationStack, allocator: std.mem.Allocator, entry: ActiveNotification) void {
-        for (self.entries[0..self.len], 0..) |existing, i| {
+        for (self.entries[0..self.entry_count], 0..) |existing, i| {
             if (existing.notification_type == entry.notification_type) {
                 self.removeAt(allocator, i);
                 break;
             }
         }
-        if (self.len == CAPACITY) self.removeAt(allocator, CAPACITY - 1);
+        if (self.entry_count == CAPACITY) self.removeAt(allocator, CAPACITY - 1);
 
-        @memmove(self.entries[1 .. self.len + 1], self.entries[0..self.len]);
+        @memmove(self.entries[1 .. self.entry_count + 1], self.entries[0..self.entry_count]);
         self.entries[0] = entry;
-        self.len += 1;
+        self.entry_count += 1;
         self.revision +%= 1;
     }
 
@@ -147,22 +158,22 @@ pub const NotificationStack = struct {
     /// Returns whether anything was removed.
     pub fn clear(self: *NotificationStack, allocator: std.mem.Allocator) bool {
         self.deinit(allocator);
-        const had_any = self.len > 0;
-        self.len = 0;
+        const had_any = self.entry_count > 0;
+        self.entry_count = 0;
         if (had_any) self.revision +%= 1;
         return had_any;
     }
 
     fn removeAt(self: *NotificationStack, allocator: std.mem.Allocator, index: usize) void {
         allocator.free(self.entries[index].text);
-        @memmove(self.entries[index .. self.len - 1], self.entries[index + 1 .. self.len]);
-        self.len -= 1;
+        @memmove(self.entries[index .. self.entry_count - 1], self.entries[index + 1 .. self.entry_count]);
+        self.entry_count -= 1;
     }
 
     /// `context` has `fn shouldRemove(context, ActiveNotification) bool`.
     fn removeIf(self: *NotificationStack, allocator: std.mem.Allocator, context: anytype) bool {
         var write_index: usize = 0;
-        for (0..self.len) |read_index| {
+        for (0..self.entry_count) |read_index| {
             const entry = self.entries[read_index];
             if (context.shouldRemove(entry)) {
                 allocator.free(entry.text);
@@ -171,8 +182,8 @@ pub const NotificationStack = struct {
             self.entries[write_index] = entry;
             write_index += 1;
         }
-        const removed_any = write_index < self.len;
-        self.len = write_index;
+        const removed_any = write_index < self.entry_count;
+        self.entry_count = write_index;
         if (removed_any) self.revision +%= 1;
         return removed_any;
     }
@@ -213,7 +224,7 @@ test "the thumbnail stops being revealed once the revealing entry expires" {
     notifications.push(testing.allocator, try testEntry(.FleetFollow, true, 500));
     try testing.expect(notifications.expire(testing.allocator, .{ .ms = 1500 }));
     try testing.expect(!notifications.revealsThumbnail());
-    try testing.expectEqual(1, notifications.len);
+    try testing.expectEqual(1, notifications.entry_count);
 }
 
 test "dismissing log-driven entries keeps the user's own actions" {
@@ -223,9 +234,21 @@ test "dismissing log-driven entries keeps the user's own actions" {
     notifications.push(testing.allocator, try testEntry(.ProfileSwitch, false, 0));
     notifications.push(testing.allocator, try testEntry(.TakingDamage, false, 0));
     try testing.expect(notifications.dismissLogDriven(testing.allocator));
-    try testing.expectEqual(1, notifications.len);
+    try testing.expectEqual(1, notifications.entry_count);
     try testing.expectEqual(notification.NotificationType.ProfileSwitch, notifications.entries[0].notification_type);
     try testing.expect(!notifications.dismissLogDriven(testing.allocator));
+}
+
+test "newestWithText skips entries without text, which newest still returns" {
+    var notifications: NotificationStack = .{};
+    defer notifications.deinit(testing.allocator);
+    try testing.expect(notifications.newestWithText() == null);
+    notifications.push(testing.allocator, try testEntry(.FleetInvite, false, 0));
+    var silent = try testEntry(.FleetFollow, false, 0);
+    silent.shows_text = false;
+    notifications.push(testing.allocator, silent);
+    try testing.expectEqual(notification.NotificationType.FleetFollow, notifications.newest().?.notification_type);
+    try testing.expectEqual(notification.NotificationType.FleetInvite, notifications.newestWithText().?.notification_type);
 }
 
 test "pushing a type already shown replaces its entry" {
@@ -233,7 +256,7 @@ test "pushing a type already shown replaces its entry" {
     defer notifications.deinit(testing.allocator);
     notifications.push(testing.allocator, try testEntry(.FleetInvite, true, 0));
     notifications.push(testing.allocator, try testEntry(.FleetInvite, false, 0));
-    try testing.expectEqual(1, notifications.len);
+    try testing.expectEqual(1, notifications.entry_count);
     try testing.expect(!notifications.revealsThumbnail());
 }
 
@@ -244,6 +267,6 @@ test "a full stack evicts its oldest entry" {
     notifications.push(testing.allocator, try testEntry(.FleetFollow, false, 0));
     notifications.push(testing.allocator, try testEntry(.FleetRegroup, false, 0));
     notifications.push(testing.allocator, try testEntry(.FleetDisband, false, 0));
-    try testing.expectEqual(CAPACITY, notifications.len);
+    try testing.expectEqual(CAPACITY, notifications.entry_count);
     try testing.expect(!notifications.revealsThumbnail());
 }

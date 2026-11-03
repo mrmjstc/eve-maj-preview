@@ -41,17 +41,17 @@ pub const WebSocket = struct {
             return error.SetTimeoutsFailed;
         }
 
-        const host_w = try std.unicode.utf8ToUtf16LeAllocZ(allocator, host);
-        defer allocator.free(host_w);
-        const path_w = try std.unicode.utf8ToUtf16LeAllocZ(allocator, path);
-        defer allocator.free(path_w);
+        const wide_host = try std.unicode.utf8ToUtf16LeAllocZ(allocator, host);
+        defer allocator.free(wide_host);
+        const wide_path = try std.unicode.utf8ToUtf16LeAllocZ(allocator, path);
+        defer allocator.free(wide_path);
 
-        const connection = win32.WinHttpConnect(session, host_w, win32.INTERNET_DEFAULT_HTTPS_PORT, 0) orelse {
+        const connection = win32.WinHttpConnect(session, wide_host, win32.INTERNET_DEFAULT_HTTPS_PORT, 0) orelse {
             slog.warn("Failed to connect to '{s}': error {d}", .{ host, win32.GetLastError() });
             return error.ConnectFailed;
         };
         errdefer _ = win32.WinHttpCloseHandle(connection);
-        const request = win32.WinHttpOpenRequest(connection, std.unicode.utf8ToUtf16LeStringLiteral("GET"), path_w, null, null, null, win32.WINHTTP_FLAG_SECURE) orelse {
+        const request = win32.WinHttpOpenRequest(connection, std.unicode.utf8ToUtf16LeStringLiteral("GET"), wide_path, null, null, null, win32.WINHTTP_FLAG_SECURE) orelse {
             slog.warn("Failed to open a WebSocket request to '{s}': error {d}", .{ host, win32.GetLastError() });
             return error.OpenRequestFailed;
         };

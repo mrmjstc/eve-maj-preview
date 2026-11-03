@@ -3,12 +3,12 @@ const std = @import("std");
 
 /// How much of `data` is whole characters: drops an odd trailing byte, and a trailing high surrogate whose pair hasn't been written yet.
 pub fn completeLen(data: []const u8) usize {
-    var len = data.len & ~@as(usize, 1);
-    if (len >= 2) {
-        const last = @as(u16, data[len - 2]) | (@as(u16, data[len - 1]) << 8);
-        if (std.unicode.utf16IsHighSurrogate(last)) len -= 2;
+    var length = data.len & ~@as(usize, 1);
+    if (length >= 2) {
+        const last = @as(u16, data[length - 2]) | (@as(u16, data[length - 1]) << 8);
+        if (std.unicode.utf16IsHighSurrogate(last)) length -= 2;
     }
-    return len;
+    return length;
 }
 
 /// Null for no whole unit; `out` needs 3 bytes per UTF-16 unit, `units` one per byte pair, and an unpaired surrogate becomes U+FFFD rather than losing the rest.
