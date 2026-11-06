@@ -80,6 +80,10 @@ test {
     _ = @import("panels/popup_look.zig");
     _ = @import("platform/virtual_keys.zig");
     _ = @import("protocol/url.zig");
+    _ = @import("sim/journal.zig");
+    _ = @import("sim/lines.zig");
+    _ = @import("sim/scenarios.zig");
+    _ = @import("sim/schedule.zig");
     _ = @import("thumbnail/activity_stats.zig");
     _ = @import("thumbnail/draw.zig");
     _ = @import("thumbnail/look.zig");

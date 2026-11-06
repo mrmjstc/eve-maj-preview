@@ -90,6 +90,27 @@ pub fn build(b: *std.Build) void {
     const config_step = b.step("config", "Run the app with the configuration window open");
     config_step.dependOn(&config_run.step);
 
+    // Stands in for EVE clients, so the app can be tested without the game.
+    const sim = b.addExecutable(.{
+        .name = "eve-maj-sim",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/sim.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    sim.subsystem = .windows;
+    sim.stack_size = 16 * 1024 * 1024;
+    for ([_][]const u8{ "c", "user32", "gdi32", "dwmapi", "shell32", "ole32", "advapi32" }) |library| sim.root_module.linkSystemLibrary(library, .{});
+    sim.root_module.addWin32ResourceFile(.{ .file = b.path("app.rc") });
+    sim.root_module.addImport("knots", knots.module("knots"));
+    sim.root_module.addImport("ui", knots.module("ui"));
+    b.installArtifact(sim);
+    const sim_run = b.addRunArtifact(sim);
+    sim_run.step.dependOn(b.getInstallStep());
+    const sim_step = b.step("sim", "Build and run the client simulator");
+    sim_step.dependOn(&sim_run.step);
+
     // ZLS runs this on save; a separate, uninstalled artifact lets Zig skip code generation.
     const exe_check = b.addExecutable(.{
         .name = "eve-maj-preview",
