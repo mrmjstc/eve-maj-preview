@@ -318,6 +318,18 @@ Immediate-mode (knots on Vulkan), main thread, nested message loop so the tick a
 - `platform/` depends on nothing app-specific. Win32 declarations live in `platform/win32.zig`, which never logs.
 - Pure logic is split into its own file (marked "no I/O" in its header) and tested.
 
+## Client simulator (`sim.zig`, `sim/`)
+
+A second exe, `eve-maj-sim` (`zig build sim`), that stands in for EVE clients so the app can be tested without the game. It shares the dialog's `style.zig` and `widgets.zig` but nothing else of the app.
+
+- `sim.zig`: entry point. Runs in `%TEMP%\EveMajSimulator`. With `--client <name>` it becomes one client instead.
+- `client_window.zig`: a client. One `trinityWindow` per process, titled `EVE - <name>`; the controller posts `WM_SIM_LOGIN`/`WM_SIM_LOGOUT` to change the title.
+- `fleet.zig`: the controller. Copies itself to `exefile.exe` (scout's filter needs that name), starts and ends client processes, and writes their chatlogs, gamelogs and channel logs.
+- `lines.zig`: every log name, header and line it writes (pure, tested against `chatlog/lines.zig` and `gamelog_events.zig`).
+- `schedule.zig`: timed steps for bursts, routes and guided tests, run from a 100 ms timer so the window never blocks (pure, tested).
+- `scenarios.zig`: the guided tests. `journal.zig`: the activity feed. `view.zig`, `window.zig`: the knots window.
+- `win32_sim.zig`: Win32 declarations only the simulator uses, an allowed exception to keeping them in `platform/win32.zig`.
+
 ## Other modules
 
 | Module | Role |
