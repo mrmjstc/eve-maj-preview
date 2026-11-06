@@ -6,10 +6,9 @@ const panel_window = @import("../platform/panel_window.zig");
 const config_mod = @import("../config.zig");
 const types = @import("../config/types.zig");
 const list_look = @import("list_look.zig");
-const app = @import("../app.zig");
 const window = @import("../thumbnail/window.zig");
-const thumbnail_input = @import("../control/thumbnail_input.zig");
-const drag = @import("drag.zig");
+const header_panel = @import("header_panel.zig");
+const panel_host = @import("panel_host.zig");
 const template = @import("../notifications/template.zig");
 const pixel_buffer = @import("../util/pixel_buffer.zig");
 
@@ -21,6 +20,16 @@ const TEXT_BUFFER_SIZE: usize = 256;
 const RIGHT_SLOT_MIN_WIDTH: i32 = 70;
 
 const LIST_WINDOW_CLASS = "EVE_LIST_CLASS";
+
+const Class = header_panel.HeaderPanel(ListWindow, LIST_WINDOW_CLASS);
+
+/// thumbnail_input's, passed in by App, so rows click like thumbnails without panels/ importing input code.
+pub const RowInput = struct {
+    press: *const fn (hwnd: win32.HWND, source_hwnd: win32.HWND) void,
+    release: *const fn (hwnd: win32.HWND) void,
+    /// False when Windows should set the class cursor.
+    apply_hover_cursor: *const fn () bool,
+};
 
 const RowText = struct {
     name_font: win32.HFONT,
@@ -35,20 +44,23 @@ pub const ListWindow = struct {
     store: *config_mod.ProfileStore,
     /// Borrows store.live.
     config: *const config_mod.Config,
+    /// For drag snapping to the thumbnails.
+    host: panel_host.Host,
+    row_input: RowInput,
     /// Indices into the thumbnails render() was given, one per row in display order; hidden characters get none.
     rows: std.ArrayList(usize) = .empty,
     /// Each row's client, for clicks between renders.
     row_source_hwnds: std.ArrayList(win32.HWND) = .empty,
 
-    pub fn init(allocator: std.mem.Allocator, store: *config_mod.ProfileStore, instance: win32.HINSTANCE) !ListWindow {
-        const config = &store.live;
-        try registerWindowClass(instance);
+    pub fn init(context: panel_host.Context, host: panel_host.Host, row_input: RowInput) !ListWindow {
+        const config = &context.store.live;
+        try Class.register(context.instance);
         const x = config.display.startX;
         const y = config.display.startY;
-        const sizes = list_look.metrics(&config.display);
-        const panel = try PanelWindow.init(allocator, instance, LIST_WINDOW_CLASS, "EVE Client List", .{ .left = x, .top = y, .right = x + sizes.column_width, .bottom = y + sizes.header_height });
+        const sizes = list_look.metrics(&config.listView);
+        const panel = try PanelWindow.init(context.allocator, context.instance, LIST_WINDOW_CLASS, "EVE Client List", .{ .left = x, .top = y, .right = x + sizes.column_width, .bottom = y + sizes.header_height }, config.listView.alwaysOnTop);
         win32.setClickThroughStyle(panel.hwnd, config.interaction.clickThrough);
-        return .{ .panel = panel, .store = store, .config = config };
+        return .{ .panel = panel, .store = context.store, .config = config, .host = host, .row_input = row_input };
     }
 
     pub fn deinit(self: *ListWindow) void {
@@ -65,20 +77,47 @@ pub const ListWindow = struct {
 
     /// From the last render; null over the header or an empty cell.
     fn rowSourceAt(self: *const ListWindow, x: i32, y: i32) ?win32.HWND {
-        const sizes = list_look.metrics(&self.config.display);
+        const sizes = list_look.metrics(&self.config.listView);
         if (y < sizes.header_height) return null;
         const row: usize = @intCast(@divTrunc(y - sizes.header_height, sizes.row_height));
-        const columns: i32 = list_look.effectiveColumns(self.config.display.listViewColumns, self.row_source_hwnds.items.len);
+        const columns: i32 = list_look.effectiveColumns(self.config.listView.columns, self.row_source_hwnds.items.len);
         const column: usize = @intCast(std.math.clamp(@divTrunc(x, sizes.column_width), 0, columns - 1));
         const index: usize = row * @as(usize, @intCast(columns)) + column;
         if (index >= self.row_source_hwnds.items.len) return null;
         return self.row_source_hwnds.items[index];
     }
 
-    fn saveWindowPosition(self: *const ListWindow) void {
-        if (!self.config.display.rememberListViewPosition) return;
+    pub fn headerHeight(self: *const ListWindow) i32 {
+        return list_look.metrics(&self.config.listView).header_height;
+    }
+
+    pub fn saveWindowPosition(self: *const ListWindow) void {
+        if (!self.config.listView.rememberPosition) return;
         const top_left = self.panel.topLeft() orelse return;
         self.store.update(.{ .display = .{ .startX = top_left.x, .startY = top_left.y } });
+    }
+
+    /// Null for a message left to Windows.
+    pub fn handleMessage(self: *ListWindow, hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) ?win32.LRESULT {
+        _ = wParam;
+        switch (msg) {
+            win32.WM_LBUTTONDOWN => {
+                const source_hwnd = self.rowSourceAt(win32.lparamX(lParam), win32.lparamY(lParam)) orelse return 0;
+                self.row_input.press(hwnd, source_hwnd);
+                return 0;
+            },
+            win32.WM_LBUTTONUP => {
+                self.row_input.release(hwnd);
+                return 0;
+            },
+            win32.WM_SETCURSOR => {
+                // Rows only: the header is the drag handle.
+                const hit_test: win32.LRESULT = @as(u16, @truncate(@as(usize, @bitCast(lParam))));
+                if (hit_test == win32.HTCLIENT and self.row_input.apply_hover_cursor()) return 1;
+                return null;
+            },
+            else => return null,
+        }
     }
 
     /// The shown active colour, or the character's own (or unique) active border colour.
@@ -119,7 +158,7 @@ pub const ListWindow = struct {
         };
 
         // Rows start in tracked order.
-        switch (self.config.display.listViewOrder) {
+        switch (self.config.listView.order) {
             .Tracked => {},
             .Alphabetical => std.sort.pdq(usize, self.rows.items, AlphabeticalContext{ .thumbnails = thumbnails }, AlphabeticalContext.lessThan),
             .ConfiguredCharacters => {
@@ -136,38 +175,38 @@ pub const ListWindow = struct {
 
     /// A hash of everything that affects the rendered pixels, to skip the redraw when nothing changed.
     fn computeRenderSignature(self: *const ListWindow, thumbnails: []const ThumbnailWindow, active_source_hwnd: ?win32.HWND) u64 {
-        const display = &self.config.display;
+        const list_settings = &self.config.listView;
         var hasher = std.hash.Wyhash.init(0);
         hasher.update(std.mem.asBytes(&self.rows.items.len));
-        hasher.update(std.mem.asBytes(&display.listViewColumns));
-        hasher.update(std.mem.asBytes(&display.listViewColumnWidth));
-        hasher.update(std.mem.asBytes(&display.listViewOrder));
-        hasher.update(std.mem.asBytes(&display.listViewOpacity));
-        hasher.update(display.listViewFontName);
-        hasher.update(std.mem.asBytes(&display.listViewFontSize));
-        hasher.update(std.mem.asBytes(&display.listViewFontWeight));
-        hasher.update(std.mem.asBytes(&display.listViewShowSystemName));
-        hasher.update(std.mem.asBytes(&display.listViewIndicatorStyle));
-        hasher.update(std.mem.asBytes(&display.listViewShowNotifications));
-        hasher.update(std.mem.asBytes(&display.listViewNotificationColor));
-        hasher.update(std.mem.asBytes(&display.listViewShowIncomingDps));
-        hasher.update(std.mem.asBytes(&display.listViewShowIncomingPrefix));
-        hasher.update(std.mem.asBytes(&display.listViewIncomingDpsColor));
-        hasher.update(std.mem.asBytes(&display.listViewShowOutgoingDps));
-        hasher.update(std.mem.asBytes(&display.listViewShowOutgoingPrefix));
-        hasher.update(std.mem.asBytes(&display.listViewOutgoingDpsColor));
-        hasher.update(std.mem.asBytes(&display.listViewShowMiningRate));
-        hasher.update(std.mem.asBytes(&display.listViewShowMiningPrefix));
-        hasher.update(std.mem.asBytes(&display.listViewMiningRateColor));
-        hasher.update(std.mem.asBytes(&display.listViewShowBountyRate));
-        hasher.update(std.mem.asBytes(&display.listViewShowBountyPrefix));
-        hasher.update(std.mem.asBytes(&display.listViewBountyRateColor));
+        hasher.update(std.mem.asBytes(&list_settings.columns));
+        hasher.update(std.mem.asBytes(&list_settings.columnWidth));
+        hasher.update(std.mem.asBytes(&list_settings.order));
+        hasher.update(std.mem.asBytes(&list_settings.opacity));
+        hasher.update(list_settings.fontName);
+        hasher.update(std.mem.asBytes(&list_settings.fontSize));
+        hasher.update(std.mem.asBytes(&list_settings.fontWeight));
+        hasher.update(std.mem.asBytes(&list_settings.showSystemName));
+        hasher.update(std.mem.asBytes(&list_settings.indicatorStyle));
+        hasher.update(std.mem.asBytes(&list_settings.showNotifications));
+        hasher.update(std.mem.asBytes(&list_settings.notificationColor));
+        hasher.update(std.mem.asBytes(&list_settings.showIncomingDps));
+        hasher.update(std.mem.asBytes(&list_settings.showIncomingPrefix));
+        hasher.update(std.mem.asBytes(&list_settings.incomingDpsColor));
+        hasher.update(std.mem.asBytes(&list_settings.showOutgoingDps));
+        hasher.update(std.mem.asBytes(&list_settings.showOutgoingPrefix));
+        hasher.update(std.mem.asBytes(&list_settings.outgoingDpsColor));
+        hasher.update(std.mem.asBytes(&list_settings.showMiningRate));
+        hasher.update(std.mem.asBytes(&list_settings.showMiningPrefix));
+        hasher.update(std.mem.asBytes(&list_settings.miningRateColor));
+        hasher.update(std.mem.asBytes(&list_settings.showBountyRate));
+        hasher.update(std.mem.asBytes(&list_settings.showBountyPrefix));
+        hasher.update(std.mem.asBytes(&list_settings.bountyRateColor));
         hasher.update(std.mem.asBytes(&self.config.combat.enabled));
         hasher.update(std.mem.asBytes(&self.config.mining.enabled));
         hasher.update(std.mem.asBytes(&self.config.bounty.enabled));
         hasher.update(std.mem.asBytes(&self.config.bounty.isk_rate_unit));
         // Rows are hashed before they're sorted, so the configured order has to be hashed itself.
-        if (display.listViewOrder == .ConfiguredCharacters) {
+        if (list_settings.order == .ConfiguredCharacters) {
             for (self.config.characters.items) |character| hashString(&hasher, character.name);
         }
 
@@ -207,10 +246,10 @@ pub const ListWindow = struct {
     /// In writing order; empty when the list shows none.
     fn statReadings(self: *const ListWindow, thumbnail: *const ThumbnailWindow, out: *[list_look.STAT_COUNT]list_look.StatReading) []const list_look.StatReading {
         const config = self.config;
-        const settings: list_look.StatSettings = .{ .display = &config.display, .combat = &config.combat, .mining = &config.mining, .bounty = &config.bounty };
+        const settings: list_look.StatSettings = .{ .list_settings = &config.listView, .combat = &config.combat, .mining = &config.mining, .bounty = &config.bounty };
         const stats = &thumbnail.stats;
         const bounty_period_seconds = config.bounty.isk_rate_unit.seconds();
-        var count: usize = 0;
+        var reading_count: usize = 0;
         for (std.enums.values(list_look.Stat)) |stat| {
             if (!list_look.showsStat(settings, stat)) continue;
             const value: ?f32 = switch (stat) {
@@ -219,17 +258,18 @@ pub const ListWindow = struct {
                 .mining_rate => if (stats.showsMining()) (if (stats.mining_rate) |rate| rate * 60.0 else null) else continue,
                 .bounty_rate => if (stats.showsBounty()) (if (stats.bounty_isk_rate) |rate| rate * bounty_period_seconds else null) else continue,
             };
-            out[count] = .{ .stat = stat, .value = value, .has_prefix = list_look.hasPrefix(&config.display, stat) };
-            count += 1;
+            out[reading_count] = .{ .stat = stat, .value = value, .has_prefix = list_look.hasPrefix(&config.listView, stat) };
+            reading_count += 1;
         }
-        return out[0..count];
+        return out[0..reading_count];
     }
 
     /// Called every tick; redraws only when the render signature changed.
     pub fn render(self: *ListWindow, thumbnails: []const ThumbnailWindow, active_source_hwnd: ?win32.HWND) !void {
-        const display = &self.config.display;
-        try self.panel.ensureFont("List View", display.listViewFontName, display.listViewFontSize, display.listViewFontWeight);
-        try self.panel.ensureSmallFont("List View small", display.listViewFontName, list_look.smallFontSize(display.listViewFontSize), display.listViewFontWeight);
+        const list_settings = &self.config.listView;
+        self.panel.followTopmost(list_settings.alwaysOnTop);
+        try self.panel.ensureFont("List View", list_settings.fontName, list_settings.fontSize, list_settings.fontWeight);
+        try self.panel.ensureSmallFont("List View small", list_settings.fontName, list_look.smallFontSize(list_settings.fontSize), list_settings.fontWeight);
 
         self.rows.clearRetainingCapacity();
         var has_visible_row = false;
@@ -249,10 +289,10 @@ pub const ListWindow = struct {
 
         try self.sortRows(thumbnails);
 
-        const count: i32 = @intCast(self.rows.items.len);
-        const columns = list_look.effectiveColumns(display.listViewColumns, self.rows.items.len);
-        const sizes = list_look.metrics(display);
-        const rows_per_column: i32 = @divTrunc(count + columns - 1, columns);
+        const row_count: i32 = @intCast(self.rows.items.len);
+        const columns = list_look.effectiveColumns(list_settings.columns, self.rows.items.len);
+        const sizes = list_look.metrics(list_settings);
+        const rows_per_column: i32 = @divTrunc(row_count + columns - 1, columns);
         const bitmap = try self.panel.beginFrame(columns * sizes.column_width, sizes.header_height + rows_per_column * sizes.row_height + list_look.BOTTOM_PADDING);
         const width: usize = bitmap.width;
         const height: usize = bitmap.height;
@@ -283,12 +323,12 @@ pub const ListWindow = struct {
         pixel_buffer.fixTextAlpha(bitmap.canvas());
         pixel_buffer.drawRoundedFrame(bitmap.canvas(), list_look.CORNER_RADIUS, list_look.BORDER);
 
-        self.panel.present(display.listViewOpacity, signature);
+        self.panel.present(list_settings.opacity, signature);
     }
 
     /// `row_index` is in display order.
     fn drawRow(self: *const ListWindow, bitmap: *const gdi_overlay.OverlayBitmap, thumbnail: *const ThumbnailWindow, row_index: usize, columns: i32, sizes: list_look.Metrics, row_text: ?RowText, active_source_hwnd: ?win32.HWND) void {
-        const display = &self.config.display;
+        const list_settings = &self.config.listView;
         const column_count: usize = @intCast(columns);
         const row: i32 = @intCast(row_index / column_count);
         const column: i32 = @intCast(row_index % column_count);
@@ -318,7 +358,7 @@ pub const ListWindow = struct {
             list_look.BADGE_MINIMIZED
         else
             list_look.BADGE_INACTIVE;
-        const indicator_style = display.listViewIndicatorStyle;
+        const indicator_style = list_settings.indicatorStyle;
         drawIndicator(bitmap, indicator_style, column_left, row_top, sizes.row_height, badge_color);
 
         const text = row_text orelse return;
@@ -348,75 +388,29 @@ pub const ListWindow = struct {
 
         // One slot only: the newest notification with text wins, then stats, then exclusion, then the system.
         var notification_buffer: [TEXT_BUFFER_SIZE]u8 = undefined;
-        const newest = if (display.listViewShowNotifications) thumbnail.notifications.newestWithText() else null;
+        const newest = if (list_settings.showNotifications) thumbnail.notifications.newestWithText() else null;
         if (newest) |notification| {
             const line = template.oneLine(notification.text, &notification_buffer);
-            const line_color = notification.text_color_override orelse display.listViewNotificationColor;
+            const line_color = notification.text_color_override orelse list_settings.notificationColor;
             if (notification.lead) |lead| {
                 drawTextWithLeadRight(dc, line, lead.length, lead.color, right_x, small_y, line_color, text_left);
             } else {
                 drawTextRight(dc, line, right_x, small_y, line_color, text_left);
             }
         } else if (readings.len > 0) {
-            drawStatsRight(dc, display, readings, right_x, small_y, text_left);
+            drawStatsRight(dc, list_settings, readings, right_x, small_y, text_left);
         } else if (is_excluded) {
             drawTextRight(dc, "Excluded", right_x, small_y, list_look.MUTED, text_left);
-        } else if (display.listViewShowSystemName and thumbnail.system_name.len > 0) {
+        } else if (list_settings.showSystemName and thumbnail.system_name.len > 0) {
             drawTextRight(dc, thumbnail.system_name, right_x, small_y, thumbnail.cached_system_color, text_left);
         }
     }
 };
 
-var g_is_class_registered: bool = false;
-
 /// The newest notification's border colour, which tints an alerting row.
 fn alertColor(thumbnail: *const ThumbnailWindow) u32 {
     const notification = thumbnail.notifications.newest() orelse return list_look.BADGE_ALERT;
     return notification.border_color_override orelse list_look.BADGE_ALERT;
-}
-
-fn registerWindowClass(instance: win32.HINSTANCE) !void {
-    if (g_is_class_registered) return;
-    try gdi_overlay.registerWindowClass(instance, listWindowProc, LIST_WINDOW_CLASS, null);
-    g_is_class_registered = true;
-}
-
-fn listWindow() ?*ListWindow {
-    const running = app.g_app orelse return null;
-    return if (running.list_window) |*list_window| list_window else null;
-}
-
-fn listWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
-    // The thumbnail set only holds the list once its window exists, so creation's messages go without a header.
-    const header_height = if (listWindow()) |list_window| list_look.metrics(&list_window.config.display).header_height else 0;
-    if (drag.handleMessage(app.currentThumbnailSet(), hwnd, msg, lParam, header_height)) |result| return result;
-    switch (msg) {
-        win32.WM_ENTERSIZEMOVE => {
-            drag.beginPanelDrag(hwnd);
-            return 0;
-        },
-        win32.WM_EXITSIZEMOVE => {
-            if (listWindow()) |list_window| list_window.saveWindowPosition();
-            return 0;
-        },
-        win32.WM_LBUTTONDOWN => {
-            const list_window = listWindow() orelse return 0;
-            const source_hwnd = list_window.rowSourceAt(win32.lparamX(lParam), win32.lparamY(lParam)) orelse return 0;
-            thumbnail_input.press(hwnd, source_hwnd);
-            return 0;
-        },
-        win32.WM_LBUTTONUP => {
-            thumbnail_input.release(hwnd);
-            return 0;
-        },
-        win32.WM_SETCURSOR => {
-            // Rows only: the header is the drag handle.
-            const hit_test: win32.LRESULT = @as(u16, @truncate(@as(usize, @bitCast(lParam))));
-            if (hit_test == win32.HTCLIENT and thumbnail_input.applyHoverCursor()) return 1;
-            return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
-        },
-        else => return win32.DefWindowProcA(hwnd, msg, wParam, lParam),
-    }
 }
 
 fn drawIndicator(bitmap: *const gdi_overlay.OverlayBitmap, style: types.ListIndicatorStyle, column_left: i32, row_top: i32, row_height: i32, argb: u32) void {
@@ -449,12 +443,12 @@ fn drawDot(canvas: pixel_buffer.Canvas, center_x: i32, center_y: i32, radius: i3
     }
 }
 
-/// Ignores `color`'s alpha byte.
-fn drawText(dc: win32.HDC, text: []const u8, x: i32, y: i32, color: u32) void {
+/// Ignores `argb`'s alpha byte.
+fn drawText(dc: win32.HDC, text: []const u8, x: i32, y: i32, argb: u32) void {
     _ = win32.SetBkMode(dc, win32.TRANSPARENT);
-    const terminated_text = gdi_overlay.toBufZ(TEXT_BUFFER_SIZE, text);
+    const terminated_text = gdi_overlay.terminatedCopy(TEXT_BUFFER_SIZE, text);
     const length = @min(text.len, TEXT_BUFFER_SIZE - 1);
-    _ = win32.SetTextColor(dc, gdi_overlay.toColorRef(color & 0x00FF_FFFF));
+    _ = win32.SetTextColor(dc, gdi_overlay.toColorRef(argb & 0x00FF_FFFF));
     _ = win32.TextOutA(dc, x, y, &terminated_text, @intCast(length));
 }
 
@@ -467,22 +461,22 @@ fn measureTextWidth(dc: win32.HDC, text: []const u8) usize {
 }
 
 /// Right edge at `right_x`; skipped rather than drawn left of `min_x`, where it would overlap the name.
-fn drawTextRight(dc: win32.HDC, text: []const u8, right_x: i32, y: i32, rgb: u32, min_x: i32) void {
-    drawTextWithLeadRight(dc, text, 0, rgb, right_x, y, rgb, min_x);
+fn drawTextRight(dc: win32.HDC, text: []const u8, right_x: i32, y: i32, argb: u32, min_x: i32) void {
+    drawTextWithLeadRight(dc, text, 0, argb, right_x, y, argb, min_x);
 }
 
 /// Like drawTextRight, with the first `lead_length` bytes in `lead_color`.
-fn drawTextWithLeadRight(dc: win32.HDC, text: []const u8, lead_length: usize, lead_color: u32, right_x: i32, y: i32, rgb: u32, min_x: i32) void {
+fn drawTextWithLeadRight(dc: win32.HDC, text: []const u8, lead_length: usize, lead_color: u32, right_x: i32, y: i32, argb: u32, min_x: i32) void {
     const length = @min(text.len, TEXT_BUFFER_SIZE - 1);
     const x = right_x - @as(i32, @intCast(measureTextWidth(dc, text[0..length])));
     if (x < min_x) return;
     const lead_end = @min(lead_length, length);
     drawText(dc, text[0..lead_end], x, y, lead_color);
-    drawText(dc, text[lead_end..length], x + @as(i32, @intCast(measureTextWidth(dc, text[0..lead_end]))), y, rgb);
+    drawText(dc, text[lead_end..length], x + @as(i32, @intCast(measureTextWidth(dc, text[0..lead_end]))), y, argb);
 }
 
 /// Each reading in its own colour, a space apart; skipped like drawTextRight past `min_x`.
-fn drawStatsRight(dc: win32.HDC, display: *const config_mod.DisplayConfig, readings: []const list_look.StatReading, right_x: i32, y: i32, min_x: i32) void {
+fn drawStatsRight(dc: win32.HDC, list_settings: *const config_mod.ListViewConfig, readings: []const list_look.StatReading, right_x: i32, y: i32, min_x: i32) void {
     var texts: [list_look.STAT_COUNT][list_look.STAT_TEXT_MAX]u8 = undefined;
     var lengths: [list_look.STAT_COUNT]usize = undefined;
     var widths: [list_look.STAT_COUNT]i32 = undefined;
@@ -499,15 +493,15 @@ fn drawStatsRight(dc: win32.HDC, display: *const config_mod.DisplayConfig, readi
     var x = right_x - total;
     if (x < min_x) return;
     for (readings, 0..) |reading, index| {
-        drawText(dc, texts[index][0..lengths[index]], x, y, list_look.statColor(display, reading.stat));
+        drawText(dc, texts[index][0..lengths[index]], x, y, list_look.statColor(list_settings, reading.stat));
         x += widths[index] + gap;
     }
 }
 
-fn drawTextTruncated(dc: win32.HDC, text: []const u8, x: i32, y: i32, rgb: u32, max_width: usize) void {
+fn drawTextTruncated(dc: win32.HDC, text: []const u8, x: i32, y: i32, argb: u32, max_width: usize) void {
     var out: [TEXT_BUFFER_SIZE:0]u8 = undefined;
     const truncated = gdi_overlay.truncateTextToFit(TEXT_BUFFER_SIZE, dc, &out, text, max_width);
-    drawText(dc, truncated, x, y, rgb);
+    drawText(dc, truncated, x, y, argb);
 }
 
 /// Length-prefixed, so swapping "Bob" and "BobBob" can't leave the hashed byte stream unchanged.

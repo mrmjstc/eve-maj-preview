@@ -73,6 +73,7 @@ pub const NotificationType = enum {
     AutopilotApproaching,
     JumpRange,
     AggressionCantJump,
+    CloakedCantWarp,
     WarpBubble,
     ConduitJump,
     JumpCloning,
@@ -131,7 +132,7 @@ pub fn notificationCategory(notification_type: NotificationType) NotificationCat
         .FleetInvite, .FleetFollow, .FleetRegroup, .FleetDisband => .Fleet,
         .MiningCompression, .AsteroidDepleted, .MiningIdle, .MiningStopped, .CargoFull, .CrystalBroke => .Mining,
         .TakingDamage, .WarpScrambled, .WarpDisrupted, .Decloak, .ObservatoryDecloak, .CloakFailed, .BombLauncherEmpty, .SelfDestruct, .WarpBubble => .Combat,
-        .Docking, .AutopilotReached, .AutopilotApproaching, .JumpRange, .AggressionCantJump, .ConduitJump, .JumpCloning, .SystemChange, .TravelLeftBehind => .Navigation,
+        .Docking, .AutopilotReached, .AutopilotApproaching, .JumpRange, .AggressionCantJump, .CloakedCantWarp, .ConduitJump, .JumpCloning, .SystemChange, .TravelLeftBehind => .Navigation,
         .ChatIntel, .ChatKeyword => .Chat,
         .ConversationInvite, .GroupMembership, .CycleExclusion, .HotkeySuspend, .ProfileSwitch, .AutoMinimizeToggle, .SavedPositionMove, .Generic => .General,
     };
@@ -148,7 +149,7 @@ pub fn systemLeadLength(notification: Notification, shown_text: []const u8) ?usi
 pub fn isUserAction(notification_type: NotificationType) bool {
     return switch (notification_type) {
         .GroupMembership, .CycleExclusion, .HotkeySuspend, .ProfileSwitch, .AutoMinimizeToggle, .SavedPositionMove => true,
-        .FleetInvite, .FleetFollow, .FleetRegroup, .FleetDisband, .ConversationInvite, .MiningCompression, .AsteroidDepleted, .MiningIdle, .MiningStopped, .CargoFull, .TakingDamage, .WarpScrambled, .WarpDisrupted, .Decloak, .ObservatoryDecloak, .CloakFailed, .CrystalBroke, .BombLauncherEmpty, .SelfDestruct, .Docking, .AutopilotReached, .AutopilotApproaching, .JumpRange, .AggressionCantJump, .WarpBubble, .ConduitJump, .JumpCloning, .SystemChange, .TravelLeftBehind, .ChatIntel, .ChatKeyword, .Generic => false,
+        .FleetInvite, .FleetFollow, .FleetRegroup, .FleetDisband, .ConversationInvite, .MiningCompression, .AsteroidDepleted, .MiningIdle, .MiningStopped, .CargoFull, .TakingDamage, .WarpScrambled, .WarpDisrupted, .Decloak, .ObservatoryDecloak, .CloakFailed, .CrystalBroke, .BombLauncherEmpty, .SelfDestruct, .Docking, .AutopilotReached, .AutopilotApproaching, .JumpRange, .AggressionCantJump, .CloakedCantWarp, .WarpBubble, .ConduitJump, .JumpCloning, .SystemChange, .TravelLeftBehind, .ChatIntel, .ChatKeyword, .Generic => false,
     };
 }
 
@@ -170,7 +171,7 @@ pub fn placeholders(notification_type: NotificationType) []const Placeholder {
         .ProfileSwitch => &PROFILE,
         .Generic => &MESSAGE,
         .HotkeySuspend, .AutoMinimizeToggle => &.{},
-        .FleetDisband, .MiningIdle, .MiningStopped, .TakingDamage, .ObservatoryDecloak, .CloakFailed, .SelfDestruct, .Docking, .AutopilotReached, .AutopilotApproaching, .JumpRange, .AggressionCantJump, .JumpCloning, .CycleExclusion, .SavedPositionMove => &CHARACTER_ONLY,
+        .FleetDisband, .MiningIdle, .MiningStopped, .TakingDamage, .ObservatoryDecloak, .CloakFailed, .SelfDestruct, .Docking, .AutopilotReached, .AutopilotApproaching, .JumpRange, .AggressionCantJump, .CloakedCantWarp, .JumpCloning, .CycleExclusion, .SavedPositionMove => &CHARACTER_ONLY,
     };
 }
 
@@ -182,7 +183,7 @@ pub fn altState(notification_type: NotificationType) ?State {
         .AutoMinimizeToggle => .off,
         .GroupMembership => .removed,
         .CycleExclusion => .included,
-        .FleetInvite, .FleetFollow, .FleetRegroup, .FleetDisband, .ConversationInvite, .MiningCompression, .AsteroidDepleted, .MiningIdle, .MiningStopped, .CargoFull, .TakingDamage, .WarpScrambled, .WarpDisrupted, .Decloak, .ObservatoryDecloak, .CloakFailed, .CrystalBroke, .BombLauncherEmpty, .Docking, .AutopilotReached, .AutopilotApproaching, .JumpRange, .AggressionCantJump, .WarpBubble, .ConduitJump, .JumpCloning, .SystemChange, .TravelLeftBehind, .ChatIntel, .ChatKeyword, .ProfileSwitch, .SavedPositionMove, .Generic => null,
+        .FleetInvite, .FleetFollow, .FleetRegroup, .FleetDisband, .ConversationInvite, .MiningCompression, .AsteroidDepleted, .MiningIdle, .MiningStopped, .CargoFull, .TakingDamage, .WarpScrambled, .WarpDisrupted, .Decloak, .ObservatoryDecloak, .CloakFailed, .CrystalBroke, .BombLauncherEmpty, .Docking, .AutopilotReached, .AutopilotApproaching, .JumpRange, .AggressionCantJump, .CloakedCantWarp, .WarpBubble, .ConduitJump, .JumpCloning, .SystemChange, .TravelLeftBehind, .ChatIntel, .ChatKeyword, .ProfileSwitch, .SavedPositionMove, .Generic => null,
     };
 }
 
@@ -209,7 +210,7 @@ pub fn sample(notification_type: NotificationType) Notification {
         .WarpScrambled, .WarpDisrupted => .{ .notification_type = notification_type, .source = "Hostile Pilot" },
         .Decloak => .{ .notification_type = notification_type, .source = "Guristas Pith Ship" },
         .WarpBubble => .{ .notification_type = notification_type, .source = "Warp Disrupt Probe" },
-        .FleetDisband, .MiningIdle, .MiningStopped, .TakingDamage, .ObservatoryDecloak, .CloakFailed, .Docking, .AutopilotReached, .AutopilotApproaching, .JumpRange, .AggressionCantJump, .JumpCloning, .SavedPositionMove => .{ .notification_type = notification_type },
+        .FleetDisband, .MiningIdle, .MiningStopped, .TakingDamage, .ObservatoryDecloak, .CloakFailed, .Docking, .AutopilotReached, .AutopilotApproaching, .JumpRange, .AggressionCantJump, .CloakedCantWarp, .JumpCloning, .SavedPositionMove => .{ .notification_type = notification_type },
     };
 }
 
@@ -265,6 +266,7 @@ pub fn defaultText(notification: Notification, buf: []u8) []const u8 {
         .AutopilotApproaching => "Approaching",
         .JumpRange => "Can't Jump: Range",
         .AggressionCantJump => "Can't Jump: Aggression",
+        .CloakedCantWarp => "Can't Warp: Cloaked",
         .ConduitJump => withField(buf, "Taking Conduit to {s}", notification.target, "Conduit Jump"),
         .SystemChange => withField(buf, "Jumped to {s}", notification.target, "Jumped"),
         .TravelLeftBehind => withField(buf, "Left behind in {s}", notification.source, "Left behind"),

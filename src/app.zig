@@ -4,6 +4,7 @@ const win32 = @import("platform/win32.zig");
 const config = @import("config.zig");
 const scout_mod = @import("clients/scout.zig");
 const exclusions_mod = @import("clients/exclusions.zig");
+const activation = @import("control/activation.zig");
 const auto_minimize = @import("control/auto_minimize.zig");
 const focus_mod = @import("control/focus.zig");
 const restart_plan = @import("control/restart_plan.zig");
@@ -11,17 +12,18 @@ const thumbnail_input = @import("control/thumbnail_input.zig");
 const set = @import("thumbnail/set.zig");
 const hotkeys = @import("hotkeys/manager.zig");
 const hook_bindings = @import("hotkeys/hook_bindings.zig");
+const launch = @import("hotkeys/launch.zig");
+const profile_switch = @import("hotkeys/profile_switch.zig");
 const center = @import("notifications/center.zig");
 const list_view = @import("panels/list_view.zig");
 const map_panel_mod = @import("panels/map_panel.zig");
+const panel_host = @import("panels/panel_host.zig");
 const panel_look = @import("panels/panel_look.zig");
 const chatlog = @import("chatlog.zig");
 const character_ids_mod = @import("chatlog/character_ids.zig");
 const runtime = @import("activity/runtime.zig");
 const travel_left_behind = @import("travel/left_behind.zig");
 const tray = @import("tray.zig");
-const knots_host = @import("dialog/knots/host.zig");
-const session = @import("dialog/knots/session.zig");
 const schedule = @import("util/schedule.zig");
 const log = @import("log.zig");
 
@@ -38,9 +40,22 @@ const FORCED_SCAN_INTERVAL_MS: u64 = 1000;
 const IDLE_TICK_INTERVAL_MS: win32.UINT = FORCED_SCAN_INTERVAL_MS;
 const TRAVEL_CHECK_INTERVAL_MS: u64 = 2000;
 const PROFILE_NAME_BUFFER_SIZE = 256;
+/// What the panels ask of App, which they can't import.
+pub const PANEL_HOST: panel_host.Host = .{ .thumbnail_set = currentThumbnailSet, .run = runPanelRequest };
 
 /// How far a live profile edit moves thumbnails; `spaces` reflows only active spaces.
 pub const LiveLayout = enum { none, spaces, all };
+
+/// What App asks of the config dialog, which sits above it and so can't be imported; the dialog fills it in as it starts.
+pub const DialogHooks = struct {
+    /// Draws a frame soon, for a change made outside one.
+    redraw: *const fn () void,
+    is_open: *const fn () bool,
+    /// Returns whether the exit waits for the dialog to close, which then posts the quit itself.
+    close_for_exit: *const fn () bool,
+    /// The global settings as the dialog is editing them, else the saved ones.
+    live_global: *const fn () *const config.GlobalConfig,
+};
 
 /// What restartSubsystems' earlier steps hand to its later ones.
 const Restart = struct {
@@ -54,21 +69,29 @@ const Restart = struct {
     eve_windows: []const scout_mod.EveWindow = &.{},
 };
 
-/// main.zig fills the fields in dependency order and tears them down in reverse; main thread only.
+/// What main.zig loads from disk before building App.
+pub const Loaded = struct {
+    global_settings: config.GlobalConfig,
+    character_ids: CharacterIds,
+    store: config.ProfileStore,
+};
+
+/// main.zig starts its subsystems in dependency order, and deinit tears them down; main thread only.
 pub const App = struct {
     allocator: std.mem.Allocator,
     io: std.Io,
-    store: config.ProfileStore = undefined,
-    global_settings: config.GlobalConfig = undefined,
-    character_ids: CharacterIds = undefined,
-    scout: scout_mod.Scout = undefined,
+    store: config.ProfileStore,
+    global_settings: config.GlobalConfig,
+    character_ids: CharacterIds,
+    /// Its WinEvent hooks find it once main.zig calls listenForEvents, after which App mustn't move.
+    scout: scout_mod.Scout,
     /// Kept across a Save or profile switch.
     exclusions: exclusions_mod.Exclusions,
     /// Kept across a thumbnail set rebuild.
     notifications: center.NotificationCenter = .{},
     /// Kept across a thumbnail set rebuild.
-    map_panel: map_panel_mod.MapPanel = .{},
-    instance: win32.HINSTANCE = undefined,
+    map_panel: map_panel_mod.MapPanel,
+    instance: win32.HINSTANCE,
     /// Kept across a thumbnail set rebuild, and reset when another profile is loaded.
     auto_minimizer: auto_minimize.AutoMinimizer,
     focus: focus_mod.FocusTracker = .{},
@@ -84,6 +107,8 @@ pub const App = struct {
     /// The hidden window whose WM_TIMER drives the tick; others post to it.
     timer_hwnd: ?win32.HWND = null,
     tray_icon: ?tray.TrayIcon = null,
+    /// Null until the dialog has started.
+    dialog: ?DialogHooks = null,
     pending_profile_buf: [PROFILE_NAME_BUFFER_SIZE]u8 = undefined,
     /// Borrows from pending_profile_buf.
     pending_profile: ?[]const u8 = null,
@@ -91,14 +116,49 @@ pub const App = struct {
     tick_interval_ms: win32.UINT = 0,
     last_travel_check: win32.Ticks = .{},
 
-    pub fn init(allocator: std.mem.Allocator, io: std.Io) App {
+    /// Takes ownership of `loaded`, which deinit frees.
+    pub fn init(allocator: std.mem.Allocator, io: std.Io, instance: win32.HINSTANCE, loaded: Loaded) App {
         return .{
             .allocator = allocator,
             .io = io,
+            .instance = instance,
+            .store = loaded.store,
+            .global_settings = loaded.global_settings,
+            .character_ids = loaded.character_ids,
             .exclusions = .init(allocator),
             .auto_minimizer = .init(allocator),
             .trackers = .init(allocator, io),
+            .scout = .init(allocator),
+            .map_panel = .{ .host = PANEL_HOST },
         };
+    }
+
+    /// Each part goes before what it borrows; safe after a startup that failed partway, and only once background threads have finished.
+    pub fn deinit(self: *App) void {
+        if (self.timer_hwnd) |timer_hwnd| _ = win32.KillTimer(timer_hwnd, TICK_TIMER_ID);
+        self.destroyHotkeyManager();
+        if (self.tray_icon) |*icon| icon.deinit();
+        self.tray_icon = null;
+        // Before the timer window, which its hide timer runs on.
+        self.focus.deinit(self.timer_hwnd);
+        if (self.timer_hwnd) |timer_hwnd| _ = win32.DestroyWindow(timer_hwnd);
+        self.timer_hwnd = null;
+        // Before the trackers, which its worker thread writes to.
+        self.destroyChatlogMonitor();
+        self.trackers.deinit();
+        self.destroyThumbnailSet();
+        self.auto_minimizer.deinit();
+        self.exclusions.deinit();
+        self.scout.deinit();
+        self.map_panel.deinit(self.allocator);
+        self.notifications.deinit(self.allocator);
+        self.store.deinit();
+        self.character_ids.deinit();
+        self.global_settings.deinit();
+    }
+
+    pub fn panelContext(self: *App) panel_host.Context {
+        return .{ .allocator = self.allocator, .store = &self.store, .instance = self.instance };
     }
 
     /// Deferred to the next message-loop turn, since the switch would tear down the caller; copies `profile_name`.
@@ -144,8 +204,8 @@ pub const App = struct {
 
     /// After a dialog edit to the live profile.
     pub fn onLiveProfileEdited(self: *App, layout: LiveLayout) void {
-        self.map_panel.sync(self.allocator, &self.store, self.instance);
-        self.notifications.sync(self.allocator, &self.store, self.instance);
+        self.map_panel.sync(self.panelContext());
+        self.notifications.sync(self.panelContext());
         const thumbnail_set = self.thumbnail_set orelse return;
         // A view mode builds different windows, so it needs a new thumbnail set rather than a restyle.
         if (thumbnail_set.view_mode != self.store.live.display.viewMode) {
@@ -176,11 +236,13 @@ pub const App = struct {
         if (should_force_scan) self.last_forced_scan = tick_start;
         if (self.tray_icon) |*icon| icon.retryIfMissing(tick_start);
 
-        var scout_result = self.scout.update(should_force_scan);
+        var scout_result = self.scout.update(should_force_scan, self.store.saved.windowFilters.items);
         defer scout_result.deinit(self.allocator);
         self.clearLoggedOutExclusions(scout_result.name_changes.items);
         // The Characters tab marks who's logged in, which only a login, logout or closed client changes.
-        if (scout_result.name_changes.items.len > 0 or scout_result.closed_windows.items.len > 0) knots_host.redraw();
+        if (scout_result.name_changes.items.len > 0 or scout_result.closed_windows.items.len > 0) {
+            if (self.dialog) |dialog| dialog.redraw();
+        }
         if (self.hotkey_manager) |manager| manager.syncFocusFilter(scout_result.windows);
         hook_bindings.logFailedPosts();
 
@@ -209,7 +271,7 @@ pub const App = struct {
         }
         // After the chatlog's alerts are delivered, so the panel lists them this tick.
         const presence = self.panelPresence();
-        self.map_panel.update(self.allocator, &self.store.live, presence, self.thumbnail_set);
+        self.map_panel.update(self.allocator, self.io, &self.store.live, presence, self.thumbnail_set);
         self.notifications.update(&self.store.live, presence);
 
         self.trackers.tick(&self.store.live, scout_result.windows, tick_start, self.tick_interval_ms, self.thumbnail_set);
@@ -229,15 +291,14 @@ pub const App = struct {
         }
     }
 
-    /// Windows may end the process as soon as WM_ENDSESSION returns, before any teardown, so what only teardown writes is written now.
-    pub fn saveForSessionEnd(self: *const App) void {
-        slog.info("Windows session ending, saving state", .{});
+    /// Writes what only teardown would, for an exit that skips it: Windows ending the session, or a background thread outlasting the wait at exit.
+    pub fn saveBeforeAbruptExit(self: *const App) void {
         if (self.thumbnail_set) |thumbnail_set| thumbnail_set.auto_colors.flush();
         log.flush();
     }
 
     /// Temporary; not saved to the profile.
-    pub fn toggleAutoMinimize(self: *App) void {
+    fn toggleAutoMinimize(self: *App) void {
         const thumbnail_set = self.thumbnail_set orelse {
             slog.err("Failed to toggle auto-minimize: the thumbnail set isn't ready", .{});
             return;
@@ -246,29 +307,29 @@ pub const App = struct {
         thumbnail_set.notifyAll(.{ .notification_type = .AutoMinimizeToggle, .state = if (is_enabled) .on else .off });
     }
 
-    pub fn toggleDragging(self: *App) void {
+    fn toggleDragging(self: *App) void {
         const is_enabled = !self.store.live.interaction.enableDragging;
         self.store.update(.{ .interaction = .{ .enableDragging = is_enabled } });
         slog.info("Thumbnail dragging toggled: {s}", .{if (is_enabled) "enabled" else "disabled"});
     }
 
-    pub fn toggleTravelMode(self: *App) void {
+    fn toggleTravelMode(self: *App) void {
         const is_enabled = !self.store.live.travel.enabled;
         self.store.update(.{ .travel = .{ .enabled = is_enabled } });
         slog.info("Travel Mode toggled: {s}", .{if (is_enabled) "enabled" else "disabled"});
     }
 
-    pub fn toggleNotificationHistory(self: *App) void {
-        self.notifications.panel.toggle(self.allocator, &self.store, self.instance, scout_mod.anyCharacterLoggedIn(self.scout.getWindows()));
+    fn toggleNotificationHistory(self: *App) void {
+        self.notifications.panel.toggle(self.panelContext(), scout_mod.anyCharacterLoggedIn(self.scout.getWindows()));
     }
 
-    pub fn toggleMapPanel(self: *App) void {
-        self.map_panel.toggle(self.allocator, &self.store, self.instance, scout_mod.anyCharacterLoggedIn(self.scout.getWindows()));
+    fn toggleMapPanel(self: *App) void {
+        self.map_panel.toggle(self.panelContext(), scout_mod.anyCharacterLoggedIn(self.scout.getWindows()));
     }
 
-    pub fn toggleIntelPanel(self: *App) void {
+    fn toggleIntelPanel(self: *App) void {
         const presence = self.panelPresence();
-        self.notifications.intel_panel.toggle(self.allocator, &self.store, self.instance, presence, self.map_panel.isVisible(&self.store.live, presence.any_character_logged_in));
+        self.notifications.intel_panel.toggle(self.panelContext(), presence, self.map_panel.isVisible(&self.store.live, presence.any_character_logged_in));
     }
 
     pub fn isIntelPanelVisible(self: *const App) bool {
@@ -317,8 +378,8 @@ pub const App = struct {
             if (sighting.is_pinned) {
                 if (!sighting.is_clear) {
                     self.map_panel.pins.add(sighting.system, sighting.message, now_ms);
-                } else if (self.store.live.display.mapPanelIntelShowClear) {
-                    self.map_panel.pins.markClear(sighting.system, sighting.message, now_ms);
+                } else if (self.store.live.mapPanel.intelShowClear) {
+                    self.map_panel.pins.markClear(sighting.system, sighting.message, self.store.live.mapPanel.intelShrinkMs(), now_ms);
                 }
             }
             if (sighting.is_message_first) {
@@ -349,7 +410,8 @@ pub const App = struct {
     }
 
     pub fn tickIntervalFor(self: *const App, window_count: usize) win32.UINT {
-        if (window_count == 0 and !knots_host.isOpen()) return IDLE_TICK_INTERVAL_MS;
+        const is_dialog_open = if (self.dialog) |dialog| dialog.is_open() else false;
+        if (window_count == 0 and !is_dialog_open) return IDLE_TICK_INTERVAL_MS;
         return self.store.saved.timer.scanIntervalMs;
     }
 
@@ -368,13 +430,25 @@ pub const App = struct {
             .destroy_hook = thumbnail_input.windowDestroyProc,
         });
         self.thumbnail_set = new_set;
-        if (new_set.view_mode.showsClientList()) {
-            self.list_window = list_view.ListWindow.init(self.allocator, &self.store, self.instance) catch |err| blk: {
-                slog.err("Failed to create list window: {}", .{err});
-                break :blk null;
-            };
-        }
+        if (new_set.view_mode.showsClientList()) self.createListWindow();
         return new_set;
+    }
+
+    fn createListWindow(self: *App) void {
+        self.list_window = list_view.ListWindow.init(self.panelContext(), PANEL_HOST, .{
+            .press = thumbnail_input.press,
+            .release = thumbnail_input.release,
+            .apply_hover_cursor = thumbnail_input.applyHoverCursor,
+        }) catch |err| {
+            slog.err("Failed to create list window: {}", .{err});
+            return;
+        };
+        const list_window = &self.list_window.?;
+        list_window.panel.attachOwner(list_window) catch |err| {
+            slog.err("Failed to link the list window to its list: {}", .{err});
+            list_window.deinit();
+            self.list_window = null;
+        };
     }
 
     pub fn destroyThumbnailSet(self: *App) void {
@@ -408,15 +482,52 @@ pub const App = struct {
 
     /// A hotkey registration failure is logged, not fatal.
     pub fn createHotkeyManager(self: *App, timer_hwnd: win32.HWND) !void {
+        const dialog = self.dialog orelse return error.MissingDialogHooks;
         const manager = try self.allocator.create(HotkeyManager);
         errdefer self.allocator.destroy(manager);
-        manager.* = try HotkeyManager.init(self.allocator, self, session.liveGlobal);
+        manager.* = try HotkeyManager.init(self.allocator, .{
+            .store = &self.store,
+            .global_settings = &self.global_settings,
+            .live_global = dialog.live_global,
+            .scout = &self.scout,
+            .exclusions = &self.exclusions,
+            .notified_queue = &self.notifications.notified_queue,
+            .timer_hwnd = timer_hwnd,
+        });
         self.hotkey_manager = manager;
 
         manager.registerHotkeys(timer_hwnd) catch |err| {
             slog.warn("Failed to register hotkeys, continuing without hotkey support: {}", .{err});
         };
         manager.syncFocusFilter(self.scout.getWindows());
+    }
+
+    /// What a hotkey or one of its actions left for App, run once the manager has returned.
+    pub fn runHotkeyOutcome(self: *App, outcome: hotkeys.Outcome) void {
+        switch (outcome) {
+            .none => {},
+            .activate => |hwnd| activation.activate(self, hwnd),
+            .switch_profile => |profile_name| self.requestProfileSwitch(profile_name),
+            .app => |command| switch (command) {
+                .next_profile => self.cycleProfile(true),
+                .previous_profile => self.cycleProfile(false),
+                .toggle_auto_minimize => self.toggleAutoMinimize(),
+                .toggle_dragging => self.toggleDragging(),
+                .toggle_travel_mode => self.toggleTravelMode(),
+                .toggle_notification_history => self.toggleNotificationHistory(),
+                .clear_notification_history => self.notifications.clearHistories(),
+                .toggle_map_panel => self.toggleMapPanel(),
+                .toggle_intel_panel => self.toggleIntelPanel(),
+                .return_to_last_app => launch.returnToLastApp(&self.focus.last_non_eve_foreground),
+                .exit => requestExit(),
+            },
+        }
+    }
+
+    fn cycleProfile(self: *App, is_forward: bool) void {
+        const target_profile = profile_switch.cycleTarget(self.allocator, self.io, self.store.saved.profile_name, is_forward) orelse return;
+        defer self.allocator.free(target_profile);
+        self.requestProfileSwitch(target_profile);
     }
 
     pub fn destroyHotkeyManager(self: *App) void {
@@ -440,10 +551,10 @@ pub const App = struct {
 
     /// Applies the new profile's window filters; a failed scan keeps the tracked windows.
     fn rescanWindows(self: *App) []const scout_mod.EveWindow {
-        self.scout.scanForEveWindows() catch |err| {
+        self.scout.scanForEveWindows(self.store.saved.windowFilters.items) catch |err| {
             slog.err("Failed to scan for EVE windows: {}", .{err});
         };
-        self.scout.pruneNonMatchingWindows();
+        self.scout.pruneNonMatchingWindows(self.store.saved.windowFilters.items);
         return self.scout.getWindows();
     }
 
@@ -547,8 +658,8 @@ pub const App = struct {
                 restart.pending.* = null;
                 // Not dumped as at startup: it stalled switches with the debug console open.
                 slog.info("Loaded new config: {s}", .{self.store.saved.profile_name});
-                self.map_panel.sync(self.allocator, &self.store, self.instance);
-                self.notifications.sync(self.allocator, &self.store, self.instance);
+                self.map_panel.sync(self.panelContext());
+                self.notifications.sync(self.panelContext());
             },
             .record_last_used_profile => self.global_settings.updateLastUsed(self.io, self.store.saved.profile_name) catch |err| {
                 slog.warn("Failed to update global settings: {}", .{err});
@@ -605,9 +716,13 @@ pub fn currentThumbnailSet() ?*ThumbnailSet {
     return app.thumbnail_set;
 }
 
-/// Quits the message loop, after the knots configuration window has closed if it's open.
+/// Quits the message loop, after the configuration window has closed if it's open.
 pub fn requestExit() void {
-    if (knots_host.closeForExit()) return;
+    if (g_app) |app| {
+        if (app.dialog) |dialog| {
+            if (dialog.close_for_exit()) return;
+        }
+    }
     win32.PostQuitMessage(0);
 }
 
@@ -624,4 +739,19 @@ pub fn startChatlogWorker(monitor: *chatlog.ChatlogMonitor) void {
     monitor.startWorkerThread() catch |err| {
         slog.warn("Failed to start chatlog worker thread: {}", .{err});
     };
+}
+
+/// For panel windows, which reach App only through PANEL_HOST.
+fn runPanelRequest(request: panel_host.Request) void {
+    const app = g_app orelse return;
+    switch (request) {
+        .activate => |hwnd| activation.activate(app, hwnd),
+        .show_system => |system| app.map_panel.showSystem(system, app.thumbnail_set),
+        .suspend_hotkeys => if (app.hotkey_manager) |manager| manager.typingSuspendHotkeys(),
+        .resume_hotkeys => {
+            const manager = app.hotkey_manager orelse return;
+            const timer_hwnd = app.timer_hwnd orelse return;
+            manager.typingResumeHotkeys(timer_hwnd);
+        },
+    }
 }

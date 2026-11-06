@@ -5,7 +5,6 @@ const utf8 = @import("../util/utf8.zig");
 
 const SystemIndex = universe.SystemIndex;
 
-pub const LIFETIME_MS: u64 = 15 * std.time.ms_per_min;
 const CAPACITY = 64;
 const MESSAGE_MAX = 96;
 
@@ -23,14 +22,14 @@ pub const Pin = struct {
         return self.message_buffer[0..self.message_length];
     }
 
-    pub fn isLive(self: *const Pin, now_ms: u64) bool {
-        return self.seen_ms != 0 and now_ms -| self.seen_ms < LIFETIME_MS;
+    pub fn isLive(self: *const Pin, lifetime_ms: u64, now_ms: u64) bool {
+        return self.seen_ms != 0 and now_ms -| self.seen_ms < lifetime_ms;
     }
 
     /// 100 when fresh, falling to 0 as it ages out.
-    pub fn freshnessPercent(self: *const Pin, now_ms: u64) u64 {
-        if (!self.isLive(now_ms)) return 0;
-        return 100 - (now_ms -| self.seen_ms) * 100 / LIFETIME_MS;
+    pub fn freshnessPercent(self: *const Pin, lifetime_ms: u64, now_ms: u64) u64 {
+        if (!self.isLive(lifetime_ms, now_ms)) return 0;
+        return 100 - (now_ms -| self.seen_ms) * 100 / lifetime_ms;
     }
 
     fn setMessage(self: *Pin, message_text: []const u8) void {
@@ -64,9 +63,9 @@ pub const IntelPins = struct {
     }
 
     /// Restarts the pin, so it shrinks again in its new colour; adds no pin, or quiet channels would fill the map with clear systems.
-    pub fn markClear(self: *IntelPins, system: SystemIndex, message: []const u8, now_ms: u64) void {
+    pub fn markClear(self: *IntelPins, system: SystemIndex, message: []const u8, lifetime_ms: u64, now_ms: u64) void {
         for (&self.pins) |*pin| {
-            if (pin.system != system or !pin.isLive(now_ms)) continue;
+            if (pin.system != system or !pin.isLive(lifetime_ms, now_ms)) continue;
             pin.seen_ms = now_ms;
             pin.is_clear = true;
             pin.setMessage(message);
@@ -76,9 +75,9 @@ pub const IntelPins = struct {
     }
 
     /// Searched linearly: there are few, and it's only asked per system shown.
-    pub fn find(self: *const IntelPins, system: SystemIndex, now_ms: u64) ?*const Pin {
+    pub fn find(self: *const IntelPins, system: SystemIndex, lifetime_ms: u64, now_ms: u64) ?*const Pin {
         for (&self.pins) |*pin| {
-            if (pin.system == system and pin.isLive(now_ms)) return pin;
+            if (pin.system == system and pin.isLive(lifetime_ms, now_ms)) return pin;
         }
         return null;
     }
@@ -86,22 +85,24 @@ pub const IntelPins = struct {
 
 const testing = std.testing;
 
+const TEST_LIFETIME_MS: u64 = 60_000;
+
 test "a pin lasts its lifetime and fades" {
     var pins: IntelPins = .{};
     pins.add(7, "hostile", 1000);
-    const pin = pins.find(7, 1000).?;
+    const pin = pins.find(7, TEST_LIFETIME_MS, 1000).?;
     try testing.expectEqualStrings("hostile", pin.message());
-    try testing.expectEqual(@as(u64, 100), pin.freshnessPercent(1000));
-    try testing.expectEqual(@as(u64, 50), pin.freshnessPercent(1000 + LIFETIME_MS / 2));
-    try testing.expect(pins.find(7, 1000 + LIFETIME_MS) == null);
-    try testing.expect(pins.find(8, 1000) == null);
+    try testing.expectEqual(@as(u64, 100), pin.freshnessPercent(TEST_LIFETIME_MS, 1000));
+    try testing.expectEqual(@as(u64, 50), pin.freshnessPercent(TEST_LIFETIME_MS, 1000 + TEST_LIFETIME_MS / 2));
+    try testing.expect(pins.find(7, TEST_LIFETIME_MS, 1000 + TEST_LIFETIME_MS) == null);
+    try testing.expect(pins.find(8, TEST_LIFETIME_MS, 1000) == null);
 }
 
 test "a repeat refreshes its pin rather than taking another" {
     var pins: IntelPins = .{};
     pins.add(7, "first", 1000);
     pins.add(7, "second", 2000);
-    try testing.expectEqualStrings("second", pins.find(7, 2000).?.message());
+    try testing.expectEqualStrings("second", pins.find(7, TEST_LIFETIME_MS, 2000).?.message());
     var used_count: usize = 0;
     for (pins.pins) |pin| {
         if (pin.seen_ms != 0) used_count += 1;
@@ -113,31 +114,31 @@ test "a full list drops its oldest pin" {
     var pins: IntelPins = .{};
     for (0..CAPACITY) |index| pins.add(@intCast(index), "x", 1000 + index);
     pins.add(CAPACITY, "newest", 5000);
-    try testing.expect(pins.find(0, 5000) == null);
-    try testing.expect(pins.find(1, 5000) != null);
-    try testing.expect(pins.find(CAPACITY, 5000) != null);
+    try testing.expect(pins.find(0, TEST_LIFETIME_MS, 5000) == null);
+    try testing.expect(pins.find(1, TEST_LIFETIME_MS, 5000) != null);
+    try testing.expect(pins.find(CAPACITY, TEST_LIFETIME_MS, 5000) != null);
 }
 
 test "a clear report restarts a live pin, and a new sighting undoes it" {
     var pins: IntelPins = .{};
     pins.add(7, "hostile", 1000);
-    pins.markClear(7, "clr", 3000);
-    const pin = pins.find(7, 3000).?;
+    pins.markClear(7, "clr", TEST_LIFETIME_MS, 3000);
+    const pin = pins.find(7, TEST_LIFETIME_MS, 3000).?;
     try testing.expect(pin.is_clear);
     try testing.expectEqualStrings("clr", pin.message());
     try testing.expectEqual(@as(u64, 3000), pin.seen_ms);
 
     pins.add(7, "back again", 4000);
-    try testing.expect(!pins.find(7, 4000).?.is_clear);
+    try testing.expect(!pins.find(7, TEST_LIFETIME_MS, 4000).?.is_clear);
 }
 
 test "a clear report adds no pin of its own" {
     var pins: IntelPins = .{};
-    pins.markClear(7, "clr", 1000);
-    try testing.expect(pins.find(7, 1000) == null);
+    pins.markClear(7, "clr", TEST_LIFETIME_MS, 1000);
+    try testing.expect(pins.find(7, TEST_LIFETIME_MS, 1000) == null);
     pins.add(8, "hostile", 1000);
-    pins.markClear(8, "clr", 1000 + LIFETIME_MS);
-    try testing.expect(pins.find(8, 1000 + LIFETIME_MS) == null);
+    pins.markClear(8, "clr", TEST_LIFETIME_MS, 1000 + TEST_LIFETIME_MS);
+    try testing.expect(pins.find(8, TEST_LIFETIME_MS, 1000 + TEST_LIFETIME_MS) == null);
 }
 
 test "a long message is cut without splitting a character" {
@@ -145,5 +146,5 @@ test "a long message is cut without splitting a character" {
     const padding: [MESSAGE_MAX - 1]u8 = @splat('x');
     const message = padding ++ "\u{0416}".*;
     pins.add(7, &message, 1000);
-    try testing.expectEqual(MESSAGE_MAX - 1, pins.find(7, 1000).?.message().len);
+    try testing.expectEqual(MESSAGE_MAX - 1, pins.find(7, TEST_LIFETIME_MS, 1000).?.message().len);
 }

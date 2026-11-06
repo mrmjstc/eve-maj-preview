@@ -30,6 +30,9 @@ const NearestClient = struct {
     jumps: u8,
 };
 
+/// Intel lists every report, so assigning there would evict the colours thumbnails show.
+const SystemColoring = enum { assign, known_only };
+
 const HistoryRecord = struct {
     /// Null uses the type's own colour.
     text_color: ?u32 = null,
@@ -53,7 +56,7 @@ pub fn notify(context: Context, thumbnail: *ThumbnailWindow, notification: notif
     const history_text_color = if (notification.chat_rule_index != null) type_config.text_color else null;
     const is_repeat = isAlertRepeat(context.records.shown_alert_group.*, notification.alert_group);
     const history_record: ?HistoryRecord = if (is_repeat) null else .{ .text_color = history_text_color };
-    const lead = if (type_config.color_system_name) systemLead(context, notification, text) else null;
+    const lead = if (type_config.color_system_name) systemLead(context, notification, text, .assign) else null;
     const queued = queue(context, thumbnail, text, notification.notification_type, type_config, lead, history_record) catch |err| {
         slog.err("Failed to show {s} notification for '{s}': {}", .{ @tagName(notification.notification_type), thumbnail.character_name, err });
         return;
@@ -80,7 +83,7 @@ pub fn listIntel(context: Context, thumbnails: []const ThumbnailWindow, system: 
     const notification: notification_mod.Notification = .{ .notification_type = .ChatIntel, .target = universe.systemName(system), .message = message, .jumps = jumps };
     var text_buf: [notification_mod.TEXT_MAX]u8 = undefined;
     const text = notification_mod.defaultText(notification, &text_buf);
-    context.records.intel_history.push(nearest.thumbnail.source_hwnd, nearest.thumbnail.character_name, text, .ChatIntel, nearest.thumbnail.cached_character_color, null, systemLead(context, notification, text), system);
+    context.records.intel_history.push(nearest.thumbnail.source_hwnd, nearest.thumbnail.character_name, text, .ChatIntel, nearest.thumbnail.cached_character_color, null, systemLead(context, notification, text, .known_only), system);
 }
 
 /// Shows `notification` on every EVE client's thumbnail for a global user action; kept out of history, and sound/speech play once rather than per thumbnail.
@@ -122,7 +125,7 @@ pub fn showTest(context: Context, thumbnails: []ThumbnailWindow, notification_ty
         }
         var entry: stack.ActiveNotification = .fromConfig(try context.allocator.dupe(u8, text), notification_type, type_config, now, duration_ms);
         entry.reveals_thumbnail = true;
-        if (type_config.color_system_name) entry.lead = systemLead(context, example, text);
+        if (type_config.color_system_name) entry.lead = systemLead(context, example, text, .assign);
         push(context.allocator, thumbnail, entry);
     }
 
@@ -161,9 +164,14 @@ pub fn expire(allocator: std.mem.Allocator, thumbnails: []ThumbnailWindow) void 
 }
 
 /// Null when the text doesn't start with a system.
-fn systemLead(context: Context, notification: notification_mod.Notification, text: []const u8) ?notification_mod.Lead {
+fn systemLead(context: Context, notification: notification_mod.Notification, text: []const u8, coloring: SystemColoring) ?notification_mod.Lead {
     const length = notification_mod.systemLeadLength(notification, text) orelse return null;
-    return .{ .length = length, .color = context.auto_colors.systemNameColor(context.config, text[0..length]) };
+    const system_name = text[0..length];
+    const color = switch (coloring) {
+        .assign => context.auto_colors.systemNameColor(context.config, system_name),
+        .known_only => context.auto_colors.knownSystemNameColor(context.config, system_name),
+    };
+    return .{ .length = length, .color = color };
 }
 
 /// A client whose system isn't known counts as `universe.UNREACHED` away, and reads as here: 0 jumps, which the text leaves out.

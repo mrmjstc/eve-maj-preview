@@ -2,11 +2,11 @@
 const std = @import("std");
 const types = @import("../config/types.zig");
 const activity = @import("../config/activity.zig");
-const display_mod = @import("../config/display.zig");
+const panels = @import("../config/panels.zig");
 const color = @import("../util/color.zig");
 const format = @import("../util/format.zig");
 
-const DisplayConfig = display_mod.DisplayConfig;
+const ListViewConfig = panels.ListViewConfig;
 const IndicatorStyle = types.ListIndicatorStyle;
 
 pub const BOTTOM_PADDING: i32 = 4;
@@ -15,7 +15,7 @@ pub const BADGE_RADIUS: i32 = 3;
 /// Between a row's indicator and its name.
 pub const INDICATOR_GAP: i32 = 8;
 pub const CORNER_RADIUS: usize = 4;
-const MAX_COLUMNS: i32 = DisplayConfig.ranges.listViewColumns[1];
+const MAX_COLUMNS: i32 = ListViewConfig.ranges.columns[1];
 const MIN_HEADER_HEIGHT: i32 = 20;
 const MIN_ROW_HEIGHT: i32 = 26;
 /// Space around a line of text, so the default 13 px font keeps 26 px rows and a 20 px header.
@@ -64,7 +64,7 @@ pub const Metrics = struct {
 
 /// The list's own settings and its overlay's, which also runs the tracker.
 pub const StatSettings = struct {
-    display: *const DisplayConfig,
+    list_settings: *const ListViewConfig,
     combat: *const activity.CombatConfig,
     mining: *const activity.MiningConfig,
     bounty: *const activity.BountyConfig,
@@ -79,10 +79,10 @@ pub fn textLeft(style: IndicatorStyle) i32 {
 }
 
 /// Rows and the header grow with the font so its text always fits.
-pub fn metrics(display: *const DisplayConfig) Metrics {
-    const font_size = display.listViewFontSize;
+pub fn metrics(list_settings: *const ListViewConfig) Metrics {
+    const font_size = list_settings.fontSize;
     return .{
-        .column_width = display.listViewColumnWidth,
+        .column_width = list_settings.columnWidth,
         .header_height = headerHeight(font_size),
         .row_height = rowHeight(font_size),
     };
@@ -130,30 +130,30 @@ pub fn headerText(buffer: *[HEADER_TEXT_MAX]u8, count: usize) []const u8 {
 }
 
 pub fn showsStat(settings: StatSettings, stat: Stat) bool {
-    const display = settings.display;
+    const list_settings = settings.list_settings;
     return switch (stat) {
-        .incoming_dps => settings.combat.enabled and display.listViewShowIncomingDps,
-        .outgoing_dps => settings.combat.enabled and display.listViewShowOutgoingDps,
-        .mining_rate => settings.mining.enabled and display.listViewShowMiningRate,
-        .bounty_rate => settings.bounty.enabled and display.listViewShowBountyRate,
+        .incoming_dps => settings.combat.enabled and list_settings.showIncomingDps,
+        .outgoing_dps => settings.combat.enabled and list_settings.showOutgoingDps,
+        .mining_rate => settings.mining.enabled and list_settings.showMiningRate,
+        .bounty_rate => settings.bounty.enabled and list_settings.showBountyRate,
     };
 }
 
-pub fn hasPrefix(display: *const DisplayConfig, stat: Stat) bool {
+pub fn hasPrefix(list_settings: *const ListViewConfig, stat: Stat) bool {
     return switch (stat) {
-        .incoming_dps => display.listViewShowIncomingPrefix,
-        .outgoing_dps => display.listViewShowOutgoingPrefix,
-        .mining_rate => display.listViewShowMiningPrefix,
-        .bounty_rate => display.listViewShowBountyPrefix,
+        .incoming_dps => list_settings.showIncomingPrefix,
+        .outgoing_dps => list_settings.showOutgoingPrefix,
+        .mining_rate => list_settings.showMiningPrefix,
+        .bounty_rate => list_settings.showBountyPrefix,
     };
 }
 
-pub fn statColor(display: *const DisplayConfig, stat: Stat) u32 {
+pub fn statColor(list_settings: *const ListViewConfig, stat: Stat) u32 {
     return switch (stat) {
-        .incoming_dps => display.listViewIncomingDpsColor,
-        .outgoing_dps => display.listViewOutgoingDpsColor,
-        .mining_rate => display.listViewMiningRateColor,
-        .bounty_rate => display.listViewBountyRateColor,
+        .incoming_dps => list_settings.incomingDpsColor,
+        .outgoing_dps => list_settings.outgoingDpsColor,
+        .mining_rate => list_settings.miningRateColor,
+        .bounty_rate => list_settings.bountyRateColor,
     };
 }
 
@@ -200,12 +200,12 @@ test "effectiveColumns caps at the row count and the maximum" {
 }
 
 test "metrics keeps the minimum sizes for the default font and grows rows for a large one" {
-    var display: DisplayConfig = .{};
-    const default_sizes = metrics(&display);
+    var list_settings: ListViewConfig = .{};
+    const default_sizes = metrics(&list_settings);
     try std.testing.expectEqual(MIN_ROW_HEIGHT, default_sizes.row_height);
     try std.testing.expectEqual(MIN_HEADER_HEIGHT, default_sizes.header_height);
-    display.listViewFontSize = 24;
-    try std.testing.expect(metrics(&display).row_height > MIN_ROW_HEIGHT);
+    list_settings.fontSize = 24;
+    try std.testing.expect(metrics(&list_settings).row_height > MIN_ROW_HEIGHT);
 }
 
 test "smallFontSize steps down but never below the minimum" {

@@ -1,11 +1,14 @@
 //! The full-screen overlay for dragging out, or adjusting, a screen region for the config dialog.
 const std = @import("std");
+const ui = @import("ui");
 const win32 = @import("../../platform/win32.zig");
 const gdi_overlay = @import("../../platform/gdi_overlay.zig");
 const fonts = @import("../../platform/fonts.zig");
 const color = @import("../../util/color.zig");
 const region_math = @import("region_math.zig");
 const pixel_buffer = @import("../../util/pixel_buffer.zig");
+const style = @import("../knots/style.zig");
+const color_convert = @import("../knots/color_convert.zig");
 const log = @import("../../log.zig");
 
 const slog = log.Scoped("region_select");
@@ -40,7 +43,7 @@ pub const HINT_SIZE = 192;
 /// A size field's short name before its number, e.g. "W".
 pub const FIELD_PREFIX_SIZE = 16;
 
-// Save/Cancel mirror the config dialog's buttons: sizes are dialog px scaled by monitor DPI, colors are its palette.
+// Save/Cancel and the size fields draw like the dialog's primary_button, outline_button and text_input: sizes are dialog px scaled by monitor DPI.
 const BUTTON_WIDTH: i32 = 80;
 const BUTTON_HEIGHT: i32 = 28;
 const BUTTON_GAP: i32 = 8;
@@ -60,12 +63,8 @@ const STRONG_FONTS = [_]FontChoice{
     .{ .name = fonts.UI_SEMIBOLD_FACE, .weight = win32.FW_NORMAL },
     .{ .name = "Segoe UI", .weight = win32.FW_SEMIBOLD },
 };
+/// Matches the dialog's accented colour, which form.zig makes 15% toward white.
 const BUTTON_LIGHTEN_PERCENT = 15;
-const BUTTON_BACKGROUND: u32 = 0xFF0B0C0D;
-const BUTTON_SURFACE: u32 = 0xFF1F2124;
-const BUTTON_SURFACE_ALT: u32 = 0xFF26282C;
-const BUTTON_BORDER: u32 = 0xFF6B6E75;
-const BUTTON_TEXT: u32 = 0xFFE8E6E1;
 
 const FontChoice = struct { name: [:0]const u8, weight: c_int };
 
@@ -121,7 +120,7 @@ var g_cross_cursor: ?win32.HCURSOR = null;
 var g_on_finished: ?*const fn () void = null;
 var g_on_result: ?*const fn (Status, win32.RECT) void = null;
 var g_label_color: u32 = 0xFFFFFFFF;
-var g_labels = Labels{};
+var g_labels: Labels = .{};
 var g_other_regions: [MAX_OTHER_REGIONS]win32.RECT = undefined;
 var g_other_region_count: usize = 0;
 
@@ -278,15 +277,9 @@ fn grabForegroundFocus(hwnd: win32.HWND) void {
 }
 
 fn ensureBitmap(width: i32, height: i32) void {
-    if (!gdi_overlay.OverlayBitmap.needsResize(g_bitmap, width, height)) return;
-
-    const dc = win32.GetDC(null) orelse {
-        slog.err("Failed to get the screen DC for the region-select overlay", .{});
-        return;
-    };
-    defer _ = win32.ReleaseDC(null, dc);
-    gdi_overlay.OverlayBitmap.recreate(&g_bitmap, dc, width, height) catch |err| {
+    _ = gdi_overlay.OverlayBitmap.ensureSize(&g_bitmap, width, height) catch |err| {
         slog.err("Failed to allocate region-select overlay bitmap: {}", .{err});
+        return;
     };
 }
 
@@ -457,13 +450,13 @@ fn drawHandle(bitmap: *const gdi_overlay.OverlayBitmap, center_x: i32, center_y:
 
 fn drawEditHandles(bitmap: *const gdi_overlay.OverlayBitmap, rect: win32.RECT) void {
     const center = win32.rectCenter(rect);
-    const xs = [3]i32{ rect.left, center.x, rect.right };
-    const ys = [3]i32{ rect.top, center.y, rect.bottom };
+    const column_x = [3]i32{ rect.left, center.x, rect.right };
+    const row_y = [3]i32{ rect.top, center.y, rect.bottom };
     const is_wide_enough = win32.rectWidth(rect) >= HANDLE_SIZE * 4;
     const is_tall_enough = win32.rectHeight(rect) >= HANDLE_SIZE * 4;
 
-    for (ys, 0..) |y, row| {
-        for (xs, 0..) |x, column| {
+    for (row_y, 0..) |y, row| {
+        for (column_x, 0..) |x, column| {
             if (row == 1 and column == 1) continue;
             if (column == 1 and !is_wide_enough) continue;
             if (row == 1 and !is_tall_enough) continue;
@@ -613,13 +606,15 @@ fn drawButton(bitmap: *const gdi_overlay.OverlayBitmap, rect: win32.RECT, label:
     } orelse return;
     const is_hovered = g_hovered_button == button or g_pressed_button == button;
     const accent = g_border_color;
+    // Transparent in the dialog, over its footer.
+    const fill = paletteArgb(if (is_hovered) style.SURFACE else style.CHROME);
 
     const face = switch (button) {
-        .save => if (is_hovered) blk: {
-            const fill = color.lighten(accent, BUTTON_LIGHTEN_PERCENT);
-            break :blk controlFace(fill, fill, color.inkFor(accent));
-        } else controlFace(BUTTON_BACKGROUND, accent, accent),
-        .cancel => controlFace(if (is_hovered) BUTTON_SURFACE_ALT else BUTTON_SURFACE, if (is_hovered) accent else BUTTON_BORDER, BUTTON_TEXT),
+        .save => blk: {
+            const ink = if (is_hovered) color.lighten(accent, BUTTON_LIGHTEN_PERCENT) else accent;
+            break :blk controlFace(fill, ink, ink);
+        },
+        .cancel => controlFace(fill, if (is_hovered) accent else paletteArgb(style.BORDER_STRONG), paletteArgb(style.TEXT)),
     };
     gdi_overlay.drawButtonFace(bitmap, toLocal(rect), label, font, face);
 }
@@ -658,8 +653,13 @@ fn drawField(bitmap: *const gdi_overlay.OverlayBitmap, rect: win32.RECT, field: 
     else
         std.mem.print(&text_buf, "{s} {d}{s}", .{ prefix, length, caret }) catch unreachable;
 
-    const face = controlFace(BUTTON_SURFACE, if (is_focused) g_border_color else BUTTON_BORDER, BUTTON_TEXT);
+    const face = controlFace(paletteArgb(style.SURFACE), if (is_focused) g_border_color else paletteArgb(style.BORDER_STRONG), paletteArgb(style.TEXT));
     gdi_overlay.drawButtonFace(bitmap, toLocal(rect), text, font, face);
+}
+
+/// A dialog palette colour for GDI; converted as drawn, since the sRGB maths isn't known to fold at comptime.
+fn paletteArgb(palette_color: ui.Color) u32 {
+    return color_convert.toArgb(palette_color);
 }
 
 /// Shown while drawing too, so they follow the region as it's dragged out.
@@ -727,7 +727,7 @@ fn finish(cancelled: bool) void {
 
     if (g_on_finished) |callback| callback();
 
-    const empty_rect = win32.RECT{ .left = 0, .top = 0, .right = 0, .bottom = 0 };
+    const empty_rect: win32.RECT = .{ .left = 0, .top = 0, .right = 0, .bottom = 0 };
     if (cancelled) {
         report(.cancelled, empty_rect);
         return;

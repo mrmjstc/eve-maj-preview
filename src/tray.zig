@@ -8,6 +8,7 @@ const app_mod = @import("app.zig");
 const knots_host = @import("dialog/knots/host.zig");
 const scout = @import("clients/scout.zig");
 const alert_effects = @import("notifications/alert_effects.zig");
+const url = @import("protocol/url.zig");
 const log = @import("log.zig");
 
 const App = app_mod.App;
@@ -270,7 +271,16 @@ pub const TrayIcon = struct {
             return;
         }
 
-        const config = &app.store.live;
+        if (globalAction(command_id)) |action| {
+            slog.info("Running {s} from the system tray", .{@tagName(action)});
+            const manager = app.hotkey_manager orelse {
+                slog.err("Failed to run {s} from the system tray: the hotkey manager isn't ready", .{@tagName(action)});
+                return;
+            };
+            app.runHotkeyOutcome(manager.runGlobalAction(action, app.thumbnail_set));
+            return;
+        }
+
         switch (command_id) {
             win32.IDM_EXIT => {
                 slog.info("Exit requested from system tray", .{});
@@ -280,49 +290,6 @@ pub const TrayIcon = struct {
                 slog.info("Opening configuration dialog from system tray", .{});
                 knots_host.open();
             },
-            win32.IDM_TOGGLE_DRAGGING => app.toggleDragging(),
-            win32.IDM_TOGGLE_AUTO_MINIMIZE => app.toggleAutoMinimize(),
-            win32.IDM_TOGGLE_TRAVEL_MODE => app.toggleTravelMode(),
-            win32.IDM_TOGGLE_VISIBILITY => {
-                slog.info("Toggle visibility requested from system tray", .{});
-                const thumbnail_set = app.thumbnail_set orelse {
-                    slog.err("Failed to toggle visibility: the thumbnail set isn't ready", .{});
-                    return;
-                };
-                thumbnail_set.toggleAllThumbnailsVisibility();
-            },
-            win32.IDM_TOGGLE_NOTIF_HISTORY => {
-                slog.info("Toggle history panel requested from system tray", .{});
-                app.toggleNotificationHistory();
-            },
-            win32.IDM_CLEAR_NOTIF_HISTORY => {
-                slog.info("Clear notification history requested from system tray", .{});
-                app.notifications.clearHistories();
-            },
-            win32.IDM_TOGGLE_MAP_PANEL => {
-                slog.info("Toggle map panel requested from system tray", .{});
-                app.toggleMapPanel();
-            },
-            win32.IDM_TOGGLE_INTEL_PANEL => {
-                slog.info("Toggle intel panel requested from system tray", .{});
-                app.toggleIntelPanel();
-            },
-            win32.IDM_TOGGLE_ALERT_MUTE => alert_effects.toggleMuted(),
-            win32.IDM_SUSPEND_HOTKEYS => {
-                if (app.hotkey_manager) |manager| manager.runGlobalAction(.suspend_hotkeys);
-            },
-            win32.IDM_RESTORE_SAVED_POSITIONS => {
-                slog.info("Restore saved positions requested from system tray", .{});
-                const manager = app.hotkey_manager orelse {
-                    slog.err("Failed to restore saved positions: the hotkey manager isn't ready", .{});
-                    return;
-                };
-                manager.runGlobalAction(.move_to_saved_positions);
-            },
-            win32.IDM_CLOSE_ALL_CLIENTS => {
-                slog.info("Close all clients requested from system tray", .{});
-                actions.closeAllClients(app.scout.getWindows(), config, &app.exclusions);
-            },
             win32.IDM_UPDATE => {
                 slog.info("Opening releases page from tray menu", .{});
                 update.openReleasesPage(app.io);
@@ -331,6 +298,25 @@ pub const TrayIcon = struct {
         }
     }
 };
+
+/// The hotkey action a menu item runs, as a hotkey or protocol URL would; null for the items the tray handles itself.
+fn globalAction(command_id: u16) ?url.GlobalAction {
+    return switch (command_id) {
+        win32.IDM_TOGGLE_DRAGGING => .toggle_dragging,
+        win32.IDM_TOGGLE_AUTO_MINIMIZE => .toggle_auto_minimize,
+        win32.IDM_TOGGLE_TRAVEL_MODE => .toggle_travel_mode,
+        win32.IDM_TOGGLE_VISIBILITY => .toggle_visibility,
+        win32.IDM_RESTORE_SAVED_POSITIONS => .move_to_saved_positions,
+        win32.IDM_TOGGLE_NOTIF_HISTORY => .toggle_notification_history,
+        win32.IDM_CLEAR_NOTIF_HISTORY => .clear_notification_history,
+        win32.IDM_TOGGLE_MAP_PANEL => .toggle_map_panel,
+        win32.IDM_TOGGLE_INTEL_PANEL => .toggle_intel_panel,
+        win32.IDM_TOGGLE_ALERT_MUTE => .toggle_alert_mute,
+        win32.IDM_SUSPEND_HOTKEYS => .suspend_hotkeys,
+        win32.IDM_CLOSE_ALL_CLIENTS => .close_all,
+        else => null,
+    };
+}
 
 /// Null when `command_id` is outside both group submenus' ranges.
 fn groupCommand(command_id: u16) ?GroupCommand {

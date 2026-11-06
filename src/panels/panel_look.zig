@@ -1,9 +1,9 @@
 //! What the History, Map and Intel panels share so they match: sizes, footer buttons, ages and when they show; no I/O.
 const std = @import("std");
-const display_mod = @import("../config/display.zig");
+const panels = @import("../config/panels.zig");
 const list_look = @import("list_look.zig");
 
-const DisplayConfig = display_mod.DisplayConfig;
+const HistoryPanelConfig = panels.HistoryPanelConfig;
 
 /// Between the footer's buttons, and round them inside it.
 pub const BUTTON_GAP: i32 = 4;
@@ -48,6 +48,17 @@ pub const Visibility = struct {
         return conditions.now_ms -| lost_ms < conditions.hide_delay_ms;
     }
 
+    /// allows by a panel's settings section, which has hideWhenNoCharacters, hideWhenNoEveFocus and hideDebounceMs.
+    pub fn allowsFor(self: Visibility, settings: anytype, any_character_logged_in: bool, now_ms: u64) bool {
+        return self.allows(.{
+            .hides_without_characters = settings.hideWhenNoCharacters,
+            .any_character_logged_in = any_character_logged_in,
+            .hides_without_focus = settings.hideWhenNoEveFocus,
+            .hide_delay_ms = settings.hideDebounceMs,
+            .now_ms = now_ms,
+        });
+    }
+
     /// The tray toggle or hotkey asked for the panel, past whatever would hide it.
     pub fn force(self: *Visibility) void {
         self.is_forced_visible = true;
@@ -73,8 +84,8 @@ pub const Visibility = struct {
 };
 
 /// Set by the History Panel's font, which every panel draws its header and buttons in.
-pub fn headerHeight(display: *const DisplayConfig) i32 {
-    return list_look.headerHeight(display.notifInfoPanelFontSize);
+pub fn headerHeight(history_settings: *const HistoryPanelConfig) i32 {
+    return list_look.headerHeight(history_settings.fontSize);
 }
 
 /// A footer button is as tall as the header.
@@ -103,6 +114,13 @@ pub fn buttonIndexAt(width: i32, button_count: usize, x: i32) ?usize {
         if (x >= span.left and x < span.right) return index;
     }
     return null;
+}
+
+/// The row under `y`; null over the header or past the last of `row_count`.
+pub fn rowAt(y: i32, header_height: i32, row_height: i32, row_count: usize) ?usize {
+    if (y < header_height or row_height <= 0) return null;
+    const row_index: usize = @intCast(@divTrunc(y - header_height, row_height));
+    return if (row_index < row_count) row_index else null;
 }
 
 /// How long ago, e.g. "just now", "5m ago" or "2h ago".
@@ -139,14 +157,21 @@ test "buttonIndexAt finds the button under the cursor and misses the gaps" {
     try testing.expectEqual(@as(?usize, null), buttonIndexAt(300, 6, 0));
 }
 
+test "rowAt finds the row under the cursor and none over the header or past the last" {
+    try testing.expectEqual(@as(?usize, null), rowAt(19, 20, 10, 3));
+    try testing.expectEqual(@as(?usize, 0), rowAt(20, 20, 10, 3));
+    try testing.expectEqual(@as(?usize, 2), rowAt(49, 20, 10, 3));
+    try testing.expectEqual(@as(?usize, null), rowAt(50, 20, 10, 3));
+}
+
 test "footerTop stays below the header when the font leaves no room" {
     try testing.expectEqual(@as(i32, 570), footerTop(600, 20, 30));
     try testing.expectEqual(@as(i32, 50), footerTop(60, 50, 30));
 }
 
 test "headerHeight follows the History Panel's font, so the panels match" {
-    const small: DisplayConfig = .{ .notifInfoPanelFontSize = 13, .mapPanelFontSize = 8 };
-    const large: DisplayConfig = .{ .notifInfoPanelFontSize = 24, .mapPanelFontSize = 8 };
+    const small: HistoryPanelConfig = .{ .fontSize = 13 };
+    const large: HistoryPanelConfig = .{ .fontSize = 24 };
     try testing.expect(headerHeight(&large) > headerHeight(&small));
 }
 
@@ -203,6 +228,15 @@ test "forcing a panel keeps it up until EVE next has focus, then auto-hide resum
     visibility.note(.{ .any_character_logged_in = true, .is_eve_focused = true }, 9100);
     visibility.note(lost, 9200);
     try testing.expect(!visibility.allows(focusHideAt(9800)));
+}
+
+test "allowsFor reads the auto-hide settings of a panel's section" {
+    var visibility: Visibility = .{};
+    const settings: HistoryPanelConfig = .{ .hideWhenNoCharacters = true, .hideWhenNoEveFocus = true, .hideDebounceMs = 500 };
+    try testing.expect(!visibility.allowsFor(&settings, false, 0));
+    visibility.note(.{ .any_character_logged_in = true, .is_eve_focused = false }, 1000);
+    try testing.expect(visibility.allowsFor(&settings, true, 1400));
+    try testing.expect(!visibility.allowsFor(&settings, true, 1500));
 }
 
 test "relativeTime rounds down to minutes, then hours" {

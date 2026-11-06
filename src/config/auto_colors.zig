@@ -54,6 +54,16 @@ pub const AutoColorStore = struct {
         return self.system.colorFor(self.allocator, system_name, overrides[0..override_count]);
     }
 
+    /// As systemNameColor, but a system with no unique colour yet gets the configured default rather than a new one.
+    pub fn knownSystemNameColor(self: *AutoColorStore, config: *const config_mod.Config, system_name: []const u8) u32 {
+        if (config.findSystemColor(system_name)) |custom_color| return custom_color;
+        const shown = config.shownColors();
+        if (!shown.uses_unique_system_colors) return shown.system_name_color;
+
+        self.load();
+        return self.system.existingColor(system_name) orelse shown.system_name_color;
+    }
+
     /// The character's own override, then the unique colour if enabled; null means the caller's own default.
     pub fn characterNameColor(self: *AutoColorStore, config: *const config_mod.Config, character_name: []const u8) ?u32 {
         if (config.findCharacterConst(character_name)) |character| {

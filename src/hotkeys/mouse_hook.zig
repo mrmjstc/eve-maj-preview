@@ -19,32 +19,9 @@ var g_hook: HookBindings = .{
 /// Hook thread only: whether each button's current press was swallowed, so its release follows it like keyboard_hook.zig's keys.
 var g_swallowed_presses: std.EnumArray(Button, bool) = .initFill(false);
 
-/// Once at startup, before hook_thread.start.
-pub fn setAllocator(allocator: std.mem.Allocator) void {
-    g_hook.setAllocator(allocator);
-}
-
-/// Installs the hook on first registration; logs its own failure.
-pub fn register(target_hwnd: win32.HWND, combined_vk: u32, id: c_int) !void {
-    try g_hook.register(target_hwnd, combined_vk, id);
-}
-
-pub fn unregister(combined_vk: u32) void {
-    g_hook.unregister(combined_vk);
-}
-
-pub fn setExactModifiers(is_exact: bool) void {
-    g_hook.setExactModifiers(is_exact);
-}
-
-/// Safe to call even if nothing was ever registered.
-pub fn unregisterAll() void {
-    g_hook.unregisterAll();
-}
-
-/// Call only once at true process shutdown, before hook_thread.stop, never from a reload path that may register() again.
-pub fn deinit() void {
-    g_hook.deinit();
+/// For hooks.zig, which sends each binding to the hook that sees it.
+pub fn bindings() *HookBindings {
+    return &g_hook;
 }
 
 fn releaseAll() void {

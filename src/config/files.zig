@@ -15,6 +15,8 @@ pub const AUTO_COLORS_FILE = DATA_DIR ++ "/colors.json";
 pub const CHARACTER_IDS_FILE = DATA_DIR ++ "/character_ids.json";
 /// Downloaded character portraits, one `{id}.jpg` each, kept for good.
 pub const PORTRAITS_DIR = DATA_DIR ++ "/portraits";
+/// The colour picked from each sovereignty-holding alliance's logo, so a logo is fetched once.
+pub const LOGO_COLORS_FILE = DATA_DIR ++ "/logo_colors.json";
 
 const LEGACY_FILES = [_]struct { from: []const u8, to: []const u8 }{
     .{ .from = "eve-maj.log", .to = log.LOG_FILE_NAME },

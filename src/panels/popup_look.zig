@@ -20,6 +20,8 @@ pub const POPUP_HEADING_LIFT: i32 = 2;
 /// Beside a row's text, for the arrow and a clear gap before it.
 pub const SUBMENU_ARROW_ROOM: i32 = 20;
 const SUBMENU_ARROW_SIZE: i32 = 3;
+/// Between a row's parts, e.g. a search result's name, security and region.
+pub const POPUP_PART_GAP = "  ";
 
 // The colours below are 0xAARRGGBB, not premultiplied.
 pub const TOOLTIP_FILL: u32 = 0xFF1E2024;

@@ -336,9 +336,7 @@ pub fn showSettings(context: *ui.Frame, comptime chip: Chip, comptime index: usi
             },
             .font => {
                 const font = try widgets.openBinding(context, .str("knots.chip.font:" ++ chip.label), "Font");
-                try bind.fontBox(context, ref, fields.font_name);
-                try bind.unitNumberBox(context, ref, fields.font_size, "px", .{});
-                try bind.choiceBox(context, ref, fields.font_weight);
+                try bind.fontBoxes(context, ref, fields.font_name, fields.font_size, fields.font_weight);
                 const color = try widgets.openInlineGroup(context, .str("knots.chip.color:" ++ chip.label), !is_color_disabled);
                 // Comptime: a chip listing .font without a colour field fails to compile.
                 try bind.rgbBox(context, ref, fields.color.?);

@@ -19,26 +19,35 @@ pub const Mask = struct {
     depth: []u8,
     width: usize,
     height: usize,
-    /// What's been touched, so clearing and painting skip the rest; empty while right is 0.
-    left: usize,
+    /// The rows touched, so clearing and painting skip the rest.
     top: usize,
-    right: usize = 0,
     bottom: usize = 0,
+    /// The rightmost pixel touched, one past it; empty while 0.
+    right: usize = 0,
+    /// Each row's touched pixels, so shapes far apart don't have the gap between them scanned; owned, freed in deinit.
+    row_spans: []RowSpan,
 
     pub fn init(allocator: std.mem.Allocator, width: usize, height: usize) !Mask {
         const depth = try allocator.alloc(u8, width * height);
+        errdefer allocator.free(depth);
         @memset(depth, 0);
-        return .{ .allocator = allocator, .depth = depth, .width = width, .height = height, .left = width, .top = height };
+        const row_spans = try allocator.alloc(RowSpan, height);
+        @memset(row_spans, RowSpan.empty);
+        return .{ .allocator = allocator, .depth = depth, .width = width, .height = height, .top = height, .row_spans = row_spans };
     }
 
     pub fn deinit(self: *Mask) void {
         self.allocator.free(self.depth);
+        self.allocator.free(self.row_spans);
     }
 
     pub fn clear(self: *Mask) void {
         if (self.isEmpty()) return;
-        for (self.top..self.bottom) |pixel_y| @memset(self.depth[pixel_y * self.width + self.left .. pixel_y * self.width + self.right], 0);
-        self.left = self.width;
+        for (self.top..self.bottom) |pixel_y| {
+            const row = &self.row_spans[pixel_y];
+            @memset(self.depth[pixel_y * self.width + row.start .. pixel_y * self.width + row.end], 0);
+            row.* = .empty;
+        }
         self.top = self.height;
         self.right = 0;
         self.bottom = 0;
@@ -59,29 +68,39 @@ pub const Mask = struct {
         const line: BandLine = .{ .start_x = @floatFromInt(from_x), .start_y = @floatFromInt(from_y), .delta_x = @floatFromInt(to_x - from_x), .delta_y = @floatFromInt(to_y - from_y) };
         const length_squared = line.delta_x * line.delta_x + line.delta_y * line.delta_y;
         const reach: i32 = @intFromFloat(@ceil(radius + 1));
+        // From here out a pixel's depth is 0, so it needn't be measured.
+        const outside_squared = (radius + 0.5) * (radius + 0.5);
 
         for (clampedTo(@min(from_y, to_y) - reach, self.height)..clampedTo(@max(from_y, to_y) + reach + 1, self.height)) |pixel_y| {
             const y: f32 = @floatFromInt(pixel_y);
             const span = self.rowSpan(line, y, reach);
+            if (span.end <= span.start) continue;
             for (span.start..span.end) |pixel_x| {
+                const depth = &self.depth[pixel_y * self.width + pixel_x];
+                if (depth.* == 255) continue;
                 const x: f32 = @floatFromInt(pixel_x);
                 const along = if (length_squared == 0) 0 else std.math.clamp(((x - line.start_x) * line.delta_x + (y - line.start_y) * line.delta_y) / length_squared, 0, 1);
                 const offset_x = x - (line.start_x + along * line.delta_x);
                 const offset_y = y - (line.start_y + along * line.delta_y);
-                const steps = std.math.clamp((radius + 0.5 - @sqrt(offset_x * offset_x + offset_y * offset_y)) * MASK_DEPTH_STEPS, 0, 255);
-                const depth = &self.depth[pixel_y * self.width + pixel_x];
+                const distance_squared = offset_x * offset_x + offset_y * offset_y;
+                if (distance_squared >= outside_squared) continue;
+                const steps = std.math.clamp((radius + 0.5 - @sqrt(distance_squared)) * MASK_DEPTH_STEPS, 0, 255);
                 depth.* = @max(depth.*, @as(u8, @intFromFloat(steps)));
             }
-            if (span.end <= span.start) continue;
-            self.left = @min(self.left, span.start);
-            self.top = @min(self.top, pixel_y);
-            self.right = @max(self.right, span.end);
-            self.bottom = @max(self.bottom, pixel_y + 1);
+            self.includeRow(pixel_y, span);
         }
     }
 
+    fn includeRow(self: *Mask, pixel_y: usize, span: RowSpan) void {
+        const row = &self.row_spans[pixel_y];
+        row.* = if (row.end == 0) span else .{ .start = @min(row.start, span.start), .end = @max(row.end, span.end) };
+        self.top = @min(self.top, pixel_y);
+        self.right = @max(self.right, span.end);
+        self.bottom = @max(self.bottom, pixel_y + 1);
+    }
+
     /// Which pixels of the row at `y` a band can touch, so a long diagonal doesn't measure its whole bounding box.
-    fn rowSpan(self: *const Mask, line: BandLine, y: f32, reach: i32) struct { start: usize, end: usize } {
+    fn rowSpan(self: *const Mask, line: BandLine, y: f32, reach: i32) RowSpan {
         const margin: f32 = @floatFromInt(reach);
         const first = if (line.delta_y == 0) 0 else std.math.clamp((y - margin - line.start_y) / line.delta_y, 0, 1);
         const last = if (line.delta_y == 0) 1 else std.math.clamp((y + margin - line.start_y) / line.delta_y, 0, 1);
@@ -96,6 +115,14 @@ pub const Mask = struct {
 
 /// The line down a band's middle.
 const BandLine = struct { start_x: f32, start_y: f32, delta_x: f32, delta_y: f32 };
+
+/// Pixels `start` up to `end` of a row.
+const RowSpan = struct {
+    start: usize,
+    end: usize,
+
+    const empty: RowSpan = .{ .start = 0, .end = 0 };
+};
 
 /// A rect's part inside a pixel buffer, and how thick its outline can be.
 const ClippedRect = struct { left: usize, top: usize, right: usize, bottom: usize, thickness: usize };
@@ -214,7 +241,7 @@ pub fn drawRoundedFrame(canvas: Canvas, radius: usize, argb: u32) void {
     }
 }
 
-/// Anti-aliased, and clipped to the canvas pixel by pixel.
+/// Anti-aliased, and clipped to the canvas; only the stretch over it is walked, as a zoomed map runs gates far off it.
 pub fn drawLine(canvas: Canvas, from_x: i32, from_y: i32, to_x: i32, to_y: i32, argb: u32) void {
     const is_steep = @abs(to_y - from_y) > @abs(to_x - from_x);
     var start_major = if (is_steep) from_y else from_x;
@@ -225,18 +252,21 @@ pub fn drawLine(canvas: Canvas, from_x: i32, from_y: i32, to_x: i32, to_y: i32, 
         std.mem.swap(i32, &start_major, &end_major);
         std.mem.swap(i32, &start_minor, &end_minor);
     }
+    const major_limit: i32 = @intCast(if (is_steep) canvas.height else canvas.width);
+    const minor_limit: i32 = @intCast(if (is_steep) canvas.width else canvas.height);
+    // Each step also touches the pixel after its own, so a line one short of the edge still shows.
+    if (@max(start_minor, end_minor) < -1 or @min(start_minor, end_minor) >= minor_limit) return;
 
     const length = end_major - start_major;
     const gradient: f32 = if (length == 0) 0 else @as(f32, @floatFromInt(end_minor - start_minor)) / @as(f32, @floatFromInt(length));
-    var minor: f32 = @floatFromInt(start_minor);
-    var major = start_major;
-    while (major <= end_major) : (major += 1) {
+    var major = @max(start_major, 0);
+    while (major <= @min(end_major, major_limit - 1)) : (major += 1) {
+        const minor = @as(f32, @floatFromInt(start_minor)) + gradient * @as(f32, @floatFromInt(major - start_major));
         const floor = @floor(minor);
         const whole: i32 = @intFromFloat(floor);
         const fraction = minor - floor;
         blendPixel(canvas, if (is_steep) whole else major, if (is_steep) major else whole, argb, 1 - fraction);
         blendPixel(canvas, if (is_steep) whole + 1 else major, if (is_steep) major else whole + 1, argb, fraction);
-        minor += gradient;
     }
 }
 
@@ -248,10 +278,12 @@ pub fn fillCircle(canvas: Canvas, center_x: i32, center_y: i32, radius: f32, arg
 /// A band `thickness` wide inside `radius`, anti-aliased as fillCircle.
 pub fn drawRing(canvas: Canvas, center_x: i32, center_y: i32, radius: f32, thickness: f32, argb: u32) void {
     const reach: i32 = @intFromFloat(@ceil(radius + 1));
-    var delta_y: i32 = -reach;
-    while (delta_y <= reach) : (delta_y += 1) {
-        var delta_x: i32 = -reach;
-        while (delta_x <= reach) : (delta_x += 1) {
+    const last_x: i32 = @as(i32, @intCast(canvas.width)) - 1 - center_x;
+    const last_y: i32 = @as(i32, @intCast(canvas.height)) - 1 - center_y;
+    var delta_y: i32 = @max(-reach, -center_y);
+    while (delta_y <= @min(reach, last_y)) : (delta_y += 1) {
+        var delta_x: i32 = @max(-reach, -center_x);
+        while (delta_x <= @min(reach, last_x)) : (delta_x += 1) {
             const distance = @sqrt(@as(f32, @floatFromInt(delta_x * delta_x + delta_y * delta_y)));
             const outer = std.math.clamp(radius + 0.5 - distance, 0, 1);
             const inner = std.math.clamp(distance - (radius - thickness) + 0.5, 0, 1);
@@ -264,9 +296,12 @@ pub fn drawRing(canvas: Canvas, center_x: i32, center_y: i32, radius: f32, thick
 pub fn fillMask(canvas: Canvas, mask: *const Mask, argb: u32) void {
     if (mask.isEmpty()) return;
     for (mask.top..mask.bottom) |pixel_y| {
-        for (mask.left..mask.right) |pixel_x| {
-            const depth: f32 = @as(f32, @floatFromInt(mask.depth[pixel_y * mask.width + pixel_x])) / MASK_DEPTH_STEPS;
-            if (depth > 0) blendPixel(canvas, @intCast(pixel_x), @intCast(pixel_y), argb, @min(depth, 1));
+        const row = mask.row_spans[pixel_y];
+        for (row.start..row.end) |pixel_x| {
+            const steps = mask.depth[pixel_y * mask.width + pixel_x];
+            if (steps == 0) continue;
+            const depth: f32 = @as(f32, @floatFromInt(steps)) / MASK_DEPTH_STEPS;
+            blendPixel(canvas, @intCast(pixel_x), @intCast(pixel_y), argb, @min(depth, 1));
         }
     }
 }
@@ -275,8 +310,11 @@ pub fn fillMask(canvas: Canvas, mask: *const Mask, argb: u32) void {
 pub fn outlineMask(canvas: Canvas, mask: *const Mask, thickness: f32, argb: u32) void {
     if (mask.isEmpty()) return;
     for (mask.top..mask.bottom) |pixel_y| {
-        for (mask.left..mask.right) |pixel_x| {
-            const depth: f32 = @as(f32, @floatFromInt(mask.depth[pixel_y * mask.width + pixel_x])) / MASK_DEPTH_STEPS;
+        const row = mask.row_spans[pixel_y];
+        for (row.start..row.end) |pixel_x| {
+            const steps = mask.depth[pixel_y * mask.width + pixel_x];
+            if (steps == 0) continue;
+            const depth: f32 = @as(f32, @floatFromInt(steps)) / MASK_DEPTH_STEPS;
             const band = @min(depth, 1) * std.math.clamp(thickness + 1 - depth, 0, 1);
             if (band > 0) blendPixel(canvas, @intCast(pixel_x), @intCast(pixel_y), argb, band);
         }
@@ -289,18 +327,17 @@ fn blendPixel(canvas: Canvas, x: i32, y: i32, argb: u32, coverage: f32) void {
     const pixel_x: usize = @intCast(x);
     const pixel_y: usize = @intCast(y);
     if (pixel_x >= canvas.width or pixel_y >= canvas.height) return;
-    const alpha = coverage * @as(f32, @floatFromInt(argb >> 24)) / 255;
-    if (alpha <= 0) return;
+    // In 255ths from here, as whole numbers blend faster than floats; +127 rounds each division.
+    const alpha: u32 = @intFromFloat(@round(std.math.clamp(coverage, 0, 1) * @as(f32, @floatFromInt(argb >> 24))));
+    if (alpha == 0) return;
 
     const pixel = &canvas.pixels[pixel_y * canvas.width + pixel_x];
-    const under_alpha: f32 = @floatFromInt(pixel.* >> 24);
-    const blended_alpha: u32 = @intFromFloat(@round(under_alpha + (255 - under_alpha) * alpha));
-    var blended: u32 = blended_alpha << 24;
+    const under_alpha = pixel.* >> 24;
+    var blended: u32 = (under_alpha + ((255 - under_alpha) * alpha + 127) / 255) << 24;
     inline for (.{ 16, 8, 0 }) |shift| {
-        const over: f32 = @floatFromInt((argb >> shift) & 0xFF);
-        const under: f32 = @floatFromInt((pixel.* >> shift) & 0xFF);
-        const channel: u32 = @intFromFloat(@round(under + (over - under) * alpha));
-        blended |= channel << shift;
+        const over = (argb >> shift) & 0xFF;
+        const under = (pixel.* >> shift) & 0xFF;
+        blended |= ((over * alpha + under * (255 - alpha) + 127) / 255) << shift;
     }
     pixel.* = blended;
 }
@@ -421,6 +458,18 @@ test "a mask's band joins its ends with no gap" {
     mask.addBand(2, 4, 37, 4, 2);
     for (2..38) |pixel_x| try testing.expect(mask.depth[4 * 40 + pixel_x] >= MASK_DEPTH_STEPS);
     try testing.expectEqual(@as(u8, 0), mask.depth[0]);
+}
+
+test "a disc at a band's end adds nothing to it" {
+    var band_only: Mask = try .init(testing.allocator, 40, 30);
+    defer band_only.deinit();
+    var with_disc: Mask = try .init(testing.allocator, 40, 30);
+    defer with_disc.deinit();
+    band_only.addBand(8, 9, 31, 22, 6.5);
+    with_disc.addBand(8, 9, 31, 22, 6.5);
+    with_disc.addDisc(8, 9, 6.5);
+    with_disc.addDisc(31, 22, 6.5);
+    try testing.expectEqualSlices(u8, band_only.depth, with_disc.depth);
 }
 
 test "a band's side is the same depth all along, with no scallops" {

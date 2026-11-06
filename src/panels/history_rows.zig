@@ -1,7 +1,7 @@
 //! The rows of recent notifications the History and Intel panels list: which entries share one, and how they're drawn.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
-const display_mod = @import("../config/display.zig");
+const panels = @import("../config/panels.zig");
 const notifications_mod = @import("../config/notifications.zig");
 const notification = @import("../notifications/notification.zig");
 const history = @import("../notifications/history.zig");
@@ -10,7 +10,8 @@ const list_look = @import("list_look.zig");
 const panel_chrome = @import("panel_chrome.zig");
 const panel_look = @import("panel_look.zig");
 
-const DisplayConfig = display_mod.DisplayConfig;
+const HistoryPanelConfig = panels.HistoryPanelConfig;
+const IntelPanelConfig = panels.IntelPanelConfig;
 const NotificationConfig = notifications_mod.NotificationConfig;
 
 const INTEL_EMPTY_TEXT = "No intel yet";
@@ -27,7 +28,7 @@ pub const Row = struct {
 
 pub const BuildOptions = struct {
     /// Whose category filters apply; null lists every entry.
-    filter: ?*const DisplayConfig = null,
+    filter: ?*const HistoryPanelConfig = null,
     merges: bool,
     merge_window_ms: u64,
 };
@@ -46,35 +47,35 @@ pub const Area = struct {
 };
 
 /// The History Panel's merge settings, which the Intel Panel follows too; `filter` is BuildOptions.filter.
-pub fn buildOptions(display: *const DisplayConfig, filter: ?*const DisplayConfig) BuildOptions {
-    return .{ .filter = filter, .merges = display.notifInfoPanelMergeEnabled, .merge_window_ms = @as(u64, @intCast(@max(0, display.notifInfoPanelMergeWindowSec))) * std.time.ms_per_s };
+pub fn buildOptions(history_settings: *const HistoryPanelConfig, filter: ?*const HistoryPanelConfig) BuildOptions {
+    return .{ .filter = filter, .merges = history_settings.mergeEnabled, .merge_window_ms = @as(u64, @intCast(@max(0, history_settings.mergeWindowSec))) * std.time.ms_per_s };
 }
 
-pub fn intelRowHeight(display: *const DisplayConfig) i32 {
-    return list_look.rowHeight(display.notifInfoPanelFontSize);
+pub fn intelRowHeight(history_settings: *const HistoryPanelConfig) i32 {
+    return list_look.rowHeight(history_settings.fontSize);
 }
 
 /// The Intel Panel's rows between `left` and `right`, from `top` down.
-pub fn intelArea(display: *const DisplayConfig, left: i32, top: i32, right: i32) Area {
+pub fn intelArea(history_settings: *const HistoryPanelConfig, intel_settings: *const IntelPanelConfig, left: i32, top: i32, right: i32) Area {
     return .{
         .left = left,
         .top = top,
-        .row_height = intelRowHeight(display),
+        .row_height = intelRowHeight(history_settings),
         .right = right - list_look.PADDING_X,
-        .shows_timestamp = display.notifInfoPanelShowTimestamp,
+        .shows_timestamp = history_settings.showTimestamp,
         .shows_names = false,
-        .shows_leads = display.intelPanelColorSystemNames,
+        .shows_leads = intel_settings.colorSystemNames,
     };
 }
 
 /// What the Intel Panel's rows depend on, for a render signature.
-pub fn hashIntel(hasher: *std.hash.Wyhash, intel_history: *const history.NotificationHistory, entries: []const history.Entry, display: *const DisplayConfig, notifications: *const NotificationConfig) void {
+pub fn hashIntel(hasher: *std.hash.Wyhash, intel_history: *const history.NotificationHistory, entries: []const history.Entry, history_settings: *const HistoryPanelConfig, intel_settings: *const IntelPanelConfig, notifications: *const NotificationConfig) void {
     hasher.update(std.mem.asBytes(&intel_history.revision));
-    hasher.update(std.mem.asBytes(&display.intelPanelColorSystemNames));
-    hasher.update(std.mem.asBytes(&display.notifInfoPanelShowTimestamp));
-    hasher.update(std.mem.asBytes(&display.notifInfoPanelMergeEnabled));
-    hasher.update(std.mem.asBytes(&display.notifInfoPanelMergeWindowSec));
-    hashEntries(hasher, entries, notifications, display.notifInfoPanelShowTimestamp);
+    hasher.update(std.mem.asBytes(&intel_settings.colorSystemNames));
+    hasher.update(std.mem.asBytes(&history_settings.showTimestamp));
+    hasher.update(std.mem.asBytes(&history_settings.mergeEnabled));
+    hasher.update(std.mem.asBytes(&history_settings.mergeWindowSec));
+    hashEntries(hasher, entries, notifications, history_settings.showTimestamp);
 }
 
 /// Fills `rows` from `entries`, merging repeats, up to `capacity` rows; returns how many it filled.
@@ -82,8 +83,8 @@ pub fn build(rows: []Row, entries: []const history.Entry, capacity: usize, optio
     const row_limit = @min(capacity, rows.len);
     var shown_count: usize = 0;
     for (entries, 0..) |*entry, i| {
-        if (options.filter) |display| {
-            if (!history_look.showsCategory(display, notification.notificationCategory(entry.notification_type))) continue;
+        if (options.filter) |filter| {
+            if (!history_look.showsCategory(filter, notification.notificationCategory(entry.notification_type))) continue;
         }
 
         if (options.merges and shown_count > 0 and !entry.is_unmerged) {

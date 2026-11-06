@@ -4,38 +4,38 @@ const win32 = @import("../platform/win32.zig");
 const worker = @import("worker.zig");
 const log = @import("../log.zig");
 
-const windows = std.os.windows;
+const GUID = win32.GUID;
 const HANDLE = win32.HANDLE;
+const HRESULT = win32.HRESULT;
 const slog = log.Scoped("sound");
 
-const HRESULT = c_long;
 const WCHAR = u16;
 
-const MF_MT_MAJOR_TYPE = windows.GUID{
+const MF_MT_MAJOR_TYPE = GUID{
     .Data1 = 0x48eba18e,
     .Data2 = 0xf8c9,
     .Data3 = 0x4687,
     .Data4 = [8]u8{ 0xbf, 0x11, 0x0a, 0x74, 0xc9, 0xf9, 0x6a, 0x8f },
 };
-const MF_MT_SUBTYPE = windows.GUID{
+const MF_MT_SUBTYPE = GUID{
     .Data1 = 0xf7e34c9a,
     .Data2 = 0x42e8,
     .Data3 = 0x4714,
     .Data4 = [8]u8{ 0xb7, 0x4b, 0xcb, 0x29, 0xd7, 0x2c, 0x35, 0xe5 },
 };
-const MF_MT_AUDIO_NUM_CHANNELS = windows.GUID{
+const MF_MT_AUDIO_NUM_CHANNELS = GUID{
     .Data1 = 0x37e48bf5,
     .Data2 = 0x645e,
     .Data3 = 0x4c5b,
     .Data4 = [8]u8{ 0x89, 0xde, 0xad, 0xa9, 0xe2, 0x9b, 0x69, 0x6a },
 };
-const MF_MT_AUDIO_SAMPLES_PER_SECOND = windows.GUID{
+const MF_MT_AUDIO_SAMPLES_PER_SECOND = GUID{
     .Data1 = 0x5faeeae7,
     .Data2 = 0x0290,
     .Data3 = 0x4c31,
     .Data4 = [8]u8{ 0x9e, 0x8a, 0xc5, 0x34, 0xf6, 0x8d, 0x9d, 0xba },
 };
-const MF_MT_AUDIO_BITS_PER_SAMPLE = windows.GUID{
+const MF_MT_AUDIO_BITS_PER_SAMPLE = GUID{
     .Data1 = 0xf2deb57f,
     .Data2 = 0x40fa,
     .Data3 = 0x4764,
@@ -68,13 +68,13 @@ extern "winmm" fn waveOutReset(hwo: HANDLE) callconv(.c) u32;
 extern "winmm" fn waveOutClose(hwo: HANDLE) callconv(.c) u32;
 extern "winmm" fn waveOutSetVolume(hwo: ?HANDLE, volume: u32) callconv(.c) u32;
 
-const MFMediaType_Audio = windows.GUID{
+const MFMediaType_Audio = GUID{
     .Data1 = 0x73647561,
     .Data2 = 0x0000,
     .Data3 = 0x0010,
     .Data4 = [8]u8{ 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71 },
 };
-const MFAudioFormat_PCM = windows.GUID{
+const MFAudioFormat_PCM = GUID{
     .Data1 = 0x00000001,
     .Data2 = 0x0000,
     .Data3 = 0x0010,
@@ -93,7 +93,7 @@ const IMFMediaType = extern struct {
         GetItemType: *const anyopaque,
         CompareItem: *const anyopaque,
         Compare: *const anyopaque,
-        GetUINT32: *const fn (*IMFMediaType, *const windows.GUID, *u32) callconv(.c) HRESULT,
+        GetUINT32: *const fn (*IMFMediaType, *const GUID, *u32) callconv(.c) HRESULT,
         GetUINT64: *const anyopaque,
         GetDouble: *const anyopaque,
         GetGUID: *const anyopaque,
@@ -110,7 +110,7 @@ const IMFMediaType = extern struct {
         SetUINT32: *const anyopaque,
         SetUINT64: *const anyopaque,
         SetDouble: *const anyopaque,
-        SetGUID: *const fn (*IMFMediaType, *const windows.GUID, *const windows.GUID) callconv(.c) HRESULT,
+        SetGUID: *const fn (*IMFMediaType, *const GUID, *const GUID) callconv(.c) HRESULT,
     };
 
     fn release(self: *IMFMediaType) void {
@@ -309,16 +309,14 @@ fn packVolume(volume_percent: u8) u32 {
 }
 
 fn decodeToPcm(allocator: std.mem.Allocator, path_utf16: [*:0]const WCHAR) !DecodedPcm {
-    var reader_opt: ?*IMFSourceReader = null;
-    if (MFCreateSourceReaderFromURL(path_utf16, null, &reader_opt) < 0 or reader_opt == null) {
-        return error.CreateSourceReaderFailed;
-    }
-    const reader = reader_opt.?;
+    var reader_ptr: ?*IMFSourceReader = null;
+    if (MFCreateSourceReaderFromURL(path_utf16, null, &reader_ptr) < 0) return error.CreateSourceReaderFailed;
+    const reader = reader_ptr orelse return error.CreateSourceReaderFailed;
     defer reader.release();
 
-    var pcm_type_opt: ?*IMFMediaType = null;
-    if (MFCreateMediaType(&pcm_type_opt) < 0 or pcm_type_opt == null) return error.CreateMediaTypeFailed;
-    const pcm_type = pcm_type_opt.?;
+    var pcm_type_ptr: ?*IMFMediaType = null;
+    if (MFCreateMediaType(&pcm_type_ptr) < 0) return error.CreateMediaTypeFailed;
+    const pcm_type = pcm_type_ptr orelse return error.CreateMediaTypeFailed;
     defer pcm_type.release();
 
     if (pcm_type.vtable.SetGUID(pcm_type, &MF_MT_MAJOR_TYPE, &MFMediaType_Audio) < 0) return error.SetMediaTypeFailed;
@@ -329,11 +327,11 @@ fn decodeToPcm(allocator: std.mem.Allocator, path_utf16: [*:0]const WCHAR) !Deco
         return error.SetCurrentMediaTypeFailed;
     }
 
-    var actual_type_opt: ?*IMFMediaType = null;
-    if (reader.vtable.GetCurrentMediaType(reader, MF_SOURCE_READER_FIRST_AUDIO_STREAM, &actual_type_opt) < 0 or actual_type_opt == null) {
+    var actual_type_ptr: ?*IMFMediaType = null;
+    if (reader.vtable.GetCurrentMediaType(reader, MF_SOURCE_READER_FIRST_AUDIO_STREAM, &actual_type_ptr) < 0) {
         return error.GetCurrentMediaTypeFailed;
     }
-    const actual_type = actual_type_opt.?;
+    const actual_type = actual_type_ptr orelse return error.GetCurrentMediaTypeFailed;
     defer actual_type.release();
 
     var channels: u32 = 0;
@@ -349,27 +347,24 @@ fn decodeToPcm(allocator: std.mem.Allocator, path_utf16: [*:0]const WCHAR) !Deco
 
     while (true) {
         var sample_flags: u32 = 0;
-        var sample_opt: ?*IMFSample = null;
-        const read_result = reader.vtable.ReadSample(reader, MF_SOURCE_READER_FIRST_AUDIO_STREAM, 0, null, &sample_flags, null, &sample_opt);
+        var sample_ptr: ?*IMFSample = null;
+        const read_result = reader.vtable.ReadSample(reader, MF_SOURCE_READER_FIRST_AUDIO_STREAM, 0, null, &sample_flags, null, &sample_ptr);
         if (read_result < 0) return error.ReadSampleFailed;
         if (sample_flags & MF_SOURCE_READERF_ENDOFSTREAM != 0) break;
-        const sample = sample_opt orelse continue;
+        const sample = sample_ptr orelse continue;
         defer sample.release();
 
-        var buffer_opt: ?*IMFMediaBuffer = null;
-        if (sample.vtable.ConvertToContiguousBuffer(sample, &buffer_opt) < 0 or buffer_opt == null) {
-            return error.ConvertBufferFailed;
-        }
-        const buffer = buffer_opt.?;
+        var buffer_ptr: ?*IMFMediaBuffer = null;
+        if (sample.vtable.ConvertToContiguousBuffer(sample, &buffer_ptr) < 0) return error.ConvertBufferFailed;
+        const buffer = buffer_ptr orelse return error.ConvertBufferFailed;
         defer buffer.release();
 
         var data_ptr: ?[*]u8 = null;
         var current_length: u32 = 0;
-        if (buffer.vtable.Lock(buffer, &data_ptr, null, &current_length) < 0 or data_ptr == null) {
-            return error.LockBufferFailed;
-        }
+        if (buffer.vtable.Lock(buffer, &data_ptr, null, &current_length) < 0) return error.LockBufferFailed;
         defer _ = buffer.vtable.Unlock(buffer);
-        try pcm_data.appendSlice(allocator, data_ptr.?[0..current_length]);
+        const data = data_ptr orelse return error.LockBufferFailed;
+        try pcm_data.appendSlice(allocator, data[0..current_length]);
     }
 
     return .{
@@ -399,11 +394,9 @@ fn playBlocking(allocator: std.mem.Allocator, path: []const u8, volume_percent: 
     const event = win32.CreateEventA(null, win32.TRUE, win32.FALSE, null) orelse return error.CreateEventFailed;
     defer _ = win32.CloseHandle(event);
 
-    var hwo_opt: ?HANDLE = null;
-    if (waveOutOpen(&hwo_opt, WAVE_MAPPER, &format, @intFromPtr(event), 0, CALLBACK_EVENT) != 0 or hwo_opt == null) {
-        return error.WaveOutOpenFailed;
-    }
-    const hwo = hwo_opt.?;
+    var hwo_ptr: ?HANDLE = null;
+    if (waveOutOpen(&hwo_ptr, WAVE_MAPPER, &format, @intFromPtr(event), 0, CALLBACK_EVENT) != 0) return error.WaveOutOpenFailed;
+    const hwo = hwo_ptr orelse return error.WaveOutOpenFailed;
     defer _ = waveOutClose(hwo);
 
     // waveOutOpen signals `event` once on its own (WOM_OPEN); clear that before waiting on WOM_DONE.

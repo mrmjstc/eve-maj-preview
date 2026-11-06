@@ -19,6 +19,8 @@ const FONT_OPTIONS = [_][]const u8{
     "Cascadia Code", "Cascadia Mono", "Consolas", "Courier New", "Lucida Console", "Monaco",          "Menlo",  "Arial",         "Verdana",
     "Tahoma",        "Trebuchet MS",  "Segoe UI", "Calibri",     "Georgia",        "Times New Roman", "Impact", "Comic Sans MS",
 };
+/// sizeBoxes keys its × as the width field's key indexed by this, clear of the boxes' own parts.
+const SIZE_TIMES_INDEX = 7;
 
 /// A text or number box's own copy of its text, which follows the setting until the user starts typing.
 const TextState = struct {
@@ -27,6 +29,36 @@ const TextState = struct {
     /// Set while the box has focus, so leaving it applies what was typed.
     is_editing: bool = false,
 };
+
+/// One frame of a text or number box: apply `left_holding`, then `follow` the value and `draw` the box.
+const Edit = struct {
+    key: ui.Key,
+    state: *TextState,
+    is_focused: bool,
+    /// What was typed, on the frame the box lost focus; borrows the box's text, valid until `follow`.
+    left_holding: ?[]const u8,
+
+    fn begin(context: *ui.Frame, key: ui.Key) !Edit {
+        const state = try textState(key);
+        const is_focused = context.ui().focused(key.hash());
+        const was_editing = state.is_editing;
+        state.is_editing = is_focused;
+        return .{ .key = key, .state = state, .is_focused = is_focused, .left_holding = if (was_editing and !is_focused) state.text.items else null };
+    }
+
+    /// Typing stays while the box has focus.
+    fn follow(self: *const Edit, current: []const u8) !void {
+        if (!self.is_focused) try syncText(self.state, current);
+    }
+
+    fn draw(self: *const Edit, context: *ui.Frame, box_style: *const ui.Style, placeholder: []const u8) !void {
+        try claimRowClick(context, self.key, self.state.text.items.len);
+        try context.e(TextInput{ .key = self.key, .buf = &self.state.text, .style = box_style, .placeholder = placeholder });
+    }
+};
+
+/// A colour swatch's pick: a colour, or the setting's default after Reset.
+const Pick = struct { argb: u32, is_reset: bool };
 
 pub const NumberOptions = struct {
     /// Shown after the box, e.g. "ms".
@@ -118,6 +150,20 @@ pub fn unitNumberBox(context: *ui.Frame, ref: anytype, comptime field: []const u
     try box.close(context);
 }
 
+/// Width × height boxes in px, for a row the caller opens.
+pub fn sizeBoxes(context: *ui.Frame, ref: anytype, comptime width_field: []const u8, comptime height_field: []const u8) !void {
+    try unitNumberBox(context, ref, width_field, "px", .{});
+    try context.e(Text{ .selectable = false, .key = fieldKey(ref, width_field).indexed(SIZE_TIMES_INDEX), .content = "\u{00D7}", .style = &style.muted_text });
+    try unitNumberBox(context, ref, height_field, "px", .{});
+}
+
+/// Font, size in px and weight boxes, for a row the caller opens.
+pub fn fontBoxes(context: *ui.Frame, ref: anytype, comptime name_field: []const u8, comptime size_field: []const u8, comptime weight_field: []const u8) !void {
+    try fontBox(context, ref, name_field);
+    try unitNumberBox(context, ref, size_field, "px", .{});
+    try choiceBox(context, ref, weight_field);
+}
+
 /// An optional text field is unset when left empty.
 pub fn text(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8, placeholder: []const u8) !void {
     const row = try widgets.openBinding(context, fieldKey(ref, field), label);
@@ -140,27 +186,20 @@ pub fn textBox(context: *ui.Frame, ref: anytype, comptime field: []const u8, pla
 /// textBox with its own box style, e.g. a fixed width in an aligned row.
 pub fn styledTextBox(context: *ui.Frame, ref: anytype, comptime field: []const u8, placeholder: []const u8, box_style: *const ui.Style) !void {
     const F = FieldOf(@TypeOf(ref), field);
-    const box_key = fieldKey(ref, field).indexed(2);
-    const state = try textState(box_key);
-    if (context.ui().focused(box_key.hash())) {
-        state.is_editing = true;
-    } else {
-        if (state.is_editing) {
-            state.is_editing = false;
-            if (F == ?[]const u8) {
-                ref.set(field, if (state.text.items.len == 0) null else state.text.items);
-            } else {
-                ref.set(field, state.text.items);
-            }
+    const edit = try Edit.begin(context, fieldKey(ref, field).indexed(2));
+    if (edit.left_holding) |left| {
+        if (F == ?[]const u8) {
+            ref.set(field, if (left.len == 0) null else left);
+        } else {
+            ref.set(field, left);
         }
-        const current: []const u8 = if (F == ?[]const u8) ref.get(field) orelse "" else ref.get(field);
-        try syncText(state, current);
     }
-    const typed_hash = std.hash.Wyhash.hash(0, state.text.items);
-    try claimRowClick(context, box_key, state.text.items.len);
-    try context.e(TextInput{ .key = box_key, .buf = &state.text, .style = box_style, .placeholder = lang.text(placeholder) });
+    const current: []const u8 = if (F == ?[]const u8) ref.get(field) orelse "" else ref.get(field);
+    try edit.follow(current);
+    const typed_hash = std.hash.Wyhash.hash(0, edit.state.text.items);
+    try edit.draw(context, box_style, lang.text(placeholder));
     // What shows the typed text above the box, e.g. liveText's list row, catches up on the next frame.
-    if (std.hash.Wyhash.hash(0, state.text.items) != typed_hash) context.requestRedraw();
+    if (std.hash.Wyhash.hash(0, edit.state.text.items) != typed_hash) context.requestRedraw();
 }
 
 /// Typed text while the box has focus, else saved; copied to the frame arena, since the box can change it mid-frame.
@@ -170,21 +209,15 @@ pub fn liveText(context: *ui.Frame, ref: anytype, comptime field: []const u8) ![
     return context.arena().dupe(u8, shown);
 }
 
-/// For a string that isn't one setting; returns the text once the box loses focus, borrowed from the frame's arena.
+/// For a string that isn't one setting; returns the text once the box loses focus with it changed, borrowed from the frame's arena.
 pub fn stringBox(context: *ui.Frame, key: ui.Key, current: []const u8, placeholder: []const u8, box_style: *const ui.Style) !?[]const u8 {
-    const state = try textState(key);
+    const edit = try Edit.begin(context, key);
     var committed: ?[]const u8 = null;
-    if (context.ui().focused(key.hash())) {
-        state.is_editing = true;
-    } else {
-        if (state.is_editing) {
-            state.is_editing = false;
-            if (!std.mem.eql(u8, state.text.items, current)) committed = try context.arena().dupe(u8, state.text.items);
-        }
-        try syncText(state, committed orelse current);
+    if (edit.left_holding) |left| {
+        if (!std.mem.eql(u8, left, current)) committed = try context.arena().dupe(u8, left);
     }
-    try claimRowClick(context, key, state.text.items.len);
-    try context.e(TextInput{ .key = key, .buf = &state.text, .style = box_style, .placeholder = lang.text(placeholder) });
+    try edit.follow(committed orelse current);
+    try edit.draw(context, box_style, lang.text(placeholder));
     return committed;
 }
 
@@ -200,50 +233,37 @@ pub fn optionalUnitValueBox(context: *ui.Frame, key: ui.Key, value: ?f64, placeh
 
 /// For a number that isn't one setting, e.g. an ore price; returns what was typed once the box loses focus.
 pub fn valueBox(context: *ui.Frame, key: ui.Key, value: f64, box_style: *const ui.Style) !?f64 {
-    const state = try textState(key);
+    const edit = try Edit.begin(context, key);
     var committed: ?f64 = null;
-    if (context.ui().focused(key.hash())) {
-        state.is_editing = true;
-    } else {
-        if (state.is_editing) {
-            state.is_editing = false;
-            const trimmed = std.mem.trim(u8, state.text.items, " ");
-            // Not a number: the sync below puts the value back.
-            committed = std.fmt.parseFloat(f64, trimmed) catch |err| blk: {
-                logNotANumber(trimmed, err);
-                break :blk null;
-            };
-        }
-        try syncText(state, try std.fmt.allocPrint(context.arena(), "{d}", .{committed orelse value}));
+    if (edit.left_holding) |left| {
+        const trimmed = std.mem.trim(u8, left, " ");
+        // Not a number: following the value below puts it back.
+        committed = std.fmt.parseFloat(f64, trimmed) catch |err| blk: {
+            logNotANumber(trimmed, err);
+            break :blk null;
+        };
     }
-    try claimRowClick(context, key, state.text.items.len);
-    try context.e(TextInput{ .key = key, .buf = &state.text, .style = box_style });
+    try edit.follow(try std.fmt.allocPrint(context.arena(), "{d}", .{committed orelse value}));
+    try edit.draw(context, box_style, "");
     return committed;
 }
 
 /// A string list typed as comma-separated text; empty entries are dropped.
 pub fn csvBox(context: *ui.Frame, ref: anytype, comptime field: []const u8, placeholder: []const u8) !void {
-    const box_key = fieldKey(ref, field).indexed(2);
-    const state = try textState(box_key);
+    const edit = try Edit.begin(context, fieldKey(ref, field).indexed(2));
     const arena = context.arena();
-    if (context.ui().focused(box_key.hash())) {
-        state.is_editing = true;
-    } else {
-        if (state.is_editing) {
-            state.is_editing = false;
-            var values: std.ArrayList([]const u8) = .empty;
-            var parts = std.mem.splitScalar(u8, state.text.items, ',');
-            while (parts.next()) |part| {
-                const trimmed = std.mem.trim(u8, part, " \t");
-                if (trimmed.len > 0) try values.append(arena, trimmed);
-            }
-            ref.setStrings(field, values.items);
+    if (edit.left_holding) |left| {
+        var values: std.ArrayList([]const u8) = .empty;
+        var parts = std.mem.splitScalar(u8, left, ',');
+        while (parts.next()) |part| {
+            const trimmed = std.mem.trim(u8, part, " \t");
+            if (trimmed.len > 0) try values.append(arena, trimmed);
         }
-        const items: []const []const u8 = ref.get(field).items;
-        try syncText(state, try std.mem.join(arena, ", ", items));
+        ref.setStrings(field, values.items);
     }
-    try claimRowClick(context, box_key, state.text.items.len);
-    try context.e(TextInput{ .key = box_key, .buf = &state.text, .style = &style.text_input, .placeholder = lang.text(placeholder) });
+    const items: []const []const u8 = ref.get(field).items;
+    try edit.follow(try std.mem.join(arena, ", ", items));
+    try edit.draw(context, &style.text_input, lang.text(placeholder));
 }
 
 pub fn slider(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8, options: SliderOptions) !void {
@@ -262,20 +282,9 @@ pub fn slider(context: *ui.Frame, ref: anytype, comptime field: []const u8, labe
 
 /// Reset restores the default; aligned, it's a bare swatch saving RGB only, so alpha comes out opaque.
 pub fn colorBox(context: *ui.Frame, ref: anytype, comptime field: []const u8) !void {
-    const is_aligned = widgets.isAligned();
-    const opaque_mask: u32 = if (is_aligned) 0xFF000000 else 0;
-    var value = color_convert.fromArgb(ref.get(field) | opaque_mask);
-    var is_reset = false;
-    if ((try context.interact(ColorPicker{
-        .key = fieldKey(ref, field).indexed(2),
-        .value = &value,
-        .style = if (is_aligned) &style.color_picker_swatch else &style.color_picker,
-        .parts = widgets.colorParts(is_aligned),
-        .show_hex = !is_aligned,
-        .show_alpha = !is_aligned,
-        .reset = if (defaultOf(@TypeOf(ref), field) != null) &is_reset else null,
-    })).changed) ref.set(field, color_convert.toArgb(value) | opaque_mask);
-    if (is_reset) if (defaultOf(@TypeOf(ref), field)) |default| ref.set(field, default);
+    const opaque_mask: u32 = if (widgets.isAligned()) 0xFF000000 else 0;
+    const pick = try pickColor(context, ref, field, ref.get(field) | opaque_mask, !widgets.isAligned()) orelse return;
+    ref.set(field, if (pick.is_reset) pick.argb else pick.argb | opaque_mask);
 }
 
 /// An optional colour setting, shown as `fallback` while unset; resetting it clears it.
@@ -297,19 +306,8 @@ pub fn rgb(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: 
 /// Just rgb's picker, for a row with more in it, e.g. a font.
 pub fn rgbBox(context: *ui.Frame, ref: anytype, comptime field: []const u8) !void {
     const argb: u32 = ref.get(field);
-    const is_aligned = widgets.isAligned();
-    var value = color_convert.fromArgb(argb | 0xFF000000);
-    var is_reset = false;
-    if ((try context.interact(ColorPicker{
-        .key = fieldKey(ref, field).indexed(2),
-        .value = &value,
-        .style = if (is_aligned) &style.color_picker_swatch else &style.color_picker,
-        .parts = widgets.colorParts(is_aligned),
-        .show_hex = !is_aligned,
-        .show_alpha = false,
-        .reset = if (defaultOf(@TypeOf(ref), field) != null) &is_reset else null,
-    })).changed) ref.set(field, (color_convert.toArgb(value) & 0x00FFFFFF) | (argb & 0xFF000000));
-    if (is_reset) if (defaultOf(@TypeOf(ref), field)) |default| ref.set(field, (default & 0x00FFFFFF) | (argb & 0xFF000000));
+    const pick = try pickColor(context, ref, field, argb | 0xFF000000, false) orelse return;
+    ref.set(field, (pick.argb & 0x00FFFFFF) | (argb & 0xFF000000));
 }
 
 /// The alpha of an ARGB setting as a slider row with its % box, keeping its RGB.
@@ -410,35 +408,25 @@ pub fn rangeOf(comptime T: type, comptime field: []const u8) ?[2]f32 {
 
 /// For an optional number that isn't one setting, e.g. half a size override; empty is unset.
 fn optionalValueBox(context: *ui.Frame, key: ui.Key, value: ?f64, placeholder: []const u8, box_style: *const ui.Style) !Typed {
-    const state = try textState(key);
+    const edit = try Edit.begin(context, key);
     var typed: Typed = .unchanged;
-    if (context.ui().focused(key.hash())) {
-        state.is_editing = true;
-    } else {
-        if (state.is_editing) {
-            state.is_editing = false;
-            const trimmed = std.mem.trim(u8, state.text.items, " ");
-            if (trimmed.len == 0) {
-                typed = .cleared;
-            } else if (std.fmt.parseFloat(f64, trimmed)) |parsed| {
-                typed = .{ .value = parsed };
-            } else |err| {
-                logNotANumber(trimmed, err);
-            }
-        }
-        const shown: ?f64 = switch (typed) {
-            .unchanged => value,
-            .cleared => null,
-            .value => |parsed| parsed,
-        };
-        if (shown) |figure| {
-            try syncText(state, try std.fmt.allocPrint(context.arena(), "{d}", .{figure}));
-        } else {
-            try syncText(state, "");
+    if (edit.left_holding) |left| {
+        const trimmed = std.mem.trim(u8, left, " ");
+        if (trimmed.len == 0) {
+            typed = .cleared;
+        } else if (std.fmt.parseFloat(f64, trimmed)) |parsed| {
+            typed = .{ .value = parsed };
+        } else |err| {
+            logNotANumber(trimmed, err);
         }
     }
-    try claimRowClick(context, key, state.text.items.len);
-    try context.e(TextInput{ .key = key, .buf = &state.text, .style = box_style, .placeholder = lang.text(placeholder) });
+    const shown: ?f64 = switch (typed) {
+        .unchanged => value,
+        .cleared => null,
+        .value => |parsed| parsed,
+    };
+    try edit.follow(if (shown) |figure| try std.fmt.allocPrint(context.arena(), "{d}", .{figure}) else "");
+    try edit.draw(context, box_style, lang.text(placeholder));
     return typed;
 }
 
@@ -447,34 +435,23 @@ fn styledNumberBox(context: *ui.Frame, ref: anytype, comptime field: []const u8,
     const is_optional = @typeInfo(F) == .optional;
     const N = if (is_optional) @typeInfo(F).optional.child else F;
     const scale: f64 = if (options.shows_seconds) 1000 else 1;
-    const key = fieldKey(ref, field).indexed(2);
-    const state = try textState(key);
-    if (context.ui().focused(key.hash())) {
-        state.is_editing = true;
-    } else {
-        if (state.is_editing) {
-            state.is_editing = false;
-            const trimmed = std.mem.trim(u8, state.text.items, " ");
-            if (comptime is_optional) {
-                if (trimmed.len == 0) ref.set(field, null);
-            }
-            // Not a number: the sync below puts the setting back.
-            if (std.fmt.parseFloat(f64, trimmed)) |typed| {
-                ref.set(field, numberFrom(N, typed * scale));
-            } else |err| {
-                // Empty clears an optional setting above, so only text is worth a log.
-                if (trimmed.len > 0) logNotANumber(trimmed, err);
-            }
+    const edit = try Edit.begin(context, fieldKey(ref, field).indexed(2));
+    if (edit.left_holding) |left| {
+        const trimmed = std.mem.trim(u8, left, " ");
+        if (comptime is_optional) {
+            if (trimmed.len == 0) ref.set(field, null);
         }
-        const current: ?N = ref.get(field);
-        if (current) |value| {
-            try syncText(state, try std.fmt.allocPrint(context.arena(), "{d}", .{numberTo(N, value) / scale}));
-        } else {
-            try syncText(state, "");
+        // Not a number: following the setting below puts it back.
+        if (std.fmt.parseFloat(f64, trimmed)) |parsed| {
+            ref.set(field, numberFrom(N, parsed * scale));
+        } else |err| {
+            // Empty clears an optional setting above, so only text is worth a log.
+            if (trimmed.len > 0) logNotANumber(trimmed, err);
         }
     }
-    try claimRowClick(context, key, state.text.items.len);
-    try context.e(TextInput{ .key = key, .buf = &state.text, .style = box_style, .placeholder = options.placeholder });
+    const current: ?N = ref.get(field);
+    try edit.follow(if (current) |value| try std.fmt.allocPrint(context.arena(), "{d}", .{numberTo(N, value) / scale}) else "");
+    try edit.draw(context, box_style, options.placeholder);
 }
 
 /// A number input and its unit in one box, outlined while `input_key` has focus and widened to fit `shown_unit`; the caller adds both and closes it.
@@ -501,6 +478,26 @@ fn unitValueBox(context: *ui.Frame, key: ui.Key, value: f64, unit: []const u8) !
 fn percentSliderSized(context: *ui.Frame, key: ui.Key, value: u8, min: f32, max: f32, track_style: ?*const ui.Style) !?u8 {
     const changed = try sliderControls(context, key, @floatFromInt(value), min, max, 1, .percent_of_255, track_style) orelse return null;
     return @intFromFloat(@round(changed));
+}
+
+/// The swatch for an ARGB setting showing `shown`; offers Reset only when `field` has a default.
+fn pickColor(context: *ui.Frame, ref: anytype, comptime field: []const u8, shown: u32, shows_alpha: bool) !?Pick {
+    const is_aligned = widgets.isAligned();
+    const default = defaultOf(@TypeOf(ref), field);
+    var value = color_convert.fromArgb(shown);
+    var is_reset = false;
+    const is_changed = (try context.interact(ColorPicker{
+        .key = fieldKey(ref, field).indexed(2),
+        .value = &value,
+        .style = if (is_aligned) &style.color_picker_swatch else &style.color_picker,
+        .parts = widgets.colorParts(is_aligned),
+        .show_hex = !is_aligned,
+        .show_alpha = shows_alpha,
+        .reset = if (default != null) &is_reset else null,
+    })).changed;
+    if (is_reset) if (default) |reset_argb| return .{ .argb = reset_argb, .is_reset = true };
+    if (is_changed) return .{ .argb = color_convert.toArgb(value), .is_reset = false };
+    return null;
 }
 
 /// An ARGB setting's alpha slider and % box, keeping its RGB, in a row the caller opened with `key`.

@@ -1,4 +1,4 @@
-//! The configuration window's Behavior tab: mouse interaction, auto-minimize, exclusion, saved window positions and Ultra Potato Mode; main thread only.
+//! The configuration window's Behavior tab: mouse interaction, panel snapping, auto-minimize, exclusion, saved window positions and Ultra Potato Mode; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const config = @import("../../../config.zig");
@@ -64,6 +64,7 @@ pub fn reset() void {
 
 pub fn show(context: *ui.Frame) !void {
     try interaction(context);
+    try panelSnapping(context);
     try autoMinimize(context);
     try exclusion(context);
     try windowPosition(context);
@@ -100,6 +101,24 @@ fn hoverZoom(context: *ui.Frame, ref: session.Ref(config.InteractionConfig), is_
     try widgets.hintText(context, .src(@src()), "The part of the thumbnail that stays put as it grows.");
     try zoom.close(context);
     try zoom_options.close(context);
+}
+
+fn panelSnapping(context: *ui.Frame) !void {
+    const section = try widgets.openSection(context, "Panel Snapping", "How the client list and the other panels line up as you drag them.", &style.section);
+    const ref = session.profile().child("panelSnapping");
+    try bind.toggle(context, ref, "enabled", "Snap While Dragging");
+    try widgets.hintText(context, .src(@src()), "Turns all the snapping below on or off.");
+    const group = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
+    try bind.toggle(context, ref, "screenEdges", "Snap to Screen Edges");
+    try widgets.hintText(context, .src(@src()), "Panels stick to the edges of your monitors.");
+    try bind.toggle(context, ref, "panelEdges", "Snap to Other Panels");
+    try widgets.hintText(context, .src(@src()), "Panels stick to each other's edges.");
+    try bind.toggle(context, ref, "thumbnailEdges", "Snap to Thumbnail Edges");
+    try widgets.hintText(context, .src(@src()), "Panels stick to thumbnails' edges.");
+    try bind.number(context, ref, "threshold", "Snap Distance", .{ .unit = "px" });
+    try widgets.hintText(context, .src(@src()), "How close a panel gets before it snaps into place.");
+    try group.close(context);
+    try section.close(context);
 }
 
 fn autoMinimize(context: *ui.Frame) !void {

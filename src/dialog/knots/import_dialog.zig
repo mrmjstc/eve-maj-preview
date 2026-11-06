@@ -29,8 +29,8 @@ const Group = struct { label: []const u8, ids: []const []const u8 };
 /// EVE-Maj profile sections grouped like the sidebar's tabs, by Config field name; a section left out lands in "Other".
 const MAJ_GROUPS = [_]Group{
     .{ .label = "Clients", .ids = &.{ "characters", "hotkeyGroups", "windowFilters", "exclusion" } },
-    .{ .label = "Display", .ids = &.{ "display", "thumbnail", "thumbnailSpaces", "snapping", "autoMovePosition", "avoidedSystems" } },
-    .{ .label = "Input", .ids = &.{ "hotkeys", "interaction", "autoMinimize", "closeAll" } },
+    .{ .label = "Display", .ids = &.{ "display", "thumbnail", "thumbnailSpaces", "snapping", "autoMovePosition", "avoidedSystems", "listView", "historyPanel", "mapPanel", "intelPanel" } },
+    .{ .label = "Input", .ids = &.{ "hotkeys", "interaction", "panelSnapping", "autoMinimize", "closeAll" } },
     .{ .label = "Alerts", .ids = &.{ "chatlog", "travel", "systemColors" } },
     .{ .label = "Overlays", .ids = &.{ "mining", "combat", "bounty", "resources", "ping" } },
     .{ .label = "App", .ids = &.{ "timer", "accentColor" } },
@@ -44,18 +44,22 @@ const Section = struct {
     is_chosen: bool,
 };
 
-/// What the app found in the file; everything borrows from g_arena.
+/// What the app found in the file.
 const Analysis = struct {
+    /// Borrows from g_arena.
     format: []const u8,
+    /// Borrows from g_arena.
     profile_names: []const []const u8,
     source_index: u32,
+    /// Borrows from g_arena.
     sections: []Section,
 };
 
 const Summary = struct {
     section_count: usize,
-    /// Warnings about settings that were skipped or need checking.
+    /// Warnings about settings that were skipped or need checking; borrows from g_arena.
     notes: []const []const u8,
+    /// Borrows from g_arena.
     skipped: []const []const u8,
     /// The running profile was imported over, so a backup of it was kept.
     has_backup: bool,

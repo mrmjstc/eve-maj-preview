@@ -5,7 +5,7 @@ const template = @import("template.zig");
 const universe = @import("../map/universe.zig");
 const config = @import("../config.zig");
 
-pub const CAPACITY = config.DisplayConfig.NOTIFICATION_PANEL_MAX_ROWS[1];
+pub const CAPACITY = config.HistoryPanelConfig.MAX_ROWS[1];
 
 /// One past notification a panel lists; fixed-size buffers avoid a heap allocation per notification.
 pub const Entry = struct {

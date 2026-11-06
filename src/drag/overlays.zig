@@ -78,7 +78,7 @@ pub const GhostOverlay = struct {
         if (self.hwnd) |hwnd| {
             _ = win32.SetWindowPos(hwnd, win32.HWND_TOPMOST, bounds.left, bounds.top, width, height, win32.SWP_NOACTIVATE);
         } else {
-            registerWindowClass(instance) catch |err| {
+            GhostClass.register(instance) catch |err| {
                 slog.err("Failed to register the ghost overlay window class: {}", .{err});
                 return;
             };
@@ -103,19 +103,10 @@ pub const GhostOverlay = struct {
 
         const hwnd = self.hwnd.?;
 
-        if (gdi_overlay.OverlayBitmap.needsResize(self.bitmap, width, height)) {
-            const init_dc = win32.GetDC(null) orelse {
-                slog.err("Failed to get the screen DC for the ghost overlay", .{});
-                return;
-            };
-            defer _ = win32.ReleaseDC(null, init_dc);
-            gdi_overlay.OverlayBitmap.recreate(&self.bitmap, init_dc, width, height) catch |err| {
-                slog.err("Failed to allocate ghost overlay bitmap: {}", .{err});
-                return;
-            };
-        }
-
-        const overlay = &self.bitmap.?;
+        const overlay = gdi_overlay.OverlayBitmap.ensureSize(&self.bitmap, width, height) catch |err| {
+            slog.err("Failed to allocate ghost overlay bitmap: {}", .{err});
+            return;
+        };
         overlay.clear();
 
         const font = font_cache.characterNameFont(&config.thumbnail, monitors.getWindowDpi(hwnd)) catch |err| {
@@ -157,7 +148,7 @@ pub const GhostOverlay = struct {
     }
 };
 
-var g_is_class_registered = false;
+const GhostClass = gdi_overlay.WindowClass(WINDOW_CLASS_NAME, win32.DefWindowProcA);
 
 /// Hint box centered on the monitor nearest `dragging_hwnd`; called once when a drag starts, static for its duration.
 pub fn showDragHint(hint_box: *gdi_overlay.HintBox, instance: win32.HINSTANCE, font_cache: *FontCache, config: *const Config, dragging_hwnd: win32.HWND) void {
@@ -167,10 +158,4 @@ pub fn showDragHint(hint_box: *gdi_overlay.HintBox, instance: win32.HINSTANCE, f
         return;
     };
     hint_box.show(instance, font, color.withAlpha(config.thumbnail.characterNameColor, 0xFF), lang.text("Hold Ctrl to move all thumbnails together"), lang.text("Turn off dragging from the tray icon or settings"), nearest.bounds);
-}
-
-fn registerWindowClass(instance: win32.HINSTANCE) !void {
-    if (g_is_class_registered) return;
-    try gdi_overlay.registerWindowClass(instance, win32.DefWindowProcA, WINDOW_CLASS_NAME, null);
-    g_is_class_registered = true;
 }

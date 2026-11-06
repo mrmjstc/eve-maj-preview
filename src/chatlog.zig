@@ -11,6 +11,7 @@ const universe = @import("map/universe.zig");
 const character_ids_mod = @import("chatlog/character_ids.zig");
 const lines = @import("chatlog/lines.zig");
 const alert_rules_mod = @import("chatlog/alert_rules.zig");
+const routing = @import("chatlog/routing.zig");
 const tail = @import("chatlog/tail.zig");
 const discovery = @import("chatlog/discovery.zig");
 const queue = @import("chatlog/queue.zig");
@@ -25,15 +26,6 @@ const slog = log.Scoped("chatlog");
 const MIN_LINE_LENGTH = 25;
 /// Per worker loop, so a rescan of many characters doesn't keep commands waiting.
 const RESCAN_BUDGET_NS = 100 * std.time.ns_per_ms;
-
-const ClientSystem = struct {
-    /// Owned; freed with the monitor's allocator.
-    character_name: []const u8,
-    /// Null off the gate map, as in a wormhole.
-    system: ?universe.SystemIndex,
-    /// See lines.SystemMatch; a quiet log can be read after a newer one.
-    event_timestamp: u64,
-};
 
 /// What the worker found since the last drain, for the main thread to route to the clients; free with deinit and the monitor's allocator.
 pub const Findings = struct {
@@ -110,8 +102,8 @@ pub const ChatlogMonitor = struct {
     rescan_names: std.ArrayList([]u8) = .empty,
     /// Worker only.
     rescan_index: usize = 0,
-    /// Worker only: searched linearly, as there's one per client.
-    client_systems: std.ArrayList(ClientSystem) = .empty,
+    /// Worker only.
+    client_systems: routing.ClientSystems = .{},
     /// Worker only: chat alerts raised lately, so other clients' copies and cooldowns stay quiet.
     recent_hits: alert_rules_mod.RecentHits = .{},
     /// Worker only: intel lines seen lately, so other clients' copies aren't listed again.
@@ -176,7 +168,6 @@ pub const ChatlogMonitor = struct {
         self.log_files.deinit(self.allocator);
         if (self.damage_alert_excluded_weapons.len > 0) self.allocator.free(self.damage_alert_excluded_weapons);
         if (self.alert_rules) |*rules| rules.deinit();
-        for (self.client_systems.items) |client| self.allocator.free(client.character_name);
         self.client_systems.deinit(self.allocator);
     }
 
@@ -409,7 +400,7 @@ pub const ChatlogMonitor = struct {
     fn unfollow(self: *ChatlogMonitor, character_name: []const u8) void {
         slog.debug("Worker: Remove character {s}", .{character_name});
         if (self.wanted.fetchRemove(character_name)) |entry| self.allocator.free(entry.key);
-        self.forgetClientSystem(character_name);
+        self.client_systems.forget(self.allocator, character_name);
 
         var i: usize = 0;
         while (i < self.log_files.items.len) {
@@ -550,7 +541,9 @@ pub const ChatlogMonitor = struct {
     }
 
     fn queueSystemUpdate(self: *ChatlogMonitor, character_name: []const u8, system_name: []const u8, event_timestamp: u64, is_jump: bool) void {
-        self.recordClientSystem(character_name, system_name, event_timestamp);
+        self.client_systems.record(self.allocator, character_name, system_name, event_timestamp) catch |err| {
+            slog.warn("Failed to remember where '{s}' is for chat alerts: {}", .{ character_name, err });
+        };
         const system_update = self.copySystemUpdate(character_name, system_name, event_timestamp, is_jump) catch |err| {
             slog.err("Failed to copy system update for '{s}': {}", .{ character_name, err });
             return;
@@ -558,35 +551,6 @@ pub const ChatlogMonitor = struct {
         self.system_updates.push(system_update) catch |err| {
             slog.err("Failed to queue system update for '{s}': {}", .{ character_name, err });
         };
-    }
-
-    fn recordClientSystem(self: *ChatlogMonitor, character_name: []const u8, system_name: []const u8, event_timestamp: u64) void {
-        const system = universe.findSystem(system_name);
-        for (self.client_systems.items) |*client| {
-            if (!std.mem.eql(u8, client.character_name, character_name)) continue;
-            if (event_timestamp != 0 and event_timestamp < client.event_timestamp) return;
-            client.system = system;
-            client.event_timestamp = event_timestamp;
-            return;
-        }
-
-        const owned_name = self.allocator.dupe(u8, character_name) catch |err| {
-            slog.warn("Failed to remember where '{s}' is for chat alerts: {}", .{ character_name, err });
-            return;
-        };
-        self.client_systems.append(self.allocator, .{ .character_name = owned_name, .system = system, .event_timestamp = event_timestamp }) catch |err| {
-            slog.warn("Failed to remember where '{s}' is for chat alerts: {}", .{ character_name, err });
-            self.allocator.free(owned_name);
-        };
-    }
-
-    fn forgetClientSystem(self: *ChatlogMonitor, character_name: []const u8) void {
-        for (self.client_systems.items, 0..) |client, index| {
-            if (!std.mem.eql(u8, client.character_name, character_name)) continue;
-            self.allocator.free(client.character_name);
-            _ = self.client_systems.swapRemove(index);
-            return;
-        }
     }
 
     fn copySystemUpdate(self: *const ChatlogMonitor, character_name: []const u8, system_name: []const u8, event_timestamp: u64, is_jump: bool) !queue.SystemUpdate {
@@ -662,7 +626,6 @@ pub const ChatlogMonitor = struct {
         };
     }
 
-    /// A client's own characters don't alert themselves.
     fn handleChatMessage(self: *ChatlogMonitor, file: *const LogFile, line: []const u8) void {
         const rules = if (self.alert_rules) |*rules| rules else return;
         if (!rules.followsChannel(file.channel_name)) return;
@@ -670,15 +633,12 @@ pub const ChatlogMonitor = struct {
         var body_buf: [lines.MAX_LINE_LENGTH]u8 = undefined;
         message.body = lines.collapseSpaces(message.body, &body_buf);
         self.queueIntelSightings(rules, file.channel_name, message);
-        if (self.wanted.contains(message.speaker)) return;
 
         var client_buf: [alert_rules_mod.MAX_CLIENTS]alert_rules_mod.Client = undefined;
-        const clients = self.alertableClients(rules, &client_buf);
-        const hit = rules.firstHit(file.channel_name, message, clients) orelse return;
-
-        const now_ms = win32.Ticks.now().ms;
-        if (self.recent_hits.isRepeat(alert_rules_mod.messageKey(message), now_ms, alert_rules_mod.DUPLICATE_WINDOW_MS)) return;
-        if (self.recent_hits.isRepeat(hit.cooldown_key, now_ms, hit.cooldown_ms)) return;
+        const clients = self.client_systems.alertable(rules, &client_buf);
+        var recipient_buf: [alert_rules_mod.MAX_CLIENTS][]const u8 = undefined;
+        const alert = routing.route(rules, &self.recent_hits, file.channel_name, file.character_name, message, self.wanted.contains(message.speaker), clients, win32.Ticks.now().ms, &recipient_buf) orelse return;
+        const hit = alert.hit;
 
         var jumps_buf: [3]u8 = undefined;
         // A u8 is at most three digits.
@@ -695,14 +655,7 @@ pub const ChatlogMonitor = struct {
         };
         self.next_alert_group += 1;
         slog.debug("Chat alert ({s}) in '{s}': {s}", .{ @tagName(hit.notification_type), file.channel_name, hit.term });
-
-        if (hit.nearest_clients.count() == 0) {
-            const character_name = fallbackClient(rules, file.character_name, clients) orelse return;
-            self.queueNotification(character_name, notification);
-            return;
-        }
-        var nearest = hit.nearest_clients.iterator(.{});
-        while (nearest.next()) |index| self.queueNotification(clients[index].character_name, notification);
+        for (alert.recipients) |character_name| self.queueNotification(character_name, notification);
     }
 
     /// One per system named, however far off: the map and Intel Panel show intel a client's alert range doesn't reach.
@@ -722,36 +675,12 @@ pub const ChatlogMonitor = struct {
         }
     }
 
-    /// Borrows names from client_systems.
-    fn alertableClients(self: *const ChatlogMonitor, rules: *const RuleSet, buffer: []alert_rules_mod.Client) []const alert_rules_mod.Client {
-        var client_count: usize = 0;
-        for (self.client_systems.items) |client| {
-            if (client_count == buffer.len) break;
-            const system = client.system orelse continue;
-            if (rules.isMuted(client.character_name)) continue;
-            buffer[client_count] = .{ .character_name = client.character_name, .system = system };
-            client_count += 1;
-        }
-        return buffer[0..client_count];
-    }
-
-    /// The client that logged the line, or another if that one is muted, since its alert would never show.
-    fn fallbackClient(rules: *const RuleSet, listener: []const u8, clients: []const alert_rules_mod.Client) ?[]const u8 {
-        if (!rules.isMuted(listener)) return listener;
-        return if (clients.len > 0) clients[0].character_name else null;
-    }
-
-    /// Ignores an undock or Local change that repeats the last system, but never a jump; `system` is borrowed and copied into the queued events.
+    /// `system` is borrowed and copied into the queued events.
     fn handleSystemChange(self: *ChatlogMonitor, file: *LogFile, system: []const u8, source: lines.SystemSource, event_timestamp: u64) void {
-        const system_hash = std.hash.Wyhash.hash(0, system);
-        const is_jump = source == .jump or source == .conduit;
-        if (!is_jump and file.last_system_hash == system_hash) return;
-        file.last_system_hash = system_hash;
-
-        // Only jumps notify: undock and Local detection report the same arrival and would fire it twice.
-        if (source == .jump) self.queueNotification(file.character_name, .{ .notification_type = .SystemChange, .target = system });
+        const report = routing.systemReport(&file.last_system_hash, system, source) orelse return;
+        if (report.notifies) self.queueNotification(file.character_name, .{ .notification_type = .SystemChange, .target = system });
         // Timestamped, since a quiet chatlog can be read after a newer gamelog jump.
-        self.queueSystemUpdate(file.character_name, system, event_timestamp, is_jump);
+        self.queueSystemUpdate(file.character_name, system, event_timestamp, report.is_jump);
         slog.info("System change ({s}): {s} -> {s}", .{ @tagName(source), file.character_name, system });
     }
 

@@ -1,4 +1,4 @@
-//! The bundled fonts and the weight/style choice every font setting uses.
+//! The bundled fonts, the weight/style choice every font setting uses, and the GDI fonts made from them.
 const win32 = @import("win32.zig");
 const log = @import("../log.zig");
 
@@ -40,6 +40,26 @@ pub const FontWeight = enum {
         return self == .Italic or self == .BoldItalic;
     }
 };
+
+/// `height_px` is the character height, leaving out internal leading, as a font setting's size means; `weight` is a Win32 FW_ value.
+pub fn create(name: [:0]const u8, height_px: i32, weight: i32, is_italic: bool) ?win32.HFONT {
+    return win32.CreateFontA(
+        -height_px,
+        0,
+        0,
+        0,
+        weight,
+        if (is_italic) 1 else 0,
+        0,
+        0,
+        win32.DEFAULT_CHARSET,
+        win32.OUT_DEFAULT_PRECIS,
+        win32.CLIP_DEFAULT_PRECIS,
+        win32.CLEARTYPE_QUALITY,
+        win32.DEFAULT_PITCH,
+        name.ptr,
+    );
+}
 
 /// Registers the bundled fonts for this process only, since not every Windows install ships them; fonts are released when the process exits.
 pub fn loadBundled() void {

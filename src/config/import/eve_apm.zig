@@ -164,7 +164,11 @@ fn appendCodepoint(arena: std.mem.Allocator, out: *std.ArrayList(u8), codepoint:
 }
 
 fn unquote(raw: ?[]const u8) ?[]const u8 {
-    const trimmed = std.mem.trim(u8, raw orelse return null, " \t");
+    return unquoteText(raw orelse return null);
+}
+
+fn unquoteText(text: []const u8) []const u8 {
+    const trimmed = std.mem.trim(u8, text, " \t");
     if (trimmed.len >= 2 and trimmed[0] == '"' and trimmed[trimmed.len - 1] == '"') return trimmed[1 .. trimmed.len - 1];
     return trimmed;
 }
@@ -277,7 +281,7 @@ fn groupCount(draft: *Draft, ini: *const Ini) !usize {
 
 /// "member,member|forward tuple|backward tuple|...".
 fn parseGroup(arena: std.mem.Allocator, raw: []const u8) !Group {
-    var parts = std.mem.splitScalar(u8, unquote(raw).?, '|');
+    var parts = std.mem.splitScalar(u8, unquoteText(raw), '|');
     var members: std.ArrayList([]const u8) = .empty;
     var names = std.mem.splitScalar(u8, parts.first(), ',');
     while (names.next()) |name| {
@@ -482,8 +486,9 @@ fn globalHotkeys(draft: *Draft, ini: *const Ini) !void {
 }
 
 fn characterList(draft: *Draft, raw: ?[]const u8, field: []const u8) !void {
-    if (isInvalid(raw)) return;
-    var names = std.mem.splitScalar(u8, unquote(raw).?, ',');
+    const text = raw orelse return;
+    if (isInvalid(text)) return;
+    var names = std.mem.splitScalar(u8, unquoteText(text), ',');
     while (names.next()) |raw_name| {
         const name = values.characterName(raw_name) orelse continue;
         try draft.put(try draft.character(name), field, .{ .bool = true });

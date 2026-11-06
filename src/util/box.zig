@@ -13,4 +13,8 @@ pub const Box = struct {
     pub fn contains(self: Box, other: Box) bool {
         return other.left >= self.left and other.top >= self.top and other.right <= self.right and other.bottom <= self.bottom;
     }
+
+    pub fn containsPoint(self: Box, x: i32, y: i32) bool {
+        return x >= self.left and x < self.right and y >= self.top and y < self.bottom;
+    }
 };

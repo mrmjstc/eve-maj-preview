@@ -9,6 +9,8 @@ const hotkey = @import("../hotkey.zig");
 const images = @import("../images.zig");
 const portraits = @import("../portraits.zig");
 const positions = @import("../positions.zig");
+const roster_mod = @import("../roster.zig");
+const selection = @import("../selection.zig");
 const screen_map = @import("../screen_map.zig");
 const screen_math = @import("../screen_math.zig");
 const suggest = @import("../suggest.zig");
@@ -44,7 +46,7 @@ const FLAGS = [_]Flag{
 
 const Flag = struct { field: []const u8, label: []const u8, hint: []const u8 };
 
-var g_selected_index: usize = 0;
+var g_selected: selection.Selection = .{};
 
 pub fn show(context: *ui.Frame) !void {
     const section = try widgets.openSection(
@@ -60,8 +62,7 @@ pub fn show(context: *ui.Frame) !void {
         try section.close(context);
         return;
     }
-    // The list can shrink while the window is open, e.g. on a profile switch.
-    if (g_selected_index >= character_count) g_selected_index = character_count - 1;
+    g_selected.clamp(character_count);
     const master_detail = Rect{ .key = .src(@src()), .style = &style.master_detail_fill };
     _ = try master_detail.open(context);
     try roster(context, profile);
@@ -73,9 +74,9 @@ pub fn show(context: *ui.Frame) !void {
 /// Instead of the list and details, until there's a character.
 fn emptyState(context: *ui.Frame, profile: ProfileRef) !void {
     const state = try widgets.openEmptyState(context, .str("knots.characters.empty"), "No characters yet", "They're added on their own as their EVE clients log in.");
-    if (try widgets.glyphButton(context, .str("knots.characters.empty.open"), .refresh, "Add Open Clients", &style.add_button, false)) populateFromClients(context, profile);
+    if (try widgets.glyphButton(context, .str("knots.characters.empty.open"), .refresh, "Add Open Clients", &style.add_button, false)) try populateFromClients(context, profile);
     if (try widgets.glyphButton(context, .str("knots.characters.empty.add"), .add, "Add Manually", &style.add_button, false)) {
-        if (profile.append("characters", .{})) |added| g_selected_index = added.index;
+        if (profile.append("characters", .{})) |added| g_selected.index = added.index;
     }
     try state.close(context);
 }
@@ -83,29 +84,15 @@ fn emptyState(context: *ui.Frame, profile: ProfileRef) !void {
 /// `lifted_style` while it's being dragged, otherwise the roster's own; `logged_in` borrows positions.openClients' names.
 fn characterRow(context: *ui.Frame, character: *const config.CharacterConfig, index: usize, logged_in: []const []const u8, lifted_style: ?*const ui.Style) !void {
     const arena = context.arena();
-    const name = try rosterName(context, index);
-    const is_selected = index == g_selected_index;
-    const row = Button{
-        .key = ROW_KEY.indexed(index),
-        .style = lifted_style orelse if (is_selected) &style.roster_row_selected else &style.roster_row,
-    };
-    if ((try widgets.openRosterRow(context, row)).clicked and !is_selected) {
-        g_selected_index = index;
-        context.requestRedraw();
-    }
+    const row = try roster_mod.Row.open(context, ROW_KEY.indexed(index), index == g_selected.index, lifted_style);
+    if (row.is_picked) g_selected.index = index;
     const portrait_box = Rect{ .key = ui.Key.str("knots.roster.portrait_box").indexed(index), .style = &style.roster_portrait_box };
     _ = try portrait_box.open(context);
     const portrait = portraits.image(arena, PORTRAIT_KEY, character.name, &style.roster_portrait) orelse
         images.g_default_portrait.image(ui.Key.str("knots.roster.portrait_default").indexed(index), &style.roster_portrait);
     if (portrait) |image| try context.e(image);
-    if (isLoggedIn(logged_in, character.name)) try context.e(Rect{ .key = ui.Key.str("knots.roster.online").indexed(index), .style = &style.roster_online_ring });
+    if (positions.isListed(logged_in, character.name)) try context.e(Rect{ .key = ui.Key.str("knots.roster.online").indexed(index), .style = &style.roster_online_ring });
     try portrait_box.close(context);
-    try context.e(Text{
-        .selectable = false,
-        .key = ui.Key.str("knots.roster.name").indexed(index),
-        .content = name,
-        .style = if (is_selected) &style.roster_name_selected else &style.roster_name,
-    });
     var badge: []const u8 = "";
     if (character.hotkey.len > 0) {
         var text: std.Io.Writer.Allocating = .init(arena);
@@ -113,10 +100,8 @@ fn characterRow(context: *ui.Frame, character: *const config.CharacterConfig, in
         try hotkey.writeKeys(&text.writer, character.hotkey);
         try text.writer.writeByte(']');
         badge = text.written();
-        try context.e(Text{ .selectable = false, .key = ui.Key.str("knots.roster.hotkey").indexed(index), .content = badge, .style = &style.roster_badge });
     }
-    try widgets.fitRosterRow(context, name, style.ROSTER_PORTRAIT_SIZE, badge);
-    try row.close(context);
+    try row.close(context, try rosterName(context, index), style.ROSTER_PORTRAIT_SIZE, .{ .text = badge });
 }
 
 fn rosterName(context: *ui.Frame, index: usize) ![]const u8 {
@@ -134,55 +119,45 @@ fn roster(context: *ui.Frame, profile: ProfileRef) !void {
         if (try order.next(context, index)) try characterRow(context, character, index, logged_in, null);
     }
     if (try order.end(context)) |lifted| {
-        const lifted_style = try order.liftedStyle(context, list.rowsKey(), if (lifted == g_selected_index) &style.roster_row_selected else &style.roster_row);
+        const lifted_style = try order.liftedStyle(context, list.rowsKey(), roster_mod.rowStyle(lifted == g_selected.index));
         try characterRow(context, &characters[lifted], lifted, logged_in, lifted_style);
     }
     const action = try list.close(context, .{ .add_label = "Add Character", .has_open_clients = true });
 
-    // The selection follows the character it was on, not the slot.
     if (widgets.reorderFinish(context, ROW_KEY, characters.len)) |moved| {
-        const selected_id = characters[g_selected_index].id;
         profile.move("characters", moved.from, moved.before);
-        for (profile.ptr.characters.items, 0..) |character, index| {
-            if (character.id == selected_id) g_selected_index = index;
-        }
+        g_selected.afterMove(moved.from, moved.before);
     }
     // After the reorder, which reads `characters`, since adding can move the list.
     switch (action) {
         .none => {},
         .add => {
-            if (profile.append("characters", .{})) |added| g_selected_index = added.index;
+            if (profile.append("characters", .{})) |added| g_selected.index = added.index;
         },
-        .add_open_clients => populateFromClients(context, profile),
+        .add_open_clients => try populateFromClients(context, profile),
     }
 }
 
-/// Matched like populateFromClients, ignoring case and spaces at either end.
-fn isLoggedIn(logged_in: []const []const u8, name: []const u8) bool {
-    const trimmed = std.mem.trim(u8, name, " ");
-    for (logged_in) |client| {
-        if (std.ascii.eqlIgnoreCase(trimmed, std.mem.trim(u8, client, " "))) return true;
-    }
-    return false;
+/// Borrows each name from `characters`.
+fn characterNames(arena: std.mem.Allocator, characters: []const config.CharacterConfig) ![]const []const u8 {
+    const names = try arena.alloc([]const u8, characters.len);
+    for (characters, names) |character, *name| name.* = character.name;
+    return names;
 }
 
 fn detail(context: *ui.Frame, profile: ProfileRef) !void {
     const stack = try widgets.openScrollPane(context, .str("knots.character.detail"), style.detail_scroll);
-    const index = g_selected_index;
+    const index = g_selected.index;
     const character = profile.item("characters", index);
     const previous_rows = widgets.useDetailRows();
     defer widgets.restoreRows(previous_rows);
 
-    const header = try widgets.openDetailHeader(context, .src(@src()));
-    const name_label = lang.text("Character Name");
-    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = name_label, .style = try widgets.detailLabelStyle(context, name_label) });
+    const header = try widgets.openDetailHeader(context, .src(@src()), "Character Name");
     try bind.textBox(context, character, "name", "Character Name");
-    const removed = try widgets.confirmButton(context, ui.Key.str("knots.character.remove").indexed(index), "Remove", "Confirm", &style.plain_button, &style.confirm_button);
+    const removed = try widgets.removeButton(context, ui.Key.str("knots.character.remove").indexed(index));
     try header.close(context);
     const name_box = bind.boxKey(character, "name");
-    const characters = profile.ptr.characters.items;
-    const taken = try context.arena().alloc([]const u8, characters.len);
-    for (characters, taken) |other, *name| name.* = other.name;
+    const taken = try characterNames(context.arena(), profile.ptr.characters.items);
     if (try suggest.openClients(context, name_box, bind.typedText(name_box), taken)) |picked| character.set("name", picked);
 
     try bind.text(context, character, "displayName", "Display Name", "Same as character name");
@@ -219,7 +194,7 @@ fn detail(context: *ui.Frame, profile: ProfileRef) !void {
 
     if (removed) {
         profile.remove("characters", index);
-        g_selected_index = @min(index, profile.ptr.characters.items.len -| 1);
+        g_selected.afterRemove(index, profile.ptr.characters.items.len);
     }
 }
 
@@ -336,22 +311,10 @@ fn positionMap(context: *ui.Frame, character: CharacterRef) !void {
 }
 
 /// Adds every logged-in client that isn't listed yet.
-fn populateFromClients(context: *ui.Frame, profile: ProfileRef) void {
-    const names = positions.openClients(context.arena()) catch |err| {
-        slog.err("Failed to populate characters from open clients: {}", .{err});
-        status.show(.failure, "Failed to scan clients: {err}", .{ .err = err });
-        return;
-    };
-    if (names.len == 0) {
-        status.show(.failure, "No open EVE clients found", .{});
-        return;
-    }
+fn populateFromClients(context: *ui.Frame, profile: ProfileRef) !void {
+    const names = positions.clientsNotIn(context.arena(), try characterNames(context.arena(), profile.ptr.characters.items)) orelse return;
     var added_count: usize = 0;
     for (names) |name| {
-        const exists = for (profile.ptr.characters.items) |character| {
-            if (std.ascii.eqlIgnoreCase(std.mem.trim(u8, character.name, " "), std.mem.trim(u8, name, " "))) break true;
-        } else false;
-        if (exists) continue;
         const added = profile.append("characters", .{}) orelse break;
         added.set("name", name);
         added_count += 1;

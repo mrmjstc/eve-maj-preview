@@ -6,16 +6,17 @@ const bind = @import("../bind.zig");
 const color_convert = @import("../color_convert.zig");
 const style = @import("../style.zig");
 const widgets = @import("../widgets.zig");
+const roster_mod = @import("../roster.zig");
+const selection = @import("../selection.zig");
 const lang = @import("../../../lang/lang.zig");
 
 const Rect = ui.component.Rect;
 const Text = ui.component.Text;
-const Button = ui.component.Button;
 const ProfileRef = session.Ref(config.Config);
 
 const UNNAMED = "New System Color";
 
-var g_selected_index: usize = 0;
+var g_selected: selection.Selection = .{};
 
 /// Both thumbnails and the client list colour system names by these.
 pub fn show(context: *ui.Frame) !void {
@@ -27,12 +28,11 @@ pub fn show(context: *ui.Frame) !void {
         try section.close(context);
         return;
     }
-    // The list can shrink while the window is open, e.g. on a profile switch.
-    if (g_selected_index >= count) g_selected_index = count - 1;
+    g_selected.clamp(count);
     const master_detail = Rect{ .key = .src(@src()), .style = &style.master_detail };
     _ = try master_detail.open(context);
     try roster(context, profile);
-    try detail(context, profile, g_selected_index);
+    try detail(context, profile, g_selected.index);
     try master_detail.close(context);
     try section.close(context);
 }
@@ -40,7 +40,7 @@ pub fn show(context: *ui.Frame) !void {
 /// Its details are the tab's last section, so the tab's end shows them.
 fn addEntry(context: *ui.Frame, profile: ProfileRef) void {
     const added = profile.append("systemColors", .{ .systemName = "", .color = 0xFFFFFFFF }) orelse return;
-    g_selected_index = added.index;
+    g_selected.index = added.index;
     widgets.scrollToEnd(context, widgets.TAB_CONTENT_KEY);
 }
 
@@ -49,24 +49,12 @@ fn roster(context: *ui.Frame, profile: ProfileRef) !void {
     const list = try widgets.openRoster(context, .str("knots.system_color.roster"), &style.roster_fixed, true);
     const arena = context.arena();
     for (entries, 0..) |entry, index| {
-        const is_selected = index == g_selected_index;
-        const row = Button{ .key = ui.Key.str("knots.system_color.row").indexed(index), .style = if (is_selected) &style.roster_row_selected else &style.roster_row };
-        if ((try widgets.openRosterRow(context, row)).clicked and !is_selected) {
-            g_selected_index = index;
-            context.requestRedraw();
-        }
+        const row = try roster_mod.Row.open(context, ui.Key.str("knots.system_color.row").indexed(index), index == g_selected.index, null);
+        if (row.is_picked) g_selected.index = index;
         const dot_style = try arena.create(ui.Style);
         dot_style.* = style.space_dot.with(.{ .background = color_convert.solid(entry.color) });
         try context.e(Rect{ .key = ui.Key.str("knots.system_color.dot").indexed(index), .style = dot_style });
-        const name = try rowName(context, profile, index);
-        try context.e(Text{
-            .selectable = false,
-            .key = ui.Key.str("knots.system_color.name").indexed(index),
-            .content = name,
-            .style = if (is_selected) &style.roster_name_selected else &style.roster_name,
-        });
-        try widgets.fitRosterRow(context, name, style.SPACE_DOT_SIZE, "");
-        try row.close(context);
+        try row.close(context, try rowName(context, profile, index), style.SPACE_DOT_SIZE, .{});
     }
     if (try list.close(context, .{ .add_label = "Add System Color" }) == .add) addEntry(context, profile);
 }
@@ -81,10 +69,10 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
     const stack = Rect{ .key = .src(@src()), .style = &style.detail_fit };
     _ = try stack.open(context);
 
-    const header = try widgets.openDetailHeader(context, .src(@src()));
+    const header = try widgets.openDetailHeader(context, .src(@src()), null);
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = lang.text("Systems"), .style = &style.inline_label });
     try bind.textBox(context, entry, "systemName", "e.g. Jita, Amarr or J######");
-    const removed = try widgets.confirmButton(context, ui.Key.str("knots.system_color.remove").indexed(index), "Remove", "Confirm", &style.plain_button, &style.confirm_button);
+    const removed = try widgets.removeButton(context, ui.Key.str("knots.system_color.remove").indexed(index));
     try header.close(context);
 
     const color_row = try widgets.openBinding(context, ui.Key.str("knots.system_color.color").indexed(index), "Color");
@@ -97,6 +85,6 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
 
     if (removed) {
         profile.remove("systemColors", index);
-        g_selected_index = @min(index, profile.ptr.systemColors.items.len -| 1);
+        g_selected.afterRemove(index, profile.ptr.systemColors.items.len);
     }
 }

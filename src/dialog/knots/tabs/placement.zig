@@ -9,6 +9,7 @@ const bind = @import("../bind.zig");
 const style = @import("../style.zig");
 const widgets = @import("../widgets.zig");
 const region = @import("../region.zig");
+const roster_mod = @import("../roster.zig");
 const search = @import("../search.zig");
 const hotkey_groups = @import("hotkey_groups.zig");
 const screen_map = @import("../screen_map.zig");
@@ -22,6 +23,9 @@ const ProfileRef = session.Ref(config.Config);
 const DisplayRef = session.Ref(config.DisplayConfig);
 const SpaceRef = session.Ref(config.ThumbnailSpace);
 const ScreenMap = screen_map.ScreenMap;
+// knots doesn't export its grid types by name.
+const GridTemplate = @typeInfo(@FieldType(ui.Style, "grid")).optional.child;
+const GridTrack = @typeInfo(@FieldType(GridTemplate, "rows")).pointer.child;
 
 const SPACE_ROW_KEY: ui.Key = .str("knots.space.row");
 /// How faded a switched-off space is, in the list and on the map alike.
@@ -32,10 +36,6 @@ const UNSELECTED_FILL_ALPHA: f32 = 0.12;
 /// Fainter than the selected region's outline, for the same reason.
 const UNSELECTED_OUTLINE_ALPHA = 0.6;
 const CHIP_COLUMNS: [3]GridTrack = @splat(.{ .fr = 1 });
-
-// knots doesn't export its grid types by name.
-const GridTemplate = @typeInfo(@FieldType(ui.Style, "grid")).optional.child;
-const GridTrack = @typeInfo(@FieldType(GridTemplate, "rows")).pointer.child;
 
 /// A pill in a space's Holds grid.
 const Chip = struct {
@@ -140,6 +140,8 @@ fn manual(context: *ui.Frame, display: DisplayRef) !void {
     try widgets.hintText(context, .src(@src()), "Thumbnails stick to the edges of your monitors.");
     try bind.toggle(context, snapping, "thumbnailEdges", "Snap to Thumbnail Edges");
     try widgets.hintText(context, .src(@src()), "Thumbnails stick to each other's edges.");
+    try bind.toggle(context, snapping, "panelEdges", "Snap to Panel Edges");
+    try widgets.hintText(context, .src(@src()), "Thumbnails stick to the client list and the other panels.");
     try bind.toggle(context, snapping, "ghostPositions", "Snap to Other Characters' Saved Positions");
     try widgets.hintText(context, .src(@src()), "Includes characters that aren't logged in.");
     try bind.number(context, snapping, "threshold", "Snap Distance", .{ .unit = "px" });
@@ -215,7 +217,7 @@ fn roster(context: *ui.Frame, profile: ProfileRef, is_filling: bool) !void {
         if (try order.next(context, index)) try spaceRow(context, space, index, null);
     }
     if (try order.end(context)) |lifted| {
-        const lifted_style = try order.liftedStyle(context, list.rowsKey(), if (items[lifted].id == g_selected_id) &style.roster_row_selected else &style.roster_row);
+        const lifted_style = try order.liftedStyle(context, list.rowsKey(), roster_mod.rowStyle(items[lifted].id == g_selected_id));
         try spaceRow(context, &items[lifted], lifted, lifted_style);
     }
     const is_full = items.len >= spaces.MAX_SPACES;
@@ -246,32 +248,21 @@ fn shownName(space: *const config.ThumbnailSpace) []const u8 {
 /// `lifted_style` while it's being dragged, otherwise the roster's own.
 fn spaceRow(context: *ui.Frame, space: *const config.ThumbnailSpace, index: usize, lifted_style: ?*const ui.Style) !void {
     const arena = context.arena();
-    const is_selected = space.id == g_selected_id;
-    const row = Button{ .key = SPACE_ROW_KEY.indexed(index), .style = lifted_style orelse if (is_selected) &style.roster_row_selected else &style.roster_row };
-    if ((try widgets.openRosterRow(context, row)).clicked and !is_selected) {
-        g_selected_id = space.id;
-        context.requestRedraw();
-    }
+    const row = try roster_mod.Row.open(context, SPACE_ROW_KEY.indexed(index), space.id == g_selected_id, lifted_style);
+    if (row.is_picked) g_selected_id = space.id;
     const dot_style = try arena.create(ui.Style);
     dot_style.* = style.space_dot.with(.{ .background = .{ .color = dotColor(context, space.id) }, .opacity = if (space.enabled) @as(f32, 1) else DISABLED_SPACE_ALPHA });
     try context.e(Rect{ .key = ui.Key.str("knots.space.dot").indexed(index), .style = dot_style });
     const name = try spaceName(context, space, index);
     search.captureText(name);
-    try context.e(Text{
-        .selectable = false,
-        .key = ui.Key.str("knots.space.name").indexed(index),
-        .content = name,
-        .style = if (is_selected) &style.roster_name_selected else &style.roster_name,
-    });
     const has_region = spaces.rect(space) != null;
-    var badge: []const u8 = "";
-    if (!space.enabled or !has_region) {
-        const is_warning = space.enabled;
-        badge = lang.text(if (is_warning) "No region" else "Off");
-        try context.e(Text{ .selectable = false, .key = ui.Key.str("knots.space.state").indexed(index), .content = badge, .style = if (is_warning) &style.roster_badge_warning else &style.roster_badge });
+    var badge: roster_mod.Badge = .{};
+    if (!space.enabled) {
+        badge = .{ .text = lang.text("Off") };
+    } else if (!has_region) {
+        badge = .{ .text = lang.text("No region"), .text_style = &style.roster_badge_warning };
     }
-    try widgets.fitRosterRow(context, name, style.SPACE_DOT_SIZE, badge);
-    try row.close(context);
+    try row.close(context, name, style.SPACE_DOT_SIZE, badge);
 }
 
 /// Login Screen and Unassigned Characters stay at the top, as config load puts them (see config/spaces.zig).
@@ -290,9 +281,7 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
     const is_special = isBuiltIn(space.ptr);
     const previous_rows = widgets.useDetailRows();
     defer widgets.restoreRows(previous_rows);
-    const header = try widgets.openDetailHeader(context, .src(@src()));
-    const name_label = lang.text("Name");
-    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = name_label, .style = try widgets.detailLabelStyle(context, name_label) });
+    const header = try widgets.openDetailHeader(context, .src(@src()), "Name");
     var removed = false;
     if (is_special) {
         const name = Rect{ .key = .src(@src()), .style = &style.space_fixed_name };
@@ -305,7 +294,7 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
         try tag.close(context);
     } else {
         try bind.textBox(context, space, "name", "e.g., Miners");
-        removed = try widgets.confirmButton(context, ui.Key.str("knots.space.remove").indexed(id), "Remove", "Confirm", &style.plain_button, &style.confirm_button);
+        removed = try widgets.removeButton(context, ui.Key.str("knots.space.remove").indexed(id));
     }
     try header.close(context);
     if (removed) {

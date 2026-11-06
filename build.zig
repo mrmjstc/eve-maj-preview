@@ -72,6 +72,8 @@ pub fn build(b: *std.Build) void {
     exe.root_module.addImport("ui", knots.module("ui"));
 
     b.installArtifact(exe);
+    // The bundled alert sounds, which the sound picker opens on.
+    b.installDirectory(.{ .source_dir = b.path("sounds"), .install_dir = .bin, .install_subdir = "sounds" });
 
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
@@ -87,6 +89,14 @@ pub fn build(b: *std.Build) void {
 
     const config_step = b.step("config", "Run the app with the configuration window open");
     config_step.dependOn(&config_run.step);
+
+    // ZLS runs this on save; a separate, uninstalled artifact lets Zig skip code generation.
+    const exe_check = b.addExecutable(.{
+        .name = "eve-maj-preview",
+        .root_module = exe.root_module,
+    });
+    const check_step = b.step("check", "Type-check the app without building it");
+    check_step.dependOn(&exe_check.step);
 
     // Debug, for the safety checks the release build's default optimize mode leaves out.
     const tests = b.addTest(.{

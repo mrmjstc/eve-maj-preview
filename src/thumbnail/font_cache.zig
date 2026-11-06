@@ -1,27 +1,19 @@
 //! GDI fonts cached per purpose and DPI.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
+const gdi_overlay = @import("../platform/gdi_overlay.zig");
 const types = @import("../config/types.zig");
 const config = @import("../config.zig");
-const log = @import("../log.zig");
 
-const slog = log.Scoped("font_cache");
+const CachedFont = gdi_overlay.CachedFont;
 
 /// `combat` is incoming DPS's slot; outgoing DPS has its own.
 pub const FontSlot = enum(u4) { main, combat, mining, bounty, system_name, group_badge, notification, combat_outgoing, resources, session_timer, ping };
 
-const Entry = struct {
-    font: ?win32.HFONT = null,
-    /// Owned; freed when replaced or in deinit.
-    name: []const u8 = "",
-    size: i32 = 0,
-    weight: types.FontWeight = .Regular,
-};
-
 /// Keyed by slot and DPI, so monitors at different DPIs don't evict each other's fonts.
 pub const FontCache = struct {
     allocator: std.mem.Allocator,
-    entries: std.AutoHashMap(u32, Entry),
+    entries: std.AutoHashMap(u32, CachedFont),
 
     pub fn init(allocator: std.mem.Allocator) FontCache {
         return .{ .allocator = allocator, .entries = .init(allocator) };
@@ -29,10 +21,7 @@ pub const FontCache = struct {
 
     pub fn deinit(self: *FontCache) void {
         var it = self.entries.valueIterator();
-        while (it.next()) |entry| {
-            if (entry.font) |font| _ = win32.DeleteObject(font);
-            self.allocator.free(entry.name);
-        }
+        while (it.next()) |entry| entry.deinit(self.allocator);
         self.entries.deinit();
     }
 
@@ -41,60 +30,13 @@ pub const FontCache = struct {
         return self.get(.main, dpi, thumbnail_config.characterNameFontName, win32.scalePixels(thumbnail_config.characterNameFontSize, win32.dpiToScale(dpi)), thumbnail_config.characterNameFontWeight);
     }
 
-    /// Recreated only when its settings change; the cache owns the returned font.
+    /// Recreated only when its settings change; the cache owns the returned font, and logs a font it couldn't create.
     pub fn get(self: *FontCache, slot: FontSlot, dpi: u32, font_name: []const u8, font_size: i32, font_weight: types.FontWeight) !win32.HFONT {
         const lookup = try self.entries.getOrPut(cacheKey(slot, dpi));
         if (!lookup.found_existing) lookup.value_ptr.* = .{};
         const entry = lookup.value_ptr;
-
-        const is_cached = entry.font != null and
-            std.mem.eql(u8, entry.name, font_name) and
-            entry.size == font_size and
-            entry.weight == font_weight;
-
-        if (is_cached) {
-            return entry.font.?;
-        }
-
-        if (entry.font) |old_font| {
-            _ = win32.DeleteObject(old_font);
-            entry.font = null;
-            slog.debug("Font cache invalidated for slot {} @ {} DPI (settings changed)", .{ slot, dpi });
-        }
-
-        const terminated_name = try self.allocator.dupeSentinel(u8, font_name, 0);
-        defer self.allocator.free(terminated_name);
-
-        // Copied, since font_name may be freed under a cached entry.
-        const name_copy = try self.allocator.dupe(u8, font_name);
-        errdefer self.allocator.free(name_copy);
-
-        const font = win32.CreateFontA(
-            -font_size,
-            0,
-            0,
-            0,
-            font_weight.toWin32Weight(),
-            if (font_weight.isItalic()) 1 else 0,
-            0,
-            0,
-            win32.DEFAULT_CHARSET,
-            win32.OUT_DEFAULT_PRECIS,
-            win32.CLIP_DEFAULT_PRECIS,
-            win32.CLEARTYPE_QUALITY,
-            win32.DEFAULT_PITCH,
-            terminated_name,
-        ) orelse return error.CreateFontFailed;
-
-        self.allocator.free(entry.name);
-        entry.font = font;
-        entry.name = name_copy;
-        entry.size = font_size;
-        entry.weight = font_weight;
-
-        slog.debug("Created cached font for slot {} @ {} DPI: {s} size={} weight={}", .{ slot, dpi, font_name, font_size, font_weight });
-
-        return font;
+        try entry.ensure(self.allocator, @tagName(slot), font_name, font_size, font_weight);
+        return entry.handle orelse error.CreateFontFailed;
     }
 };
 

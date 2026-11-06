@@ -1,0 +1,384 @@
+//! What the Map Panel does with the mouse and keyboard: hover, pan and zoom, clicks, the right-click menu and the search.
+const std = @import("std");
+const win32 = @import("../../platform/win32.zig");
+const config_mod = @import("../../config.zig");
+const look = @import("look.zig");
+const menu_mod = @import("menu.zig");
+const state = @import("state.zig");
+const window_mod = @import("window.zig");
+const panel_host = @import("../panel_host.zig");
+const universe = @import("../../map/universe.zig");
+const evestars = @import("../../map/evestars.zig");
+const destinations_mod = @import("../../map/destinations.zig");
+const system_links = @import("../../map/system_links.zig");
+const log = @import("../../log.zig");
+
+const Destinations = destinations_mod.Destinations;
+const Hover = state.Hover;
+const MapPan = state.MapPan;
+const MapPanelWindow = window_mod.MapPanelWindow;
+const SystemIndex = universe.SystemIndex;
+const slog = log.Scoped("map_panel");
+
+/// Each wheel notch or zoom button press.
+const ZOOM_STEP: f32 = 1.25;
+/// How far the cursor must move before a press on empty map counts as a drag.
+const PAN_START_DISTANCE: i32 = 3;
+
+/// Whether the search gives the keyboard back to what had it, or something else already took it.
+pub const SearchEnding = enum { hand_back, keyboard_gone };
+
+/// What input reaches beyond the window.
+pub const Context = struct {
+    /// Borrowed for one message.
+    destinations: *Destinations,
+    host: panel_host.Host,
+};
+
+/// What a message leaves for the panel, which owns the redraw.
+pub const Response = enum {
+    none,
+    redraw,
+    /// For input that can come faster than the screen refreshes.
+    redraw_paced,
+};
+
+/// Null for a message left to Windows.
+pub fn handleMessage(window: *MapPanelWindow, context: Context, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) ?Response {
+    switch (msg) {
+        win32.WM_MOUSEMOVE => return if (onMouseMove(window, context, win32.lparamX(lParam), win32.lparamY(lParam))) .redraw_paced else .none,
+        win32.WM_MOUSELEAVE => onMouseLeave(window),
+        win32.WM_LBUTTONDOWN => handleClick(window, context, win32.lparamX(lParam), win32.lparamY(lParam)),
+        win32.WM_LBUTTONUP => endPan(window),
+        win32.WM_CAPTURECHANGED => {
+            // A pan ended by Windows rather than the button keeps the view it reached.
+            window.state.pan = null;
+            return .none;
+        },
+        win32.WM_MOUSEWHEEL => return if (onWheel(window, wParam, lParam)) .redraw_paced else .none,
+        win32.WM_RBUTTONDOWN => handleRightClick(window, context, win32.lparamX(lParam), win32.lparamY(lParam)),
+        win32.WM_CHAR => onSearchChar(window, wParam),
+        win32.WM_KEYDOWN => onSearchKey(window, context, wParam),
+        win32.WM_KILLFOCUS => {
+            if (window.state.search == null) return .none;
+            closeSearch(window, context, .keyboard_gone);
+        },
+        else => return null,
+    }
+    return .redraw;
+}
+
+pub fn closeSearch(window: *MapPanelWindow, context: Context, ending: SearchEnding) void {
+    if (window.state.search == null) return;
+    window.state.search = null;
+    window.state.popup.clear();
+    context.host.run(.resume_hotkeys);
+    switch (ending) {
+        .keyboard_gone => {},
+        .hand_back => if (window.search_return_hwnd) |hwnd| {
+            _ = win32.SetForegroundWindow(hwnd);
+        },
+    }
+}
+
+fn closePopup(window: *MapPanelWindow, context: Context) void {
+    window.state.menu = null;
+    window.state.popup.clear();
+    closeSearch(window, context, .hand_back);
+}
+
+/// Whether the hover changed, and so the panel needs a redraw.
+fn onMouseMove(window: *MapPanelWindow, context: Context, x: i32, y: i32) bool {
+    if (!window.is_tracking_mouse) window.is_tracking_mouse = win32.trackMouseLeave(window.panel.hwnd);
+    if (window.state.pan) |*pan| return continuePan(window, pan, x, y);
+    const hover = window.state.hitTest(window.currentAreas(), &window.config.historyPanel, x, y);
+    if (hover.eql(window.state.hover)) return false;
+    window.state.hover = hover;
+    if (hover.kind == .popup_row) {
+        if (window.state.search) |*open| open.picked_index = hover.index;
+    }
+    if (window.state.menu) |*menu| {
+        if (hover.kind == .popup_row) menu.followRow(window.hasEveStars(), hover.index);
+        if (hover.kind == .submenu_row) menu.followSubmenuRow(&context.destinations.targets, hover.index);
+        followMenu(window);
+    }
+    return true;
+}
+
+fn onMouseLeave(window: *MapPanelWindow) void {
+    window.is_tracking_mouse = false;
+    window.state.hover = .{};
+}
+
+/// Whether the map moved.
+fn continuePan(window: *MapPanelWindow, pan: *MapPan, x: i32, y: i32) bool {
+    const delta_x = x - pan.start_x;
+    const delta_y = y - pan.start_y;
+    if (!pan.has_moved and @abs(delta_x) + @abs(delta_y) < PAN_START_DISTANCE) return false;
+    pan.has_moved = true;
+    const area = window.currentAreas().map;
+    window.state.layout.view = pan.start_view.panned(area, @floatFromInt(delta_x), @floatFromInt(delta_y));
+    return true;
+}
+
+fn beginPan(window: *MapPanelWindow, x: i32, y: i32) void {
+    window.state.pan = .{ .start_x = x, .start_y = y, .start_view = window.state.layout.view };
+    _ = win32.SetCapture(window.panel.hwnd);
+}
+
+/// A press that never moved is a click on empty map, which drops the selection.
+fn endPan(window: *MapPanelWindow) void {
+    const pan = window.state.pan orelse return;
+    window.state.pan = null;
+    _ = win32.ReleaseCapture();
+    if (!pan.has_moved) window.state.focus_system = null;
+}
+
+/// Whether the map zoomed; `wParam` and `lParam` are WM_MOUSEWHEEL's, whose position is on the screen.
+fn onWheel(window: *MapPanelWindow, wParam: win32.WPARAM, lParam: win32.LPARAM) bool {
+    if (window.state.is_picking_region or window.state.isPopupOpen()) return false;
+    var point: win32.POINT = .{ .x = win32.lparamX(lParam), .y = win32.lparamY(lParam) };
+    _ = win32.ScreenToClient(window.panel.hwnd, &point);
+    const area = window.currentAreas().map;
+    if (point.x < area.left or point.x >= area.right or point.y >= area.bottom) return false;
+    const notches = @as(f32, @floatFromInt(win32.getWheelDelta(@truncate(wParam)))) / win32.WHEEL_DELTA;
+    window.state.layout.view = window.state.layout.view.zoomedAt(area, point.x, point.y, std.math.pow(f32, ZOOM_STEP, notches));
+    return true;
+}
+
+fn handleClick(window: *MapPanelWindow, context: Context, x: i32, y: i32) void {
+    const hit = window.state.hitTest(window.currentAreas(), &window.config.historyPanel, x, y);
+    switch (hit.kind) {
+        .none => {
+            if (window.state.isPopupOpen()) {
+                closePopup(window, context);
+                return;
+            }
+            if (window.state.is_picking_region) {
+                window.state.is_picking_region = false;
+                return;
+            }
+            beginPan(window, x, y);
+        },
+        .map_control => pressMapControl(window, @fromBackingInt(@intCast(hit.index))),
+        .popup_row => pressPopupRow(window, context, hit.index),
+        .submenu_row => pressSubmenuRow(window, context, hit.index),
+        .nested_row => pressCharacterRow(window, context, hit.index),
+        .search_box => openSearch(window, context),
+        .button => pressButton(window, @fromBackingInt(@intCast(hit.index))),
+        .region => {
+            if (win32.isCtrlPressed()) {
+                _ = window.toggleRegion(context.destinations, @intCast(hit.index));
+                return;
+            }
+            window.chooseRegion(@intCast(hit.index));
+        },
+        .intel_row => openIntelRow(window, hit.index),
+        .node => {
+            const system = window.state.layout.nodes[hit.index].system;
+            window.state.focus_system = if (window.state.focus_system == system) null else system;
+            for (window.state.marks.slice()) |mark| {
+                if (mark.system != system) continue;
+                context.host.run(.{ .activate = mark.source_hwnd });
+                return;
+            }
+        },
+        .exit => {
+            const exit = window.state.layout.exits[hit.index];
+            if (win32.isCtrlPressed()) {
+                if (window.toggleRegion(context.destinations, exit.region)) window.state.focus_system = exit.destination;
+                return;
+            }
+            window.chooseRegion(exit.region);
+            window.state.focus_system = exit.destination;
+        },
+    }
+}
+
+fn pressMapControl(window: *MapPanelWindow, control: look.MapControl) void {
+    const area = window.currentAreas().map;
+    const x = @divTrunc(area.left + area.right, 2);
+    const y = @divTrunc(area.top + area.bottom, 2);
+    switch (control) {
+        .zoom_in => window.state.layout.view = window.state.layout.view.zoomedAt(area, x, y, ZOOM_STEP),
+        .zoom_out => window.state.layout.view = window.state.layout.view.zoomedAt(area, x, y, 1 / ZOOM_STEP),
+        .fit => window.state.layout.view = .{},
+        .always_on_top => window.store.update(.{ .mapPanel = .{ .alwaysOnTop = !window.config.mapPanel.alwaysOnTop } }),
+    }
+}
+
+fn pressButton(window: *MapPanelWindow, button: look.Button) void {
+    if (look.metricOf(button)) |metric| {
+        window.store.update(.{ .mapPanel = .{ .metric = metric } });
+        return;
+    }
+    switch (button) {
+        .regions => window.state.is_picking_region = !window.state.is_picking_region,
+        .follow => {
+            window.store.update(.{ .mapPanel = .{ .followActive = !window.config.mapPanel.followActive } });
+            window.state.followed_region = null;
+        },
+        .storms => window.store.update(.{ .mapPanel = .{ .showStorms = !window.config.mapPanel.showStorms } }),
+        .incursions => window.store.update(.{ .mapPanel = .{ .showIncursions = !window.config.mapPanel.showIncursions } }),
+        .security, .kills, .npc_kills, .jumps, .sovereignty => {},
+    }
+}
+
+fn openIntelRow(window: *MapPanelWindow, row_index: usize) void {
+    const intel_history = window.intel_history orelse return;
+    const entry = intel_history.entryFromNewest(window.state.intel_rows[row_index].first_index) orelse return;
+    if (entry.system) |system| window.selectSystem(system);
+}
+
+fn handleRightClick(window: *MapPanelWindow, context: Context, x: i32, y: i32) void {
+    const hit = window.state.hitTest(window.currentAreas(), &window.config.historyPanel, x, y);
+    if (window.state.isPopupOpen()) {
+        closePopup(window, context);
+        return;
+    }
+    const node_index = nodeWithMenuAt(window, hit, x, y) orelse return;
+    const node = window.state.layout.nodes[node_index];
+    window.state.focus_system = node.system;
+    window.state.menu = .{ .system = node.system, .anchor = .{ .x = node.x, .y = node.y } };
+    window.state.hover = .{};
+    if (window.hasEveStars()) context.destinations.refreshTargets(window.panel.allocator, window.evestarsToken(), win32.Ticks.now().ms);
+}
+
+/// A system's name counts as well as its marker, though only the marker takes a hover.
+fn nodeWithMenuAt(window: *const MapPanelWindow, hit: Hover, x: i32, y: i32) ?u16 {
+    if (hit.kind == .node) return hit.index;
+    if (hit.kind != .none or window.state.is_picking_region) return null;
+    return window.state.layout.labelAt(x, y);
+}
+
+/// Drops the popup's boxes for the submenus the menu has closed.
+fn followMenu(window: *MapPanelWindow) void {
+    const menu = window.state.menu orelse return;
+    if (menu.branch == null) window.state.popup.submenu = null;
+    if (!menu.shows_characters) window.state.popup.nested = null;
+}
+
+fn pressPopupRow(window: *MapPanelWindow, context: Context, row_index: usize) void {
+    const menu = if (window.state.menu) |*open| open else return pickHit(window, context, row_index);
+    const action = menu.pressRow(window.hasEveStars(), row_index);
+    followMenu(window);
+    runMenuAction(window, context, action);
+}
+
+fn pressSubmenuRow(window: *MapPanelWindow, context: Context, row_index: usize) void {
+    const menu = if (window.state.menu) |*open| open else return;
+    const action = menu.pressSubmenuRow(window.menuContext(context.destinations, menu.system), row_index);
+    followMenu(window);
+    runMenuAction(window, context, action);
+}
+
+fn pressCharacterRow(window: *MapPanelWindow, context: Context, row_index: usize) void {
+    if (window.state.menu == null) return;
+    runMenuAction(window, context, menu_mod.pressCharacterRow(&context.destinations.targets, row_index));
+}
+
+fn runMenuAction(window: *MapPanelWindow, context: Context, action: menu_mod.Action) void {
+    const menu = window.state.menu orelse return;
+    if (action.closesMenu()) closePopup(window, context);
+    const destinations = context.destinations;
+    const map_settings = &window.config.mapPanel;
+    const now_ms = win32.Ticks.now().ms;
+    switch (action) {
+        .none => {},
+        .avoid_system => toggleAvoided(window, destinations, menu.system),
+        .copy_name => copySystemName(destinations, menu.system),
+        .open_site => |site| openSite(destinations, site, menu.system),
+        .show_range => |ship| window.state.reach = if (ship) |shown| .measure(menu.system, shown) else null,
+        .cycle_preference => window.store.update(.{ .mapPanel = .{ .routePreference = menu_mod.nextPreference(map_settings.routePreference) } }),
+        .toggle_ansiblex => window.store.update(.{ .mapPanel = .{ .routeAnsiblex = !map_settings.routeAnsiblex } }),
+        .toggle_waypoints => window.store.update(.{ .mapPanel = .{ .routeEveryWaypoint = !map_settings.routeEveryWaypoint } }),
+        .send_to_all => {
+            const options = routeOptions(window.config);
+            destinations.sendToAll(window.panel.allocator, window.evestarsToken(), menu.system, &options, now_ms);
+        },
+        .send => |index| {
+            const options = routeOptions(window.config);
+            destinations.send(window.panel.allocator, window.evestarsToken(), &destinations.targets.slice()[index], menu.system, &options, now_ms);
+        },
+    }
+}
+
+fn toggleAvoided(window: *const MapPanelWindow, destinations: *Destinations, system: SystemIndex) void {
+    const name = universe.systemName(system);
+    const now_ms = win32.Ticks.now().ms;
+    const is_avoided = window.store.toggleAvoidedSystem(universe.systemInfo(system).id) catch |err| {
+        slog.warn("Failed to change whether routes avoid '{s}': {}", .{ name, err });
+        destinations.showFailureText(.print("{s}", .{if (err == error.AvoidListFull) "The avoid list is full" else "Couldn't change the avoid list"}), now_ms);
+        return;
+    };
+    destinations.showInfo(.print("Routes {s} {s}", .{ if (is_avoided) "avoid" else "no longer avoid", name }), now_ms);
+}
+
+fn copySystemName(destinations: *Destinations, system: SystemIndex) void {
+    const name = universe.systemName(system);
+    const now_ms = win32.Ticks.now().ms;
+    if (win32.setClipboardText(name)) {
+        destinations.showInfo(.print("Copied {s}", .{name}), now_ms);
+        return;
+    }
+    slog.warn("Failed to copy '{s}' to the clipboard", .{name});
+    destinations.showFailureText(.print("Couldn't copy {s}", .{name}), now_ms);
+}
+
+fn openSite(destinations: *Destinations, site: system_links.Site, system: SystemIndex) void {
+    const url = system_links.siteUrl(site, system);
+    if (win32.shellOpenUrl(url.slice())) return;
+    slog.warn("Failed to open '{s}'", .{url.slice()});
+    destinations.showFailureText(.print("Couldn't open {s}", .{system_links.siteName(site)}), win32.Ticks.now().ms);
+}
+
+fn routeOptions(config: *const config_mod.Config) evestars.RouteOptions {
+    const map_settings = &config.mapPanel;
+    var options: evestars.RouteOptions = .{
+        .preference = map_settings.routePreference,
+        .uses_ansiblex = map_settings.routeAnsiblex,
+        .sets_every_waypoint = map_settings.routeEveryWaypoint,
+        .avoids_zone = .{ map_settings.routeAvoidZone1, map_settings.routeAvoidZone2, map_settings.routeAvoidZone3, map_settings.routeAvoidZone4, map_settings.routeAvoidZone5 },
+    };
+    for (config.avoidedSystems.items) |avoided| options.avoid(avoided.systemId);
+    return options;
+}
+
+/// A click doesn't activate the panel, so the keyboard has to be asked for; the hotkeys let go of it meanwhile.
+fn openSearch(window: *MapPanelWindow, context: Context) void {
+    if (window.state.search != null) return;
+    window.state.menu = null;
+    window.state.popup.clear();
+    window.state.search = .{};
+    window.search_return_hwnd = win32.GetForegroundWindow();
+    context.host.run(.suspend_hotkeys);
+    if (!win32.toBool(win32.SetForegroundWindow(window.panel.hwnd))) slog.warn("Failed to take the keyboard for the map's search", .{});
+    _ = win32.SetFocus(window.panel.hwnd);
+}
+
+/// Shows the hit on the map; a hit list that has since shrunk picks nothing.
+fn pickHit(window: *MapPanelWindow, context: Context, index: usize) void {
+    const open = window.state.search orelse return;
+    const hit = open.hitAt(index) orelse return;
+    closePopup(window, context);
+    switch (hit) {
+        .system => |system| window.selectSystem(system),
+        .region => |region| window.chooseRegion(region),
+    }
+}
+
+fn onSearchChar(window: *MapPanelWindow, wParam: win32.WPARAM) void {
+    const open = if (window.state.search) |*shown| shown else return;
+    _ = open.typeChar(wParam);
+}
+
+fn onSearchKey(window: *MapPanelWindow, context: Context, wParam: win32.WPARAM) void {
+    const open = if (window.state.search) |*shown| shown else return;
+    switch (wParam) {
+        win32.VK_ESCAPE => closePopup(window, context),
+        win32.VK_RETURN => pickHit(window, context, open.picked_index),
+        win32.VK_UP => open.pickPrevious(),
+        win32.VK_DOWN => open.pickNext(),
+        else => {},
+    }
+}

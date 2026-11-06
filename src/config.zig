@@ -18,6 +18,7 @@ const window_filters = @import("config/window_filters.zig");
 const chat_alerts = @import("config/chat_alerts.zig");
 const thumbnail_mod = @import("config/thumbnail.zig");
 const display_mod = @import("config/display.zig");
+const panels = @import("config/panels.zig");
 const behavior = @import("config/behavior.zig");
 const auto_colors = @import("config/auto_colors.zig");
 const profiles = @import("config/profiles.zig");
@@ -89,8 +90,13 @@ pub const StateVisualConfig = thumbnail_mod.StateVisualConfig;
 pub const ThumbnailState = thumbnail_mod.ThumbnailState;
 pub const ThumbnailConfig = thumbnail_mod.ThumbnailConfig;
 pub const DisplayConfig = display_mod.DisplayConfig;
+pub const ListViewConfig = panels.ListViewConfig;
+pub const HistoryPanelConfig = panels.HistoryPanelConfig;
+pub const MapPanelConfig = panels.MapPanelConfig;
+pub const IntelPanelConfig = panels.IntelPanelConfig;
 pub const TimerConfig = behavior.TimerConfig;
 pub const SnappingConfig = behavior.SnappingConfig;
+pub const PanelSnappingConfig = behavior.PanelSnappingConfig;
 pub const InteractionConfig = behavior.InteractionConfig;
 pub const AutoMinimizeConfig = behavior.AutoMinimizeConfig;
 pub const AutoMovePositionConfig = behavior.AutoMovePositionConfig;
@@ -101,7 +107,7 @@ pub const AutoColorStore = auto_colors.AutoColorStore;
 
 pub const PROFILE_FORMAT_IDENTIFIER = "eve-maj-preview";
 /// Bumped only for schema changes needing a migration, independent of the release version; see config/migrate.zig and Config.fromWire.
-pub const PROFILE_FORMAT_VERSION: u32 = migrate.SPACES_VERSION;
+pub const PROFILE_FORMAT_VERSION: u32 = migrate.PANELS_VERSION;
 
 pub const ShownColors = struct {
     system_name_color: u32,
@@ -126,7 +132,12 @@ pub const Config = struct {
     thumbnail: ThumbnailConfig = .{},
     timer: TimerConfig = .{},
     display: DisplayConfig = .{},
+    listView: ListViewConfig = .{},
+    historyPanel: HistoryPanelConfig = .{},
+    mapPanel: MapPanelConfig = .{},
+    intelPanel: IntelPanelConfig = .{},
     snapping: SnappingConfig = .{},
+    panelSnapping: PanelSnappingConfig = .{},
     interaction: InteractionConfig = .{},
     autoMinimize: AutoMinimizeConfig = .{},
     autoMovePosition: AutoMovePositionConfig = .{},
@@ -321,11 +332,11 @@ pub const Config = struct {
     pub fn shownColors(self: *const Config) ShownColors {
         return switch (self.display.viewMode) {
             .ClientList => .{
-                .system_name_color = self.display.listViewSystemNameColor,
-                .active_color = self.display.listViewActiveColor,
-                .uses_unique_system_colors = self.display.listViewUseUniqueSystemColors,
-                .uses_unique_name_colors = self.display.listViewUseUniqueCharacterNameColors,
-                .uses_unique_border_colors = self.display.listViewUseUniqueActiveColors,
+                .system_name_color = self.listView.systemNameColor,
+                .active_color = self.listView.activeColor,
+                .uses_unique_system_colors = self.listView.useUniqueSystemColors,
+                .uses_unique_name_colors = self.listView.useUniqueCharacterNameColors,
+                .uses_unique_border_colors = self.listView.useUniqueActiveColors,
             },
             .Thumbnails, .ThumbnailsAndList, .Nothing => .{
                 .system_name_color = self.thumbnail.systemNameColor,
@@ -340,7 +351,7 @@ pub const Config = struct {
     /// The focus auto-hide of whichever view is shown, since the client list alone has its own.
     pub fn shownAutoHide(self: *const Config) AutoHide {
         return switch (self.display.viewMode) {
-            .ClientList => .{ .is_enabled = self.display.listViewHideWhenNoEveFocus, .delay_ms = self.display.listViewHideDebounceMs },
+            .ClientList => .{ .is_enabled = self.listView.hideWhenNoEveFocus, .delay_ms = self.listView.hideDebounceMs },
             .Thumbnails, .ThumbnailsAndList, .Nothing => .{ .is_enabled = self.thumbnail.hideWhenNoEveFocus, .delay_ms = self.thumbnail.hideDebounceMs },
         };
     }
@@ -469,7 +480,7 @@ test "a character's own settings override the profile's, which apply to unknown 
 
 test "shownColors follows the client list's own settings in its view" {
     var config = try testConfig(
-        \\{"display": {"viewMode": "ClientList", "listViewSystemNameColor": "0xFF000003"}, "thumbnail": {"systemNameColor": "0xFF000004"}}
+        \\{"display": {"viewMode": "ClientList"}, "listView": {"systemNameColor": "0xFF000003"}, "thumbnail": {"systemNameColor": "0xFF000004"}}
     );
     defer config.deinit();
 
@@ -480,7 +491,7 @@ test "shownColors follows the client list's own settings in its view" {
 
 test "shownColors follows the thumbnails when the list is shown beside them" {
     var config = try testConfig(
-        \\{"display": {"viewMode": "ThumbnailsAndList", "listViewActiveColor": "0xFF000001"}, "thumbnail": {"borderColor": "0xFF000002"}}
+        \\{"display": {"viewMode": "ThumbnailsAndList"}, "listView": {"activeColor": "0xFF000001"}, "thumbnail": {"borderColor": "0xFF000002"}}
     );
     defer config.deinit();
 

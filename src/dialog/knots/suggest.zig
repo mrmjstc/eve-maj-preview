@@ -36,7 +36,7 @@ pub fn openClients(context: *ui.Frame, box_key: ui.Key, typed: []const u8, taken
     const query = std.mem.trim(u8, typed, " ");
     var matches: std.ArrayList([]const u8) = .empty;
     for (names) |name| {
-        if (std.ascii.eqlIgnoreCase(name, query) or isTaken(taken, name)) continue;
+        if (std.ascii.eqlIgnoreCase(name, query) or positions.isListed(taken, name)) continue;
         if (query.len > 0 and std.ascii.findIgnoreCase(name, query) == null) continue;
         try matches.append(context.arena(), name);
     }
@@ -73,11 +73,4 @@ pub fn openClients(context: *ui.Frame, box_key: ui.Key, typed: []const u8, taken
         context.requestRedraw();
     }
     return picked;
-}
-
-fn isTaken(taken: []const []const u8, name: []const u8) bool {
-    for (taken) |other| {
-        if (std.ascii.eqlIgnoreCase(std.mem.trim(u8, other, " "), name)) return true;
-    }
-    return false;
 }

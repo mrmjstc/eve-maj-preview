@@ -14,8 +14,8 @@ const HINT_BOX_CLASS_NAME = "EVE_HINT_BOX_CLASS";
 // Same per-line padding the thumbnail overlay gives its text runs.
 const HINT_LINE_PADDING_X = 5;
 const HINT_LINE_PADDING_Y = 2;
-/// Longest hint line drawn, in bytes.
-const HINT_TEXT_MAX = 256;
+/// Longest hint line drawn.
+const HINT_TEXT_MAX_BYTES = 256;
 const ELLIPSIS = "...";
 
 /// A top-down 32bpp DIB section selected into its own memory DC, drawn with GDI and then presented as a layered window's alpha-blended source.
@@ -71,16 +71,17 @@ pub const OverlayBitmap = struct {
         @memset(self.pixels[0 .. self.width * self.height], 0);
     }
 
-    pub fn needsResize(existing: ?OverlayBitmap, width: i32, height: i32) bool {
-        const bitmap = existing orelse return true;
-        return bitmap.width != @as(usize, @intCast(width)) or bitmap.height != @as(usize, @intCast(height));
-    }
-
-    /// Leaves `slot.*` null, rather than a stale bitmap, if creation fails.
-    pub fn recreate(slot: *?OverlayBitmap, screen_dc: win32.HDC, width: i32, height: i32) !void {
+    /// Remade only when the size changes; leaves `slot.*` null, rather than a stale bitmap, if creation fails.
+    pub fn ensureSize(slot: *?OverlayBitmap, width: i32, height: i32) !*OverlayBitmap {
+        if (slot.*) |*existing| {
+            if (existing.width == @as(usize, @intCast(width)) and existing.height == @as(usize, @intCast(height))) return existing;
+        }
+        const screen_dc = win32.GetDC(null) orelse return error.GetDCFailed;
+        defer _ = win32.ReleaseDC(null, screen_dc);
         if (slot.*) |existing| existing.deinit();
         slot.* = null;
         slot.* = try init(screen_dc, width, height);
+        return &slot.*.?;
     }
 };
 
@@ -92,7 +93,7 @@ pub const ButtonFace = struct {
     border_px: usize,
 };
 
-/// One GDI font, remade only when its settings change; for a single-font-at-a-time caller, unlike thumbnail/font_cache.zig's per-slot/DPI `FontCache`.
+/// One GDI font, remade only when its settings change; thumbnail/font_cache.zig keeps one per slot and DPI.
 pub const CachedFont = struct {
     /// Null until the first ensure, and after one whose font couldn't be created.
     handle: ?win32.HFONT = null,
@@ -109,7 +110,8 @@ pub const CachedFont = struct {
 
     /// Makes `handle` match these settings; `context` names the font in log messages.
     pub fn ensure(self: *CachedFont, allocator: std.mem.Allocator, context: []const u8, name: []const u8, size: i32, weight: fonts.FontWeight) !void {
-        const is_unchanged = self.handle != null and std.mem.eql(u8, self.name, name) and self.size == size and self.weight == weight;
+        // Unset settings have size 0, which no font setting allows, so the first ensure always makes one.
+        const is_unchanged = std.mem.eql(u8, self.name, name) and self.size == size and self.weight == weight;
         if (is_unchanged) return;
 
         if (self.handle) |old| _ = win32.DeleteObject(old);
@@ -126,22 +128,7 @@ pub const CachedFont = struct {
             return err;
         };
 
-        self.handle = win32.CreateFontA(
-            -size,
-            0,
-            0,
-            0,
-            weight.toWin32Weight(),
-            if (weight.isItalic()) 1 else 0,
-            0,
-            0,
-            win32.DEFAULT_CHARSET,
-            win32.OUT_DEFAULT_PRECIS,
-            win32.CLIP_DEFAULT_PRECIS,
-            win32.CLEARTYPE_QUALITY,
-            win32.DEFAULT_PITCH,
-            terminated_name,
-        );
+        self.handle = fonts.create(terminated_name, size, weight.toWin32Weight(), weight.isItalic());
         // Cached anyway, so a failing font isn't retried and logged every frame.
         if (self.handle == null) slog.err("Failed to create {s} font '{s}'", .{ context, name });
 
@@ -163,15 +150,15 @@ pub const HintBox = struct {
     }
 
     pub fn show(self: *HintBox, instance: win32.HINSTANCE, font: win32.HFONT, text_color: u32, line1: []const u8, line2: []const u8, bounds: win32.RECT) void {
-        const init_dc = win32.GetDC(null) orelse {
+        const measure_dc = win32.GetDC(null) orelse {
             slog.err("Failed to get the screen DC for the hint box", .{});
             return;
         };
-        defer _ = win32.ReleaseDC(null, init_dc);
-        const old_measure_font = win32.SelectObject(init_dc, font);
-        const line1_size = hintLineSize(init_dc, line1);
-        const line2_size = hintLineSize(init_dc, line2);
-        if (old_measure_font) |previous_font| _ = win32.SelectObject(init_dc, previous_font);
+        defer _ = win32.ReleaseDC(null, measure_dc);
+        const old_measure_font = win32.SelectObject(measure_dc, font);
+        const line1_size = hintLineSize(measure_dc, line1);
+        const line2_size = hintLineSize(measure_dc, line2);
+        if (old_measure_font) |previous_font| _ = win32.SelectObject(measure_dc, previous_font);
 
         const line_gap = 4;
         const box_padding = 10;
@@ -186,7 +173,7 @@ pub const HintBox = struct {
         if (self.hwnd) |hwnd| {
             _ = win32.SetWindowPos(hwnd, win32.HWND_TOPMOST, x, y, width, height, win32.SWP_NOACTIVATE);
         } else {
-            registerHintBoxClass(instance) catch |err| {
+            HintBoxClass.register(instance) catch |err| {
                 slog.err("Failed to register the hint box window class: {}", .{err});
                 return;
             };
@@ -211,14 +198,10 @@ pub const HintBox = struct {
 
         const hwnd = self.hwnd.?;
 
-        if (OverlayBitmap.needsResize(self.bitmap, width, height)) {
-            OverlayBitmap.recreate(&self.bitmap, init_dc, width, height) catch |err| {
-                slog.err("Failed to allocate hint box bitmap: {}", .{err});
-                return;
-            };
-        }
-
-        const overlay = &self.bitmap.?;
+        const overlay = OverlayBitmap.ensureSize(&self.bitmap, width, height) catch |err| {
+            slog.err("Failed to allocate hint box bitmap: {}", .{err});
+            return;
+        };
         pixel_buffer.fillRect(overlay.canvas(), 0, 0, overlay.width, overlay.height, HINT_BACKGROUND_COLOR);
 
         const old_font = win32.SelectObject(overlay.mem_dc, font);
@@ -226,11 +209,11 @@ pub const HintBox = struct {
             if (old_font) |previous_font| _ = win32.SelectObject(overlay.mem_dc, previous_font);
         }
 
-        drawTextUtf8(HINT_TEXT_MAX, overlay.mem_dc, box_padding + HINT_LINE_PADDING_X, box_padding + HINT_LINE_PADDING_Y, line1, text_color);
+        drawTextUtf8(HINT_TEXT_MAX_BYTES, overlay.mem_dc, box_padding + HINT_LINE_PADDING_X, box_padding + HINT_LINE_PADDING_Y, line1, text_color);
         pixel_buffer.fixTextAlphaRect(overlay.canvas(), box_padding, box_padding, line1_size.width, line1_size.height);
 
         const line2_y: i32 = @intCast(box_padding + line1_size.height + line_gap);
-        drawTextUtf8(HINT_TEXT_MAX, overlay.mem_dc, box_padding + HINT_LINE_PADDING_X, line2_y + HINT_LINE_PADDING_Y, line2, text_color);
+        drawTextUtf8(HINT_TEXT_MAX_BYTES, overlay.mem_dc, box_padding + HINT_LINE_PADDING_X, line2_y + HINT_LINE_PADDING_Y, line2, text_color);
         pixel_buffer.fixTextAlphaRect(overlay.canvas(), box_padding, line2_y, line2_size.width, line2_size.height);
 
         presentLayered(hwnd, overlay, 255);
@@ -245,7 +228,7 @@ pub const HintBox = struct {
     }
 };
 
-var g_is_hint_box_class_registered = false;
+const HintBoxClass = WindowClass(HINT_BOX_CLASS_NAME, win32.DefWindowProcA);
 
 /// 0xAARRGGBB as a COLORREF's 0x00BBGGRR, dropping the alpha.
 pub fn toColorRef(color: u32) u32 {
@@ -256,7 +239,7 @@ pub fn toColorRef(color: u32) u32 {
 }
 
 /// Truncated to fit.
-pub fn toBufZ(comptime buf_size: usize, text: []const u8) [buf_size:0]u8 {
+pub fn terminatedCopy(comptime buf_size: usize, text: []const u8) [buf_size:0]u8 {
     var buf: [buf_size:0]u8 = undefined;
     const copy_length = @min(text.len, buf_size - 1);
     @memcpy(buf[0..copy_length], text[0..copy_length]);
@@ -266,7 +249,7 @@ pub fn toBufZ(comptime buf_size: usize, text: []const u8) [buf_size:0]u8 {
 
 /// Measures `text` (truncated to `buf_size - 1` bytes) using the currently selected font; a failed measure reads as empty, since it runs every render.
 pub fn measureTextSize(comptime buf_size: usize, dc: win32.HDC, text: []const u8) win32.SIZE {
-    const buf = toBufZ(buf_size, text);
+    const buf = terminatedCopy(buf_size, text);
     const copy_length = @min(text.len, buf_size - 1);
     var size: win32.SIZE = .{ .cx = 0, .cy = 0 };
     _ = win32.GetTextExtentPoint32A(dc, &buf, @intCast(copy_length), &size);
@@ -280,7 +263,7 @@ pub fn measureTextWidth(comptime buf_size: usize, dc: win32.HDC, text: []const u
 
 /// Up to `buf_size - 1` bytes of `text`, in the selected font on a transparent background; `color` is 0xAARRGGBB.
 pub fn drawText(comptime buf_size: usize, dc: win32.HDC, x: i32, y: i32, text: []const u8, color: u32) void {
-    const buf = toBufZ(buf_size, text);
+    const buf = terminatedCopy(buf_size, text);
     const copy_length = @min(text.len, buf_size - 1);
     _ = win32.SetBkMode(dc, win32.TRANSPARENT);
     _ = win32.SetTextColor(dc, toColorRef(color));
@@ -289,7 +272,7 @@ pub fn drawText(comptime buf_size: usize, dc: win32.HDC, x: i32, y: i32, text: [
 
 /// Null if `name` isn't installed, which CreateFontA would hide by substituting a face; matched by prefix, as GDI may name a variable font's weight ("Cascadia Code SemiBold").
 pub fn createInstalledFont(dc: win32.HDC, name: [:0]const u8, height_px: i32, weight: c_int) ?win32.HFONT {
-    const font = win32.CreateFontA(-height_px, 0, 0, 0, weight, 0, 0, 0, win32.DEFAULT_CHARSET, win32.OUT_DEFAULT_PRECIS, win32.CLIP_DEFAULT_PRECIS, win32.CLEARTYPE_QUALITY, win32.DEFAULT_PITCH, name.ptr) orelse return null;
+    const font = fonts.create(name, height_px, weight, false) orelse return null;
 
     const old_font = win32.SelectObject(dc, font);
     var face = std.mem.zeroes([64]u8);
@@ -423,6 +406,19 @@ pub fn registerWindowClass(
     }
 }
 
+/// A window class registered on its first `register`, then kept for the rest of the run; main thread only.
+pub fn WindowClass(comptime class_name: [*:0]const u8, comptime window_proc: win32.WNDPROC) type {
+    return struct {
+        var g_is_registered = false;
+
+        pub fn register(instance: win32.HINSTANCE) !void {
+            if (g_is_registered) return;
+            try registerWindowClass(instance, window_proc, class_name, null);
+            g_is_registered = true;
+        }
+    };
+}
+
 /// Like `measureTextSize`, for UTF-8 text such as translated labels.
 pub fn measureTextSizeUtf8(comptime buf_size: usize, dc: win32.HDC, text: []const u8) win32.SIZE {
     var wide: [buf_size]u16 = undefined;
@@ -458,14 +454,8 @@ fn toWide(comptime buf_size: usize, text: []const u8, out: *[buf_size]u16) usize
     return @intCast(@max(0, written));
 }
 
-fn registerHintBoxClass(instance: win32.HINSTANCE) !void {
-    if (g_is_hint_box_class_registered) return;
-    try registerWindowClass(instance, win32.DefWindowProcA, HINT_BOX_CLASS_NAME, null);
-    g_is_hint_box_class_registered = true;
-}
-
 fn hintLineSize(dc: win32.HDC, text: []const u8) struct { width: usize, height: usize } {
-    const size = measureTextSizeUtf8(HINT_TEXT_MAX, dc, text);
+    const size = measureTextSizeUtf8(HINT_TEXT_MAX_BYTES, dc, text);
     return .{
         .width = @intCast(@max(0, size.cx) + HINT_LINE_PADDING_X * 2),
         .height = @intCast(@max(0, size.cy) + HINT_LINE_PADDING_Y * 2),

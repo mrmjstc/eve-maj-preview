@@ -3,13 +3,13 @@ const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const gdi_overlay = @import("../platform/gdi_overlay.zig");
 const panel_window = @import("../platform/panel_window.zig");
-const display_mod = @import("../config/display.zig");
+const panels = @import("../config/panels.zig");
 const list_look = @import("list_look.zig");
 const panel_look = @import("panel_look.zig");
 const pixel_buffer = @import("../util/pixel_buffer.zig");
 
 const Canvas = pixel_buffer.Canvas;
-const DisplayConfig = display_mod.DisplayConfig;
+const HistoryPanelConfig = panels.HistoryPanelConfig;
 const PanelWindow = panel_window.PanelWindow;
 
 pub const MAX_TEXT_LENGTH: usize = 160;
@@ -29,15 +29,15 @@ pub const Button = struct {
 };
 
 /// Every panel uses the History Panel's font, so they match.
-pub fn ensureFonts(panel: *PanelWindow, display: *const DisplayConfig) !void {
-    try panel.ensureFont("panel", display.notifInfoPanelFontName, display.notifInfoPanelFontSize, display.notifInfoPanelFontWeight);
-    try panel.ensureSmallFont("panel small", display.notifInfoPanelFontName, list_look.smallFontSize(display.notifInfoPanelFontSize), display.notifInfoPanelFontWeight);
+pub fn ensureFonts(panel: *PanelWindow, history_settings: *const HistoryPanelConfig) !void {
+    try panel.ensureFont("panel", history_settings.fontName, history_settings.fontSize, history_settings.fontWeight);
+    try panel.ensureSmallFont("panel small", history_settings.fontName, list_look.smallFontSize(history_settings.fontSize), history_settings.fontWeight);
 }
 
-pub fn hashFonts(hasher: *std.hash.Wyhash, display: *const DisplayConfig) void {
-    hasher.update(display.notifInfoPanelFontName);
-    hasher.update(std.mem.asBytes(&display.notifInfoPanelFontSize));
-    hasher.update(std.mem.asBytes(&display.notifInfoPanelFontWeight));
+pub fn hashFonts(hasher: *std.hash.Wyhash, history_settings: *const HistoryPanelConfig) void {
+    hasher.update(history_settings.fontName);
+    hasher.update(std.mem.asBytes(&history_settings.fontSize));
+    hasher.update(std.mem.asBytes(&history_settings.fontWeight));
 }
 
 /// What to pass restoreFont once drawing is done, as a font still selected into the DC can't be deleted when the settings change.

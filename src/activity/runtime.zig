@@ -3,7 +3,7 @@ const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const config_mod = @import("../config.zig");
 const set = @import("../thumbnail/set.zig");
-const window = @import("../thumbnail/window.zig");
+const activity_stats = @import("../thumbnail/activity_stats.zig");
 const scout = @import("../clients/scout.zig");
 const chatlog = @import("../chatlog.zig");
 const tracker_mod = @import("tracker.zig");
@@ -13,7 +13,7 @@ const schedule = @import("../util/schedule.zig");
 const log = @import("../log.zig");
 
 const ThumbnailSet = set.ThumbnailSet;
-const ActivityStats = window.ActivityStats;
+const ActivityStats = activity_stats.ActivityStats;
 const Config = config_mod.Config;
 const slog = log.Scoped("activity");
 

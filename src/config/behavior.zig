@@ -19,6 +19,7 @@ pub const SnappingConfig = struct {
     threshold: i32 = 10,
     screenEdges: bool = true,
     thumbnailEdges: bool = true,
+    panelEdges: bool = true,
     ghostPositions: bool = true,
     showGhostPositionBorders: bool = true,
 
@@ -28,6 +29,23 @@ pub const SnappingConfig = struct {
 
     pub fn validate(self: *SnappingConfig) void {
         ranges_mod.clamp(SnappingConfig, self);
+    }
+};
+
+/// How the client list and the History, Map and Intel panels snap while dragged.
+pub const PanelSnappingConfig = struct {
+    enabled: bool = true,
+    threshold: i32 = 10,
+    screenEdges: bool = true,
+    panelEdges: bool = true,
+    thumbnailEdges: bool = true,
+
+    pub const ranges = .{
+        .threshold = .{ 0, 20 },
+    };
+
+    pub fn validate(self: *PanelSnappingConfig) void {
+        ranges_mod.clamp(PanelSnappingConfig, self);
     }
 };
 

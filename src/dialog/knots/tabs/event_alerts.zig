@@ -4,7 +4,7 @@ const ui = @import("ui");
 const config = @import("../../../config.zig");
 const notification = @import("../../../notifications/notification.zig");
 const template = @import("../../../notifications/template.zig");
-const overlay = @import("../../../thumbnail/overlay.zig");
+const look = @import("../../../thumbnail/look.zig");
 const session = @import("../session.zig");
 const bind = @import("../bind.zig");
 const host = @import("../host.zig");
@@ -155,7 +155,7 @@ fn typeDetail(context: *ui.Frame, notification_type: NotificationType) !void {
     const previous_rows = widgets.useDetailRows();
     defer widgets.restoreRows(previous_rows);
 
-    const header = try widgets.openDetailHeader(context, .src(@src()));
+    const header = try widgets.openDetailHeader(context, .src(@src()), null);
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = typeLabel(notification_type), .style = &style.roster_name_selected });
     var is_enabled: bool = ref.get("enabled");
     if ((try context.interact(Button{ .key = .src(@src()), .label = lang.text("\u{25B6} Test"), .disabled = !is_enabled, .style = &style.plain_button })).clicked) {
@@ -208,6 +208,7 @@ fn englishLabel(notification_type: NotificationType) []const u8 {
         .ChatIntel => "Chat Intel",
         .ChatKeyword => "Chat Keyword",
         .CloakFailed => "Cloak Failed",
+        .CloakedCantWarp => "Cloaked Can't Warp",
         .ConduitJump => "Conduit Jump",
         .ConversationInvite => "Conversation Invite",
         .CrystalBroke => "Crystal Broke",
@@ -251,6 +252,7 @@ fn englishShortLabel(notification_type: NotificationType) []const u8 {
         .ChatIntel => "Chat Intel",
         .ChatKeyword => "Chat Keyword",
         .CloakFailed => "Cloak Failed",
+        .CloakedCantWarp => "Cloaked Warp",
         .ConduitJump => "Conduit Jump",
         .ConversationInvite => "Convo Invite",
         .CrystalBroke => "Crystal Broke",
@@ -469,7 +471,7 @@ fn preview(context: *ui.Frame, notification_type: NotificationType, comptime fie
     var kept: std.ArrayList(u8) = .empty;
     var line_count: usize = 0;
     while (lines.next()) |line| : (line_count += 1) {
-        if (line_count == overlay.MAX_LINES_PER_NOTIFICATION) break;
+        if (line_count == look.MAX_LINES_PER_NOTIFICATION) break;
         if (line_count > 0) try kept.append(context.arena(), '\n');
         try kept.appendSlice(context.arena(), line);
     }
@@ -481,7 +483,6 @@ fn preview(context: *ui.Frame, notification_type: NotificationType, comptime fie
     try row.close(context);
 }
 
-/// The file's name only; the full path is what's saved.
 fn sound(context: *ui.Frame, ref: TypeRef, sound_target: pickers.Target, sound_index: usize) !void {
     const group = try widgets.openFieldGroup(context, .str("knots.events.sound"), "Sound");
     try bind.toggle(context, ref, "sound_enabled", "Play Custom Sound");
@@ -489,6 +490,7 @@ fn sound(context: *ui.Frame, ref: TypeRef, sound_target: pickers.Target, sound_i
     const options = try widgets.openGroup(context, .src(@src()), ref.get("sound_enabled"));
     const row = try widgets.openBinding(context, .src(@src()), "Sound File");
     const path = ref.get("sound_path") orelse "";
+    // The file's name only; the full path is what's saved.
     try widgets.boxedText(context, .src(@src()), if (path.len == 0) "None" else std.fs.path.basename(path), &style.path_box, if (path.len == 0) &style.path_text_empty else &style.path_text);
     if (path.len > 0 and (try context.interact(Button{ .key = .src(@src()), .label = "\u{00D7}", .style = &style.icon_button_danger_text })).clicked) ref.set("sound_path", null);
     if ((try context.interact(Button{ .key = .src(@src()), .label = lang.text("Browse"), .style = &style.plain_button })).clicked) host.browseSoundFile(sound_target, sound_index);

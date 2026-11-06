@@ -7,7 +7,7 @@ Every setting EVE-Maj Preview reads, by file and JSON key. The config dialog wri
 - [Files](#files)
 - [Loading rules](#loading-rules)
 - [Value formats](#value-formats)
-- [Profile](#profile): [top level](#top-level) · [thumbnail](#thumbnail) · [thumbnail.notifications](#thumbnailnotifications) · [timer](#timer) · [display](#display) · [thumbnailSpaces](#thumbnailspaces) · [snapping](#snapping) · [interaction](#interaction) · [exclusion](#exclusion) · [autoMinimize](#autominimize) · [autoMovePosition](#automoveposition) · [closeAll](#closeall) · [chatlog](#chatlog) · [combat](#combat) · [mining](#mining) · [bounty](#bounty) · [resources](#resources) · [ping](#ping) · [travel](#travel) · [hotkeys](#hotkeys) · [hotkeyGroups](#hotkeygroups) · [characters](#characters) · [systemColors](#systemcolors) · [avoidedSystems](#avoidedsystems) · [windowFilters](#windowfilters)
+- [Profile](#profile): [top level](#top-level) · [thumbnail](#thumbnail) · [thumbnail.notifications](#thumbnailnotifications) · [timer](#timer) · [display](#display) · [listView](#listview) · [historyPanel](#historypanel) · [mapPanel](#mappanel) · [intelPanel](#intelpanel) · [thumbnailSpaces](#thumbnailspaces) · [snapping](#snapping) · [panelSnapping](#panelsnapping) · [interaction](#interaction) · [exclusion](#exclusion) · [autoMinimize](#autominimize) · [autoMovePosition](#automoveposition) · [closeAll](#closeall) · [chatlog](#chatlog) · [combat](#combat) · [mining](#mining) · [bounty](#bounty) · [resources](#resources) · [ping](#ping) · [travel](#travel) · [hotkeys](#hotkeys) · [hotkeyGroups](#hotkeygroups) · [characters](#characters) · [systemColors](#systemcolors) · [avoidedSystems](#avoidedsystems) · [windowFilters](#windowfilters)
 - [Global settings](#global-settings)
 - [Command line and protocol](#command-line-and-protocol)
 
@@ -24,6 +24,7 @@ Paths are relative to the executable's folder.
 | `data\colors.json` | Generated unique system/character colours (64 most recent of each). Written when the last client closes or on exit. Delete to reassign. |
 | `data\character_ids.json` | Character IDs read from log file names. Rebuilt from logs if deleted. |
 | `data\portraits\<id>.jpg` | Character portraits, downloaded once. Delete one to refetch it. |
+| `data\logo_colors.json` | The Map's sovereignty colour for each alliance, picked from its logo, which is downloaded once. Starts again past 200 alliances. Delete to pick them all again. |
 | `logs\eve-maj.log`, `eve-maj.log.old` | Log, and the previous one. |
 | `logs\eve-maj-crash.dmp` | Minidump from the last crash. |
 
@@ -38,6 +39,7 @@ Profile file names: `<name>.json` with no path separators or `:*?"<>|`, not star
 - A file that isn't valid JSON loads as all defaults; the original is kept (see [Files](#files)).
 - Profiles are saved with `null` optionals omitted, colours as 8-digit hex and hotkeys as hex codes.
 - `formatVersion` below 3 migrates on load: `display.layoutMode`/`regionX`/`regionY`/`regionWidth`/`regionHeight`/`spacing`/`regionFitOrder`/`regionFitDirection`/`regionFitLimitToThumbnailSize` become an `Everyone` space (enabled only if `layoutMode` was `RegionFit`, with `takesUnassigned` and `takesLoginScreen`); `display.notLoggedInSpace*` becomes a `Login Screen` space ahead of it. Below 2, character `position`s are rescaled from DPI-unaware pixels.
+- `formatVersion` below 4 migrates on load: the Client List's and panels' `display` keys move into `listView`, `historyPanel`, `mapPanel` and `intelPanel`, dropping their prefix (`mapPanel.x` becomes `mapPanel.x`, `mapPanel.show` becomes `mapPanel.show`); a key already in its section wins.
 - A profile with `thumbnailSpaces` but no `display.placementMode` gets `ThumbnailSpaces` if any space is enabled.
 
 ## Value formats
@@ -64,10 +66,10 @@ Profile file names: `<name>.json` with no path separators or `:*?"<>|`, not star
 | Key | Type | Default | Notes |
 |---|---|---|---|
 | `app` | string | `"eve-maj-preview"` | Rewritten on save. |
-| `formatVersion` | int | `3` | Read only to migrate; rewritten on save. |
+| `formatVersion` | int | `4` | Read only to migrate; rewritten on save. |
 | `accentColor` | colour | `0xFFD9A441` | Config dialog accent for this profile. No effect on overlays. |
 
-Sections: `thumbnail`, `timer`, `display`, `snapping`, `interaction`, `autoMinimize`, `autoMovePosition`, `exclusion`, `closeAll`, `chatlog`, `combat`, `mining`, `bounty`, `resources`, `ping`, `travel`, `hotkeys` (objects); `windowFilters`, `characters`, `systemColors`, `avoidedSystems`, `hotkeyGroups`, `thumbnailSpaces` (arrays).
+Sections: `thumbnail`, `timer`, `display`, `listView`, `historyPanel`, `mapPanel`, `intelPanel`, `snapping`, `panelSnapping`, `interaction`, `autoMinimize`, `autoMovePosition`, `exclusion`, `closeAll`, `chatlog`, `combat`, `mining`, `bounty`, `resources`, `ping`, `travel`, `hotkeys` (objects); `windowFilters`, `characters`, `systemColors`, `avoidedSystems`, `hotkeyGroups`, `thumbnailSpaces` (arrays).
 
 ### thumbnail
 
@@ -178,7 +180,7 @@ Event popups on thumbnails, from game and chat logs (needs [chatlog](#chatlog)) 
 
 | Key | Type | Default | Range | Notes |
 |---|---|---|---|---|
-| `enabled` | bool | `true` | | Thumbnail popups. Client List uses `display.listViewShowNotifications`. |
+| `enabled` | bool | `true` | | Thumbnail popups. Client List uses `listView.showNotifications`. |
 | `position` | enum | `Center` | position | |
 | `offset_x`, `offset_y` | int | `0` | offset | |
 | `font_name` | string | `"Segoe UI"` | | |
@@ -209,11 +211,11 @@ Event popups on thumbnails, from game and chat logs (needs [chatlog](#chatlog)) 
 | `show_border` | bool | `false` | | Draw the alert border. |
 | `flash_border` | bool | `false` | | Blink the border 4× (150 ms phases) first. Needs `show_border`. |
 | `border_color` | colour? | `null` | | `null` = `alert` state / `borderColor`. |
-| `text_color` | colour? | `null` | | `null` = `color` (thumbnails) / `display.listViewNotificationColor` (Client List). |
+| `text_color` | colour? | `null` | | `null` = `color` (thumbnails) / `listView.notificationColor` (Client List). |
 | `color_system_name` | bool | `false` | | Chat intel only: draw the system in its usual name colour when the text starts with it. |
 | `tts_enabled` | bool | `false` | | Speak it. No global switch. |
 | `sound_enabled` | bool | `false` | | Play `sound_path`. No global switch. |
-| `sound_path` | string? | `null` | | Absolute path to `.wav` or `.mp3`. |
+| `sound_path` | string? | `null` | | Absolute path to `.wav` or `.mp3`. Bundled sounds are in `sounds\` next to the exe. |
 | `sound_volume` | int | `100` | 0–100 | |
 | `custom_text` | string? | `null` | | Replaces built-in text (shown and spoken). Supports placeholders and `\n` (max 3 lines; one line in lists). Falls back to built-in if a used placeholder has no value. |
 | `custom_text_alt` | string? | `null` | | `custom_text` for the type's second state (see table). |
@@ -246,6 +248,7 @@ Event popups on thumbnails, from game and chat logs (needs [chatlog](#chatlog)) 
 | `AutopilotApproaching` | Navigation | Autopilot approaching | | |
 | `JumpRange` | Navigation | Too far from gate | | |
 | `AggressionCantJump` | Navigation | Gate refuses jump (aggression) | | |
+| `CloakedCantWarp` | Navigation | Warp refused while cloaked | | |
 | `ConduitJump` | Navigation | Conduit Field jump | `{system}` | |
 | `JumpCloning` | Navigation | Clone jump | | |
 | `SystemChange` | Navigation | New solar system | `{system}` | |
@@ -269,8 +272,6 @@ Every type except `HotkeySuspend`, `ProfileSwitch` and `AutoMinimizeToggle` also
 
 ### display
 
-**Placement**
-
 | Key | Type | Default | Range / values | Notes |
 |---|---|---|---|---|
 | `placementMode` | enum | `Manual` | `Manual` `ThumbnailSpaces` | `Manual` ignores `thumbnailSpaces`. |
@@ -282,107 +283,119 @@ Every type except `HotkeySuspend`, `ProfileSwitch` and `AutoMinimizeToggle` also
 | `honorSavedPositions` | bool | `true` | | Use `characters[].position`. |
 | `hideThumbnailsDuringRegionSelect` | bool | `true` | | Hide thumbnails while drawing a space's region. |
 
-**Client List** (`viewMode: ClientList` or `ThumbnailsAndList`): one row per client; click activates, Shift+click toggles exclusion, drag the header to move. With `ClientList` it uses its own colour, system name and auto-hide settings below instead of the `thumbnail` ones; with `ThumbnailsAndList` it follows the `thumbnail` ones (active colour from `borderColor`) and hides with the thumbnails. Per-character colours, display names, `systemColors` and each overlay's `enabled` are always shared. Its position is `startX`/`startY`, which thumbnails also start from.
+### listView
+
+The Client List (`viewMode: ClientList` or `ThumbnailsAndList`): one row per client; click activates, Shift+click toggles exclusion, drag the header to move. With `ClientList` it uses its own colour, system name and auto-hide settings below instead of the `thumbnail` ones; with `ThumbnailsAndList` it follows the `thumbnail` ones (active colour from `borderColor`) and hides with the thumbnails. Per-character colours, display names, `systemColors` and each overlay's `enabled` are always shared. Its position is `display.startX`/`startY`, which thumbnails also start from.
 
 | Key | Type | Default | Range / values | Notes |
 |---|---|---|---|---|
-| `listViewOrder` | enum | `ConfiguredCharacters` | `ConfiguredCharacters` `Tracked` `Alphabetical` | |
-| `rememberListViewPosition` | bool | `true` | | |
-| `listViewOpacity` | int | `255` | opacity | |
-| `listViewColumns` | int | `1` | 1–6 | |
-| `listViewColumnWidth` | int | `230` | 120–500 | |
-| `listViewFontName` | string | `"Segoe UI"` | | Header and right-hand text are 2 px smaller. |
-| `listViewFontSize` | int | `13` | font size | |
-| `listViewFontWeight` | enum | `Regular` | weight | |
-| `listViewIndicatorStyle` | enum | `Dot` | `Dot` `Square` `None` | |
-| `listViewShowSystemName` | bool | `true` | | |
-| `listViewSystemNameColor` | colour | `0xFF8B8F96` | | |
-| `listViewUseUniqueSystemColors` | bool | `false` | | |
-| `listViewUseUniqueCharacterNameColors` | bool | `false` | | |
-| `listViewActiveColor` | colour | `0xFFD9A441` | | Active row's dot, tint and name. |
-| `listViewUseUniqueActiveColors` | bool | `false` | | Character's generated colour as its active colour. |
-| `listViewShowNotifications` | bool | `true` | | |
-| `listViewNotificationColor` | colour | `0xFFFFFFFF` | | For types without `text_color`. |
-| `listViewShowIncomingDps`, `listViewShowOutgoingDps`, `listViewShowMiningRate`, `listViewShowBountyRate` | bool | `true` | | Each also needs its overlay's `enabled`. |
-| `listViewShowIncomingPrefix`, `listViewShowOutgoingPrefix`, `listViewShowMiningPrefix`, `listViewShowBountyPrefix` | bool | `true` | | `IN:`, `OUT:`, `M:`, `ISK:`. |
-| `listViewIncomingDpsColor` | colour | `0xFFFF4444` | | |
-| `listViewOutgoingDpsColor` | colour | `0xFF44FF44` | | |
-| `listViewMiningRateColor` | colour | `0xFF44AAFF` | | |
-| `listViewBountyRateColor` | colour | `0xFFFFD700` | | |
-| `listViewHideWhenNoEveFocus` | bool | `false` | | |
-| `listViewHideDebounceMs` | int | `500` | 0–5000 | |
+| `order` | enum | `ConfiguredCharacters` | `ConfiguredCharacters` `Tracked` `Alphabetical` | |
+| `rememberPosition` | bool | `true` | | |
+| `alwaysOnTop` | bool | `true` | | Keep the list above other windows, game clients included. |
+| `opacity` | int | `255` | opacity | |
+| `columns` | int | `1` | 1–6 | |
+| `columnWidth` | int | `230` | 120–500 | |
+| `fontName` | string | `"Segoe UI"` | | Header and right-hand text are 2 px smaller. |
+| `fontSize` | int | `13` | font size | |
+| `fontWeight` | enum | `Regular` | weight | |
+| `indicatorStyle` | enum | `Dot` | `Dot` `Square` `None` | |
+| `showSystemName` | bool | `true` | | |
+| `systemNameColor` | colour | `0xFF8B8F96` | | |
+| `useUniqueSystemColors` | bool | `false` | | |
+| `useUniqueCharacterNameColors` | bool | `false` | | |
+| `activeColor` | colour | `0xFFD9A441` | | Active row's dot, tint and name. |
+| `useUniqueActiveColors` | bool | `false` | | Character's generated colour as its active colour. |
+| `showNotifications` | bool | `true` | | |
+| `notificationColor` | colour | `0xFFFFFFFF` | | For types without `text_color`. |
+| `showIncomingDps`, `showOutgoingDps`, `showMiningRate`, `showBountyRate` | bool | `true` | | Each also needs its overlay's `enabled`. |
+| `showIncomingPrefix`, `showOutgoingPrefix`, `showMiningPrefix`, `showBountyPrefix` | bool | `true` | | `IN:`, `OUT:`, `M:`, `ISK:`. |
+| `incomingDpsColor` | colour | `0xFFFF4444` | | |
+| `outgoingDpsColor` | colour | `0xFF44FF44` | | |
+| `miningRateColor` | colour | `0xFF44AAFF` | | |
+| `bountyRateColor` | colour | `0xFFFFD700` | | |
+| `hideWhenNoEveFocus` | bool | `false` | | |
+| `hideDebounceMs` | int | `500` | 0–5000 | |
 
-**History Panel**: recent notifications from all characters. Also toggled from the tray.
+### historyPanel
 
-| Key | Type | Default | Range | Notes |
-|---|---|---|---|---|
-| `showNotifInfoPanel` | bool | `false` | | |
-| `notifInfoPanelX`, `notifInfoPanelY` | int | `10`, `250` | screen | |
-| `notifInfoPanelWidth` | int | `300` | 100–3840 | |
-| `notifInfoPanelHeight` | int | `400` | 60–2160 | |
-| `rememberNotifInfoPanelPosition` | bool | `true` | | Save position on drag. |
-| `hideNotifInfoPanelWhenNoCharacters` | bool | `true` | | |
-| `hideNotifInfoPanelWhenNoEveFocus` | bool | `false` | | Hide while no EVE client has focus; this app's own windows count as focus. The tray toggle or hotkey shows it until EVE next has focus. |
-| `notifInfoPanelHideDebounceMs` | int | `500` | 0–5000 | Delay before hiding. |
-| `notifInfoPanelOpacity` | int | `255` | opacity | |
-| `notifInfoPanelFontName` | string | `"Segoe UI"` | | |
-| `notifInfoPanelFontSize` | int | `13` | font size | |
-| `notifInfoPanelFontWeight` | enum | `Regular` | weight | |
-| `notifInfoPanelMaxRows` | int | `15` | 1–30 | |
-| `notifInfoPanelShowTimestamp` | bool | `false` | | |
-| `notifInfoPanelMergeEnabled` | bool | `false` | | Merge identical back-to-back notifications from different characters into one `+N` row. |
-| `notifInfoPanelMergeWindowSec` | int | `10` | 1–300 | Max gap to merge. |
-| `notifInfoPanelShowCategoryFilters` | bool | `true` | | |
-| `notifInfoPanelShowFleet`, `notifInfoPanelShowMining`, `notifInfoPanelShowCombat`, `notifInfoPanelShowNavigation`, `notifInfoPanelShowGeneral` | bool | `true` | | Category filters. |
-
-**Map**: a schematic of one region, with live stats, client positions and chat intel. Also toggled from the tray.
+The History Panel: recent notifications from all characters. Also toggled from the tray.
 
 | Key | Type | Default | Range | Notes |
 |---|---|---|---|---|
-| `showMapPanel` | bool | `false` | | Hiding the map from its window, the tray or a hotkey leaves this on. |
-| `mapPanelX`, `mapPanelY` | int | `330`, `60` | screen | |
-| `mapPanelWidth` | int | `760` | 300–3840 | Inside the window's frame, without the Intel Panel's sidebar. Saved when the window is resized. |
-| `mapPanelHeight` | int | `600` | 240–2160 | Inside the window's frame. Saved when the window is resized. |
-| `mapPanelAlwaysOnTop` | bool | `true` | | Keep the window above others, game clients included. |
-| `rememberMapPanelPosition` | bool | `true` | | Save position on drag. |
-| `hideMapPanelWhenNoCharacters` | bool | `false` | | |
-| `hideMapPanelWhenNoEveFocus` | bool | `false` | | As `hideNotifInfoPanelWhenNoEveFocus`. |
-| `mapPanelHideDebounceMs` | int | `500` | 0–5000 | Delay before hiding. |
-| `mapPanelOpacity` | int | `255` | opacity | |
-| `mapPanelFontName` | string | `"Segoe UI"` | | Names on the map only. Its header, buttons and tooltips use `notifInfoPanelFontName`, size and weight, so both panels match. |
-| `mapPanelFontSize` | int | `10` | font size | Names on the map only. |
-| `mapPanelFontWeight` | enum | `Regular` | weight | Names on the map only. |
-| `mapPanelRegionId` | int | `10000002` | | CCP's region ID; The Forge by default. Set by picking a region. |
-| `mapPanelFollowActive` | bool | `true` | | Open the active client's region when it changes. Needs log monitoring. |
-| `mapPanelMetric` | enum | `Security` | `Security`, `ShipKills`, `NpcKills`, `Jumps`, `Sovereignty` | What the markers show. |
-| `mapPanelShowCharacterNames` | bool | `true` | | Tag each system with a client in it; more than one shows as a count. |
-| `mapPanelLiveStats` | bool | `true` | | Fetch kills, jumps, sovereignty and incursions from ESI, and storms from EVE-Scout, every 15 minutes while the panel shows. |
-| `mapPanelShowStorms` | bool | `true` | | Mark metaliminal storms and the gates they cover. Needs `mapPanelLiveStats`. Off only hides them. |
-| `mapPanelShowIncursions` | bool | `true` | | Mark incursions, the systems they infest and where they stage. Needs `mapPanelLiveStats`. Off only hides them. |
-| `mapPanelShowIntel` | bool | `true` | | Highlight systems named in intel channels. Off only hides the pins. |
-| `mapPanelIntelShrinkSec` | int | `60` | 1–900 | Seconds a new intel pin's halo takes to shrink to its resting size. The pin itself lasts 15 minutes. |
-| `mapPanelIntelShowClear` | bool | `true` | | Turn a live pin yellow and restart its shrink and 15 minutes when intel calls its system `clear` or `clr`, even if the rule excludes those words. Only the first system a message names is cleared. Off, those messages are ignored. |
-| `mapPanelRoutePreference` | enum | `Shorter` | `Shorter`, `Safer`, `LessSecure` | How routes sent through Eve Stars are planned. Keep it the same as the game's autopilot setting. |
-| `mapPanelRouteAnsiblex` | bool | `false` | | Plan routes sent through Eve Stars through the account's Ansiblex gates. Keep the game's Ansiblex setting the same. |
-| `mapPanelRouteEveryWaypoint` | bool | `false` | | Set every system on a route sent through Eve Stars as a waypoint, so the game's autopilot settings can't change the way it flies. Uses more of each character's ESI limit, and takes longer. |
-| `mapPanelRouteAvoidZone1` … `5` | bool | `false` | | With `mapPanelRouteAnsiblex`: refuse gates landing in that zone. Zone 1 is within 5 ly of the owning alliance's capital, each next zone 5 ly further out, and zone 5 is over 20 ly. |
+| `show` | bool | `false` | | |
+| `x`, `y` | int | `10`, `250` | screen | |
+| `width` | int | `300` | 100–3840 | |
+| `height` | int | `400` | 60–2160 | |
+| `rememberPosition` | bool | `true` | | Save position on drag. |
+| `alwaysOnTop` | bool | `true` | | Keep the panel above other windows, game clients included. |
+| `hideWhenNoCharacters` | bool | `true` | | |
+| `hideWhenNoEveFocus` | bool | `false` | | Hide while no EVE client has focus; this app's own windows count as focus. The tray toggle or hotkey shows it until EVE next has focus. |
+| `hideDebounceMs` | int | `500` | 0–5000 | Delay before hiding. |
+| `opacity` | int | `255` | opacity | |
+| `fontName` | string | `"Segoe UI"` | | |
+| `fontSize` | int | `13` | font size | |
+| `fontWeight` | enum | `Regular` | weight | |
+| `maxRows` | int | `15` | 1–30 | |
+| `showTimestamp` | bool | `false` | | |
+| `mergeEnabled` | bool | `false` | | Merge identical back-to-back notifications from different characters into one `+N` row. |
+| `mergeWindowSec` | int | `10` | 1–300 | Max gap to merge. |
+| `showCategoryFilters` | bool | `true` | | |
+| `showFleet`, `showMining`, `showCombat`, `showNavigation`, `showChat`, `showGeneral` | bool | `true` | | Category filters. |
 
-**Intel Panel**: lists every report that names a system in a channel an intel rule follows, at any distance, against the nearest client. It uses the default wording, whatever a rule's `custom_text` or `text_color`, and the History Panel's font, timestamp and merge settings. A rule's exclusions don't apply here: `clr` and `nv` lines list too, though they stay off the map and don't alert. Clicking a row opens its system on the map. Also toggled from the tray. Clearing the history clears both.
+### mapPanel
+
+The Map: a schematic of one region, or up to four side by side (Ctrl+click a region or an exit to add it), with live stats, client positions and chat intel. Also toggled from the tray.
 
 | Key | Type | Default | Range | Notes |
 |---|---|---|---|---|
-| `showIntelPanel` | bool | `false` | | Reports are collected whether or not this is on. Intel never goes to the History Panel. |
-| `intelPanelAttached` | bool | `true` | | Draw it as a sidebar inside the map's window, which grows by `intelPanelWidth`; the settings below marked *detached* don't apply. Turned off in the dialog, the panel stays up past its auto-hide, like the tray toggle. |
-| `intelPanelSide` | enum | `Right` | `Left`, `Right` | Which side of the map the sidebar sits on. |
-| `intelPanelX`, `intelPanelY` | int | `1100`, `60` | screen | *Detached.* |
-| `intelPanelWidth` | int | `340` | 160–3840 | |
-| `intelPanelHeight` | int | `400` | 120–2160 | *Detached.* |
-| `rememberIntelPanelPosition` | bool | `true` | | *Detached.* Save position on drag. |
-| `hideIntelPanelWhenNoCharacters` | bool | `false` | | *Detached.* |
-| `hideIntelPanelWhenNoEveFocus` | bool | `false` | | *Detached.* As `hideNotifInfoPanelWhenNoEveFocus`. |
-| `intelPanelHideDebounceMs` | int | `500` | 0–5000 | *Detached.* Delay before hiding. |
-| `intelPanelOpacity` | int | `255` | opacity | |
-| `intelPanelColorSystemNames` | bool | `true` | | Draw each row's system in its name colour: `systemColors`, then unique colours if on, then the default. Doesn't need a rule's `color_system_name`. |
+| `show` | bool | `false` | | Closing the map's window, or hiding it from the tray or a hotkey, turns this off. |
+| `x`, `y` | int | `330`, `60` | screen | |
+| `width` | int | `760` | 300–3840 | Inside the window's frame, without the Intel Panel's sidebar. Saved when the window is resized. |
+| `height` | int | `600` | 240–2160 | Inside the window's frame. Saved when the window is resized. |
+| `alwaysOnTop` | bool | `true` | | Keep the window above others, game clients included. |
+| `rememberPosition` | bool | `true` | | Save position on drag. |
+| `hideWhenNoCharacters` | bool | `false` | | |
+| `hideWhenNoEveFocus` | bool | `false` | | As `historyPanel.hideWhenNoEveFocus`. |
+| `hideDebounceMs` | int | `500` | 0–5000 | Delay before hiding. |
+| `opacity` | int | `255` | opacity | |
+| `fontName` | string | `"Segoe UI"` | | Names on the map only. Its header, buttons and tooltips use `historyPanel.fontName`, size and weight, so both panels match. |
+| `fontSize` | int | `10` | font size | Names on the map only. |
+| `fontWeight` | enum | `Regular` | weight | Names on the map only. |
+| `regionId` | int | `10000002` | | The first region shown, by CCP's ID; The Forge by default. Set by picking a region. |
+| `extraRegionId1` … `3` | int | `0` | | Further regions shown beside it, by CCP's ID; `0` for none. Set by Ctrl+clicking a region or an exit. |
+| `followActive` | bool | `true` | | Open the active client's region when it leaves those shown. Needs log monitoring. |
+| `metric` | enum | `Security` | `Security`, `ShipKills`, `NpcKills`, `Jumps`, `Sovereignty` | What the markers show. |
+| `showCharacterNames` | bool | `true` | | Tag each system with a client in it; more than one shows as a count. |
+| `liveStats` | bool | `true` | | Fetch kills, jumps, sovereignty and incursions from ESI, and storms from EVE-Scout, every 15 minutes while the panel shows; also each sov-holding alliance's logo, once, for its colour. |
+| `showStorms` | bool | `true` | | Mark metaliminal storms and the gates they cover. Needs `liveStats`. Off only hides them. |
+| `showIncursions` | bool | `true` | | Mark incursions, the systems they infest and where they stage. Needs `liveStats`. Off only hides them. |
+| `showIntel` | bool | `true` | | Highlight systems named in intel channels. Off only hides the pins. |
+| `intelShrinkSec` | int | `300` | 1–900 | Seconds an intel pin shows, its halo shrinking all the while. |
+| `intelShowClear` | bool | `true` | | Turn a live pin yellow and restart its shrink when intel calls its system `clear` or `clr`, even if the rule excludes those words. Only the first system a message names is cleared. Off, those messages are ignored. |
+| `routePreference` | enum | `Shorter` | `Shorter`, `Safer`, `LessSecure` | How routes sent through Eve Stars are planned. Keep it the same as the game's autopilot setting. |
+| `routeAnsiblex` | bool | `false` | | Plan routes sent through Eve Stars through the account's Ansiblex gates. Keep the game's Ansiblex setting the same. |
+| `routeEveryWaypoint` | bool | `false` | | Set every system on a route sent through Eve Stars as a waypoint, so the game's autopilot settings can't change the way it flies. Uses more of each character's ESI limit, and takes longer. |
+| `routeAvoidZone1` … `5` | bool | `false` | | With `routeAnsiblex`: refuse gates landing in that zone. Zone 1 is within 5 ly of the owning alliance's capital, each next zone 5 ly further out, and zone 5 is over 20 ly. |
+
+### intelPanel
+
+The Intel Panel lists every report that names a system in a channel an intel rule follows, at any distance, against the nearest client. It uses the default wording, whatever a rule's `custom_text` or `text_color`, and the History Panel's font, timestamp and merge settings. A rule's exclusions don't apply here: `clr` and `nv` lines list too, though they stay off the map and don't alert. Clicking a row opens its system on the map. Also toggled from the tray. Clearing the history clears both.
+
+| Key | Type | Default | Range | Notes |
+|---|---|---|---|---|
+| `show` | bool | `false` | | Reports are collected whether or not this is on. Intel never goes to the History Panel. |
+| `attached` | bool | `true` | | Draw it as a sidebar inside the map's window, which grows by `width`; the settings below marked *detached* don't apply. Turned off in the dialog, the panel stays up past its auto-hide, like the tray toggle. |
+| `side` | enum | `Right` | `Left`, `Right` | Which side of the map the sidebar sits on. |
+| `x`, `y` | int | `1100`, `60` | screen | *Detached.* |
+| `width` | int | `340` | 160–3840 | |
+| `height` | int | `400` | 120–2160 | *Detached.* |
+| `rememberPosition` | bool | `true` | | *Detached.* Save position on drag. |
+| `alwaysOnTop` | bool | `true` | | *Detached.* Keep the panel above other windows, game clients included. |
+| `hideWhenNoCharacters` | bool | `false` | | *Detached.* |
+| `hideWhenNoEveFocus` | bool | `false` | | *Detached.* As `historyPanel.hideWhenNoEveFocus`. |
+| `hideDebounceMs` | int | `500` | 0–5000 | *Detached.* Delay before hiding. |
+| `opacity` | int | `255` | opacity | |
+| `colorSystemNames` | bool | `true` | | Draw each row's system in its name colour: `systemColors`, then unique colours if on, then the default. Doesn't need a rule's `color_system_name`. |
 
 ### thumbnailSpaces
 
@@ -416,14 +429,29 @@ Rules:
 
 ### snapping
 
+Thumbnail drags.
+
 | Key | Type | Default | Range | Notes |
 |---|---|---|---|---|
 | `enabled` | bool | `true` | | |
 | `threshold` | int | `10` | 0–20 | Pixels. |
 | `screenEdges` | bool | `true` | | |
 | `thumbnailEdges` | bool | `true` | | |
+| `panelEdges` | bool | `true` | | Client List and the History, Map and Intel panels. |
 | `ghostPositions` | bool | `true` | | Snap to other characters' saved positions while dragging. |
 | `showGhostPositionBorders` | bool | `true` | | Outline those positions while dragging. Turned off by import. |
+
+### panelSnapping
+
+Client List and History, Map and Intel panel drags. Panels measure by their visible frame, so the Map Panel's invisible resize borders leave no gap.
+
+| Key | Type | Default | Range | Notes |
+|---|---|---|---|---|
+| `enabled` | bool | `true` | | |
+| `threshold` | int | `10` | 0–20 | Pixels. |
+| `screenEdges` | bool | `true` | | |
+| `panelEdges` | bool | `true` | | |
+| `thumbnailEdges` | bool | `true` | | |
 
 ### interaction
 

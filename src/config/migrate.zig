@@ -9,11 +9,126 @@ const Value = std.json.Value;
 pub const DPI_AWARE_VERSION = 2;
 /// Profiles from before thumbnailSpaces kept one fit region and a not-logged-in space as display settings.
 pub const SPACES_VERSION = 3;
+/// Profiles from before this kept the client list's and panels' settings in display, each name prefixed.
+pub const PANELS_VERSION = 4;
+
+/// A display setting that moved into its own section under a new name.
+const Move = struct { old: []const u8, section: []const u8, new: []const u8 };
+
+const PANEL_MOVES = [_]Move{
+    .{ .old = "listViewOrder", .section = "listView", .new = "order" },
+    .{ .old = "rememberListViewPosition", .section = "listView", .new = "rememberPosition" },
+    .{ .old = "listViewAlwaysOnTop", .section = "listView", .new = "alwaysOnTop" },
+    .{ .old = "listViewOpacity", .section = "listView", .new = "opacity" },
+    .{ .old = "listViewColumns", .section = "listView", .new = "columns" },
+    .{ .old = "listViewColumnWidth", .section = "listView", .new = "columnWidth" },
+    .{ .old = "listViewFontName", .section = "listView", .new = "fontName" },
+    .{ .old = "listViewFontSize", .section = "listView", .new = "fontSize" },
+    .{ .old = "listViewFontWeight", .section = "listView", .new = "fontWeight" },
+    .{ .old = "listViewIndicatorStyle", .section = "listView", .new = "indicatorStyle" },
+    .{ .old = "listViewShowSystemName", .section = "listView", .new = "showSystemName" },
+    .{ .old = "listViewSystemNameColor", .section = "listView", .new = "systemNameColor" },
+    .{ .old = "listViewUseUniqueSystemColors", .section = "listView", .new = "useUniqueSystemColors" },
+    .{ .old = "listViewUseUniqueCharacterNameColors", .section = "listView", .new = "useUniqueCharacterNameColors" },
+    .{ .old = "listViewActiveColor", .section = "listView", .new = "activeColor" },
+    .{ .old = "listViewUseUniqueActiveColors", .section = "listView", .new = "useUniqueActiveColors" },
+    .{ .old = "listViewShowNotifications", .section = "listView", .new = "showNotifications" },
+    .{ .old = "listViewNotificationColor", .section = "listView", .new = "notificationColor" },
+    .{ .old = "listViewShowIncomingDps", .section = "listView", .new = "showIncomingDps" },
+    .{ .old = "listViewShowIncomingPrefix", .section = "listView", .new = "showIncomingPrefix" },
+    .{ .old = "listViewIncomingDpsColor", .section = "listView", .new = "incomingDpsColor" },
+    .{ .old = "listViewShowOutgoingDps", .section = "listView", .new = "showOutgoingDps" },
+    .{ .old = "listViewShowOutgoingPrefix", .section = "listView", .new = "showOutgoingPrefix" },
+    .{ .old = "listViewOutgoingDpsColor", .section = "listView", .new = "outgoingDpsColor" },
+    .{ .old = "listViewShowMiningRate", .section = "listView", .new = "showMiningRate" },
+    .{ .old = "listViewShowMiningPrefix", .section = "listView", .new = "showMiningPrefix" },
+    .{ .old = "listViewMiningRateColor", .section = "listView", .new = "miningRateColor" },
+    .{ .old = "listViewShowBountyRate", .section = "listView", .new = "showBountyRate" },
+    .{ .old = "listViewShowBountyPrefix", .section = "listView", .new = "showBountyPrefix" },
+    .{ .old = "listViewBountyRateColor", .section = "listView", .new = "bountyRateColor" },
+    .{ .old = "listViewHideWhenNoEveFocus", .section = "listView", .new = "hideWhenNoEveFocus" },
+    .{ .old = "listViewHideDebounceMs", .section = "listView", .new = "hideDebounceMs" },
+    .{ .old = "showNotifInfoPanel", .section = "historyPanel", .new = "show" },
+    .{ .old = "notifInfoPanelX", .section = "historyPanel", .new = "x" },
+    .{ .old = "notifInfoPanelY", .section = "historyPanel", .new = "y" },
+    .{ .old = "notifInfoPanelWidth", .section = "historyPanel", .new = "width" },
+    .{ .old = "notifInfoPanelHeight", .section = "historyPanel", .new = "height" },
+    .{ .old = "rememberNotifInfoPanelPosition", .section = "historyPanel", .new = "rememberPosition" },
+    .{ .old = "notifInfoPanelAlwaysOnTop", .section = "historyPanel", .new = "alwaysOnTop" },
+    .{ .old = "hideNotifInfoPanelWhenNoCharacters", .section = "historyPanel", .new = "hideWhenNoCharacters" },
+    .{ .old = "hideNotifInfoPanelWhenNoEveFocus", .section = "historyPanel", .new = "hideWhenNoEveFocus" },
+    .{ .old = "notifInfoPanelHideDebounceMs", .section = "historyPanel", .new = "hideDebounceMs" },
+    .{ .old = "notifInfoPanelOpacity", .section = "historyPanel", .new = "opacity" },
+    .{ .old = "notifInfoPanelFontName", .section = "historyPanel", .new = "fontName" },
+    .{ .old = "notifInfoPanelFontSize", .section = "historyPanel", .new = "fontSize" },
+    .{ .old = "notifInfoPanelFontWeight", .section = "historyPanel", .new = "fontWeight" },
+    .{ .old = "notifInfoPanelMaxRows", .section = "historyPanel", .new = "maxRows" },
+    .{ .old = "notifInfoPanelShowTimestamp", .section = "historyPanel", .new = "showTimestamp" },
+    .{ .old = "notifInfoPanelMergeEnabled", .section = "historyPanel", .new = "mergeEnabled" },
+    .{ .old = "notifInfoPanelMergeWindowSec", .section = "historyPanel", .new = "mergeWindowSec" },
+    .{ .old = "notifInfoPanelShowCategoryFilters", .section = "historyPanel", .new = "showCategoryFilters" },
+    .{ .old = "notifInfoPanelShowFleet", .section = "historyPanel", .new = "showFleet" },
+    .{ .old = "notifInfoPanelShowMining", .section = "historyPanel", .new = "showMining" },
+    .{ .old = "notifInfoPanelShowCombat", .section = "historyPanel", .new = "showCombat" },
+    .{ .old = "notifInfoPanelShowNavigation", .section = "historyPanel", .new = "showNavigation" },
+    .{ .old = "notifInfoPanelShowChat", .section = "historyPanel", .new = "showChat" },
+    .{ .old = "notifInfoPanelShowGeneral", .section = "historyPanel", .new = "showGeneral" },
+    .{ .old = "showMapPanel", .section = "mapPanel", .new = "show" },
+    .{ .old = "mapPanelX", .section = "mapPanel", .new = "x" },
+    .{ .old = "mapPanelY", .section = "mapPanel", .new = "y" },
+    .{ .old = "mapPanelWidth", .section = "mapPanel", .new = "width" },
+    .{ .old = "mapPanelHeight", .section = "mapPanel", .new = "height" },
+    .{ .old = "mapPanelAlwaysOnTop", .section = "mapPanel", .new = "alwaysOnTop" },
+    .{ .old = "rememberMapPanelPosition", .section = "mapPanel", .new = "rememberPosition" },
+    .{ .old = "hideMapPanelWhenNoCharacters", .section = "mapPanel", .new = "hideWhenNoCharacters" },
+    .{ .old = "hideMapPanelWhenNoEveFocus", .section = "mapPanel", .new = "hideWhenNoEveFocus" },
+    .{ .old = "mapPanelHideDebounceMs", .section = "mapPanel", .new = "hideDebounceMs" },
+    .{ .old = "mapPanelOpacity", .section = "mapPanel", .new = "opacity" },
+    .{ .old = "mapPanelFontName", .section = "mapPanel", .new = "fontName" },
+    .{ .old = "mapPanelFontSize", .section = "mapPanel", .new = "fontSize" },
+    .{ .old = "mapPanelFontWeight", .section = "mapPanel", .new = "fontWeight" },
+    .{ .old = "mapPanelRegionId", .section = "mapPanel", .new = "regionId" },
+    .{ .old = "mapPanelExtraRegionId1", .section = "mapPanel", .new = "extraRegionId1" },
+    .{ .old = "mapPanelExtraRegionId2", .section = "mapPanel", .new = "extraRegionId2" },
+    .{ .old = "mapPanelExtraRegionId3", .section = "mapPanel", .new = "extraRegionId3" },
+    .{ .old = "mapPanelFollowActive", .section = "mapPanel", .new = "followActive" },
+    .{ .old = "mapPanelMetric", .section = "mapPanel", .new = "metric" },
+    .{ .old = "mapPanelShowCharacterNames", .section = "mapPanel", .new = "showCharacterNames" },
+    .{ .old = "mapPanelLiveStats", .section = "mapPanel", .new = "liveStats" },
+    .{ .old = "mapPanelShowStorms", .section = "mapPanel", .new = "showStorms" },
+    .{ .old = "mapPanelShowIncursions", .section = "mapPanel", .new = "showIncursions" },
+    .{ .old = "mapPanelShowIntel", .section = "mapPanel", .new = "showIntel" },
+    .{ .old = "mapPanelIntelShrinkSec", .section = "mapPanel", .new = "intelShrinkSec" },
+    .{ .old = "mapPanelIntelShowClear", .section = "mapPanel", .new = "intelShowClear" },
+    .{ .old = "mapPanelRoutePreference", .section = "mapPanel", .new = "routePreference" },
+    .{ .old = "mapPanelRouteAnsiblex", .section = "mapPanel", .new = "routeAnsiblex" },
+    .{ .old = "mapPanelRouteEveryWaypoint", .section = "mapPanel", .new = "routeEveryWaypoint" },
+    .{ .old = "mapPanelRouteAvoidZone1", .section = "mapPanel", .new = "routeAvoidZone1" },
+    .{ .old = "mapPanelRouteAvoidZone2", .section = "mapPanel", .new = "routeAvoidZone2" },
+    .{ .old = "mapPanelRouteAvoidZone3", .section = "mapPanel", .new = "routeAvoidZone3" },
+    .{ .old = "mapPanelRouteAvoidZone4", .section = "mapPanel", .new = "routeAvoidZone4" },
+    .{ .old = "mapPanelRouteAvoidZone5", .section = "mapPanel", .new = "routeAvoidZone5" },
+    .{ .old = "showIntelPanel", .section = "intelPanel", .new = "show" },
+    .{ .old = "intelPanelAttached", .section = "intelPanel", .new = "attached" },
+    .{ .old = "intelPanelSide", .section = "intelPanel", .new = "side" },
+    .{ .old = "intelPanelX", .section = "intelPanel", .new = "x" },
+    .{ .old = "intelPanelY", .section = "intelPanel", .new = "y" },
+    .{ .old = "intelPanelWidth", .section = "intelPanel", .new = "width" },
+    .{ .old = "intelPanelHeight", .section = "intelPanel", .new = "height" },
+    .{ .old = "rememberIntelPanelPosition", .section = "intelPanel", .new = "rememberPosition" },
+    .{ .old = "intelPanelAlwaysOnTop", .section = "intelPanel", .new = "alwaysOnTop" },
+    .{ .old = "hideIntelPanelWhenNoCharacters", .section = "intelPanel", .new = "hideWhenNoCharacters" },
+    .{ .old = "hideIntelPanelWhenNoEveFocus", .section = "intelPanel", .new = "hideWhenNoEveFocus" },
+    .{ .old = "intelPanelHideDebounceMs", .section = "intelPanel", .new = "hideDebounceMs" },
+    .{ .old = "intelPanelOpacity", .section = "intelPanel", .new = "opacity" },
+    .{ .old = "intelPanelColorSystemNames", .section = "intelPanel", .new = "colorSystemNames" },
+};
 
 /// A profile already on the current schema is left alone.
 pub fn profile(arena: std.mem.Allocator, root: *Value) !void {
     try spacesFromDisplay(arena, root);
     try placementModeFromSpaces(arena, root);
+    try panelsFromDisplay(arena, root);
 }
 
 /// Moves the old fit region and not-logged-in space into thumbnailSpaces.
@@ -77,6 +192,28 @@ fn placementModeFromSpaces(arena: std.mem.Allocator, root: *Value) !void {
         try display.object.put(arena, "placementMode", .{ .string = "ThumbnailSpaces" });
         return;
     }
+}
+
+/// Moves the client list's and panels' settings out of display; one already in its section wins.
+fn panelsFromDisplay(arena: std.mem.Allocator, root: *Value) !void {
+    if (root.* != .object) return;
+    const version = values.integerAt(root.*, "formatVersion") orelse 1;
+    if (version >= PANELS_VERSION) return;
+    const display = root.object.get("display") orelse return;
+    if (display != .object) return;
+    for (PANEL_MOVES) |move| {
+        const value = values.get(display, move.old) orelse continue;
+        const section = try sectionObject(arena, root, move.section) orelse continue;
+        if (section.get(move.new) == null) try section.put(arena, move.new, value);
+    }
+}
+
+/// `name`'s object in `root`, made if missing; null if it holds something else.
+fn sectionObject(arena: std.mem.Allocator, root: *Value, name: []const u8) !?*std.json.ObjectMap {
+    const entry = try root.object.getOrPut(arena, name);
+    if (!entry.found_existing) entry.value_ptr.* = .{ .object = .empty };
+    if (entry.value_ptr.* != .object) return null;
+    return &entry.value_ptr.object;
 }
 
 fn copy(arena: std.mem.Allocator, space: *std.json.ObjectMap, display: Value, from: []const u8, to: []const u8) !void {
@@ -173,4 +310,33 @@ test "a saved placementMode, or no enabled space, is left alone" {
         \\{"formatVersion":3,"display":{},"thumbnailSpaces":[{"name":"Off","enabled":false}]}
     );
     try testing.expect(values.get(disabled.object.get("display").?, "placementMode") == null);
+}
+
+test "the client list's and panels' display settings move into their own sections, renamed" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const root = try migrated(arena.allocator(),
+        \\{"formatVersion":3,"display":{"startX":5,"listViewColumns":3,"showMapPanel":true,"mapPanelRouteAvoidZone2":true,
+        \\"notifInfoPanelX":50,"rememberNotifInfoPanelPosition":false,"hideIntelPanelWhenNoEveFocus":true}}
+    );
+    try testing.expectEqual(@as(i64, 3), values.integerAt(root.object.get("listView").?, "columns").?);
+    try testing.expectEqual(true, values.boolAt(root.object.get("mapPanel").?, "show").?);
+    try testing.expectEqual(true, values.boolAt(root.object.get("mapPanel").?, "routeAvoidZone2").?);
+    try testing.expectEqual(@as(i64, 50), values.integerAt(root.object.get("historyPanel").?, "x").?);
+    try testing.expectEqual(false, values.boolAt(root.object.get("historyPanel").?, "rememberPosition").?);
+    try testing.expectEqual(true, values.boolAt(root.object.get("intelPanel").?, "hideWhenNoEveFocus").?);
+    try testing.expectEqual(@as(i64, 5), values.integerAt(root.object.get("display").?, "startX").?);
+}
+
+test "a panel setting already in its section wins, and a current profile's display is left alone" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const both = try migrated(arena.allocator(),
+        \\{"formatVersion":3,"display":{"listViewColumns":3},"listView":{"columns":2}}
+    );
+    try testing.expectEqual(@as(i64, 2), values.integerAt(both.object.get("listView").?, "columns").?);
+    const current = try migrated(arena.allocator(),
+        \\{"formatVersion":4,"display":{"listViewColumns":3}}
+    );
+    try testing.expect(current.object.get("listView") == null);
 }

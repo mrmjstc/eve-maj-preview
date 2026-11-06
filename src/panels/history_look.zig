@@ -1,12 +1,12 @@
 //! The History Panel's look, shared by the panel and the config dialog's preview: its sizes, filter buttons and row text, in the client list's palette; no I/O.
 const std = @import("std");
 const notification = @import("../notifications/notification.zig");
-const display_mod = @import("../config/display.zig");
+const panels = @import("../config/panels.zig");
 const notifications_mod = @import("../config/notifications.zig");
 const list_look = @import("list_look.zig");
 const panel_look = @import("panel_look.zig");
 
-const DisplayConfig = display_mod.DisplayConfig;
+const HistoryPanelConfig = panels.HistoryPanelConfig;
 const NotificationConfig = notifications_mod.NotificationConfig;
 const NotificationCategory = notification.NotificationCategory;
 
@@ -30,18 +30,18 @@ pub const Metrics = struct {
 };
 
 /// Rows and the header grow with the font as the client list's do.
-pub fn metrics(display: *const DisplayConfig) Metrics {
-    const header_height = panel_look.headerHeight(display);
+pub fn metrics(history_settings: *const HistoryPanelConfig) Metrics {
+    const header_height = panel_look.headerHeight(history_settings);
     return .{
         .header_height = header_height,
-        .row_height = list_look.rowHeight(display.notifInfoPanelFontSize),
-        .footer_height = if (display.notifInfoPanelShowCategoryFilters) panel_look.footerHeight(header_height) else 0,
+        .row_height = list_look.rowHeight(history_settings.fontSize),
+        .footer_height = if (history_settings.showCategoryFilters) panel_look.footerHeight(header_height) else 0,
     };
 }
 
-/// How many rows fit between the header and footer, at most notifInfoPanelMaxRows.
-pub fn rowCapacity(display: *const DisplayConfig, sizes: Metrics) usize {
-    return rowsThatFit(display.notifInfoPanelHeight, sizes, @max(1, display.notifInfoPanelMaxRows));
+/// How many rows fit between the header and footer, at most historyPanel.maxRows.
+pub fn rowCapacity(history_settings: *const HistoryPanelConfig, sizes: Metrics) usize {
+    return rowsThatFit(history_settings.height, sizes, @max(1, history_settings.maxRows));
 }
 
 /// How many rows a panel `panel_height` tall holds, at most `limit`.
@@ -68,21 +68,21 @@ pub fn filterAt(width: i32, x: i32) ?NotificationCategory {
     return CATEGORY_ORDER[index];
 }
 
-pub fn isCategoryEnabled(display: *const DisplayConfig, category: NotificationCategory) bool {
+pub fn isCategoryEnabled(history_settings: *const HistoryPanelConfig, category: NotificationCategory) bool {
     return switch (category) {
-        .Fleet => display.notifInfoPanelShowFleet,
-        .Mining => display.notifInfoPanelShowMining,
-        .Combat => display.notifInfoPanelShowCombat,
-        .Navigation => display.notifInfoPanelShowNavigation,
-        .Chat => display.notifInfoPanelShowChat,
-        .General => display.notifInfoPanelShowGeneral,
+        .Fleet => history_settings.showFleet,
+        .Mining => history_settings.showMining,
+        .Combat => history_settings.showCombat,
+        .Navigation => history_settings.showNavigation,
+        .Chat => history_settings.showChat,
+        .General => history_settings.showGeneral,
     };
 }
 
 /// With the filter buttons hidden every category shows, so none is dropped by a filter the user can't see or change.
-pub fn showsCategory(display: *const DisplayConfig, category: NotificationCategory) bool {
-    if (!display.notifInfoPanelShowCategoryFilters) return true;
-    return isCategoryEnabled(display, category);
+pub fn showsCategory(history_settings: *const HistoryPanelConfig, category: NotificationCategory) bool {
+    if (!history_settings.showCategoryFilters) return true;
+    return isCategoryEnabled(history_settings, category);
 }
 
 /// The type's own text colour, else the notifications' default.
@@ -104,23 +104,23 @@ test "filterAt finds the button under the cursor and misses the gaps" {
 }
 
 test "rowCapacity is capped by the max rows setting and by the room there is" {
-    var display: DisplayConfig = .{ .notifInfoPanelHeight = 1000, .notifInfoPanelMaxRows = 5 };
-    try testing.expectEqual(@as(usize, 5), rowCapacity(&display, metrics(&display)));
-    display.notifInfoPanelHeight = 60;
-    display.notifInfoPanelMaxRows = 30;
-    try testing.expectEqual(@as(usize, 0), rowCapacity(&display, metrics(&display)));
+    var history_settings: HistoryPanelConfig = .{ .height = 1000, .maxRows = 5 };
+    try testing.expectEqual(@as(usize, 5), rowCapacity(&history_settings, metrics(&history_settings)));
+    history_settings.height = 60;
+    history_settings.maxRows = 30;
+    try testing.expectEqual(@as(usize, 0), rowCapacity(&history_settings, metrics(&history_settings)));
 }
 
 test "metrics drops the footer while the filter buttons are hidden" {
-    var display: DisplayConfig = .{};
-    try testing.expect(metrics(&display).footer_height > 0);
-    display.notifInfoPanelShowCategoryFilters = false;
-    try testing.expectEqual(@as(i32, 0), metrics(&display).footer_height);
+    var history_settings: HistoryPanelConfig = .{};
+    try testing.expect(metrics(&history_settings).footer_height > 0);
+    history_settings.showCategoryFilters = false;
+    try testing.expectEqual(@as(i32, 0), metrics(&history_settings).footer_height);
 }
 
 test "showsCategory ignores the filters while their buttons are hidden" {
-    var display: DisplayConfig = .{ .notifInfoPanelShowMining = false };
-    try testing.expect(!showsCategory(&display, .Mining));
-    display.notifInfoPanelShowCategoryFilters = false;
-    try testing.expect(showsCategory(&display, .Mining));
+    var history_settings: HistoryPanelConfig = .{ .showMining = false };
+    try testing.expect(!showsCategory(&history_settings, .Mining));
+    history_settings.showCategoryFilters = false;
+    try testing.expect(showsCategory(&history_settings, .Mining));
 }

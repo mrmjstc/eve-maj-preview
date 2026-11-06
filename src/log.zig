@@ -37,6 +37,7 @@ var g_is_console_shown = false;
 /// The console is hidden rather than freed, since a reallocated one would get a handle the cached one doesn't match.
 var g_has_console = false;
 
+/// Set once by setIo before any thread logs, then only read.
 var g_io: std.Io = undefined;
 /// Guards the file and buffers below, which every logging thread writes.
 var g_log_mutex: std.Io.Mutex = .init;
@@ -176,16 +177,16 @@ fn consoleCtrlHandler(ctrl_type: win32.DWORD) callconv(.c) win32.BOOL {
 }
 
 /// Opened lazily, so a session that never logs never touches disk; caller holds g_log_mutex.
-fn ensureFileOpen() bool {
-    if (g_log_file != null) return true;
+fn logFile() ?std.Io.File {
+    if (g_log_file) |file| return file;
     const cwd = std.Io.Dir.cwd();
     cwd.createDir(g_io, LOG_DIR, .default_dir) catch |err| switch (err) {
         error.PathAlreadyExists => {},
-        else => return false,
+        else => return null,
     };
     // On Windows, length() fails without read access.
-    g_log_file = cwd.createFile(g_io, LOG_FILE_NAME, .{ .read = true, .truncate = false }) catch return false;
-    return true;
+    g_log_file = cwd.createFile(g_io, LOG_FILE_NAME, .{ .read = true, .truncate = false }) catch return null;
+    return g_log_file;
 }
 
 /// Main thread only; on hiding, writes out what the console has buffered first.
@@ -236,14 +237,14 @@ fn rotate() void {
 
 /// Rotates first if the file is full; the end is read, not tracked, since a second instance may have appended; caller holds g_log_mutex.
 fn appendLocked(bytes: []const u8) void {
-    if (!ensureFileOpen()) return;
-    var end = g_log_file.?.length(g_io) catch return;
+    var file = logFile() orelse return;
+    var end = file.length(g_io) catch return;
     if (end >= MAX_LOG_FILE_BYTES) {
         rotate();
-        const file = g_log_file orelse return;
+        file = g_log_file orelse return;
         end = file.length(g_io) catch return;
     }
-    g_log_file.?.writePositionalAll(g_io, bytes, end) catch return;
+    file.writePositionalAll(g_io, bytes, end) catch return;
 }
 
 /// Caller holds g_log_mutex.

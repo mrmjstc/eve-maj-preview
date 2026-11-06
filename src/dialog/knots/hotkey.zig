@@ -369,6 +369,8 @@ fn holderKind(comptime field_name: []const u8) HolderKind {
 
 /// Whether a field's type can contain a KeyList, so the walk skips strings, numbers and the like.
 fn holdsKeys(comptime T: type) bool {
+    // Walks every type nested in the profile and global settings, which outgrows the default quota.
+    @setEvalBranchQuota(100_000);
     if (T == KeyList) return true;
     return switch (@typeInfo(T)) {
         .@"struct" => |info| blk: {

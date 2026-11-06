@@ -115,13 +115,15 @@ pub fn show(context: *ui.Frame) !void {
     try binding(context, profile_hotkeys, "hotkeyCloseAll");
     try widgets.hintText(context, .src(@src()), "Closes every EVE client, except those set below.");
     const close_all = session.profile().child("closeAll");
-    // Its own switches, so they read as part of its row.
-    const was_undivided = widgets.useUndividedRows(true);
-    try bind.toggle(context, close_all, "excludeCycleExcludedClients", "Skip Excluded Characters");
-    try widgets.hintText(context, .src(@src()), "Uses the excluded characters from the Behavior tab.");
-    try bind.toggle(context, close_all, "excludeLoginScreenClients", "Skip Logged-Out Clients");
-    try widgets.hintText(context, .src(@src()), "Leaves clients at the login screen running.");
-    _ = widgets.useUndividedRows(was_undivided);
+    {
+        // Its own switches, so they read as part of its row.
+        const was_undivided = widgets.useUndividedRows(true);
+        defer _ = widgets.useUndividedRows(was_undivided);
+        try bind.toggle(context, close_all, "excludeCycleExcludedClients", "Skip Excluded Characters");
+        try widgets.hintText(context, .src(@src()), "Uses the excluded characters from the Behavior tab.");
+        try bind.toggle(context, close_all, "excludeLoginScreenClients", "Skip Logged-Out Clients");
+        try widgets.hintText(context, .src(@src()), "Leaves clients at the login screen running.");
+    }
     try binding(context, profile_hotkeys, "hotkeyCloseActive");
     try widgets.hintText(context, .src(@src()), "Closes the EVE client you're in.");
     try binding(context, profile_hotkeys, "hotkeyMinimizeAll");

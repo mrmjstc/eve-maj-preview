@@ -187,6 +187,10 @@ fn parseNotifyEvent(message: []const u8) ?Notification {
         return .{ .notification_type = .AggressionCantJump };
     }
 
+    if (std.mem.find(u8, trimmed, "You cannot warp while you are cloaked") != null) {
+        return .{ .notification_type = .CloakedCantWarp };
+    }
+
     if (conduitDestination(trimmed)) |system| return .{ .notification_type = .ConduitJump, .target = system };
     if (std.mem.find(u8, trimmed, "Conduit Field") != null and std.mem.find(u8, trimmed, "jumps you to") != null) {
         return .{ .notification_type = .ConduitJump };
@@ -258,6 +262,7 @@ test "classify maps each notify wording to its type" {
         .{ "[ 2026.09.06 16:13:00 ] (notify) Please get within 2500 meters of the stargate to jump.", .JumpRange },
         .{ "[ 2026.09.06 16:13:00 ] (notify) You are within a warp disruption zone. Get 20000.0 meters from Warp Disrupt Probe to warp.", .WarpBubble },
         .{ "[ 2026.09.06 16:13:00 ] (notify) The stargate denies you permission to jump for the moment due to your recent acts of aggression.", .AggressionCantJump },
+        .{ "[ 2026.09.06 16:13:00 ] (notify) You cannot warp while you are cloaked.", .CloakedCantWarp },
     };
     for (cases) |case| {
         try testing.expectEqual(case[1], classifiedType(case[0]).?);

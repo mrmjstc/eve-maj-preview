@@ -498,6 +498,9 @@ function Add-GamelogEvent {
         'AggressionCantJump' {
             "[ $ts ] (notify) The stargate denies you permission to jump for the moment due to your recent acts of aggression."
         }
+        'CloakedCantWarp' {
+            "[ $ts ] (notify) You cannot warp while you are cloaked."
+        }
         'ConduitJump' {
             "[ $ts ] (notify) A Conduit Field jumps you to $Destination."
         }
@@ -518,7 +521,7 @@ $script:NotificationTypeKinds = @(
     'FleetInvite', 'FleetFollow', 'FleetRegroup', 'FleetDisband',
     'MiningCompression', 'AsteroidDepleted', 'CargoFull', 'CrystalBroke',
     'WarpScrambled', 'WarpDisrupted', 'Decloak', 'ObservatoryDecloak', 'CloakFailed', 'BombLauncherEmpty', 'SelfDestruct', 'WarpBubble',
-    'Docking', 'AutopilotReached', 'AutopilotApproaching', 'JumpRange', 'AggressionCantJump', 'ConduitJump', 'JumpCloning',
+    'Docking', 'AutopilotReached', 'AutopilotApproaching', 'JumpRange', 'AggressionCantJump', 'CloakedCantWarp', 'ConduitJump', 'JumpCloning',
     'ConversationInvite'
 )
 

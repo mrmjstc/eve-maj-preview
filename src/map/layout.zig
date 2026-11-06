@@ -1,4 +1,4 @@
-//! Where one region's systems, gates and name labels go inside a pixel area, on CCP's flattened map; no I/O.
+//! Where a few regions' systems, gates and name labels go inside a pixel area, on CCP's flattened map; no I/O.
 const std = @import("std");
 const universe = @import("universe.zig");
 const box_mod = @import("../util/box.zig");
@@ -7,10 +7,30 @@ const RegionIndex = universe.RegionIndex;
 const SystemIndex = universe.SystemIndex;
 pub const Box = box_mod.Box;
 
-/// The most gates any region has; a test holds every region to it.
-pub const MAX_EDGES = 300;
+/// The most regions shown at once, as names stop fitting past it.
+pub const MAX_REGIONS = 4;
+/// The most gates inside any region; a test holds every region to it.
+pub const MAX_REGION_EDGES = 300;
 /// The most gates out of any region; a test holds every region to it.
-pub const MAX_EXITS = 48;
+pub const MAX_REGION_EXITS = 48;
+pub const MAX_NODES = universe.MAX_REGION_SYSTEMS * MAX_REGIONS;
+/// A gate between two regions shown is an edge rather than an exit.
+pub const MAX_EDGES = (MAX_REGION_EDGES + MAX_REGION_EXITS) * MAX_REGIONS;
+pub const MAX_EXITS = MAX_REGION_EXITS * MAX_REGIONS;
+/// Between regions shown together, in CCP's map units, where a gate inside a region is about 65 long.
+const REGION_GAP: f32 = 160;
+/// Packing stops sooner, once no two regions overlap.
+const PACK_ROUNDS = 64;
+/// Kept between a gate between regions and any other system it would run past, in pixels.
+const BEND_CLEARANCE: f32 = 8;
+/// A bent gate is drawn as this many straight pieces.
+pub const CURVE_SEGMENTS = 16;
+/// Between a region's systems and its name.
+const REGION_LABEL_GAP = 4;
+/// How many lines out from a region's side its name is tried, to clear the names of the systems along it.
+const REGION_LABEL_STEPS = 3;
+/// Best first: over the region, then under it, then inside its top and bottom.
+const REGION_LABEL_SPOTS = regionLabelSpots();
 /// Around the systems, for their labels and exits.
 const MARGIN = 30;
 const EXIT_LENGTH: f32 = 16;
@@ -19,12 +39,15 @@ const EXIT_LABEL_GAP = 3;
 pub const NODE_CLEARANCE = 5;
 /// Kept free on each side of a label, so two names on a line don't read as one.
 const LABEL_SIDE_GAP = 2;
-/// Around an exit's name, inside the chip behind it.
-pub const EXIT_CHIP_PADDING = 3;
+/// Around a name, inside the chip behind it: an exit's, the selected system's, or a client's tag.
+pub const CHIP_PADDING_X = 5;
+pub const CHIP_PADDING_Y = 2;
 /// How close the cursor must come to a system or an exit, in pixels.
 const HIT_RADIUS = 9;
-const TAKEN_CAPACITY = universe.MAX_REGION_SYSTEMS * 2 + MAX_EXITS * 2;
+const TAKEN_CAPACITY = MAX_NODES * 2 + MAX_EXITS * 2;
 pub const MAX_ZOOM: f32 = 8;
+/// In Layout.node_index, for a system with no node.
+const NO_NODE = std.math.maxInt(u16);
 
 /// Zoom and pan over the fitted map; the default shows all of it.
 pub const View = struct {
@@ -63,6 +86,67 @@ pub const View = struct {
     }
 };
 
+/// What toggling a region did.
+pub const Toggle = union(enum) { added, removed, last, replaced: RegionIndex };
+
+/// The regions a Layout shows, in the order they were picked.
+pub const Regions = struct {
+    items: [MAX_REGIONS]RegionIndex = undefined,
+    count: usize = 0,
+
+    pub fn one(region: RegionIndex) Regions {
+        var regions: Regions = .{};
+        regions.items[0] = region;
+        regions.count = 1;
+        return regions;
+    }
+
+    pub fn slice(self: *const Regions) []const RegionIndex {
+        return self.items[0..self.count];
+    }
+
+    pub fn indexOf(self: *const Regions, region: RegionIndex) ?usize {
+        return std.mem.indexOfScalar(RegionIndex, self.slice(), region);
+    }
+
+    pub fn contains(self: *const Regions, region: RegionIndex) bool {
+        return self.indexOf(region) != null;
+    }
+
+    /// Whether it went in; a full set, or one already holding it, takes nothing.
+    pub fn add(self: *Regions, region: RegionIndex) bool {
+        if (self.count == MAX_REGIONS or self.contains(region)) return false;
+        self.items[self.count] = region;
+        self.count += 1;
+        return true;
+    }
+
+    /// Never takes out the last one; a full set drops its earliest pick to make room.
+    pub fn toggle(self: *Regions, region: RegionIndex) Toggle {
+        if (self.indexOf(region)) |index| {
+            if (self.count == 1) return .last;
+            self.removeAt(index);
+            return .removed;
+        }
+        if (self.add(region)) return .added;
+        const dropped = self.items[0];
+        self.removeAt(0);
+        _ = self.add(region);
+        return .{ .replaced = dropped };
+    }
+
+    fn removeAt(self: *Regions, index: usize) void {
+        std.mem.copyForwards(RegionIndex, self.items[index .. self.count - 1], self.items[index + 1 .. self.count]);
+        self.count -= 1;
+    }
+};
+
+/// A place on CCP's flattened map, in its units.
+pub const MapPoint = struct { x: i32, y: i32 };
+
+/// What a gate's two systems share.
+pub const GateKind = enum { within_constellation, within_region, between_regions };
+
 pub const Node = struct {
     system: SystemIndex,
     x: i32,
@@ -71,15 +155,45 @@ pub const Node = struct {
     label: ?Box = null,
 };
 
+/// A pixel on the area.
+pub const PixelPoint = struct { x: i32, y: i32 };
+
+/// A place to try a region's name, against the box around its systems.
+const RegionLabelSpot = struct {
+    side: Side,
+    alignment: Alignment,
+    /// Lines further out than the side itself.
+    step: i32 = 0,
+
+    const Side = enum { above, below, inside_top, inside_bottom };
+    const Alignment = enum { center, start, end };
+
+    fn place(self: RegionLabelSpot, around: Box, width: i32, line_height: i32) Box {
+        const left = switch (self.alignment) {
+            .center => @divTrunc(around.left + around.right - width, 2),
+            .start => around.left,
+            .end => around.right - width,
+        };
+        const top = switch (self.side) {
+            .above => around.top - REGION_LABEL_GAP - (self.step + 1) * line_height,
+            .below => around.bottom + REGION_LABEL_GAP + self.step * line_height,
+            .inside_top => around.top + REGION_LABEL_GAP,
+            .inside_bottom => around.bottom - REGION_LABEL_GAP - line_height,
+        };
+        return .{ .left = left, .top = top, .right = left + width, .bottom = top + line_height };
+    }
+};
+
 /// A gate between two systems shown, by their places in `nodes`.
 pub const Edge = struct {
     first_index: u16,
     second_index: u16,
-    /// Within one constellation.
-    is_local: bool,
+    kind: GateKind,
+    /// How far its curve's control point sits off its middle, in pixels to the left going first to second; 0 for straight.
+    bend: f32 = 0,
 };
 
-/// A gate out of the region, drawn as a short stub pointing at the system it leads to.
+/// A gate to a region not shown, drawn as a short stub pointing at the system it leads to.
 pub const Exit = struct {
     /// Its place in `nodes`.
     from_index: u16,
@@ -91,82 +205,157 @@ pub const Exit = struct {
     label: ?Box = null,
 };
 
-/// One region, or a handful of systems around one, laid out; rebuilt when they or the area change.
+/// A few regions side by side, or a handful of systems around one, laid out; gathered again when the regions change, and placed again when the area or view does.
 pub const Layout = struct {
-    region: RegionIndex = 0,
+    regions: Regions = .{},
+    /// How far each region's diagram moved from CCP's place for it, by its place in `regions`.
+    offsets: [MAX_REGIONS]MapPoint = @splat(.{ .x = 0, .y = 0 }),
+    /// Around each region's systems, by its place in `regions`.
+    region_areas: [MAX_REGIONS]Box = undefined,
+    /// Each region's name, by its place in `regions`; null until placeRegionLabels, while one region shows, or with no room.
+    region_labels: [MAX_REGIONS]?Box = @splat(null),
     area: Box = .{ .left = 0, .top = 0, .right = 0, .bottom = 0 },
     /// Only `build` honours it, and a system zoomed off the area stays in `nodes`, with no label.
     view: View = .{},
-    nodes: [universe.MAX_REGION_SYSTEMS]Node = undefined,
+    nodes: [MAX_NODES]Node = undefined,
     node_count: usize = 0,
     edges: [MAX_EDGES]Edge = undefined,
     edge_count: usize = 0,
     exits: [MAX_EXITS]Exit = undefined,
     exit_count: usize = 0,
+    /// The regions `nodes`, `edges` and `exits` were gathered for, which a pan or zoom keeps; null after buildAround.
+    gathered: ?Regions = null,
+    /// Each node's place on CCP's map, its region's diagram moved, by its place in `nodes`.
+    points: [MAX_NODES]MapPoint = undefined,
+    /// Around every node's point.
+    bounds: Bounds = .{},
+    /// Around each region's points, by its place in `regions`.
+    region_bounds: [MAX_REGIONS]Bounds = @splat(.{}),
+    /// Which way each exit points on CCP's map, as a unit step, by its place in `exits`.
+    exit_steps: [MAX_EXITS]Vector = undefined,
+    /// Places in `nodes`, most connected first, for placeLabels.
+    label_order: [MAX_NODES]u16 = undefined,
+    /// Each system's place in `nodes`, or NO_NODE; a lookup, as the panel asks for it per client and mark each frame.
+    node_index: [universe.SYSTEM_COUNT]u16 = @splat(NO_NODE),
 
-    /// Labels stay unplaced until placeLabels; gates past the limits are left out, which a test rules out for today's map.
-    pub fn build(self: *Layout, region: RegionIndex, area: Box) void {
-        self.region = region;
+    /// `regions` holds at least one; labels stay unplaced until placeLabels, and gates past the limits are left out, which a test rules out for today's map.
+    pub fn build(self: *Layout, regions: Regions, area: Box) void {
+        if (!self.hasGathered(regions)) self.gather(regions);
+        self.region_labels = @splat(null);
         self.area = area;
-        self.node_count = 0;
-        self.edge_count = 0;
-        self.exit_count = 0;
 
-        var bounds: Bounds = .{};
-        for (0..universe.SYSTEM_COUNT) |index| {
-            const system: SystemIndex = @intCast(index);
-            const info = universe.systemInfo(system);
-            if (info.region != region) continue;
-            bounds.include(info);
-            self.nodes[self.node_count] = .{ .system = system, .x = 0, .y = 0 };
-            self.node_count += 1;
-        }
-
-        var fit = bounds.fitTo(area);
+        var fit = self.bounds.fitTo(area);
         fit.view = self.view;
         self.placeNodes(fit);
-        for (0..self.node_count) |index| {
-            var links = universe.neighbours(self.nodes[index].system);
-            while (links.next()) |neighbour| self.addGate(@intCast(index), neighbour);
-        }
+        for (self.region_bounds[0..regions.count], self.region_areas[0..regions.count]) |shown, *region_area| region_area.* = fit.boxOf(shown);
+        // Only the long gates between regions run past other systems; a region's own diagram keeps clear of them.
+        for (self.edges[0..self.edge_count]) |*edge| edge.bend = if (edge.kind == .between_regions) self.bendAround(edge.first_index, edge.second_index) else 0;
+        self.placeExits();
     }
 
     /// Only the gates among `systems`, at least one of them: those in the first's region become nodes, in order, and the rest exits.
     pub fn buildAround(self: *Layout, systems: []const SystemIndex, area: Box) void {
-        self.region = universe.systemInfo(systems[0]).region;
+        self.clearNodes();
+        self.gathered = null;
+        self.regions = .one(universe.systemInfo(systems[0]).region);
+        self.offsets = @splat(.{ .x = 0, .y = 0 });
+        self.region_labels = @splat(null);
         self.area = area;
-        self.node_count = 0;
-        self.edge_count = 0;
-        self.exit_count = 0;
 
         var bounds: Bounds = .{};
         for (systems) |system| {
             const info = universe.systemInfo(system);
-            if (info.region != self.region) continue;
-            bounds.include(info);
-            self.nodes[self.node_count] = .{ .system = system, .x = 0, .y = 0 };
-            self.node_count += 1;
+            if (!self.regions.contains(info.region)) continue;
+            const point = self.mapPoint(info);
+            bounds.include(point);
+            self.addNode(system, point);
         }
-        self.placeNodes(bounds.fitTo(area));
+        const fit = bounds.fitTo(area);
+        self.placeNodes(fit);
+        self.region_areas[0] = fit.boxOf(bounds);
         for (0..self.node_count) |index| {
             var links = universe.neighbours(self.nodes[index].system);
             while (links.next()) |neighbour| {
                 if (isListed(systems, neighbour)) self.addGate(@intCast(index), neighbour);
             }
         }
+        self.placeExits();
+        self.sortLabelOrder();
     }
 
     /// Greedily, the most connected systems first, `clearance` from their systems; `node_widths` and `exit_widths` are pixel widths in `nodes` and `exits` order.
     pub fn placeLabels(self: *Layout, node_widths: []const i32, exit_widths: []const i32, line_height: i32, clearance: i32) void {
         var taken: [TAKEN_CAPACITY]Box = undefined;
         var taken_count = self.takeMarkers(&taken);
-
-        var order: [universe.MAX_REGION_SYSTEMS]u16 = undefined;
-        for (order[0..self.node_count], 0..) |*slot, index| slot.* = @intCast(index);
-        std.mem.sort(u16, order[0..self.node_count], self, moreConnected);
-
-        self.labelNodes(order[0..self.node_count], node_widths, line_height, clearance, &taken, &taken_count);
+        self.labelNodes(self.label_order[0..self.node_count], node_widths, line_height, clearance, &taken, &taken_count);
         self.labelExits(exit_widths, line_height, &taken, &taken_count);
+    }
+
+    /// Only while several regions show, after placeLabels: around each region, the first spot that touches no system, name, exit or gate, else the one touching fewest; `widths` are by place in `regions`.
+    pub fn placeRegionLabels(self: *Layout, widths: []const i32, line_height: i32) void {
+        if (self.regions.count < 2) return;
+        var taken: [TAKEN_CAPACITY + MAX_REGIONS]Box = undefined;
+        var taken_count = self.takeMarkers(&taken);
+        for (self.nodes[0..self.node_count]) |node| {
+            taken[taken_count] = node.label orelse continue;
+            taken_count += 1;
+        }
+        for (self.exits[0..self.exit_count]) |exit| {
+            const label = exit.label orelse continue;
+            taken[taken_count] = chipBox(label);
+            taken_count += 1;
+        }
+        for (self.region_areas[0..self.regions.count], widths[0..self.regions.count], self.region_labels[0..self.regions.count]) |around, width, *region_label| {
+            region_label.* = self.leastCrowdedSpot(around, width, line_height, taken[0..taken_count]);
+            taken[taken_count] = region_label.* orelse continue;
+            taken_count += 1;
+        }
+    }
+
+    /// Null when no spot lies inside the area.
+    fn leastCrowdedSpot(self: *const Layout, around: Box, width: i32, line_height: i32, taken: []const Box) ?Box {
+        var best: ?Box = null;
+        var best_crowding: usize = std.math.maxInt(usize);
+        for (REGION_LABEL_SPOTS) |spot| {
+            const box = spot.place(around, width, line_height);
+            if (!self.area.contains(box)) continue;
+            const crowding = self.crowdingAt(box, taken, best_crowding);
+            if (crowding >= best_crowding) continue;
+            best = box;
+            best_crowding = crowding;
+            if (crowding == 0) break;
+        }
+        return best;
+    }
+
+    /// What `box` touches, counted up to `limit`, past which it can't win.
+    fn crowdingAt(self: *const Layout, box: Box, taken: []const Box, limit: usize) usize {
+        var count: usize = 0;
+        for (taken) |other| {
+            if (box.overlaps(other)) count += 1;
+        }
+        for (self.exits[0..self.exit_count]) |exit| {
+            if (count >= limit) return count;
+            const node = self.nodes[exit.from_index];
+            if (segmentCrosses(box, .{ .x = node.x, .y = node.y }, .{ .x = exit.x, .y = exit.y })) count += 1;
+        }
+        for (self.edges[0..self.edge_count]) |edge| {
+            if (count >= limit) return count;
+            const first = self.nodes[edge.first_index];
+            const second = self.nodes[edge.second_index];
+            // A curve strays at most half its bend off the line, and a pixel more in rounding.
+            const stray: i32 = @as(i32, @intFromFloat(@ceil(@abs(edge.bend) / 2))) + 1;
+            const reach: Box = .{ .left = @min(first.x, second.x) - stray, .top = @min(first.y, second.y) - stray, .right = @max(first.x, second.x) + stray, .bottom = @max(first.y, second.y) + stray };
+            if (!box.overlaps(reach)) continue;
+            var point_buffer: [CURVE_SEGMENTS + 1]PixelPoint = undefined;
+            const points = self.edgePoints(edge, &point_buffer);
+            for (points[0 .. points.len - 1], points[1..]) |from, to| {
+                if (!segmentCrosses(box, from, to)) continue;
+                count += 1;
+                break;
+            }
+        }
+        return count;
     }
 
     /// Like placeLabels, first come first served along `order`, places in `nodes`; a node left out keeps no label.
@@ -195,7 +384,7 @@ pub const Layout = struct {
     pub fn labelAt(self: *const Layout, x: i32, y: i32) ?u16 {
         for (self.nodes[0..self.node_count], 0..) |node, index| {
             const label = node.label orelse continue;
-            if (x >= label.left and x < label.right and y >= label.top and y < label.bottom) return @intCast(index);
+            if (label.containsPoint(x, y)) return @intCast(index);
         }
         return null;
     }
@@ -204,7 +393,7 @@ pub const Layout = struct {
     pub fn exitLabelAt(self: *const Layout, x: i32, y: i32) ?u16 {
         for (self.exits[0..self.exit_count], 0..) |exit, index| {
             const label = exit.label orelse continue;
-            if (x >= label.left - EXIT_CHIP_PADDING and x < label.right + EXIT_CHIP_PADDING and y >= label.top and y < label.bottom) return @intCast(index);
+            if (chipBox(label).containsPoint(x, y)) return @intCast(index);
         }
         return null;
     }
@@ -223,19 +412,83 @@ pub const Layout = struct {
         return nearest;
     }
 
-    /// Searched linearly: a region has at most a couple of hundred.
     pub fn nodeOf(self: *const Layout, system: SystemIndex) ?u16 {
-        for (self.nodes[0..self.node_count], 0..) |node, index| {
-            if (node.system == system) return @intCast(index);
-        }
-        return null;
+        const index = self.node_index[system];
+        return if (index == NO_NODE) null else index;
     }
 
+    fn hasGathered(self: *const Layout, regions: Regions) bool {
+        const gathered = self.gathered orelse return false;
+        return std.mem.eql(RegionIndex, gathered.slice(), regions.slice());
+    }
+
+    /// The systems and gates among `regions`, and where each system sits on CCP's map, none of which a pan or zoom changes.
+    fn gather(self: *Layout, regions: Regions) void {
+        self.clearNodes();
+        self.regions = regions;
+        self.gathered = regions;
+        self.offsets = packRegions(regions.slice());
+        self.bounds = .{};
+        self.region_bounds = @splat(.{});
+        for (0..universe.SYSTEM_COUNT) |index| {
+            const system: SystemIndex = @intCast(index);
+            const info = universe.systemInfo(system);
+            const slot = regions.indexOf(info.region) orelse continue;
+            const point = self.mapPoint(info);
+            self.bounds.include(point);
+            self.region_bounds[slot].include(point);
+            self.addNode(system, point);
+        }
+        for (0..self.node_count) |index| {
+            var links = universe.neighbours(self.nodes[index].system);
+            while (links.next()) |neighbour| self.addGate(@intCast(index), neighbour);
+        }
+        self.sortLabelOrder();
+    }
+
+    fn clearNodes(self: *Layout) void {
+        for (self.nodes[0..self.node_count]) |node| self.node_index[node.system] = NO_NODE;
+        self.node_count = 0;
+        self.edge_count = 0;
+        self.exit_count = 0;
+    }
+
+    /// A system listed twice keeps its first place for nodeOf.
+    fn addNode(self: *Layout, system: SystemIndex, point: MapPoint) void {
+        if (self.node_index[system] == NO_NODE) self.node_index[system] = @intCast(self.node_count);
+        self.nodes[self.node_count] = .{ .system = system, .x = 0, .y = 0 };
+        self.points[self.node_count] = point;
+        self.node_count += 1;
+    }
+
+    fn sortLabelOrder(self: *Layout) void {
+        const order = self.label_order[0..self.node_count];
+        for (order, 0..) |*slot, index| slot.* = @intCast(index);
+        std.mem.sort(u16, order, self, moreConnected);
+    }
+
+    /// Where a system sits once its region's diagram has moved; one outside `regions` stays at CCP's place.
+    fn mapPoint(self: *const Layout, info: universe.SystemInfo) MapPoint {
+        const offset = if (self.regions.indexOf(info.region)) |slot| self.offsets[slot] else MapPoint{ .x = 0, .y = 0 };
+        return .{ .x = @as(i32, info.x) + offset.x, .y = @as(i32, info.y) + offset.y };
+    }
+
+    /// Clears their labels, which no longer fit where they moved to.
     fn placeNodes(self: *Layout, fit: Fit) void {
-        for (self.nodes[0..self.node_count]) |*node| {
-            const info = universe.systemInfo(node.system);
-            node.x = fit.pixelX(info.x);
-            node.y = fit.pixelY(info.y);
+        for (self.nodes[0..self.node_count], self.points[0..self.node_count]) |*node, point| {
+            node.x = fit.pixelX(point.x);
+            node.y = fit.pixelY(point.y);
+            node.label = null;
+        }
+    }
+
+    /// Each a short step from its system, aimed on CCP's map rather than in pixels, so it still points the right way with no other system to scale by.
+    fn placeExits(self: *Layout) void {
+        for (self.exits[0..self.exit_count], self.exit_steps[0..self.exit_count]) |*exit, step| {
+            const node = self.nodes[exit.from_index];
+            exit.x = node.x + @as(i32, @intFromFloat(@round(step[0] * EXIT_LENGTH)));
+            exit.y = node.y + @as(i32, @intFromFloat(@round(step[1] * EXIT_LENGTH)));
+            exit.label = null;
         }
     }
 
@@ -270,33 +523,84 @@ pub const Layout = struct {
         const system = self.nodes[index].system;
         const info = universe.systemInfo(system);
         const other = universe.systemInfo(neighbour);
-        if (other.region != self.region) {
+        if (!self.regions.contains(other.region)) {
             self.addExit(index, neighbour, info, other);
             return;
         }
         // Each gate is seen from both ends, so only the lower system's end adds it.
         if (neighbour < system or self.edge_count == MAX_EDGES) return;
         const second = self.nodeOf(neighbour) orelse return;
-        self.edges[self.edge_count] = .{ .first_index = index, .second_index = second, .is_local = other.constellation == info.constellation };
+        const kind: GateKind = if (other.region != info.region) .between_regions else if (other.constellation == info.constellation) .within_constellation else .within_region;
+        self.edges[self.edge_count] = .{ .first_index = index, .second_index = second, .kind = kind };
         self.edge_count += 1;
     }
 
-    /// Aimed on CCP's map rather than in pixels, so it still points the right way with no other system to scale by.
+    /// The least bend, as Edge.bend, that keeps the line between two nodes BEND_CLEARANCE off every other system; one near either end is passed regardless.
+    fn bendAround(self: *const Layout, first_index: u16, second_index: u16) f32 {
+        const from = vectorOf(self.nodes[first_index]);
+        const along = vectorOf(self.nodes[second_index]) - from;
+        const length = @sqrt(@reduce(.Add, along * along));
+        if (length == 0) return 0;
+        const unit = along / @as(Vector, @splat(length));
+        const left: Vector = .{ unit[1], -unit[0] };
+
+        // A bend puts the curve 2·bend·progress·(1-progress) off the line, so each system in the way rules out one span of bends.
+        var blocked: [MAX_NODES][2]f32 = undefined;
+        var blocked_count: usize = 0;
+        for (self.nodes[0..self.node_count], 0..) |node, index| {
+            if (index == first_index or index == second_index) continue;
+            const offset = vectorOf(node) - from;
+            const side = @reduce(.Add, offset * left);
+            if (@abs(side) >= BEND_CLEARANCE) continue;
+            const past = @reduce(.Add, offset * unit);
+            if (past < BEND_CLEARANCE or length - past < BEND_CLEARANCE) continue;
+            const progress = past / length;
+            const spread = 2 * progress * (1 - progress);
+            blocked[blocked_count] = .{ (side - BEND_CLEARANCE) / spread, (side + BEND_CLEARANCE) / spread };
+            blocked_count += 1;
+        }
+
+        // The least bend outside every span is straight, or one of their ends.
+        var best: f32 = 0;
+        var best_size = std.math.inf(f32);
+        for (0..blocked_count * 2 + 1) |candidate_index| {
+            const candidate = if (candidate_index == 0) 0 else blocked[(candidate_index - 1) / 2][(candidate_index - 1) % 2];
+            if (@abs(candidate) >= best_size or isBlocked(blocked[0..blocked_count], candidate)) continue;
+            best = candidate;
+            best_size = @abs(candidate);
+        }
+        return best;
+    }
+
+    /// Along `edge` as straight pieces joining the points, curved by its bend; `buffer` holds what's returned.
+    pub fn edgePoints(self: *const Layout, edge: Edge, buffer: *[CURVE_SEGMENTS + 1]PixelPoint) []const PixelPoint {
+        const first = self.nodes[edge.first_index];
+        const second = self.nodes[edge.second_index];
+        buffer[0] = .{ .x = first.x, .y = first.y };
+        if (edge.bend == 0) {
+            buffer[1] = .{ .x = second.x, .y = second.y };
+            return buffer[0..2];
+        }
+        const from = vectorOf(first);
+        const along = vectorOf(second) - from;
+        const length = @sqrt(@reduce(.Add, along * along));
+        const left: Vector = .{ along[1] / length, -along[0] / length };
+        for (buffer[1..], 1..) |*point, step| {
+            const progress = @as(f32, @floatFromInt(step)) / CURVE_SEGMENTS;
+            const place = @round(from + along * @as(Vector, @splat(progress)) + left * @as(Vector, @splat(2 * edge.bend * progress * (1 - progress))));
+            point.* = .{ .x = @intFromFloat(place[0]), .y = @intFromFloat(place[1]) };
+        }
+        return buffer;
+    }
+
+    /// Placed by placeExits; one with nowhere to point points up.
     fn addExit(self: *Layout, from: u16, destination: SystemIndex, info: universe.SystemInfo, other: universe.SystemInfo) void {
         if (self.exit_count == MAX_EXITS) return;
-        const node = self.nodes[from];
         const delta_x: f32 = @floatFromInt(@as(i32, other.x) - info.x);
         const delta_y: f32 = @floatFromInt(@as(i32, other.y) - info.y);
         const length = @sqrt(delta_x * delta_x + delta_y * delta_y);
-        const step_x = if (length > 0) delta_x / length else 0;
-        const step_y = if (length > 0) delta_y / length else -1;
-        self.exits[self.exit_count] = .{
-            .from_index = from,
-            .destination = destination,
-            .region = other.region,
-            .x = node.x + @as(i32, @intFromFloat(@round(step_x * EXIT_LENGTH))),
-            .y = node.y + @as(i32, @intFromFloat(@round(step_y * EXIT_LENGTH))),
-        };
+        self.exit_steps[self.exit_count] = if (length > 0) .{ delta_x / length, delta_y / length } else .{ 0, -1 };
+        self.exits[self.exit_count] = .{ .from_index = from, .destination = destination, .region = other.region, .x = 0, .y = 0 };
         self.exit_count += 1;
     }
 
@@ -308,18 +612,29 @@ pub const Layout = struct {
     }
 };
 
-/// The extent of a region's systems on CCP's map.
+/// Two coordinates, for packing regions and bending gates.
+const Vector = @Vector(2, f32);
+
+/// The extent of systems on CCP's map.
 const Bounds = struct {
     min_x: i32 = std.math.maxInt(i32),
     min_y: i32 = std.math.maxInt(i32),
     max_x: i32 = std.math.minInt(i32),
     max_y: i32 = std.math.minInt(i32),
 
-    fn include(self: *Bounds, info: universe.SystemInfo) void {
-        self.min_x = @min(self.min_x, info.x);
-        self.min_y = @min(self.min_y, info.y);
-        self.max_x = @max(self.max_x, info.x);
-        self.max_y = @max(self.max_y, info.y);
+    fn include(self: *Bounds, point: MapPoint) void {
+        self.min_x = @min(self.min_x, point.x);
+        self.min_y = @min(self.min_y, point.y);
+        self.max_x = @max(self.max_x, point.x);
+        self.max_y = @max(self.max_y, point.y);
+    }
+
+    fn center(self: Bounds) Vector {
+        return .{ centerOf(self.min_x, self.max_x), centerOf(self.min_y, self.max_y) };
+    }
+
+    fn size(self: Bounds) Vector {
+        return .{ @floatFromInt(self.max_x - self.min_x), @floatFromInt(self.max_y - self.min_y) };
     }
 
     /// Keeps the map's proportions, centred; a lone system sits in the middle.
@@ -355,14 +670,18 @@ const Fit = struct {
     center_y: f32,
     view: View = .{},
 
-    fn pixelX(self: Fit, x: i16) i32 {
-        const fitted = self.left + @as(f32, @floatFromInt(@as(i32, x) - self.origin_x)) * self.scale;
+    fn pixelX(self: Fit, x: i32) i32 {
+        const fitted = self.left + @as(f32, @floatFromInt(x - self.origin_x)) * self.scale;
         return @intFromFloat(@round(self.center_x + (fitted - self.center_x) * self.view.zoom + self.view.pan_x));
     }
 
-    fn pixelY(self: Fit, y: i16) i32 {
-        const fitted = self.top + @as(f32, @floatFromInt(@as(i32, y) - self.origin_y)) * self.scale;
+    fn pixelY(self: Fit, y: i32) i32 {
+        const fitted = self.top + @as(f32, @floatFromInt(y - self.origin_y)) * self.scale;
         return @intFromFloat(@round(self.center_y + (fitted - self.center_y) * self.view.zoom + self.view.pan_y));
+    }
+
+    fn boxOf(self: Fit, bounds: Bounds) Box {
+        return .{ .left = self.pixelX(bounds.min_x), .top = self.pixelY(bounds.min_y), .right = self.pixelX(bounds.max_x), .bottom = self.pixelY(bounds.max_y) };
     }
 };
 
@@ -386,6 +705,64 @@ pub fn claimSpot(area: Box, taken: []Box, taken_count: *usize, x: i32, y: i32, w
     return null;
 }
 
+/// The chip behind a name whose text fills `label`.
+pub fn chipBox(label: Box) Box {
+    return .{ .left = label.left - CHIP_PADDING_X, .top = label.top - CHIP_PADDING_Y, .right = label.right + CHIP_PADDING_X, .bottom = label.bottom + CHIP_PADDING_Y };
+}
+
+/// How far to move each of `regions`' diagrams, by its place there, so they sit REGION_GAP apart in the directions they lie in New Eden; CCP's own places leave them far apart.
+fn packRegions(regions: []const RegionIndex) [MAX_REGIONS]MapPoint {
+    var bounds: [MAX_REGIONS]Bounds = @splat(.{});
+    for (0..universe.SYSTEM_COUNT) |index| {
+        const info = universe.systemInfo(@intCast(index));
+        const slot = std.mem.indexOfScalar(RegionIndex, regions, info.region) orelse continue;
+        bounds[slot].include(.{ .x = info.x, .y = info.y });
+    }
+    var centers: [MAX_REGIONS]Vector = undefined;
+    var middle: Vector = @splat(0);
+    for (bounds[0..regions.len], centers[0..regions.len]) |shown, *region_center| {
+        region_center.* = shown.center();
+        middle += region_center.*;
+    }
+    middle /= @splat(@floatFromInt(@max(1, regions.len)));
+
+    // Stacked to start, then pushed apart pair by pair along the line between their real places.
+    var places: [MAX_REGIONS]Vector = @splat(middle);
+    for (0..PACK_ROUNDS) |_| {
+        var has_overlap = false;
+        for (0..regions.len) |first| {
+            for (first + 1..regions.len) |second| {
+                const push = separation(bounds[first], bounds[second], places[second] - places[first], centers[second] - centers[first]) orelse continue;
+                places[first] -= push * @as(Vector, @splat(0.5));
+                places[second] += push * @as(Vector, @splat(0.5));
+                has_overlap = true;
+            }
+        }
+        if (!has_overlap) break;
+    }
+
+    var offsets: [MAX_REGIONS]MapPoint = @splat(.{ .x = 0, .y = 0 });
+    for (places[0..regions.len], centers[0..regions.len], offsets[0..regions.len]) |place, region_center, *offset| {
+        const shift = @round(place - region_center);
+        offset.* = .{ .x = @intFromFloat(shift[0]), .y = @intFromFloat(shift[1]) };
+    }
+    return offsets;
+}
+
+/// The push along `direction` that clears two regions' boxes by REGION_GAP, `apart` being the second's place less the first's; null if they're clear.
+fn separation(first: Bounds, second: Bounds, apart: Vector, direction: Vector) ?Vector {
+    const needed = (first.size() + second.size()) * @as(Vector, @splat(0.5)) + @as(Vector, @splat(REGION_GAP));
+    if (@abs(apart[0]) >= needed[0] or @abs(apart[1]) >= needed[1]) return null;
+    const length = @sqrt(@reduce(.Add, direction * direction));
+    const unit: Vector = if (length > 0) direction / @as(Vector, @splat(length)) else .{ 1, 0 };
+    var distance = std.math.inf(f32);
+    inline for (0..2) |axis| {
+        if (unit[axis] != 0) distance = @min(distance, (needed[axis] - apart[axis] * std.math.sign(unit[axis])) / @abs(unit[axis]));
+    }
+    // A unit over, so rounding to whole units can't leave them short.
+    return unit * @as(Vector, @splat(distance + 1));
+}
+
 fn centerOf(low: i32, high: i32) f32 {
     return @as(f32, @floatFromInt(low + high)) / 2;
 }
@@ -399,6 +776,66 @@ fn overlapsAny(box: Box, others: []const Box) bool {
         if (box.overlaps(other)) return true;
     }
     return false;
+}
+
+fn regionLabelSpots() [(2 * REGION_LABEL_STEPS + 2) * 3]RegionLabelSpot {
+    const alignments = std.enums.values(RegionLabelSpot.Alignment);
+    var spots: [(2 * REGION_LABEL_STEPS + 2) * 3]RegionLabelSpot = undefined;
+    var count: usize = 0;
+    for ([_]RegionLabelSpot.Side{ .above, .below }) |side| {
+        for (0..REGION_LABEL_STEPS) |step| {
+            for (alignments) |alignment| {
+                spots[count] = .{ .side = side, .alignment = alignment, .step = @intCast(step) };
+                count += 1;
+            }
+        }
+    }
+    for ([_]RegionLabelSpot.Side{ .inside_top, .inside_bottom }) |side| {
+        for (alignments) |alignment| {
+            spots[count] = .{ .side = side, .alignment = alignment };
+            count += 1;
+        }
+    }
+    return spots;
+}
+
+/// Whether the segment touches `box`, by Liang-Barsky clipping.
+fn segmentCrosses(box: Box, from: PixelPoint, to: PixelPoint) bool {
+    const delta_x: f32 = @floatFromInt(to.x - from.x);
+    const delta_y: f32 = @floatFromInt(to.y - from.y);
+    // Each pair is how fast the segment heads out past one edge, and how far inside that edge it starts.
+    const edges = [_][2]f32{
+        .{ -delta_x, @floatFromInt(from.x - box.left) },
+        .{ delta_x, @floatFromInt(box.right - from.x) },
+        .{ -delta_y, @floatFromInt(from.y - box.top) },
+        .{ delta_y, @floatFromInt(box.bottom - from.y) },
+    };
+    var enter: f32 = 0;
+    var leave: f32 = 1;
+    for (edges) |edge| {
+        const heading = edge[0];
+        const inside = edge[1];
+        if (heading == 0) {
+            if (inside < 0) return false;
+            continue;
+        }
+        const ratio = inside / heading;
+        if (heading < 0) enter = @max(enter, ratio) else leave = @min(leave, ratio);
+        if (enter > leave) return false;
+    }
+    return true;
+}
+
+/// Strictly inside one of `spans`, so a bend at an end still clears its system.
+fn isBlocked(spans: []const [2]f32, bend: f32) bool {
+    for (spans) |span| {
+        if (bend > span[0] and bend < span[1]) return true;
+    }
+    return false;
+}
+
+fn vectorOf(node: Node) Vector {
+    return .{ @floatFromInt(node.x), @floatFromInt(node.y) };
 }
 
 fn isListed(systems: []const SystemIndex, system: SystemIndex) bool {
@@ -440,7 +877,7 @@ test "every region's systems and gates fit their arrays, and stay inside the are
     var layout: Layout = .{};
     for (0..universe.REGION_COUNT) |index| {
         const region: RegionIndex = @intCast(index);
-        layout.build(region, TEST_AREA);
+        layout.build(.one(region), TEST_AREA);
         try testing.expect(layout.node_count > 0);
 
         var gate_count: usize = 0;
@@ -453,8 +890,8 @@ test "every region's systems and gates fit their arrays, and stay inside the are
                 if (universe.systemInfo(neighbour).region == region) gate_count += 1 else exit_count += 1;
             }
         }
-        try testing.expect(gate_count / 2 <= MAX_EDGES);
-        try testing.expect(exit_count <= MAX_EXITS);
+        try testing.expect(gate_count / 2 <= MAX_REGION_EDGES);
+        try testing.expect(exit_count <= MAX_REGION_EXITS);
         try testing.expectEqual(gate_count / 2, layout.edge_count);
         try testing.expectEqual(exit_count, layout.exit_count);
     }
@@ -462,7 +899,7 @@ test "every region's systems and gates fit their arrays, and stay inside the are
 
 test "a region's map keeps the shape of its gates" {
     var layout: Layout = .{};
-    layout.build(try regionNamed("The Forge"), TEST_AREA);
+    layout.build(.one(try regionNamed("The Forge")), TEST_AREA);
     const jita = layout.nodeOf(universe.findSystem("Jita").?).?;
     const perimeter = layout.nodeOf(universe.findSystem("Perimeter").?).?;
     const distance = distanceSquared(layout.nodes[jita].x, layout.nodes[jita].y, layout.nodes[perimeter].x, layout.nodes[perimeter].y);
@@ -471,9 +908,36 @@ test "a region's map keeps the shape of its gates" {
     try testing.expect(layout.nodeOf(universe.findSystem("Amarr").?) == null);
 }
 
+test "rebuilding for a new view matches a layout built fresh for it" {
+    var regions: Regions = .one(try regionNamed("Delve"));
+    try testing.expect(regions.add(try regionNamed("Fountain")));
+    var reused: Layout = .{};
+    reused.build(regions, TEST_AREA);
+    const view: View = (View{}).zoomedAt(TEST_AREA, 300, 200, 3).panned(TEST_AREA, -40, 25);
+    reused.view = view;
+    reused.build(regions, TEST_AREA);
+    var fresh: Layout = .{ .view = view };
+    fresh.build(regions, TEST_AREA);
+
+    try testing.expectEqual(fresh.node_count, reused.node_count);
+    try testing.expectEqualSlices(Node, fresh.nodes[0..fresh.node_count], reused.nodes[0..reused.node_count]);
+    try testing.expectEqualSlices(Edge, fresh.edges[0..fresh.edge_count], reused.edges[0..reused.edge_count]);
+    try testing.expectEqualSlices(Exit, fresh.exits[0..fresh.exit_count], reused.exits[0..reused.exit_count]);
+}
+
+test "switching regions forgets the systems no longer shown" {
+    var layout: Layout = .{};
+    layout.build(.one(try regionNamed("The Forge")), TEST_AREA);
+    const jita = universe.findSystem("Jita").?;
+    try testing.expect(layout.nodeOf(jita) != null);
+    layout.build(.one(try regionNamed("Domain")), TEST_AREA);
+    try testing.expect(layout.nodeOf(jita) == null);
+    try testing.expect(layout.nodeOf(universe.findSystem("Amarr").?) != null);
+}
+
 test "a one-system region sits in the middle of the area" {
     var layout: Layout = .{};
-    layout.build(try regionNamed("Yasna Zakh"), TEST_AREA);
+    layout.build(.one(try regionNamed("Yasna Zakh")), TEST_AREA);
     try testing.expectEqual(@as(usize, 1), layout.node_count);
     try testing.expectEqual(@divTrunc(TEST_AREA.left + TEST_AREA.right, 2), layout.nodes[0].x);
     try testing.expectEqual(@divTrunc(TEST_AREA.top + TEST_AREA.bottom, 2), layout.nodes[0].y);
@@ -481,22 +945,176 @@ test "a one-system region sits in the middle of the area" {
 
 test "an exit names the region its gate leads to" {
     var layout: Layout = .{};
-    layout.build(try regionNamed("The Forge"), TEST_AREA);
+    layout.build(.one(try regionNamed("The Forge")), TEST_AREA);
     const perimeter = universe.findSystem("Perimeter").?;
     var has_exit = false;
     for (layout.exits[0..layout.exit_count]) |exit| {
         if (layout.nodes[exit.from_index].system != perimeter) continue;
-        try testing.expect(exit.region != layout.region);
+        try testing.expect(!layout.regions.contains(exit.region));
         has_exit = true;
     }
     try testing.expect(has_exit);
+}
+
+test "a lone region keeps CCP's place" {
+    const offsets = packRegions(&.{try regionNamed("The Forge")});
+    try testing.expectEqual(MapPoint{ .x = 0, .y = 0 }, offsets[0]);
+}
+
+test "regions shown together clear each other by the gap, on the sides they lie in New Eden" {
+    const regions = [_]RegionIndex{ try regionNamed("Delve"), try regionNamed("Fountain"), try regionNamed("Querious"), try regionNamed("Period Basis") };
+    const offsets = packRegions(&regions);
+    var bounds: [regions.len]Bounds = @splat(.{});
+    for (0..universe.SYSTEM_COUNT) |index| {
+        const info = universe.systemInfo(@intCast(index));
+        const slot = std.mem.indexOfScalar(RegionIndex, &regions, info.region) orelse continue;
+        bounds[slot].include(.{ .x = info.x, .y = info.y });
+    }
+    for (0..regions.len) |first| {
+        for (first + 1..regions.len) |second| {
+            const real = bounds[second].center() - bounds[first].center();
+            const shift: Vector = .{ @floatFromInt(offsets[second].x - offsets[first].x), @floatFromInt(offsets[second].y - offsets[first].y) };
+            const apart = real + shift;
+            const needed = (bounds[first].size() + bounds[second].size()) * @as(Vector, @splat(0.5)) + @as(Vector, @splat(REGION_GAP));
+            try testing.expect(@abs(apart[0]) >= needed[0] or @abs(apart[1]) >= needed[1]);
+            const real_sides: [2]f32 = real;
+            const apart_sides: [2]f32 = apart;
+            const axis: usize = if (@abs(real_sides[0]) > @abs(real_sides[1])) 0 else 1;
+            try testing.expectEqual(std.math.sign(real_sides[axis]), std.math.sign(apart_sides[axis]));
+        }
+    }
+}
+
+test "a gate between two regions shown is an edge rather than an exit" {
+    const dodixie = universe.findSystem("Dodixie").?;
+    const meves = universe.findSystem("Meves").?;
+    var regions: Regions = .one(universe.systemInfo(dodixie).region);
+    try testing.expect(regions.add(universe.systemInfo(meves).region));
+    var layout: Layout = .{};
+    layout.build(regions, TEST_AREA);
+    for (layout.exits[0..layout.exit_count]) |exit| try testing.expect(exit.destination != meves);
+    const dodixie_index = layout.nodeOf(dodixie).?;
+    const meves_index = layout.nodeOf(meves).?;
+    var has_edge = false;
+    for (layout.edges[0..layout.edge_count]) |edge| {
+        const joins = (edge.first_index == dodixie_index and edge.second_index == meves_index) or (edge.first_index == meves_index and edge.second_index == dodixie_index);
+        if (!joins) continue;
+        try testing.expectEqual(GateKind.between_regions, edge.kind);
+        has_edge = true;
+    }
+    try testing.expect(has_edge);
+}
+
+test "a gate with nothing in its way stays straight" {
+    var layout: Layout = .{};
+    layout.nodes[0] = .{ .system = 0, .x = 0, .y = 0 };
+    layout.nodes[1] = .{ .system = 1, .x = 100, .y = 0 };
+    layout.nodes[2] = .{ .system = 2, .x = 50, .y = 40 };
+    layout.node_count = 3;
+    try testing.expectEqual(@as(f32, 0), layout.bendAround(0, 1));
+}
+
+test "a gate bends around a system in its way, to the nearer side and by no more than it must" {
+    var layout: Layout = .{};
+    layout.nodes[0] = .{ .system = 0, .x = 0, .y = 0 };
+    layout.nodes[1] = .{ .system = 1, .x = 100, .y = 0 };
+    // Just below the line, so passing above it bends least.
+    layout.nodes[2] = .{ .system = 2, .x = 50, .y = 2 };
+    layout.node_count = 3;
+    const bend = layout.bendAround(0, 1);
+    try testing.expectEqual(@as(f32, 12), bend);
+
+    var point_buffer: [CURVE_SEGMENTS + 1]PixelPoint = undefined;
+    const points = layout.edgePoints(.{ .first_index = 0, .second_index = 1, .kind = .between_regions, .bend = bend }, &point_buffer);
+    try testing.expectEqual(PixelPoint{ .x = 0, .y = 0 }, points[0]);
+    try testing.expectEqual(PixelPoint{ .x = 100, .y = 0 }, points[points.len - 1]);
+    try testing.expectEqual(PixelPoint{ .x = 50, .y = -6 }, points[CURVE_SEGMENTS / 2]);
+}
+
+test "a gate goes round the side that bends least when systems crowd the other" {
+    var layout: Layout = .{};
+    layout.nodes[0] = .{ .system = 0, .x = 0, .y = 0 };
+    layout.nodes[1] = .{ .system = 1, .x = 100, .y = 0 };
+    layout.nodes[2] = .{ .system = 2, .x = 50, .y = 0 };
+    layout.nodes[3] = .{ .system = 3, .x = 50, .y = -6 };
+    layout.node_count = 4;
+    // Up has to clear the one above as well, a bend of 28, so down's 16 wins.
+    try testing.expectEqual(@as(f32, -16), layout.bendAround(0, 1));
+}
+
+test "a segment crosses a box it passes through, and not one it misses" {
+    const box: Box = .{ .left = 10, .top = 10, .right = 20, .bottom = 20 };
+    try testing.expect(segmentCrosses(box, .{ .x = 0, .y = 15 }, .{ .x = 30, .y = 15 }));
+    try testing.expect(segmentCrosses(box, .{ .x = 12, .y = 12 }, .{ .x = 14, .y = 14 }));
+    try testing.expect(!segmentCrosses(box, .{ .x = 0, .y = 0 }, .{ .x = 30, .y = 5 }));
+    try testing.expect(segmentCrosses(box, .{ .x = 0, .y = 30 }, .{ .x = 30, .y = 0 }));
+    try testing.expect(!segmentCrosses(box, .{ .x = 0, .y = 15 }, .{ .x = 5, .y = 15 }));
+}
+
+test "region names stay inside the area and clear of each other, and a lone region has none" {
+    const widths: [MAX_NODES]i32 = @splat(TEST_LABEL_WIDTH);
+    const exit_widths: [MAX_EXITS]i32 = @splat(TEST_LABEL_WIDTH);
+    const region_widths: [MAX_REGIONS]i32 = @splat(90);
+    var regions: Regions = .one(try regionNamed("Delve"));
+    var layout: Layout = .{};
+    layout.build(regions, TEST_AREA);
+    layout.placeLabels(&widths, &exit_widths, TEST_LINE_HEIGHT, NODE_CLEARANCE);
+    layout.placeRegionLabels(&region_widths, 24);
+    try testing.expect(layout.region_labels[0] == null);
+
+    try testing.expect(regions.add(try regionNamed("Fountain")));
+    try testing.expect(regions.add(try regionNamed("Querious")));
+    layout.build(regions, TEST_AREA);
+    layout.placeLabels(&widths, &exit_widths, TEST_LINE_HEIGHT, NODE_CLEARANCE);
+    layout.placeRegionLabels(&region_widths, 24);
+    for (layout.region_labels[0..regions.count], 0..) |region_label, index| {
+        const label = region_label.?;
+        try testing.expect(TEST_AREA.contains(label));
+        for (layout.region_labels[index + 1 .. regions.count]) |other| try testing.expect(!label.overlaps(other.?));
+    }
+}
+
+test "the four largest regions together fit the arrays and the area" {
+    var sizes: [universe.REGION_COUNT]usize = @splat(0);
+    for (0..universe.SYSTEM_COUNT) |index| sizes[universe.systemInfo(@intCast(index)).region] += 1;
+    var regions: Regions = .{};
+    for (0..MAX_REGIONS) |_| {
+        var largest: RegionIndex = 0;
+        for (sizes, 0..) |count, index| {
+            if (count > sizes[largest] and !regions.contains(@intCast(index))) largest = @intCast(index);
+        }
+        try testing.expect(regions.add(largest));
+        sizes[largest] = 0;
+    }
+    var layout: Layout = .{};
+    layout.build(regions, TEST_AREA);
+    for (layout.nodes[0..layout.node_count]) |node| {
+        try testing.expect(node.x >= TEST_AREA.left and node.x < TEST_AREA.right);
+        try testing.expect(node.y >= TEST_AREA.top and node.y < TEST_AREA.bottom);
+    }
+}
+
+test "toggling a region adds it and takes it out, but never the last one" {
+    var regions: Regions = .one(0);
+    try testing.expectEqual(Toggle.last, regions.toggle(0));
+    try testing.expectEqual(Toggle.added, regions.toggle(1));
+    try testing.expectEqual(Toggle.added, regions.toggle(2));
+    try testing.expectEqual(Toggle.removed, regions.toggle(1));
+    try testing.expectEqualSlices(RegionIndex, &.{ 0, 2 }, regions.slice());
+}
+
+test "toggling a region into a full set drops the earliest pick" {
+    var regions: Regions = .one(0);
+    for (1..MAX_REGIONS) |region| _ = regions.toggle(@intCast(region));
+    try testing.expectEqual(Toggle{ .replaced = 0 }, regions.toggle(9));
+    try testing.expectEqualSlices(RegionIndex, &.{ 1, 2, 3, 9 }, regions.slice());
 }
 
 test "placed labels never overlap each other or a marker, and stay inside the area" {
     var layout: Layout = .{};
     const widths: [universe.MAX_REGION_SYSTEMS]i32 = @splat(TEST_LABEL_WIDTH);
     const exit_widths: [MAX_EXITS]i32 = @splat(TEST_LABEL_WIDTH);
-    layout.build(try regionNamed("Domain"), TEST_AREA);
+    layout.build(.one(try regionNamed("Domain")), TEST_AREA);
     layout.placeLabels(&widths, &exit_widths, TEST_LINE_HEIGHT, NODE_CLEARANCE);
 
     var placed_count: usize = 0;
@@ -562,7 +1180,7 @@ test "placeLabelsInOrder serves the first in its order, and skips those left out
 
 test "nodeAt finds a system within reach and nothing further off" {
     var layout: Layout = .{};
-    layout.build(try regionNamed("The Forge"), TEST_AREA);
+    layout.build(.one(try regionNamed("The Forge")), TEST_AREA);
     const node = layout.nodes[0];
     try testing.expectEqual(@as(?u16, 0), layout.nodeAt(node.x + 2, node.y - 2));
     try testing.expect(layout.nodeAt(TEST_AREA.left, TEST_AREA.top) == null);
@@ -570,10 +1188,10 @@ test "nodeAt finds a system within reach and nothing further off" {
 
 test "zooming keeps the map's point under the cursor" {
     var layout: Layout = .{};
-    layout.build(try regionNamed("The Forge"), TEST_AREA);
+    layout.build(.one(try regionNamed("The Forge")), TEST_AREA);
     const node = layout.nodes[0];
     layout.view = layout.view.zoomedAt(TEST_AREA, node.x, node.y, 2);
-    layout.build(try regionNamed("The Forge"), TEST_AREA);
+    layout.build(.one(try regionNamed("The Forge")), TEST_AREA);
     try testing.expect(@abs(layout.nodes[0].x - node.x) <= 1);
     try testing.expect(@abs(layout.nodes[0].y - node.y) <= 1);
 }
@@ -599,7 +1217,7 @@ test "panning does nothing at full fit, and stops at the map's edge when zoomed"
 test "a system zoomed off the area loses its label" {
     var layout: Layout = .{};
     layout.view = (View{}).zoomedAt(TEST_AREA, TEST_AREA.left, TEST_AREA.top, MAX_ZOOM);
-    layout.build(try regionNamed("The Forge"), TEST_AREA);
+    layout.build(.one(try regionNamed("The Forge")), TEST_AREA);
     const widths: [universe.MAX_REGION_SYSTEMS]i32 = @splat(TEST_LABEL_WIDTH);
     const exit_widths: [MAX_EXITS]i32 = @splat(TEST_LABEL_WIDTH);
     layout.placeLabels(&widths, &exit_widths, TEST_LINE_HEIGHT, NODE_CLEARANCE);
@@ -613,10 +1231,10 @@ test "exitLabelAt finds an exit by its chip, and not past it" {
     layout.exits[0] = .{ .from_index = 0, .destination = 1, .region = 0, .x = 0, .y = 0 };
     layout.exits[1] = .{ .from_index = 0, .destination = 2, .region = 0, .x = 0, .y = 0, .label = .{ .left = 10, .top = 10, .right = 50, .bottom = 20 } };
     layout.exit_count = 2;
-    try testing.expectEqual(@as(?u16, 1), layout.exitLabelAt(10 - EXIT_CHIP_PADDING, 19));
-    try testing.expectEqual(@as(?u16, 1), layout.exitLabelAt(50 + EXIT_CHIP_PADDING - 1, 10));
-    try testing.expect(layout.exitLabelAt(50 + EXIT_CHIP_PADDING, 15) == null);
-    try testing.expect(layout.exitLabelAt(30, 20) == null);
+    try testing.expectEqual(@as(?u16, 1), layout.exitLabelAt(10 - CHIP_PADDING_X, 20 + CHIP_PADDING_Y - 1));
+    try testing.expectEqual(@as(?u16, 1), layout.exitLabelAt(50 + CHIP_PADDING_X - 1, 10 - CHIP_PADDING_Y));
+    try testing.expect(layout.exitLabelAt(50 + CHIP_PADDING_X, 15) == null);
+    try testing.expect(layout.exitLabelAt(30, 20 + CHIP_PADDING_Y) == null);
 }
 
 test "labelAt finds a system by its name, and not past the label" {

@@ -6,20 +6,19 @@ const session = @import("../session.zig");
 const bind = @import("../bind.zig");
 const hotkey = @import("../hotkey.zig");
 const positions = @import("../positions.zig");
+const roster_mod = @import("../roster.zig");
+const selection = @import("../selection.zig");
 const suggest = @import("../suggest.zig");
 const status = @import("../status.zig");
 const style = @import("../style.zig");
 const widgets = @import("../widgets.zig");
 const lang = @import("../../../lang/lang.zig");
-const log = @import("../../../log.zig");
 
 const Rect = ui.component.Rect;
-const Text = ui.component.Text;
 const Button = ui.component.Button;
 const TextInput = ui.component.TextInput;
 const ProfileRef = session.Ref(config.Config);
 const GroupRef = session.Ref(config.HotkeyGroupConfig);
-const slog = log.Scoped("dialog_knots");
 
 const GROUP_ROW_KEY: ui.Key = .str("knots.groups.row");
 const MEMBER_ROW_KEY: ui.Key = .str("knots.groups.member");
@@ -29,7 +28,7 @@ const ADD_MEMBER_KEY: ui.Key = .str("knots.groups.add_member");
 pub const UNNAMED_GROUP_FORMAT = "Hotkey Group {n}";
 
 var g_allocator: std.mem.Allocator = undefined;
-var g_selected_index: usize = 0;
+var g_selected: selection.Selection = .{};
 /// The name typed into the add-member box; owned, freed in reset.
 var g_new_member: std.ArrayList(u8) = .empty;
 
@@ -50,20 +49,20 @@ pub fn show(context: *ui.Frame) !void {
     if (group_count == 0) {
         const state = try widgets.openEmptyState(context, .str("knots.groups.empty"), "No hotkey groups yet", "A group gives a set of characters their own cycle hotkeys.");
         if (try widgets.glyphButton(context, .str("knots.groups.empty.add"), .add, "Add Group", &style.add_button, false)) {
-            if (profile.append("hotkeyGroups", .{})) |added| g_selected_index = added.index;
+            if (profile.append("hotkeyGroups", .{})) |added| g_selected.index = added.index;
         }
         try state.close(context);
         try section.close(context);
         return;
     }
-    if (g_selected_index >= group_count) g_selected_index = group_count - 1;
+    g_selected.clamp(group_count);
     const master_detail = Rect{ .key = .src(@src()), .style = &style.master_detail_fill };
     _ = try master_detail.open(context);
     try roster(context, profile);
     // Pinned, so only the members scroll.
     const stack = Rect{ .key = .str("knots.groups.detail"), .style = &style.detail_fill };
     _ = try stack.open(context);
-    try detail(context, profile, g_selected_index);
+    try detail(context, profile, g_selected.index);
     try stack.close(context);
     try master_detail.close(context);
     try section.close(context);
@@ -89,25 +88,15 @@ fn roster(context: *ui.Frame, profile: ProfileRef) !void {
         if (try order.next(context, index)) try groupRow(context, group, index, null);
     }
     if (try order.end(context)) |lifted| {
-        try groupRow(context, &groups[lifted], lifted, try order.liftedStyle(context, list.rowsKey(), rosterRowStyle(lifted == g_selected_index)));
+        try groupRow(context, &groups[lifted], lifted, try order.liftedStyle(context, list.rowsKey(), roster_mod.rowStyle(lifted == g_selected.index)));
     }
     if (try list.close(context, .{ .add_label = "Add Group" }) == .add) {
-        if (profile.append("hotkeyGroups", .{})) |added| g_selected_index = added.index;
+        if (profile.append("hotkeyGroups", .{})) |added| g_selected.index = added.index;
     }
 
-    // The selection follows the group it was on, not the slot.
     if (widgets.reorderFinish(context, GROUP_ROW_KEY, groups.len)) |moved| {
-        const from = moved.from;
-        const previous_selected_index = g_selected_index;
-        profile.move("hotkeyGroups", from, moved.before);
-        const to = if (moved.before > from) moved.before - 1 else moved.before;
-        if (previous_selected_index == from) {
-            g_selected_index = to;
-        } else if (from < previous_selected_index and to >= previous_selected_index) {
-            g_selected_index -= 1;
-        } else if (from > previous_selected_index and to <= previous_selected_index) {
-            g_selected_index += 1;
-        }
+        profile.move("hotkeyGroups", moved.from, moved.before);
+        g_selected.afterMove(moved.from, moved.before);
     }
 }
 
@@ -116,12 +105,10 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
     const previous_rows = widgets.useDetailRows();
     defer widgets.restoreRows(previous_rows);
 
-    const header = try widgets.openDetailHeader(context, .src(@src()));
-    const name_label = lang.text("Group Name");
-    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = name_label, .style = try widgets.detailLabelStyle(context, name_label) });
+    const header = try widgets.openDetailHeader(context, .src(@src()), "Group Name");
     const name_before = try context.arena().dupe(u8, group.get("name"));
     try bind.textBox(context, group, "name", try lang.format(context.arena(), UNNAMED_GROUP_FORMAT, .{ .n = index + 1 }));
-    const removed = try widgets.confirmButton(context, ui.Key.str("knots.groups.remove").indexed(index), "Remove", "Confirm", &style.plain_button, &style.confirm_button);
+    const removed = try widgets.removeButton(context, ui.Key.str("knots.groups.remove").indexed(index));
     try header.close(context);
     carryToSpaces(profile, name_before, group.get("name"));
 
@@ -168,39 +155,16 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
         const name = try context.arena().dupe(u8, group.get("name"));
         profile.remove("hotkeyGroups", index);
         carryToSpaces(profile, name, null);
-        g_selected_index = @min(index, profile.ptr.hotkeyGroups.items.len -| 1);
+        g_selected.afterRemove(index, profile.ptr.hotkeyGroups.items.len);
     }
 }
 
 /// `lifted_style` while it's being dragged, otherwise the roster's own.
 fn groupRow(context: *ui.Frame, group: *const config.HotkeyGroupConfig, index: usize, lifted_style: ?*const ui.Style) !void {
-    const arena = context.arena();
-    const is_selected = index == g_selected_index;
-    const row = Button{ .key = GROUP_ROW_KEY.indexed(index), .style = lifted_style orelse rosterRowStyle(is_selected) };
-    if ((try widgets.openRosterRow(context, row)).clicked and !is_selected) {
-        g_selected_index = index;
-        context.requestRedraw();
-    }
-    const name = try groupName(context, index);
-    try context.e(Text{
-        .selectable = false,
-        .key = ui.Key.str("knots.groups.name").indexed(index),
-        .content = name,
-        .style = if (is_selected) &style.roster_name_selected else &style.roster_name,
-    });
-    const badge = if (group.temporaryMembership) lang.text("Temporary") else try std.fmt.allocPrint(arena, "{d}", .{group.characters.items.len});
-    try context.e(Text{
-        .selectable = false,
-        .key = ui.Key.str("knots.groups.badge").indexed(index),
-        .content = badge,
-        .style = &style.roster_badge,
-    });
-    try widgets.fitRosterRow(context, name, 0, badge);
-    try row.close(context);
-}
-
-fn rosterRowStyle(is_selected: bool) *const ui.Style {
-    return if (is_selected) &style.roster_row_selected else &style.roster_row;
+    const row = try roster_mod.Row.open(context, GROUP_ROW_KEY.indexed(index), index == g_selected.index, lifted_style);
+    if (row.is_picked) g_selected.index = index;
+    const badge = if (group.temporaryMembership) lang.text("Temporary") else try std.fmt.allocPrint(context.arena(), "{d}", .{group.characters.items.len});
+    try row.close(context, try groupName(context, index), 0, .{ .text = badge });
 }
 
 /// Carries a group's rename to spaces holding it, or drops it (`new_name` null), unless another group shares the name.
@@ -286,28 +250,12 @@ fn memberHandleKey(member_index: usize) ui.Key {
     return ui.Key.str("knots.groups.member.handle").indexed(member_index);
 }
 
-/// Adds every logged-in client the group doesn't list yet, matched like the Characters tab's populateFromClients.
+/// Adds every logged-in client the group doesn't list yet.
 fn fillFromClients(context: *ui.Frame, group: GroupRef) void {
-    const names = positions.openClients(context.arena()) catch |err| {
-        slog.err("Failed to fill hotkey group from open clients: {}", .{err});
-        status.show(.failure, "Failed to scan clients: {err}", .{ .err = err });
-        return;
-    };
-    if (names.len == 0) {
-        status.show(.failure, "No open EVE clients found", .{});
-        return;
-    }
-    var added_count: usize = 0;
-    for (names) |name| {
-        const exists = for (group.ptr.characters.items) |member| {
-            if (std.ascii.eqlIgnoreCase(std.mem.trim(u8, member, " "), std.mem.trim(u8, name, " "))) break true;
-        } else false;
-        if (exists) continue;
-        group.appendString("characters", name);
-        added_count += 1;
-    }
-    if (added_count > 0) {
-        status.show(.success, "Added {n} character(s) to hotkey group", .{ .n = added_count });
+    const names = positions.clientsNotIn(context.arena(), group.ptr.characters.items) orelse return;
+    for (names) |name| group.appendString("characters", name);
+    if (names.len > 0) {
+        status.show(.success, "Added {n} character(s) to hotkey group", .{ .n = names.len });
     } else {
         status.show(.info, "All open EVE clients are already in this group", .{});
     }

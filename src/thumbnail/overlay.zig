@@ -1,36 +1,32 @@
-//! A thumbnail's text overlay: what to draw (RenderSettings, compared to skip redundant redraws) and drawing it into the layered window over the DWM thumbnail.
+//! A thumbnail's text overlay: gathering what look.zig decides from, and drawing its RenderSettings into the layered window over the DWM thumbnail.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const gdi_overlay = @import("../platform/gdi_overlay.zig");
 const config_mod = @import("../config.zig");
 const types = @import("../config/types.zig");
-const color_mod = @import("../util/color.zig");
 const format = @import("../util/format.zig");
-const stack = @import("../notifications/stack.zig");
 const draw = @import("draw.zig");
 const font_cache_mod = @import("font_cache.zig");
 const window = @import("window.zig");
+const look = @import("look.zig");
+const activity_stats = @import("activity_stats.zig");
 const spaces = @import("../layout/spaces.zig");
 const pixel_buffer = @import("../util/pixel_buffer.zig");
 const universe = @import("../map/universe.zig");
 const layout_mod = @import("../map/layout.zig");
 const connections_mod = @import("../map/connections.zig");
-const map_look = @import("../panels/map_look.zig");
+const map_look = @import("../panels/map/look.zig");
 const log = @import("../log.zig");
 
 const ThumbnailWindow = window.ThumbnailWindow;
+const ActivityStats = activity_stats.ActivityStats;
+const RenderSettings = look.RenderSettings;
 const TextPosition = types.TextPosition;
-const BorderStyle = types.BorderStyle;
 const TextDimensions = draw.TextDimensions;
 const TextOrigin = draw.TextOrigin;
 const FontCache = font_cache_mod.FontCache;
 const scalePixels = win32.scalePixels;
 const slog = log.Scoped("overlay");
-
-const OVERLAY_ALPHA = 255;
-/// Custom text can split a notification over lines (see notifications/template.zig).
-pub const MAX_LINES_PER_NOTIFICATION = 3;
-const MAX_NOTIFICATION_LINES = stack.CAPACITY * MAX_LINES_PER_NOTIFICATION;
 
 /// Character name, system, group badge, session timer, DPS in and out, mining (and its ISK line), bounty, up to three resource lines, and ping.
 const MAX_LINES = 1 + 1 + 1 + 1 + 2 + 2 + 1 + 3 + 1;
@@ -38,130 +34,6 @@ const MAX_STACK_LINES = 3;
 const TEXT_BUFFER_SIZE = 32;
 /// Of the Map Panel's halo, so a new pin doesn't cover a map this small.
 const CONNECTION_HALO_SCALE: f32 = 0.5;
-
-/// One resolved line of the notification block.
-pub const NotificationLine = struct {
-    text: []const u8 = "",
-    color: u32 = 0xFFFFFF,
-    /// Bytes of `text` drawn in lead_color; 0 for none.
-    lead_length: usize = 0,
-    lead_color: u32 = 0,
-};
-
-/// All an overlay depends on except the stat config, which every config edit's cache clear covers.
-pub const RenderSettings = struct {
-    /// Every overlay text; the per-element flags below are already false without it.
-    show_text: bool = true,
-    show_character_name: bool = true,
-    /// Borrows from the thumbnail's cached_display_name.
-    display_name: []const u8 = "",
-    show_system_name: bool = false,
-    /// Borrows from the thumbnail.
-    system_name: []const u8 = "",
-    /// Shown in place of system_name unless empty.
-    connections: connections_mod.Connections = .{},
-    character_name_color: u32 = 0xFFFFFF,
-    system_name_color: u32 = 0xFFFFFF,
-    /// For every connection but the character's own system, which keeps system_name_color.
-    connection_color: u32 = 0xFFFFFF,
-    connection_map_width: i32 = 0,
-    connection_map_height: i32 = 0,
-    character_name_bg_color: u32 = 0x80000000,
-    system_name_bg_color: u32 = 0x80000000,
-    /// Borrows from config.
-    character_name_font_name: []const u8 = "Segoe UI",
-    character_name_font_size: i32 = 14,
-    character_name_font_weight: types.FontWeight = .Regular,
-    character_name_position: TextPosition = .TopLeft,
-    character_name_offset_x: i32 = 0,
-    character_name_offset_y: i32 = 0,
-    system_name_position: TextPosition = .BottomLeft,
-    system_name_offset_x: i32 = 0,
-    system_name_offset_y: i32 = 0,
-    /// Borrows from config.
-    system_name_font_name: []const u8 = "Segoe UI",
-    system_name_font_size: i32 = 12,
-    system_name_font_weight: types.FontWeight = .Regular,
-    show_notifications: bool = false,
-    /// Borrows the notification stack's text, freed as entries expire, so compare by notification_revision.
-    notification_lines: [MAX_NOTIFICATION_LINES]NotificationLine = @splat(.{}),
-    notification_line_count: usize = 0,
-    notification_revision: u32 = 0,
-    notifications_position: TextPosition = .Center,
-    notifications_offset_x: i32 = 0,
-    notifications_offset_y: i32 = 0,
-    /// Borrows from config.
-    notifications_font_name: []const u8 = "Segoe UI",
-    notifications_font_size: i32 = 12,
-    notifications_font_weight: types.FontWeight = .Regular,
-    notifications_bg_color: u32 = 0x80000000,
-
-    show_border: bool = true,
-    border_width: u8 = 2,
-    border_color: u32 = 0xFF606060,
-    border_style: BorderStyle = .Solid,
-
-    show_exclusion_overlay: bool = false,
-    exclusion_overlay_style: types.ExclusionOverlayStyle = .X,
-    exclusion_overlay_color: u32 = 0x33A62222,
-
-    show_group_badge: bool = false,
-    /// Borrows from the thumbnail.
-    group_badge_text: []const u8 = "",
-    group_badge_color: u32 = 0xFF44FF44,
-    group_badge_position: TextPosition = .RightCenter,
-    group_badge_offset_x: i32 = 0,
-    group_badge_offset_y: i32 = 0,
-    /// Borrows from config.
-    group_badge_font_name: []const u8 = "Segoe UI",
-    group_badge_font_size: i32 = 12,
-    group_badge_font_weight: types.FontWeight = .Regular,
-    group_badge_bg_color: u32 = 0x80000000,
-
-    show_session_timer: bool = false,
-    /// 0 while not shown.
-    session_minutes: u64 = 0,
-    session_timer_color: u32 = 0xFFFFFF,
-    session_timer_position: TextPosition = .RightCenter,
-    session_timer_offset_x: i32 = 0,
-    session_timer_offset_y: i32 = -24,
-    /// Borrows from config.
-    session_timer_font_name: []const u8 = "Segoe UI",
-    session_timer_font_size: i32 = 12,
-    session_timer_font_weight: types.FontWeight = .Regular,
-    session_timer_bg_color: u32 = 0x80000000,
-
-    combat_incoming_bg_color: u32 = 0x80000000,
-    combat_outgoing_bg_color: u32 = 0x80000000,
-    mining_bg_color: u32 = 0x80000000,
-    bounty_bg_color: u32 = 0x80000000,
-    resources_bg_color: u32 = 0x80000000,
-    ping_bg_color: u32 = 0x80000000,
-
-    show_thumbnail: bool = true,
-    overlay_alpha: u8 = OVERLAY_ALPHA,
-
-    overlay_width: c_int,
-    overlay_height: c_int,
-
-    // -1 stands in for a rate still being calculated (null); no real rate is negative.
-    dps_incoming: f32 = 0.0,
-    dps_outgoing: f32 = 0.0,
-    mining_rate: f32 = 0.0,
-    mining_isk_rate: f32 = 0.0,
-    bounty_isk_rate: f32 = 0.0,
-    resource_cpu_percent: f32 = 0.0,
-    resource_ram_mb: f32 = 0.0,
-    resource_vram_mb: f32 = 0.0,
-    ping_ms: ?u32 = null,
-    // So a tracker's first report redraws even when the (sentinel) rate itself didn't change.
-    has_dps_data: bool = false,
-    has_mining_data: bool = false,
-    has_bounty_data: bool = false,
-    has_resource_data: bool = false,
-    has_vram_data: bool = false,
-    has_ping_data: bool = false,
-};
 
 /// Keyed by font only, so whoever changes the text clears `dimensions`.
 const MeasuredText = struct {
@@ -173,7 +45,7 @@ const MeasuredText = struct {
 
     fn measure(self: *MeasuredText, layout: *Layout, font: win32.HFONT, text: []const u8, font_name: []const u8, font_size: i32, font_weight: types.FontWeight) TextDimensions {
         if (self.dimensions) |cached| {
-            if (stringsEqualFast(self.font_name, font_name) and self.font_size == font_size and self.font_weight == font_weight) return cached;
+            if (look.stringsEqualFast(self.font_name, font_name) and self.font_size == font_size and self.font_weight == font_weight) return cached;
         }
         const measured = layout.measure(font, text);
         self.* = .{ .dimensions = measured, .font_name = font_name, .font_size = font_size, .font_weight = font_weight };
@@ -221,10 +93,10 @@ const Layout = struct {
     width: usize,
     height: usize,
     lines: [MAX_LINES]DrawLine = undefined,
-    count: usize = 0,
+    line_count: usize = 0,
     // The lines' formatted text lives here, so a Layout is never copied once built.
     text_buffers: [MAX_LINES][TEXT_BUFFER_SIZE]u8 = undefined,
-    texts_used: usize = 0,
+    used_text_count: usize = 0,
     // The DC's own font, put back once rendering is done.
     original_font: ?win32.HANDLE = null,
 
@@ -254,8 +126,8 @@ const Layout = struct {
     }
 
     fn nextTextBuffer(self: *Layout) *[TEXT_BUFFER_SIZE]u8 {
-        defer self.texts_used += 1;
-        return &self.text_buffers[self.texts_used];
+        defer self.used_text_count += 1;
+        return &self.text_buffers[self.used_text_count];
     }
 
     fn position(self: *const Layout, anchor: TextPosition, dimensions: TextDimensions, offset_x: i32, offset_y: i32) TextOrigin {
@@ -263,8 +135,8 @@ const Layout = struct {
     }
 
     fn add(self: *Layout, line: DrawLine) void {
-        self.lines[self.count] = line;
-        self.count += 1;
+        self.lines[self.line_count] = line;
+        self.line_count += 1;
     }
 
     fn addAt(self: *Layout, font: win32.HFONT, text: []const u8, dimensions: TextDimensions, anchor: TextPosition, offset_x: i32, offset_y: i32, color: u32, bg_color: u32) void {
@@ -304,7 +176,7 @@ const NotificationBlock = struct {
     font: win32.HFONT,
     origin: TextOrigin,
     dimensions: TextDimensions,
-    line_heights: [MAX_NOTIFICATION_LINES]usize,
+    line_heights: [look.MAX_NOTIFICATION_LINES]usize,
 };
 
 /// For the window's own DPI; scales the stat fonts, whose config isn't in RenderSettings.
@@ -324,32 +196,16 @@ const Fonts = struct {
 
 const IskPeriod = struct { seconds: f32, suffix: []const u8 };
 
-const Border = struct { is_shown: bool, width: u8, color: u32, style: BorderStyle };
-const BorderFlags = struct { is_focused: bool, hides_all: bool };
-
-pub fn renderSettingsEqual(first: RenderSettings, second: RenderSettings) bool {
-    return first.show_thumbnail == second.show_thumbnail and visualEqual(first, second);
-}
-
-pub fn renderSettingsOnlyVisibilityChanged(first: RenderSettings, second: RenderSettings) bool {
-    return first.show_thumbnail != second.show_thumbnail and visualEqual(first, second);
-}
-
 pub fn renderThumbnailOverlay(font_cache: *FontCache, thumbnail: *ThumbnailWindow, settings: RenderSettings, config: *const config_mod.Config) !void {
     try renderOverlay(font_cache, &thumbnail.render_cache, thumbnail.text_hwnd, thumbnail, settings, config);
 }
 
 /// `cache` must belong to `target_hwnd`, since it holds that window's bitmap.
 pub fn renderOverlay(font_cache: *FontCache, cache: *RenderCache, target_hwnd: win32.HWND, thumbnail: *const ThumbnailWindow, settings: RenderSettings, config: *const config_mod.Config) !void {
-    if (gdi_overlay.OverlayBitmap.needsResize(cache.bitmap, settings.overlay_width, settings.overlay_height)) {
-        const screen_dc = win32.GetDC(null) orelse return error.GetDCFailed;
-        defer _ = win32.ReleaseDC(null, screen_dc);
-        // Only the first: a live size edit resizes every thumbnail each frame.
-        const is_first = cache.bitmap == null;
-        try gdi_overlay.OverlayBitmap.recreate(&cache.bitmap, screen_dc, settings.overlay_width, settings.overlay_height);
-        if (is_first) slog.debug("Allocated overlay bitmap {}x{} for {s}", .{ settings.overlay_width, settings.overlay_height, thumbnail.character_name });
-    }
-    const overlay = &cache.bitmap.?;
+    // Only the first: a live size edit resizes every thumbnail each frame.
+    const is_first = cache.bitmap == null;
+    const overlay = try gdi_overlay.OverlayBitmap.ensureSize(&cache.bitmap, settings.overlay_width, settings.overlay_height);
+    if (is_first) slog.debug("Allocated overlay bitmap {}x{} for {s}", .{ settings.overlay_width, settings.overlay_height, thumbnail.character_name });
     overlay.clear();
 
     if (settings.show_exclusion_overlay) {
@@ -378,7 +234,7 @@ pub fn renderOverlay(font_cache: *FontCache, cache: *RenderCache, target_hwnd: w
     const connection_font = try layoutConnectionMap(&connection_map, &layout, fonts, settings);
     const notifications = try layoutNotifications(&layout, fonts, settings);
 
-    const lines = layout.lines[0..layout.count];
+    const lines = layout.lines[0..layout.line_count];
     // Before the border, so it paints over them.
     for (lines) |line| {
         draw.fillTextBackground(overlay.canvas(), line.background_origin.x, line.background_origin.y, line.background_dimensions.width, line.background_dimensions.height, line.bg_color);
@@ -428,155 +284,34 @@ pub fn renderOverlay(font_cache: *FontCache, cache: *RenderCache, target_hwnd: w
     gdi_overlay.presentLayered(target_hwnd, overlay, settings.overlay_alpha);
 }
 
-/// The single point where a thumbnail's state and the profile decide everything its overlay shows.
+/// Reads what only Win32 can tell (DPI, client size, minimized, the clock); look.renderSettings decides the rest.
 pub fn createRenderSettings(config: *const config_mod.Config, thumbnail: *const ThumbnailWindow, active_source_hwnd: ?win32.HWND) RenderSettings {
-    const thumbnail_config = &config.thumbnail;
-    const state = thumbnail.effectiveRenderState(active_source_hwnd);
-    const state_config = thumbnail_config.getStateConfig(state);
-    const is_shown = thumbnail.isShown();
-    const is_focused = thumbnail.isFocused(active_source_hwnd);
     // Read live, so fonts and size track the monitor this window is on now.
     const dpi_scale = win32.dpiToScale(win32.GetDpiForWindow(thumbnail.hwnd));
-    const is_active_hidden = state == .active and thumbnail_config.activeThumbnailHidden;
-    // A hidden thumbnail shows no border or text either.
-    const hides_all = !is_shown or thumbnail.cached_hide_thumbnail or is_active_hidden;
-    const show_text = !hides_all and thumbnail_config.showText;
-    const forces_opaque_backgrounds = thumbnail_config.applyOpacityToOverlayTexts;
-    const border = resolveBorder(config, thumbnail, state, state_config, .{ .is_focused = is_focused, .hides_all = hides_all });
     const size = overlaySize(config, thumbnail, dpi_scale);
-    const stats = &thumbnail.stats;
-    const session_minutes = if (show_text and thumbnail_config.showSessionTimer) thumbnail.sessionMinutes(win32.Ticks.now()) else null;
-
-    var settings: RenderSettings = .{
-        .show_text = show_text,
-        .show_character_name = show_text and thumbnail_config.showCharacterName,
+    const now = win32.Ticks.now();
+    return look.renderSettings(config, &.{
+        .state = thumbnail.effectiveRenderState(active_source_hwnd),
+        .is_shown = thumbnail.isShown(),
+        .is_focused = thumbnail.isFocused(active_source_hwnd),
+        .is_excluded_from_cycle = thumbnail.is_excluded_from_cycle,
+        .is_hidden_for_character = thumbnail.cached_hide_thumbnail,
         .display_name = thumbnail.cached_display_name,
-        .show_system_name = show_text and thumbnail_config.showSystemName and thumbnail.system_name.len > 0,
         .system_name = thumbnail.system_name,
-        .connections = thumbnail.connections,
-        .connection_color = thumbnail_config.systemNameColor,
-        .connection_map_width = scalePixels(thumbnail_config.systemConnectionMapWidth, dpi_scale),
-        .connection_map_height = scalePixels(thumbnail_config.systemConnectionMapHeight, dpi_scale),
-        // Unique character colours win over the state's text colour.
-        .character_name_color = thumbnail.cached_character_color orelse state_config.textColor orelse thumbnail_config.characterNameColor,
-        .system_name_color = thumbnail.cached_system_color,
-        .character_name_bg_color = resolveTextBgColor(state_config, thumbnail_config.characterNameBgColor, forces_opaque_backgrounds),
-        .system_name_bg_color = resolveTextBgColor(state_config, thumbnail_config.systemNameBgColor, forces_opaque_backgrounds),
-        .group_badge_bg_color = resolveTextBgColor(state_config, thumbnail_config.quickGroupBadgeBgColor, forces_opaque_backgrounds),
-        .notifications_bg_color = resolveTextBgColor(state_config, thumbnail_config.notifications.bg_color, forces_opaque_backgrounds),
-        .combat_incoming_bg_color = resolveTextBgColor(state_config, config.combat.incoming_bg_color, forces_opaque_backgrounds),
-        .combat_outgoing_bg_color = resolveTextBgColor(state_config, config.combat.outgoing_bg_color, forces_opaque_backgrounds),
-        .mining_bg_color = resolveTextBgColor(state_config, config.mining.bg_color, forces_opaque_backgrounds),
-        .bounty_bg_color = resolveTextBgColor(state_config, config.bounty.bg_color, forces_opaque_backgrounds),
-        .resources_bg_color = resolveTextBgColor(state_config, config.resources.bg_color, forces_opaque_backgrounds),
-        .ping_bg_color = resolveTextBgColor(state_config, config.ping.bg_color, forces_opaque_backgrounds),
-        .character_name_font_name = thumbnail_config.characterNameFontName,
-        .character_name_font_size = scalePixels(thumbnail_config.characterNameFontSize, dpi_scale),
-        .character_name_font_weight = thumbnail_config.characterNameFontWeight,
-        .character_name_position = thumbnail_config.characterNamePosition,
-        .character_name_offset_x = thumbnail_config.characterNameOffsetX,
-        .character_name_offset_y = thumbnail_config.characterNameOffsetY,
-        .system_name_position = thumbnail_config.systemNamePosition,
-        .system_name_offset_x = thumbnail_config.systemNameOffsetX,
-        .system_name_offset_y = thumbnail_config.systemNameOffsetY,
-        .system_name_font_name = thumbnail_config.systemNameFontName,
-        .system_name_font_size = scalePixels(thumbnail_config.systemNameFontSize, dpi_scale),
-        .system_name_font_weight = thumbnail_config.systemNameFontWeight,
-        .show_notifications = show_text and thumbnail_config.notifications.enabled,
-        .notifications_position = thumbnail_config.notifications.position,
-        .notifications_offset_x = thumbnail_config.notifications.offset_x,
-        .notifications_offset_y = thumbnail_config.notifications.offset_y,
-        .notifications_font_name = thumbnail_config.notifications.font_name,
-        .notifications_font_size = scalePixels(thumbnail_config.notifications.font_size, dpi_scale),
-        .notifications_font_weight = thumbnail_config.notifications.font_weight,
-        .show_border = border.is_shown,
-        .border_width = border.width,
-        .border_color = border.color,
-        .border_style = border.style,
-        .show_exclusion_overlay = thumbnail.is_excluded_from_cycle and is_shown,
-        .exclusion_overlay_style = thumbnail_config.exclusionOverlayStyle,
-        .exclusion_overlay_color = thumbnail_config.exclusionOverlayColor,
-        .show_group_badge = show_text and thumbnail_config.showQuickGroupBadge and thumbnail.cached_group_badge_label.len > 0,
-        .group_badge_text = thumbnail.cached_group_badge_label,
-        .group_badge_color = thumbnail_config.quickGroupBadgeColor,
-        .group_badge_position = thumbnail_config.quickGroupBadgePosition,
-        .group_badge_offset_x = thumbnail_config.quickGroupBadgeOffsetX,
-        .group_badge_offset_y = thumbnail_config.quickGroupBadgeOffsetY,
-        .group_badge_font_name = thumbnail_config.quickGroupBadgeFontName,
-        .group_badge_font_size = scalePixels(thumbnail_config.quickGroupBadgeFontSize, dpi_scale),
-        .group_badge_font_weight = thumbnail_config.quickGroupBadgeFontWeight,
-        .show_session_timer = session_minutes != null,
-        .session_minutes = session_minutes orelse 0,
-        .session_timer_color = thumbnail_config.sessionTimerColor,
-        .session_timer_position = thumbnail_config.sessionTimerPosition,
-        .session_timer_offset_x = thumbnail_config.sessionTimerOffsetX,
-        .session_timer_offset_y = thumbnail_config.sessionTimerOffsetY,
-        .session_timer_font_name = thumbnail_config.sessionTimerFontName,
-        .session_timer_font_size = scalePixels(thumbnail_config.sessionTimerFontSize, dpi_scale),
-        .session_timer_font_weight = thumbnail_config.sessionTimerFontWeight,
-        .session_timer_bg_color = resolveTextBgColor(state_config, thumbnail_config.sessionTimerBgColor, forces_opaque_backgrounds),
-        // Visibility and the character's own hideThumbnail win over the state's showThumbnail.
-        .show_thumbnail = if (!is_shown or thumbnail.cached_hide_thumbnail) false else state_config.showThumbnail orelse !is_active_hidden,
-        .overlay_alpha = if (forces_opaque_backgrounds) thumbnail.cached_opacity else OVERLAY_ALPHA,
+        .group_badge_label = thumbnail.cached_group_badge_label,
+        .connections = &thumbnail.connections,
+        .character_color = thumbnail.cached_character_color,
+        .system_color = thumbnail.cached_system_color,
+        .border_colors = thumbnail.cached_border_colors,
+        .opacity = thumbnail.cached_opacity,
+        .session_minutes = thumbnail.sessionMinutes(now),
+        .stats = &thumbnail.stats,
+        .notifications = &thumbnail.notifications,
         .overlay_width = size.width,
         .overlay_height = size.height,
-        .dps_incoming = if (config.combat.enabled) (stats.incoming_dps orelse -1.0) else 0.0,
-        .dps_outgoing = if (config.combat.enabled) (stats.outgoing_dps orelse -1.0) else 0.0,
-        .mining_rate = if (config.mining.enabled) (stats.mining_rate orelse -1.0) else 0.0,
-        .mining_isk_rate = if (config.mining.enabled and config.mining.show_isk_rate) (stats.mining_isk_rate orelse -1.0) else 0.0,
-        .bounty_isk_rate = if (config.bounty.enabled) (stats.bounty_isk_rate orelse -1.0) else 0.0,
-        .resource_cpu_percent = if (config.resources.enabled) stats.cpu_percent else 0.0,
-        .resource_ram_mb = if (config.resources.enabled) stats.ram_mb else 0.0,
-        .resource_vram_mb = if (config.resources.enabled) stats.vram_mb else 0.0,
-        .ping_ms = if (config.ping.enabled) stats.ping_ms else null,
-        .has_dps_data = stats.has_dps,
-        .has_mining_data = stats.has_mining,
-        .has_bounty_data = stats.has_bounty,
-        .has_resource_data = config.resources.enabled and stats.has_resources,
-        .has_vram_data = stats.has_vram,
-        .has_ping_data = config.ping.enabled and stats.has_ping,
-    };
-    if (settings.show_notifications) {
-        settings.notification_line_count = notificationLines(&settings.notification_lines, thumbnail, is_focused, thumbnail_config.notifications.color);
-        settings.notification_revision = thumbnail.notifications.revision;
-    }
-    return settings;
-}
-
-/// All fields but show_thumbnail, walked at comptime so new fields are always compared.
-fn visualEqual(first: RenderSettings, second: RenderSettings) bool {
-    const info = @typeInfo(RenderSettings).@"struct";
-    inline for (info.field_names, info.field_types) |name, F| {
-        if (comptime std.mem.eql(u8, name, "show_thumbnail")) continue;
-        if (!valuesEqual(F, @field(first, name), @field(second, name))) return false;
-    }
-    return true;
-}
-
-fn valuesEqual(comptime T: type, first: T, second: T) bool {
-    if (T == []const u8) return stringsEqualFast(first, second);
-    // The cached line's text may have been freed; notification_revision catches a change its address and length miss.
-    if (T == NotificationLine) return first.text.ptr == second.text.ptr and first.text.len == second.text.len and first.color == second.color and first.lead_length == second.lead_length and first.lead_color == second.lead_color;
-    switch (@typeInfo(T)) {
-        .@"struct" => |info| {
-            inline for (info.field_names, info.field_types) |name, F| {
-                if (!valuesEqual(F, @field(first, name), @field(second, name))) return false;
-            }
-            return true;
-        },
-        .array => |info| {
-            for (first, second) |x, y| {
-                if (!valuesEqual(info.child, x, y)) return false;
-            }
-            return true;
-        },
-        else => return first == second,
-    }
-}
-
-/// Unchanged config and notification slices keep their pointer and length, so those are checked first.
-fn stringsEqualFast(first: []const u8, second: []const u8) bool {
-    return (first.ptr == second.ptr and first.len == second.len) or std.mem.eql(u8, first, second);
+        .dpi_scale = dpi_scale,
+        .now = now,
+    });
 }
 
 fn addCharacterName(layout: *Layout, fonts: Fonts, cache: *RenderCache, settings: RenderSettings) !void {
@@ -607,7 +342,7 @@ fn addSessionTimer(layout: *Layout, fonts: Fonts, settings: RenderSettings) !voi
     layout.addAt(font, text, layout.measure(font, text), settings.session_timer_position, settings.session_timer_offset_x, settings.session_timer_offset_y, settings.session_timer_color, settings.session_timer_bg_color);
 }
 
-fn addCombat(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, stats: *const window.ActivityStats, settings: RenderSettings) !void {
+fn addCombat(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, stats: *const ActivityStats, settings: RenderSettings) !void {
     const combat = &config.combat;
     if (!combat.enabled) return;
     if (combat.show_incoming and stats.showsIncoming()) {
@@ -627,14 +362,14 @@ fn rateText(layout: *Layout, prefix: []const u8, rate: ?f32) []const u8 {
     return layout.print("{s}??", .{prefix});
 }
 
-fn addMining(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, stats: *const window.ActivityStats, settings: RenderSettings) !void {
+fn addMining(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, stats: *const ActivityStats, settings: RenderSettings) !void {
     const mining = &config.mining;
     if (!mining.enabled or !stats.showsMining()) return;
     const font = try fonts.getScaled(.mining, mining.font_name, mining.font_size, mining.font_weight);
     const prefix: []const u8 = if (mining.show_prefix) "M: " else "";
 
     var texts: [2][]const u8 = undefined;
-    var count: usize = 1;
+    var text_count: usize = 1;
     texts[0] = if (stats.mining_rate) |rate| blk: {
         // Per minute rather than per second, so low-yield ore doesn't round to "0".
         const rate_per_minute = rate * 60.0;
@@ -649,12 +384,12 @@ fn addMining(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, st
 
     if (mining.show_isk_rate) {
         texts[1] = iskRateText(layout, "", stats.mining_isk_rate, iskPeriod(mining.isk_rate_unit));
-        count = 2;
+        text_count = 2;
     }
-    layout.addStack(font, texts[0..count], mining.position, mining.offset_x, mining.offset_y, mining.color, settings.mining_bg_color);
+    layout.addStack(font, texts[0..text_count], mining.position, mining.offset_x, mining.offset_y, mining.color, settings.mining_bg_color);
 }
 
-fn addBounty(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, stats: *const window.ActivityStats, settings: RenderSettings) !void {
+fn addBounty(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, stats: *const ActivityStats, settings: RenderSettings) !void {
     const bounty = &config.bounty;
     if (!bounty.enabled or !stats.showsBounty()) return;
     const font = try fonts.getScaled(.bounty, bounty.font_name, bounty.font_size, bounty.font_weight);
@@ -676,29 +411,29 @@ fn iskRateText(layout: *Layout, prefix: []const u8, isk_per_second: ?f32, period
     return layout.print("{s}{s} ISK/{s}", .{ prefix, format.formatIskAbbreviated(&isk_buf, rate * period.seconds), period.suffix });
 }
 
-fn addResources(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, stats: *const window.ActivityStats, settings: RenderSettings) !void {
+fn addResources(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, stats: *const ActivityStats, settings: RenderSettings) !void {
     const resources = &config.resources;
     if (!resources.enabled or !stats.has_resources) return;
     const font = try fonts.getScaled(.resources, resources.font_name, resources.font_size, resources.font_weight);
 
     var texts: [MAX_STACK_LINES][]const u8 = undefined;
-    var count: usize = 0;
+    var text_count: usize = 0;
     if (resources.show_cpu) {
-        texts[count] = layout.print("CPU: {d:.0}%", .{stats.cpu_percent});
-        count += 1;
+        texts[text_count] = layout.print("CPU: {d:.0}%", .{stats.cpu_percent});
+        text_count += 1;
     }
     if (resources.show_ram) {
-        texts[count] = layout.print("RAM: {d:.0}MB", .{stats.ram_mb});
-        count += 1;
+        texts[text_count] = layout.print("RAM: {d:.0}MB", .{stats.ram_mb});
+        text_count += 1;
     }
     if (resources.show_vram and stats.has_vram) {
-        texts[count] = layout.print("VRAM: {d:.0}MB", .{stats.vram_mb});
-        count += 1;
+        texts[text_count] = layout.print("VRAM: {d:.0}MB", .{stats.vram_mb});
+        text_count += 1;
     }
-    if (count > 0) layout.addStack(font, texts[0..count], resources.position, resources.offset_x, resources.offset_y, resources.color, settings.resources_bg_color);
+    if (text_count > 0) layout.addStack(font, texts[0..text_count], resources.position, resources.offset_x, resources.offset_y, resources.color, settings.resources_bg_color);
 }
 
-fn addPing(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, stats: *const window.ActivityStats, settings: RenderSettings) !void {
+fn addPing(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, stats: *const ActivityStats, settings: RenderSettings) !void {
     const ping = &config.ping;
     if (!ping.enabled or !stats.has_ping) return;
     const font = try fonts.getScaled(.ping, ping.font_name, ping.font_size, ping.font_weight);
@@ -776,7 +511,7 @@ fn drawConnectionMap(canvas: pixel_buffer.Canvas, map: *const layout_mod.Layout,
     for (map.edges[0..map.edge_count]) |edge| {
         const first = nodes[edge.first_index];
         const second = nodes[edge.second_index];
-        pixel_buffer.drawLine(canvas, first.x, first.y, second.x, second.y, if (edge.is_local) map_look.EDGE_LOCAL else map_look.EDGE_CROSS);
+        pixel_buffer.drawLine(canvas, first.x, first.y, second.x, second.y, map_look.edgeColor(edge.kind));
     }
     for (exits) |exit| map_look.drawExit(canvas, nodes[exit.from_index], exit, map_look.EXIT);
     const marker_radius = map_look.markerRadius(0, 0);
@@ -814,51 +549,6 @@ fn layoutNotifications(layout: *Layout, fonts: Fonts, settings: RenderSettings) 
     return block;
 }
 
-/// Forced opaque when the window's Opacity applies, so the two alphas don't compound.
-fn resolveTextBgColor(state_config: config_mod.StateVisualConfig, base_color: u32, is_forced_opaque: bool) u32 {
-    const resolved = state_config.textBgColor orelse base_color;
-    return if (is_forced_opaque) color_mod.withAlpha(resolved, 255) else resolved;
-}
-
-/// Lowest first: Active/Inactive base, state override, newest alert's type, then the character's colours.
-fn resolveBorder(config: *const config_mod.Config, thumbnail: *const ThumbnailWindow, state: config_mod.ThumbnailState, state_config: config_mod.StateVisualConfig, flags: BorderFlags) Border {
-    const thumbnail_config = &config.thumbnail;
-    const is_focused = flags.is_focused;
-    // Alert builds on Active, being an attention event.
-    const uses_focused_look = state == .active or state == .alert;
-    // Only the newest notification drives border effects; older entries only add text lines.
-    const newest = if (state == .alert) thumbnail.notifications.newest() else null;
-
-    // Not for the focused character, so it can't fight its active border.
-    const notification_hides = if (newest) |notification| !is_focused and (!notification.show_border or notification.isFlashOff(win32.Ticks.now())) else false;
-    const is_shown = !flags.hides_all and !notification_hides and (state_config.showBorder orelse (if (uses_focused_look) thumbnail_config.showBorderWhenFocused else thumbnail_config.showBorderWhenInactive));
-
-    // With suppress_when_focused, a focused character's alert borders as Active.
-    const is_suppressed = if (newest) |notification| notification.suppress_when_focused and is_focused else false;
-    var color = state_config.borderColor orelse (if (uses_focused_look) thumbnail_config.borderColor else thumbnail_config.inactiveBorderColor);
-    if (newest) |notification| {
-        if (!is_suppressed) {
-            if (notification.border_color_override) |override| color = override;
-        }
-    }
-    if (thumbnail.cached_border_colors) |character_colors| {
-        const override = switch (state) {
-            .active => character_colors.activeBorderColor,
-            .alert => if (is_suppressed) character_colors.activeBorderColor else null,
-            .inactive, .minimized => character_colors.inactiveBorderColor,
-            .dragging => null,
-        };
-        if (override) |c| color = c;
-    }
-
-    return .{
-        .is_shown = is_shown,
-        .width = state_config.borderWidth orelse (if (uses_focused_look) thumbnail_config.borderWidth else thumbnail_config.inactiveBorderWidth),
-        .color = color,
-        .style = state_config.borderStyle orelse (if (uses_focused_look) thumbnail_config.borderStyle else thumbnail_config.inactiveBorderStyle),
-    };
-}
-
 /// A space's window size as already laid out, else the configured or per-character size at the window's DPI.
 fn overlaySize(config: *const config_mod.Config, thumbnail: *const ThumbnailWindow, dpi_scale: f32) window.Size {
     if (spaces.spaceFor(config, thumbnail.character_name) != null) {
@@ -871,27 +561,4 @@ fn overlaySize(config: *const config_mod.Config, thumbnail: *const ThumbnailWind
     const width = if (character_size) |own_size| own_size.width orelse config.thumbnail.width else config.thumbnail.width;
     const height = if (character_size) |own_size| own_size.height orelse config.thumbnail.height else config.thumbnail.height;
     return .{ .width = scalePixels(width, dpi_scale), .height = scalePixels(height, dpi_scale) };
-}
-
-/// Newest first; each entry filters and colours itself.
-fn notificationLines(out: *[MAX_NOTIFICATION_LINES]NotificationLine, thumbnail: *const ThumbnailWindow, is_focused: bool, base_color: u32) usize {
-    var count: usize = 0;
-    for (thumbnail.notifications.items()) |entry| {
-        if (!entry.shows_text or (entry.suppress_when_focused and is_focused)) continue;
-        const color = entry.text_color_override orelse base_color;
-        var lines = std.mem.splitScalar(u8, entry.text, '\n');
-        var line_index: usize = 0;
-        while (lines.next()) |line| : (line_index += 1) {
-            if (line_index == MAX_LINES_PER_NOTIFICATION) break;
-            out[count] = .{ .text = line, .color = color };
-            if (entry.lead) |lead| {
-                if (line_index == 0 and lead.length <= line.len) {
-                    out[count].lead_length = lead.length;
-                    out[count].lead_color = lead.color;
-                }
-            }
-            count += 1;
-        }
-    }
-    return count;
 }

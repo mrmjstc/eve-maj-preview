@@ -1,7 +1,6 @@
-//! The cycle hotkeys: through a group, a shared per-character key, and the excluded, notified, all and not-logged-in clients.
+//! The cycle hotkeys: through a group, a shared per-character key, and the excluded, notified, all and not-logged-in clients; each returns the client to bring to the front, or null.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
-const activation = @import("../control/activation.zig");
 const scout = @import("../clients/scout.zig");
 const strings = @import("../util/strings.zig");
 const bindings = @import("bindings.zig");
@@ -60,7 +59,7 @@ const Clients = struct {
 };
 
 /// Cycles to the next running character sharing this hotkey.
-pub fn activatePerCharacterGroup(manager: *HotkeyManager, group: *bindings.CharacterGroup) void {
+pub fn activatePerCharacterGroup(manager: *HotkeyManager, group: *bindings.CharacterGroup) ?win32.HWND {
     const member_count = group.character_indices.len;
     var it = CycleOrder.init(group.current_index, member_count, .{ .is_forward = true });
     while (it.next()) |member_index| {
@@ -71,22 +70,22 @@ pub fn activatePerCharacterGroup(manager: *HotkeyManager, group: *bindings.Chara
         if (manager.scout.getHwndByName(character_name)) |hwnd| {
             group.current_index = member_index;
             slog.info("Activating character: {s} ({}/{})", .{ character_name, member_index + 1, member_count });
-            activation.activate(manager.app, hwnd);
-            return;
+            return hwnd;
         }
     }
 
     slog.info("No running character for the shared character hotkey", .{});
+    return null;
 }
 
 /// Cycles the groups' members as one list; logged-out clients join if any group includes them, ends stop only if all do.
-pub fn cycleGroups(manager: *HotkeyManager, group_indices: []const usize, is_forward: bool) void {
+pub fn cycleGroups(manager: *HotkeyManager, group_indices: []const usize, is_forward: bool) ?win32.HWND {
     const groups = manager.config.hotkeyGroups.items;
     const chain = switch (cycle_order.chainOf(groups, group_indices)) {
         .chain => |chain| chain,
         .invalid_group => |group_index| {
             slog.err("Failed to cycle group: index {} is out of range", .{group_index});
-            return;
+            return null;
         },
     };
 
@@ -119,33 +118,34 @@ pub fn cycleGroups(manager: *HotkeyManager, group_indices: []const usize, is_for
             manager.cycle.group_cursors[member.group_index] = member.index;
             manager.cycle.last_cycled_group = member.group_index;
             slog.info("Cycling {s} to: {s} ({}/{})", .{ directionName(is_forward), groups[member.group_index].characters.items[member.index], target.position + 1, target.total_count });
-            activation.activate(manager.app, target.hwnd);
+            return target.hwnd;
         },
         .not_logged_in => |target| {
             // The not-logged-in tail is tracked by hwnd, so no group position applies.
             for (group_indices) |group_index| manager.cycle.group_cursors[group_index] = null;
             slog.info("Cycling {s} to not-logged-in client ({}/{})", .{ directionName(is_forward), target.position + 1, target.total_count });
-            activation.activate(manager.app, target.hwnd);
             manager.cycle.last_not_logged_in_hwnd = target.hwnd;
+            return target.hwnd;
         },
         .refocus_end => |target| {
             slog.info("Refocusing {s} end of hotkey group ({}/{})", .{ directionName(is_forward), target.position + 1, target.total_count });
-            activation.activate(manager.app, target.hwnd);
+            return target.hwnd;
         },
         .at_end => slog.debug("Already at the {s} end of hotkey group", .{directionName(is_forward)}),
         .none => slog.info("No running, non-excluded character in the hotkey group", .{}),
     }
+    return null;
 }
 
 /// In the order the characters were excluded.
-pub fn cycleExcluded(manager: *HotkeyManager, is_forward: bool) void {
+pub fn cycleExcluded(manager: *HotkeyManager, is_forward: bool) ?win32.HWND {
     slog.info("Cycle excluded character hotkey pressed ({s})", .{directionName(is_forward)});
     const excluded_names = manager.exclusions.names.items;
 
     const excluded_count = excluded_names.len;
     if (excluded_count == 0) {
         slog.info("No excluded characters to cycle through", .{});
-        return;
+        return null;
     }
 
     var it = CycleOrder.init(manager.cycle.excluded_index, excluded_count, .{ .is_forward = is_forward });
@@ -155,30 +155,30 @@ pub fn cycleExcluded(manager: *HotkeyManager, is_forward: bool) void {
         if (manager.scout.getHwndByName(character_name)) |hwnd| {
             manager.cycle.excluded_index = name_index;
             slog.info("Cycling {s} to excluded character: {s} ({}/{})", .{ directionName(is_forward), character_name, name_index + 1, excluded_count });
-            activation.activate(manager.app, hwnd);
-            return;
+            return hwnd;
         }
         slog.debug("Excluded character {s} is not currently running, skipping", .{character_name});
     }
 
     slog.info("No excluded character is running", .{});
+    return null;
 }
 
 /// Forward visits the oldest notification first (FIFO).
-pub fn cycleNotified(manager: *HotkeyManager, is_forward: bool) void {
+pub fn cycleNotified(manager: *HotkeyManager, is_forward: bool) ?win32.HWND {
     slog.info("Cycle notified character hotkey pressed ({s})", .{directionName(is_forward)});
     const retention_ms: u64 = @as(u64, manager.live().thumbnail.notifications.notified_cycle_retention_seconds) * std.time.ms_per_s;
 
     var names = manager.notified_queue.namesWithin(manager.allocator, retention_ms) catch |err| {
         slog.err("Failed to build notified-character list: {}", .{err});
-        return;
+        return null;
     };
     defer names.deinit(manager.allocator);
 
     const notified_count = names.items.len;
     if (notified_count == 0) {
         slog.info("No recently-notified characters to cycle through", .{});
-        return;
+        return null;
     }
 
     const found_index = if (manager.cycle.last_notified_name) |last_name| strings.indexOfString(names.items, last_name) else null;
@@ -188,29 +188,29 @@ pub fn cycleNotified(manager: *HotkeyManager, is_forward: bool) void {
 
         if (manager.scout.getHwndByName(character_name)) |hwnd| {
             slog.info("Cycling {s} to notified character: {s} ({}/{})", .{ directionName(is_forward), character_name, index + 1, notified_count });
-            activation.activate(manager.app, hwnd);
             setOwnedCursorName(manager.allocator, &manager.cycle.last_notified_name, character_name, "notified");
-            return;
+            return hwnd;
         }
         slog.debug("Notified character {s} is not currently running, skipping", .{character_name});
     }
 
     slog.info("No notified character is running", .{});
+    return null;
 }
 
 /// Cycles every logged-in client in Characters-list order (unconfigured ones follow, in Scout's discovery order); unlike other cycles, every entry is guaranteed running.
-pub fn cycleAllClients(manager: *HotkeyManager, is_forward: bool) void {
+pub fn cycleAllClients(manager: *HotkeyManager, is_forward: bool) ?win32.HWND {
     slog.info("Cycle all clients hotkey pressed ({s})", .{directionName(is_forward)});
     const windows = manager.scout.getWindows();
     const window_count = windows.len;
     if (window_count == 0) {
         slog.info("No logged-in clients to cycle through", .{});
-        return;
+        return null;
     }
 
     const order = manager.cycle.character_order.orderedIndices(manager.allocator, manager.live().characters.items, windows) catch |err| {
         slog.err("Failed to build character-ordered client list: {}", .{err});
-        return;
+        return null;
     };
     defer manager.allocator.free(order);
 
@@ -232,27 +232,27 @@ pub fn cycleAllClients(manager: *HotkeyManager, is_forward: bool) void {
         if (respects_exclusions and manager.exclusions.contains(eve_window.character_name)) continue;
 
         slog.info("Cycling {s} to client: {s} ({}/{})", .{ directionName(is_forward), eve_window.character_name, index + 1, window_count });
-        activation.activate(manager.app, eve_window.hwnd);
         setOwnedCursorName(manager.allocator, &manager.cycle.last_all_clients_name, eve_window.character_name, "all-clients");
-        return;
+        return eve_window.hwnd;
     }
 
     slog.info("Every logged-in client is excluded from cycling", .{});
+    return null;
 }
 
 /// Cycles windows still at the login screen ("EVE" title), in the order they logged out.
-pub fn cycleNotLoggedIn(manager: *HotkeyManager, is_forward: bool) void {
+pub fn cycleNotLoggedIn(manager: *HotkeyManager, is_forward: bool) ?win32.HWND {
     slog.info("Cycle not-logged-in hotkey pressed ({s})", .{directionName(is_forward)});
     var hwnds = manager.scout.getNotLoggedInHwnds(manager.allocator) catch |err| {
         slog.err("Failed to build not-logged-in window list: {}", .{err});
-        return;
+        return null;
     };
     defer hwnds.deinit(manager.allocator);
 
     const hwnd_count = hwnds.items.len;
     if (hwnd_count == 0) {
         slog.info("No not-logged-in clients to cycle through", .{});
-        return;
+        return null;
     }
 
     // Prefers the real foreground window over the remembered cursor, since logging out while already focused fires no OS focus event to update it.
@@ -264,11 +264,11 @@ pub fn cycleNotLoggedIn(manager: *HotkeyManager, is_forward: bool) void {
     }
 
     var it = CycleOrder.init(found_index, hwnd_count, .{ .is_forward = is_forward });
-    const index = it.next() orelse return;
+    const index = it.next() orelse return null;
     const hwnd = hwnds.items[index];
     slog.info("Cycling {s} to not-logged-in client ({}/{})", .{ directionName(is_forward), index + 1, hwnd_count });
-    activation.activate(manager.app, hwnd);
     manager.cycle.last_not_logged_in_hwnd = hwnd;
+    return hwnd;
 }
 
 /// Moves every cycle cursor onto a manually focused character, so the next cycle press continues from it.

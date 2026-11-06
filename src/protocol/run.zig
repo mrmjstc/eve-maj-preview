@@ -38,14 +38,14 @@ fn run(app: *App, command: url.Command) void {
                 slog.warn("Failed to run '{s}': the hotkey manager isn't ready", .{@tagName(action)});
                 return;
             };
-            manager.runGlobalAction(action);
+            app.runHotkeyOutcome(manager.runGlobalAction(action, app.thumbnail_set));
         },
         .group => |group| {
             const manager = app.hotkey_manager orelse {
                 slog.warn("Failed to run group '{s}' on '{s}': the hotkey manager isn't ready", .{ @tagName(group.action), group.name });
                 return;
             };
-            manager.runGroupAction(group.action, group.name);
+            app.runHotkeyOutcome(manager.runGroupAction(group.action, group.name, app.thumbnail_set));
         },
         .open_config => knots_host.open(),
     }

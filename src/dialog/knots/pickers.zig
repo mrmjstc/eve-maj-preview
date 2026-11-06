@@ -7,6 +7,9 @@ const log = @import("../../log.zig");
 
 const slog = log.Scoped("dialog_knots");
 
+/// Next to the exe; the release scripts, installer and build.zig ship the bundled alert sounds there.
+const SOUNDS_FOLDER = "sounds";
+
 pub const Target = enum {
     chatlog_dir,
     gamelog_dir,
@@ -66,8 +69,11 @@ fn pickerThread(target: Target, index: usize, title: []const u8, file_type_name:
     defer g_allocator.free(file_type_name);
     const shown = switch (target) {
         .chatlog_dir, .gamelog_dir => win32.showFolderPicker(g_allocator, title, owner),
-        .sound_file, .rule_sound_file => win32.showFilePicker(g_allocator, title, file_type_name, "*.wav;*.mp3", owner),
-        .import_file => win32.showFilePicker(g_allocator, title, file_type_name, "*.json;*.ini", owner),
+        .sound_file, .rule_sound_file => sound: {
+            var sounds_folder_buf: [std.Io.Dir.max_path_bytes]u8 = undefined;
+            break :sound win32.showFilePicker(g_allocator, title, file_type_name, "*.wav;*.mp3", soundsFolderPath(&sounds_folder_buf), owner);
+        },
+        .import_file => win32.showFilePicker(g_allocator, title, file_type_name, "*.json;*.ini", null, owner),
     };
     const path = shown catch |err| {
         slog.err("Failed to open the picker: {}", .{err});
@@ -83,6 +89,19 @@ fn pickerThread(target: Target, index: usize, title: []const u8, file_type_name:
         slog.err("Failed to pass on the picked path: error {d}", .{win32.GetLastError()});
         picked.deinit();
     }
+}
+
+/// Null if the exe's folder can't be found, so the picker opens wherever Windows last left it.
+fn soundsFolderPath(buf: []u8) ?[]const u8 {
+    var executable_dir_buf: [std.Io.Dir.max_path_bytes]u8 = undefined;
+    const executable_dir = win32.selfExecutableDirPath(&executable_dir_buf) catch |err| {
+        slog.warn("Failed to resolve the executable directory for the sounds folder: {}", .{err});
+        return null;
+    };
+    return std.fmt.bufPrint(buf, "{s}\\" ++ SOUNDS_FOLDER, .{executable_dir}) catch |err| {
+        slog.warn("Failed to build the sounds folder path under '{s}': {}", .{ executable_dir, err });
+        return null;
+    };
 }
 
 fn fileTypeName(target: Target) []const u8 {

@@ -61,14 +61,14 @@ pub const SUSPEND_BINDING: GlobalBinding = .{ .action = .suspend_hotkeys, .proto
 
 /// Characters sharing one per-character hotkey.
 pub const CharacterGroup = struct {
-    /// Owned; HotkeyManager.unregisterAll frees it.
+    /// Borrows from the registered plan.Plan.
     character_indices: []const usize,
     current_index: ?usize = null,
 };
 
 /// Hotkey groups sharing one cycle combo, cycled as one list.
 pub const GroupChain = struct {
-    /// In hotkeyGroups order; owned, HotkeyManager.unregisterAll frees it.
+    /// In hotkeyGroups order; borrows from the registered plan.Plan, or from the caller for one run outside a press.
     group_indices: []const usize,
     is_forward: bool,
 };

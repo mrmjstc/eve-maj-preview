@@ -400,6 +400,7 @@ pub const ThumbnailSet = struct {
         thumbnail.system_name_event_timestamp = event_timestamp;
         thumbnail.cached_system_color = self.auto_colors.systemNameColor(self.config, system_name);
         slog.debug("System '{s}' color resolved to: 0x{X:0>6}", .{ system_name, thumbnail.cached_system_color & 0xFFFFFF });
+        self.shareSystemColor(thumbnail);
 
         if (is_jump) thumbnail.travel.recordJump();
 
@@ -410,8 +411,7 @@ pub const ThumbnailSet = struct {
     /// Call every tick, since pins fade with nothing to announce it.
     pub fn updateConnections(self: *ThumbnailSet, pins: *const intel_pins.IntelPins, now_ms: u64) void {
         const thumbnail_config = &self.config.thumbnail;
-        const shrink_ms: u64 = @as(u64, @intCast(@max(0, self.config.display.mapPanelIntelShrinkSec))) * std.time.ms_per_s;
-        const intel: ?connections.IntelView = if (thumbnail_config.showSystemConnectionIntel) .{ .pins = pins, .shrink_ms = shrink_ms } else null;
+        const intel: ?connections.IntelView = if (thumbnail_config.showSystemConnectionIntel) .{ .pins = pins, .shrink_ms = self.config.mapPanel.intelShrinkMs() } else null;
         for (self.thumbnails.items) |*thumbnail| {
             const start = if (thumbnail_config.showSystemConnections) universe.findSystem(thumbnail.system_name) else null;
             if (thumbnail.connections.refresh(start, thumbnail_config.systemConnectionJumps, intel, now_ms)) thumbnail.needs_render = true;
@@ -619,6 +619,16 @@ pub const ThumbnailSet = struct {
         thumbnail.replaceText(self.allocator, .system_name, empty_system);
         thumbnail.cached_system_color = self.config.shownColors().system_name_color;
         thumbnail.needs_render = true;
+    }
+
+    /// An evicted system's colour is picked again on return, so thumbnails already there would keep the old one.
+    fn shareSystemColor(self: *ThumbnailSet, source: *const ThumbnailWindow) void {
+        for (self.thumbnails.items) |*other| {
+            if (other.cached_system_color == source.cached_system_color) continue;
+            if (!std.ascii.eqlIgnoreCase(other.system_name, source.system_name)) continue;
+            other.cached_system_color = source.cached_system_color;
+            other.needs_render = true;
+        }
     }
 
     /// Logs and skips failures; returns whether any were created.

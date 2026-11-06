@@ -4,6 +4,7 @@ const win32 = @import("../platform/win32.zig");
 const config_mod = @import("../config.zig");
 const log = @import("../log.zig");
 
+const WindowFilterConfig = config_mod.WindowFilterConfig;
 const slog = log.Scoped("scout");
 
 /// character_name before login or after logout while the client window stays open.
@@ -60,8 +61,6 @@ pub const UpdateResult = struct {
 
 pub const Scout = struct {
     allocator: std.mem.Allocator,
-    /// Borrows the live config.
-    config: *const config_mod.Config,
     windows: std.ArrayList(EveWindow),
     /// Windows the destroy hook saw close; update() drops them, since the hook can run while a tick still borrows `windows`.
     pending_destroyed: std.ArrayList(win32.HWND),
@@ -84,10 +83,9 @@ pub const Scout = struct {
         }
     };
 
-    pub fn init(allocator: std.mem.Allocator, config: *const config_mod.Config) Scout {
+    pub fn init(allocator: std.mem.Allocator) Scout {
         return .{
             .allocator = allocator,
-            .config = config,
             .windows = .empty,
             .pending_destroyed = .empty,
             .pending_closed = .empty,
@@ -201,8 +199,10 @@ pub const Scout = struct {
         return result;
     }
 
-    pub fn scanForEveWindows(self: *Scout) !void {
-        if (!win32.toBool(win32.EnumWindows(enumWindowsCallback, win32.ptrToLparam(self)))) return error.EnumWindowsFailed;
+    /// Tracks the windows `filters` match; borrows `filters` for the call alone.
+    pub fn scanForEveWindows(self: *Scout, filters: []const WindowFilterConfig) !void {
+        var scan: Scan = .{ .scout = self, .filters = filters };
+        if (!win32.toBool(win32.EnumWindows(enumWindowsCallback, win32.ptrToLparam(&scan)))) return error.EnumWindowsFailed;
     }
 
     pub fn getWindows(self: *const Scout) []const EveWindow {
@@ -295,8 +295,8 @@ pub const Scout = struct {
         }
     }
 
-    /// Once per tick; caller deinits the result.
-    pub fn update(self: *Scout, should_scan: bool) UpdateResult {
+    /// Once per tick; caller deinits the result, and `filters` are only read while scanning.
+    pub fn update(self: *Scout, should_scan: bool, filters: []const WindowFilterConfig) UpdateResult {
         self.dropDestroyedWindows();
         if (should_scan) self.dropClosedWindows();
         const closed = self.pending_closed;
@@ -306,7 +306,7 @@ pub const Scout = struct {
 
         // The only place new windows are found; a creation hook would wake us for every window on the desktop.
         if (should_scan) {
-            self.scanForEveWindows() catch |err| {
+            self.scanForEveWindows(filters) catch |err| {
                 slog.warn("Failed to scan for windows, retrying on the next scan: {}", .{err});
             };
             self.refreshTrackedWindowTitles();
@@ -361,35 +361,13 @@ pub const Scout = struct {
         return null;
     }
 
-    /// First filter matching both class and executable; a null executable_path checks the class alone.
-    fn findMatchingFilter(self: *const Scout, class_name: []const u8, executable_path: ?[]const u8) ?*const config_mod.WindowFilterConfig {
-        for (self.config.windowFilters.items) |*filter| {
-            if (!filter.matchesClass(class_name)) continue;
-            if (executable_path) |path| {
-                if (!filter.matchesExecutable(path)) continue;
-            }
-            return filter;
-        }
-        return null;
-    }
-
-    fn currentFilter(self: *const Scout, hwnd: win32.HWND, process_id: win32.DWORD) ?*const config_mod.WindowFilterConfig {
-        var class_name_buf: [MAX_CLASS_NAME_LENGTH:0]u8 = undefined;
-        const class_name = win32.getClassNameBuf(hwnd, &class_name_buf) orelse return null;
-
-        var executable_path_buf: [win32.MAX_PATH:0]u8 = undefined;
-        const executable_path = win32.queryProcessExecutablePath(process_id, &executable_path_buf) orelse return null;
-
-        return self.findMatchingFilter(class_name, executable_path);
-    }
-
     /// Drops windows no filter matches any more, which scanning skips as already tracked, and renames non-EVE windows after a renamed filter; call after a reload, before recreating thumbnails.
-    pub fn pruneNonMatchingWindows(self: *Scout) void {
+    pub fn pruneNonMatchingWindows(self: *Scout, filters: []const WindowFilterConfig) void {
         var i: usize = self.windows.items.len;
         while (i > 0) {
             i -= 1;
             const window = &self.windows.items[i];
-            const filter = self.currentFilter(window.hwnd, window.process_id) orelse {
+            const filter = currentFilter(filters, window.hwnd, window.process_id) orelse {
                 if (!self.reportClosed(window.*)) continue;
                 self.removeWindowAt(i);
                 continue;
@@ -397,6 +375,13 @@ pub const Scout = struct {
             if (!window.is_eve_client and !std.mem.eql(u8, window.character_name, filter.name)) self.renameWindow(window, filter.name);
         }
     }
+};
+
+/// What scanForEveWindows hands its EnumWindows callback.
+const Scan = struct {
+    scout: *Scout,
+    /// Borrowed for the scan.
+    filters: []const WindowFilterConfig,
 };
 
 /// Set by listenForEvents, for the WinEvent callbacks alone.
@@ -438,8 +423,31 @@ fn freeNameChanges(allocator: std.mem.Allocator, list: *std.ArrayList(NameChange
     list.deinit(allocator);
 }
 
+/// First filter matching both class and executable; a null executable_path checks the class alone.
+fn matchingFilter(filters: []const WindowFilterConfig, class_name: []const u8, executable_path: ?[]const u8) ?*const WindowFilterConfig {
+    for (filters) |*filter| {
+        if (!filter.matchesClass(class_name)) continue;
+        if (executable_path) |path| {
+            if (!filter.matchesExecutable(path)) continue;
+        }
+        return filter;
+    }
+    return null;
+}
+
+fn currentFilter(filters: []const WindowFilterConfig, hwnd: win32.HWND, process_id: win32.DWORD) ?*const WindowFilterConfig {
+    var class_name_buf: [MAX_CLASS_NAME_LENGTH:0]u8 = undefined;
+    const class_name = win32.getClassNameBuf(hwnd, &class_name_buf) orelse return null;
+
+    var executable_path_buf: [win32.MAX_PATH:0]u8 = undefined;
+    const executable_path = win32.queryProcessExecutablePath(process_id, &executable_path_buf) orelse return null;
+
+    return matchingFilter(filters, class_name, executable_path);
+}
+
 fn enumWindowsCallback(hwnd: win32.HWND, lParam: win32.LPARAM) callconv(.c) win32.BOOL {
-    const scout: *Scout = win32.lparamToPtr(Scout, lParam);
+    const scan: *const Scan = win32.lparamToPtr(Scan, lParam);
+    const scout = scan.scout;
 
     if (!win32.isWindowVisible(hwnd)) return win32.TRUE;
 
@@ -448,14 +456,14 @@ fn enumWindowsCallback(hwnd: win32.HWND, lParam: win32.LPARAM) callconv(.c) win3
     // Class first, since it's much cheaper than opening the process for its executable path.
     var class_name_buf: [MAX_CLASS_NAME_LENGTH:0]u8 = undefined;
     const class_name = win32.getClassNameBuf(hwnd, &class_name_buf) orelse return win32.TRUE;
-    if (scout.findMatchingFilter(class_name, null) == null) return win32.TRUE;
+    if (matchingFilter(scan.filters, class_name, null) == null) return win32.TRUE;
 
     var process_id: win32.DWORD = 0;
     _ = win32.GetWindowThreadProcessId(hwnd, &process_id);
 
     var executable_path_buf: [win32.MAX_PATH:0]u8 = undefined;
     const executable_path = win32.queryProcessExecutablePath(process_id, &executable_path_buf) orelse return win32.TRUE;
-    const matching_filter = scout.findMatchingFilter(class_name, executable_path) orelse return win32.TRUE;
+    const matching_filter = matchingFilter(scan.filters, class_name, executable_path) orelse return win32.TRUE;
 
     var title_buf: [MAX_TITLE_LENGTH]u8 = undefined;
     const title = win32.getWindowTitleBuf(hwnd, &title_buf) catch |err| switch (err) {

@@ -9,13 +9,14 @@ const host = @import("../host.zig");
 const style = @import("../style.zig");
 const widgets = @import("../widgets.zig");
 const window_picker = @import("../window_picker.zig");
+const roster = @import("../roster.zig");
+const selection = @import("../selection.zig");
 const chatlog = @import("chatlog.zig");
 const lang = @import("../../../lang/lang.zig");
 const log = @import("../../../log.zig");
 
 const Rect = ui.component.Rect;
 const Text = ui.component.Text;
-const Button = ui.component.Button;
 const ProfileRef = session.Ref(config.Config);
 const FilterRef = session.Ref(config.WindowFilterConfig);
 const slog = log.Scoped("dialog_knots");
@@ -24,7 +25,7 @@ const NEW_FILTER_NAME = "New Filter";
 const PROTOCOL_DOCS_URL = "https://github.com/mrmjstc/eve-maj-preview/blob/main/docs/CONFIGURATION.md#command-line-and-protocol";
 
 var g_allocator: std.mem.Allocator = undefined;
-var g_selected_index: usize = 0;
+var g_selected: selection.Selection = .{};
 /// The Window Filters switch isn't saved; it starts on whenever the profile has filters.
 var g_are_filters_enabled: ?bool = null;
 var g_picker: ?window_picker.Picker = null;
@@ -37,7 +38,7 @@ pub fn init(allocator: std.mem.Allocator) void {
 pub fn reset() void {
     window_picker.close(&g_picker);
     g_are_filters_enabled = null;
-    g_selected_index = 0;
+    g_selected = .{};
 }
 
 pub fn show(context: *ui.Frame) !void {
@@ -123,13 +124,13 @@ fn filterList(context: *ui.Frame, profile: ProfileRef) !void {
     for (filters, 0..) |*filter, index| {
         if (isBuiltIn(filter)) continue;
         if (first_editable == null) first_editable = index;
-        if (index == g_selected_index) is_selected_editable = true;
+        if (index == g_selected.index) is_selected_editable = true;
     }
     const first = first_editable orelse {
         if (try widgets.emptyListRow(context, .src(@src()), "No window filters yet. Add one to show another app's windows as thumbnails.", "Add Window Filter")) addFilter(profile);
         return;
     };
-    if (!is_selected_editable) g_selected_index = first;
+    if (!is_selected_editable) g_selected.index = first;
     const master_detail = Rect{ .key = .src(@src()), .style = &style.master_detail };
     _ = try master_detail.open(context);
     // A fixed height, like System Colors', so Add sits at the bottom as on every other list.
@@ -138,31 +139,18 @@ fn filterList(context: *ui.Frame, profile: ProfileRef) !void {
     const arena = context.arena();
     for (filters, 0..) |*filter, index| {
         if (isBuiltIn(filter)) continue;
-        const is_selected = index == g_selected_index;
-        const row = Button{ .key = ui.Key.str("knots.filter.row").indexed(index), .style = if (is_selected) &style.roster_row_selected else &style.roster_row };
-        if ((try widgets.openRosterRow(context, row)).clicked and !is_selected) {
-            g_selected_index = index;
-            context.requestRedraw();
-        }
+        const row = try roster.Row.open(context, ui.Key.str("knots.filter.row").indexed(index), index == g_selected.index, null);
+        if (row.is_picked) g_selected.index = index;
         const name = if (filter.name.len > 0) filter.name else try lang.format(arena, "New Filter {n}", .{ .n = index + 1 });
-        try context.e(Text{
-            .selectable = false,
-            .key = ui.Key.str("knots.filter.name").indexed(index),
-            .content = name,
-            .style = if (is_selected) &style.roster_name_selected else &style.roster_name,
-        });
-        const badge = if (filter.enabled) "" else lang.text("Disabled");
-        if (badge.len > 0) try context.e(Text{ .selectable = false, .key = ui.Key.str("knots.filter.badge").indexed(index), .content = badge, .style = &style.roster_badge });
-        try widgets.fitRosterRow(context, name, 0, badge);
-        try row.close(context);
+        try row.close(context, name, 0, .{ .text = if (filter.enabled) "" else lang.text("Disabled") });
     }
     if (try list.close(context, .{ .add_label = "Add Window Filter" }) == .add) addFilter(profile);
-    try filterDetail(context, profile, g_selected_index);
+    try filterDetail(context, profile, g_selected.index);
     try master_detail.close(context);
 }
 
 fn addFilter(profile: ProfileRef) void {
-    if (profile.append("windowFilters", .{ .name = lang.text(NEW_FILTER_NAME), .enabled = true })) |added| g_selected_index = added.index;
+    if (profile.append("windowFilters", .{ .name = lang.text(NEW_FILTER_NAME), .enabled = true })) |added| g_selected.index = added.index;
 }
 
 fn filterDetail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
@@ -170,12 +158,12 @@ fn filterDetail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
     const stack = Rect{ .key = .src(@src()), .style = &style.detail_fit };
     _ = try stack.open(context);
 
-    const header = try widgets.openDetailHeader(context, .src(@src()));
+    const header = try widgets.openDetailHeader(context, .src(@src()), null);
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = lang.text("Filter Name"), .style = &style.inline_label });
     const name_before = try context.arena().dupe(u8, filter.get("name"));
     try bind.textBox(context, filter, "name", "e.g., EVE Online");
     const name_after = filter.get("name");
-    const removed = try widgets.confirmButton(context, ui.Key.str("knots.filter.remove").indexed(index), "Remove", "Confirm", &style.plain_button, &style.confirm_button);
+    const removed = try widgets.removeButton(context, ui.Key.str("knots.filter.remove").indexed(index));
     try header.close(context);
     if (!std.mem.eql(u8, name_before, name_after)) carryRename(profile, std.mem.trim(u8, name_before, " "), std.mem.trim(u8, name_after, " "));
 
@@ -249,6 +237,6 @@ fn removeFilter(profile: ProfileRef, index: usize) void {
         if (characterIndex(profile, name)) |entry| profile.remove("characters", entry);
     }
     profile.remove("windowFilters", index);
-    if (g_selected_index >= index) g_selected_index -|= 1;
+    if (g_selected.index >= index) g_selected.index -|= 1;
     window_picker.close(&g_picker);
 }

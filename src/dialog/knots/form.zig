@@ -9,7 +9,6 @@ const widgets = @import("widgets.zig");
 const glyphs = @import("glyphs.zig");
 const import_dialog = @import("import_dialog.zig");
 const update_notice = @import("update_notice.zig");
-const barrage = @import("barrage.zig");
 const search = @import("search.zig");
 const hotkey = @import("hotkey.zig");
 const header = @import("header.zig");
@@ -233,7 +232,6 @@ pub fn frame(_: *knots.View, context: *ui.Frame) !void {
     try footer(context);
     try import_dialog.show(context);
     try update_notice.show(context);
-    try barrage.show(context);
     try unsavedPrompt(context);
     // Last, so it opens over the Import dialog that queued its switch.
     try switchPrompt(context);
@@ -241,6 +239,7 @@ pub fn frame(_: *knots.View, context: *ui.Frame) !void {
     if (session.takeEdited()) context.requestRedraw();
 
     try root.close(context);
+    widgets.endFrame();
 }
 
 fn showTab(context: *ui.Frame, tab: Tab) !void {

@@ -12,7 +12,7 @@ pub const CAPACITY = 64;
 /// So an aging pin redraws its thumbnail now and then, not every tick.
 const STEP_PERCENT = 5;
 
-/// What to mark, and over how long a new pin's halo shrinks.
+/// What to mark, and how long a pin lasts, its halo shrinking all the while.
 pub const IntelView = struct {
     /// Borrowed for the call.
     pins: *const IntelPins,
@@ -34,8 +34,8 @@ pub const Connection = struct {
     fn markIntel(self: *Connection, intel: ?IntelView, now_ms: u64) bool {
         var marked: Connection = .{ .system = self.system, .jumps = self.jumps };
         if (intel) |view| {
-            if (view.pins.find(self.system, now_ms)) |pin| {
-                marked.intel_freshness_percent = stepUp(pin.freshnessPercent(now_ms));
+            if (view.pins.find(self.system, view.shrink_ms, now_ms)) |pin| {
+                marked.intel_freshness_percent = stepUp(pin.freshnessPercent(view.shrink_ms, now_ms));
                 marked.intel_shrink_percent = shrinkPercent(now_ms -| pin.seen_ms, view.shrink_ms);
                 marked.is_clear = pin.is_clear;
             }
@@ -211,11 +211,9 @@ test "refresh marks pinned systems, and changes only as they age a step" {
 
     try testing.expect(!connections.refresh(jita, 2, testView(&pins), 1500));
     try testing.expect(connections.refresh(jita, 2, testView(&pins), 1000 + TEST_SHRINK_MS / 2));
-    try testing.expectEqual(@as(u8, 50), (try connectionTo(&connections, "Perimeter")).intel_shrink_percent);
-    try testing.expect(connections.refresh(jita, 2, testView(&pins), 1000 + intel_pins.LIFETIME_MS / 2));
     const aged = try connectionTo(&connections, "Perimeter");
     try testing.expectEqual(@as(u8, 50), aged.intel_freshness_percent);
-    try testing.expectEqual(@as(u8, 100), aged.intel_shrink_percent);
+    try testing.expectEqual(@as(u8, 50), aged.intel_shrink_percent);
 }
 
 test "refresh shows a pin going clear and aging out" {
@@ -225,11 +223,11 @@ test "refresh shows a pin going clear and aging out" {
     pins.add(jita, "hostile", 1000);
     _ = connections.refresh(jita, 1, testView(&pins), 1000);
 
-    pins.markClear(jita, "clr", 2000);
+    pins.markClear(jita, "clr", TEST_SHRINK_MS, 2000);
     try testing.expect(connections.refresh(jita, 1, testView(&pins), 2000));
     try testing.expect(connections.slice()[0].is_clear);
 
-    try testing.expect(connections.refresh(jita, 1, testView(&pins), 2000 + intel_pins.LIFETIME_MS));
+    try testing.expect(connections.refresh(jita, 1, testView(&pins), 2000 + TEST_SHRINK_MS));
     try testing.expectEqual(@as(u8, 0), connections.slice()[0].intel_freshness_percent);
     try testing.expect(!connections.slice()[0].is_clear);
 }

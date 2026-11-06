@@ -12,7 +12,6 @@ const text_overlays = @import("text_overlays.zig");
 const system_colors = @import("system_colors.zig");
 const log = @import("../../../log.zig");
 
-const Text = ui.component.Text;
 const ThumbnailRef = session.Ref(config.ThumbnailConfig);
 const DisplayRef = session.Ref(config.DisplayConfig);
 const slog = log.Scoped("dialog_knots");
@@ -65,7 +64,7 @@ pub fn show(context: *ui.Frame) !void {
         try borders(context, thumbnail);
         try visibility(context, thumbnail);
     }
-    if (view_mode.showsClientList()) try client_list.show(context, display);
+    if (view_mode.showsClientList()) try client_list.show(context, session.profile().child("listView"));
     if (view_mode.showsThumbnails() or view_mode.showsClientList()) try system_colors.show(context);
 }
 
@@ -86,9 +85,7 @@ fn dimensions(context: *ui.Frame, thumbnail: ThumbnailRef) !void {
         // Read back, since validation may have clamped either side.
         g_slider_shape = .{ .width = thumbnail.get("width"), .height = thumbnail.get("height"), .ratio = ratio };
     }
-    try bind.unitNumberBox(context, thumbnail, "width", "px", .{});
-    try context.e(Text{ .selectable = false, .key = .str("knots.thumbnails.size.x"), .content = "\u{00D7}", .style = &style.muted_text });
-    try bind.unitNumberBox(context, thumbnail, "height", "px", .{});
+    try bind.sizeBoxes(context, thumbnail, "width", "height");
     try row.close(context);
     try widgets.hintText(context, .src(@src()), "The slider keeps the shape; type in the boxes for any size.");
     try section.close(context);

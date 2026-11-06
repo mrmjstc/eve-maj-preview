@@ -11,7 +11,7 @@ const MAX_DISTINCT_CANDIDATES = DISTINCT_HUE_STEPS * DISTINCT_LIGHTNESS.len * DI
 const MAX_DISTINCT_TAKEN = 128;
 const DISTINCT_PALETTE = buildDistinctPalette();
 
-const Oklab = struct { l: f32, a: f32, b: f32 };
+pub const Oklab = struct { l: f32, a: f32, b: f32 };
 
 const Candidate = struct { rgb: u32, lab: Oklab };
 
@@ -45,6 +45,14 @@ pub const AutoColors = struct {
         const owned_name = try allocator.dupe(u8, name);
         errdefer allocator.free(owned_name);
         try self.entries.append(allocator, .{ .name = owned_name, .color = color });
+    }
+
+    /// Leaves the recency order alone.
+    pub fn existingColor(self: *const AutoColors, name: []const u8) ?u32 {
+        for (self.entries.items) |entry| {
+            if (std.ascii.eqlIgnoreCase(entry.name, name)) return entry.color;
+        }
+        return null;
     }
 
     /// The name's existing color, or a new one: the palette color farthest from `avoid` (at most `MAX_AVOIDED` used) and every entry already assigned.
@@ -122,6 +130,47 @@ pub fn inkFor(background: u32) u32 {
     return if (299 * r + 587 * g + 114 * b > 550 * 255) 0xFF1A1408 else 0xFFF5F0E6;
 }
 
+/// `rgb` is 0xRRGGBB; an alpha byte above it is ignored.
+pub fn rgbToOklab(rgb: u32) Oklab {
+    const r = srgbByteToLinear(rgb >> 16);
+    const g = srgbByteToLinear(rgb >> 8);
+    const b = srgbByteToLinear(rgb);
+
+    const l = std.math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+    const m = std.math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+    const s = std.math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+
+    return .{
+        .l = 0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+        .a = 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+        .b = 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s,
+    };
+}
+
+/// Null when the color falls outside the sRGB gamut.
+pub fn oklchToRgb(lightness: f32, chroma: f32, hue_degrees: f32) ?u32 {
+    const radians = hue_degrees * std.math.pi / 180.0;
+    const a = chroma * @cos(radians);
+    const b = chroma * @sin(radians);
+
+    const l_ = lightness + 0.3963377774 * a + 0.2158037573 * b;
+    const m_ = lightness - 0.1055613458 * a - 0.0638541728 * b;
+    const s_ = lightness - 0.0894841775 * a - 1.2914855480 * b;
+    const l = l_ * l_ * l_;
+    const m = m_ * m_ * m_;
+    const s = s_ * s_ * s_;
+
+    const red = 4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s;
+    const green = -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s;
+    const blue = -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s;
+
+    const tolerance = 0.002;
+    for ([_]f32{ red, green, blue }) |channel| {
+        if (channel < -tolerance or channel > 1.0 + tolerance) return null;
+    }
+    return (linearToSrgbByte(red) << 16) | (linearToSrgbByte(green) << 8) | linearToSrgbByte(blue);
+}
+
 /// The palette colour (0xRRGGBB) farthest in OKLab from everything in `taken`; `seed_string` picks the start and breaks ties, so the result is deterministic.
 fn pickDistinctColor(seed_string: []const u8, taken: []const u32) u32 {
     const candidates = DISTINCT_PALETTE.candidates[0..DISTINCT_PALETTE.count];
@@ -166,61 +215,21 @@ fn buildDistinctPalette() DistinctPalette {
 }
 
 fn srgbByteToLinear(byte: u32) f32 {
-    const c = @as(f32, @floatFromInt(byte & 0xFF)) / 255.0;
-    return if (c <= 0.04045) c / 12.92 else std.math.pow(f32, (c + 0.055) / 1.055, 2.4);
+    const encoded = @as(f32, @floatFromInt(byte & 0xFF)) / 255.0;
+    return if (encoded <= 0.04045) encoded / 12.92 else std.math.pow(f32, (encoded + 0.055) / 1.055, 2.4);
 }
 
 fn linearToSrgbByte(linear: f32) u32 {
-    const c = std.math.clamp(linear, 0.0, 1.0);
-    const encoded = if (c <= 0.0031308) c * 12.92 else 1.055 * std.math.pow(f32, c, 1.0 / 2.4) - 0.055;
+    const clamped = std.math.clamp(linear, 0.0, 1.0);
+    const encoded = if (clamped <= 0.0031308) clamped * 12.92 else 1.055 * std.math.pow(f32, clamped, 1.0 / 2.4) - 0.055;
     return @intFromFloat(@round(encoded * 255.0));
 }
 
-fn rgbToOklab(rgb: u32) Oklab {
-    const r = srgbByteToLinear(rgb >> 16);
-    const g = srgbByteToLinear(rgb >> 8);
-    const b = srgbByteToLinear(rgb);
-
-    const l = std.math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
-    const m = std.math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
-    const s = std.math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
-
-    return .{
-        .l = 0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
-        .a = 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
-        .b = 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s,
-    };
-}
-
-/// Null when the color falls outside the sRGB gamut.
-fn oklchToRgb(lightness: f32, chroma: f32, hue_degrees: f32) ?u32 {
-    const radians = hue_degrees * std.math.pi / 180.0;
-    const a = chroma * @cos(radians);
-    const b = chroma * @sin(radians);
-
-    const l_ = lightness + 0.3963377774 * a + 0.2158037573 * b;
-    const m_ = lightness - 0.1055613458 * a - 0.0638541728 * b;
-    const s_ = lightness - 0.0894841775 * a - 1.2914855480 * b;
-    const l = l_ * l_ * l_;
-    const m = m_ * m_ * m_;
-    const s = s_ * s_ * s_;
-
-    const red = 4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s;
-    const green = -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s;
-    const blue = -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s;
-
-    const tolerance = 0.002;
-    for ([_]f32{ red, green, blue }) |channel| {
-        if (channel < -tolerance or channel > 1.0 + tolerance) return null;
-    }
-    return (linearToSrgbByte(red) << 16) | (linearToSrgbByte(green) << 8) | linearToSrgbByte(blue);
-}
-
 fn oklabDistance(x: Oklab, y: Oklab) f32 {
-    const dl = x.l - y.l;
-    const da = x.a - y.a;
-    const db = x.b - y.b;
-    return @sqrt(dl * dl + da * da + db * db);
+    const delta_l = x.l - y.l;
+    const delta_a = x.a - y.a;
+    const delta_b = x.b - y.b;
+    return @sqrt(delta_l * delta_l + delta_a * delta_a + delta_b * delta_b);
 }
 
 const testing = std.testing;
@@ -289,6 +298,19 @@ test "AutoColors.put restores a color without marking the store dirty" {
     try colors.put(testing.allocator, "Some Pilot", 0xFF123456);
     try testing.expect(!colors.is_dirty);
     try testing.expectEqual(@as(u32, 0xFF123456), colors.colorFor(testing.allocator, "some pilot", &.{}));
+}
+
+test "AutoColors.existingColor neither assigns a color nor reorders" {
+    var colors: AutoColors = .{};
+    defer colors.deinit(testing.allocator);
+
+    try colors.put(testing.allocator, "Older Pilot", 0xFF123456);
+    try colors.put(testing.allocator, "Newer Pilot", 0xFF654321);
+    try testing.expectEqual(@as(?u32, 0xFF123456), colors.existingColor("older pilot"));
+    try testing.expectEqual(@as(?u32, null), colors.existingColor("Unseen Pilot"));
+    try testing.expectEqual(@as(usize, 2), colors.entries.items.len);
+    try testing.expectEqualStrings("Older Pilot", colors.entries.items[0].name);
+    try testing.expect(!colors.is_dirty);
 }
 
 test "AutoColors evicts the least recently seen name past MAX_ENTRIES" {

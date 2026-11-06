@@ -1,7 +1,6 @@
 //! The Intel Panel's own window, for when it's detached from the Map Panel, which otherwise draws the same rows in a sidebar.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
-const gdi_overlay = @import("../platform/gdi_overlay.zig");
 const panel_window = @import("../platform/panel_window.zig");
 const config_mod = @import("../config.zig");
 const history = @import("../notifications/history.zig");
@@ -10,8 +9,9 @@ const history_rows = @import("history_rows.zig");
 const list_look = @import("list_look.zig");
 const panel_chrome = @import("panel_chrome.zig");
 const panel_look = @import("panel_look.zig");
-const app = @import("../app.zig");
-const drag = @import("drag.zig");
+const header_panel = @import("header_panel.zig");
+const panel_host = @import("panel_host.zig");
+const panel_lifecycle = @import("panel_lifecycle.zig");
 const pixel_buffer = @import("../util/pixel_buffer.zig");
 const log = @import("../log.zig");
 
@@ -21,66 +21,57 @@ const slog = log.Scoped("intel_panel");
 const HEADER_TEXT = "Intel";
 const INTEL_PANEL_WINDOW_CLASS = "EVE_INTEL_PANEL_CLASS";
 
+const Class = header_panel.HeaderPanel(IntelPanelWindow, INTEL_PANEL_WINDOW_CLASS);
+
+/// What the Intel Panel's window borrows from App.
+pub const Links = struct {
+    host: panel_host.Host,
+    /// The reports it lists, which a row click looks its system up in; outlives the panel.
+    intel_history: *const history.NotificationHistory,
+};
+
 /// Owns whether the Intel Panel shows: inside the map it shows with the map, and alone it has this window and its own settings.
 pub const IntelPanel = struct {
     window: ?IntelPanelWindow = null,
     visibility: panel_look.Visibility = .{},
-    /// Last sync's intelPanelAttached, to catch the panel leaving the map.
+    /// Last sync's intelPanel.attached, to catch the panel leaving the map.
     was_attached: bool = false,
+    /// Null until start.
+    links: ?Links = null,
 
-    pub fn init(allocator: std.mem.Allocator, store: *config_mod.ProfileStore, instance: win32.HINSTANCE) IntelPanel {
-        var panel: IntelPanel = .{ .was_attached = store.live.display.intelPanelAttached };
-        if (wantsWindow(&store.live)) panel.createWindow(allocator, store, instance);
-        return panel;
+    /// Creates the window if the context's profile shows it alone; in place, as the window is linked to where it's stored.
+    pub fn start(self: *IntelPanel, context: panel_host.Context, links: Links) void {
+        self.links = links;
+        self.was_attached = context.store.live.intelPanel.attached;
+        panel_lifecycle.sync(self, context);
     }
 
     pub fn deinit(self: *IntelPanel) void {
-        if (self.window) |*window| window.deinit();
-        self.window = null;
+        self.destroyWindow();
     }
 
     /// `is_map_shown` decides it while the panel is inside the map.
     pub fn isVisible(self: *const IntelPanel, config: *const config_mod.Config, presence: panel_look.Presence, is_map_shown: bool) bool {
-        const display = &config.display;
-        if (!display.showIntelPanel) return false;
-        if (display.intelPanelAttached) return is_map_shown;
-        return self.window != null and self.visibility.allows(.{
-            .hides_without_characters = display.hideIntelPanelWhenNoCharacters,
-            .any_character_logged_in = presence.any_character_logged_in,
-            .hides_without_focus = display.hideIntelPanelWhenNoEveFocus,
-            .hide_delay_ms = display.intelPanelHideDebounceMs,
-            .now_ms = win32.Ticks.now().ms,
-        });
+        const intel_settings = &config.intelPanel;
+        if (!intel_settings.show) return false;
+        if (intel_settings.attached) return is_map_shown;
+        return self.window != null and self.visibility.allowsFor(intel_settings, presence.any_character_logged_in, win32.Ticks.now().ms);
     }
 
     /// Keyed on isVisible(), not the window: a visible panel turns off, and a hidden one is forced on.
-    pub fn toggle(self: *IntelPanel, allocator: std.mem.Allocator, store: *config_mod.ProfileStore, instance: win32.HINSTANCE, presence: panel_look.Presence, is_map_shown: bool) void {
-        if (self.isVisible(&store.live, presence, is_map_shown)) {
-            self.deinit();
-            store.update(.{ .display = .{ .showIntelPanel = false } });
-            self.visibility.release();
-            return;
-        }
-        store.update(.{ .display = .{ .showIntelPanel = true } });
-        self.visibility.force();
-        self.sync(allocator, store, instance);
+    pub fn toggle(self: *IntelPanel, context: panel_host.Context, presence: panel_look.Presence, is_map_shown: bool) void {
+        panel_lifecycle.toggle(self, context, self.isVisible(&context.store.live, presence, is_map_shown));
     }
 
     /// Matches the window to the settings, for a change made in the config dialog or by a new profile.
-    pub fn sync(self: *IntelPanel, allocator: std.mem.Allocator, store: *config_mod.ProfileStore, instance: win32.HINSTANCE) void {
-        const display = &store.live.display;
-        const has_left_map = self.was_attached and !display.intelPanelAttached;
-        self.was_attached = display.intelPanelAttached;
-        const is_wanted = wantsWindow(&store.live);
-        if (!is_wanted and self.window != null) {
-            self.deinit();
-            self.visibility.release();
-        } else if (is_wanted and self.window == null) {
-            self.createWindow(allocator, store, instance);
-            // Its auto-hide never applied inside the map, so detaching mustn't make it vanish.
-            if (has_left_map) self.visibility.force();
-        }
-        if (self.window) |*window| window.panel.followPosition(display.intelPanelX, display.intelPanelY);
+    pub fn sync(self: *IntelPanel, context: panel_host.Context) void {
+        const intel_settings = &context.store.live.intelPanel;
+        const has_left_map = self.was_attached and !intel_settings.attached;
+        self.was_attached = intel_settings.attached;
+        panel_lifecycle.sync(self, context);
+        // Its auto-hide never applied inside the map, so detaching mustn't make it vanish.
+        if (has_left_map and self.window != null) self.visibility.force();
+        if (self.window) |*window| window.panel.followPosition(intel_settings.x, intel_settings.y);
     }
 
     /// Per tick: renders the window from `notifications`, or hides it.
@@ -96,11 +87,29 @@ pub const IntelPanel = struct {
         };
     }
 
-    fn createWindow(self: *IntelPanel, allocator: std.mem.Allocator, store: *config_mod.ProfileStore, instance: win32.HINSTANCE) void {
-        self.window = IntelPanelWindow.init(allocator, store, instance) catch |err| {
-            slog.err("Failed to create Intel Panel window: {}", .{err});
+    /// For panel_lifecycle: only while it's out of the map.
+    pub fn wantsWindow(_: *const IntelPanel, config: *const config_mod.Config) bool {
+        return config.intelPanel.show and !config.intelPanel.attached;
+    }
+
+    /// For panel_lifecycle.
+    pub fn setShown(_: *const IntelPanel, store: *config_mod.ProfileStore, is_shown: bool) void {
+        store.update(.{ .intelPanel = .{ .show = is_shown } });
+    }
+
+    /// For panel_lifecycle.
+    pub fn createWindow(self: *IntelPanel, context: panel_host.Context) void {
+        const links = self.links orelse {
+            slog.err("Failed to create Intel Panel window: the panel wasn't started", .{});
             return;
         };
+        panel_lifecycle.install(IntelPanelWindow, &self.window, IntelPanelWindow.init(context, links), null, "Intel Panel");
+    }
+
+    /// For panel_lifecycle.
+    pub fn destroyWindow(self: *IntelPanel) void {
+        if (self.window) |*window| window.deinit();
+        self.window = null;
     }
 };
 
@@ -110,19 +119,17 @@ pub const IntelPanelWindow = struct {
     store: *config_mod.ProfileStore,
     /// Borrowed; outlives the window.
     config: *const config_mod.Config,
+    host: panel_host.Host,
+    /// Borrowed; outlives the window.
+    intel_history: *const history.NotificationHistory,
     rows: [history.CAPACITY]history_rows.Row = undefined,
     row_count: usize = 0,
 
-    pub fn init(allocator: std.mem.Allocator, store: *config_mod.ProfileStore, instance: win32.HINSTANCE) !IntelPanelWindow {
-        const display = &store.live.display;
-        try registerWindowClass(instance);
-        const panel = try PanelWindow.init(allocator, instance, INTEL_PANEL_WINDOW_CLASS, "EVE Intel", .{
-            .left = display.intelPanelX,
-            .top = display.intelPanelY,
-            .right = display.intelPanelX + display.intelPanelWidth,
-            .bottom = display.intelPanelY + display.intelPanelHeight,
-        });
-        return .{ .panel = panel, .store = store, .config = &store.live };
+    pub fn init(context: panel_host.Context, links: Links) !IntelPanelWindow {
+        const intel_settings = &context.store.live.intelPanel;
+        try Class.register(context.instance);
+        const panel = try PanelWindow.init(context.allocator, context.instance, INTEL_PANEL_WINDOW_CLASS, "EVE Intel", panel_lifecycle.windowRect(intel_settings), intel_settings.alwaysOnTop);
+        return .{ .panel = panel, .store = context.store, .config = &context.store.live, .host = links.host, .intel_history = links.intel_history };
     }
 
     pub fn deinit(self: *IntelPanelWindow) void {
@@ -134,35 +141,50 @@ pub const IntelPanelWindow = struct {
     }
 
     fn panelSizes(self: *const IntelPanelWindow) history_look.Metrics {
-        const display = &self.config.display;
-        return .{ .header_height = panel_look.headerHeight(display), .row_height = history_rows.intelRowHeight(display), .footer_height = 0 };
+        const history_settings = &self.config.historyPanel;
+        return .{ .header_height = panel_look.headerHeight(history_settings), .row_height = history_rows.intelRowHeight(history_settings), .footer_height = 0 };
     }
 
-    fn saveWindowPosition(self: *const IntelPanelWindow) void {
-        const display = &self.config.display;
-        if (!display.rememberIntelPanelPosition) return;
+    pub fn headerHeight(self: *const IntelPanelWindow) i32 {
+        return self.panelSizes().header_height;
+    }
+
+    pub fn saveWindowPosition(self: *const IntelPanelWindow) void {
+        const intel_settings = &self.config.intelPanel;
+        if (!intel_settings.rememberPosition) return;
         const top_left = self.panel.topLeft() orelse return;
-        self.store.update(.{ .display = .{ .intelPanelX = top_left.x, .intelPanelY = top_left.y } });
+        self.store.update(.{ .intelPanel = .{ .x = top_left.x, .y = top_left.y } });
+    }
+
+    pub fn onLeftClick(self: *IntelPanelWindow, x: i32, y: i32) void {
+        _ = x;
+        const sizes = self.panelSizes();
+        const row_index = panel_look.rowAt(y, sizes.header_height, sizes.row_height, self.row_count) orelse return;
+        const entry = self.intel_history.entryFromNewest(self.rows[row_index].first_index) orelse return;
+        if (entry.system) |system| self.host.run(.{ .show_system = system });
     }
 
     fn computeRenderSignature(self: *const IntelPanelWindow, notifications: *const history.NotificationHistory, entries: []const history.Entry) u64 {
-        const display = &self.config.display;
+        const intel_settings = &self.config.intelPanel;
+        const history_settings = &self.config.historyPanel;
         var hasher = std.hash.Wyhash.init(0);
-        hasher.update(std.mem.asBytes(&display.intelPanelWidth));
-        hasher.update(std.mem.asBytes(&display.intelPanelHeight));
-        hasher.update(std.mem.asBytes(&display.intelPanelOpacity));
-        panel_chrome.hashFonts(&hasher, display);
-        history_rows.hashIntel(&hasher, notifications, entries, display, &self.config.thumbnail.notifications);
+        hasher.update(std.mem.asBytes(&intel_settings.width));
+        hasher.update(std.mem.asBytes(&intel_settings.height));
+        hasher.update(std.mem.asBytes(&intel_settings.opacity));
+        panel_chrome.hashFonts(&hasher, history_settings);
+        history_rows.hashIntel(&hasher, notifications, entries, history_settings, intel_settings, &self.config.thumbnail.notifications);
         return hasher.final();
     }
 
     /// Called every tick; redraws only when the render signature changed.
     pub fn render(self: *IntelPanelWindow, notifications: *const history.NotificationHistory) !void {
-        const display = &self.config.display;
-        try panel_chrome.ensureFonts(&self.panel, display);
+        const intel_settings = &self.config.intelPanel;
+        const history_settings = &self.config.historyPanel;
+        self.panel.followTopmost(intel_settings.alwaysOnTop);
+        try panel_chrome.ensureFonts(&self.panel, history_settings);
 
-        const panel_width: i32 = @max(1, display.intelPanelWidth);
-        const panel_height: i32 = @max(1, display.intelPanelHeight);
+        const panel_width: i32 = @max(1, intel_settings.width);
+        const panel_height: i32 = @max(1, intel_settings.height);
         var entry_buf: [history.CAPACITY]history.Entry = undefined;
         const entries = notifications.snapshot(&entry_buf);
         const signature = self.computeRenderSignature(notifications, entries);
@@ -170,7 +192,7 @@ pub const IntelPanelWindow = struct {
 
         const sizes = self.panelSizes();
         const capacity = history_look.rowsThatFit(panel_height, sizes, history.CAPACITY);
-        self.row_count = history_rows.build(&self.rows, entries, capacity, history_rows.buildOptions(display, null));
+        self.row_count = history_rows.build(&self.rows, entries, capacity, history_rows.buildOptions(history_settings, null));
 
         const bitmap = try self.panel.beginFrame(panel_width, panel_height);
         const dc = bitmap.mem_dc;
@@ -182,54 +204,11 @@ pub const IntelPanelWindow = struct {
         defer panel_chrome.restoreFont(dc, old_font);
         if (panel_chrome.textOf(&self.panel, dc)) |text| {
             panel_chrome.drawHeader(dc, text, sizes.header_height, panel_width, HEADER_TEXT, null);
-            const area = history_rows.intelArea(display, 0, sizes.header_height, panel_width);
+            const area = history_rows.intelArea(history_settings, intel_settings, 0, sizes.header_height, panel_width);
             history_rows.drawIntel(dc, text, self.rows[0..self.row_count], entries, &self.config.thumbnail.notifications, area);
         }
 
         panel_chrome.finish(canvas);
-        self.panel.present(display.intelPanelOpacity, signature);
+        self.panel.present(intel_settings.opacity, signature);
     }
 };
-
-var g_is_class_registered: bool = false;
-
-fn wantsWindow(config: *const config_mod.Config) bool {
-    return config.display.showIntelPanel and !config.display.intelPanelAttached;
-}
-
-fn registerWindowClass(instance: win32.HINSTANCE) !void {
-    if (g_is_class_registered) return;
-    try gdi_overlay.registerWindowClass(instance, intelPanelWindowProc, INTEL_PANEL_WINDOW_CLASS, null);
-    g_is_class_registered = true;
-}
-
-fn intelWindow() ?*IntelPanelWindow {
-    const running = app.g_app orelse return null;
-    return if (running.notifications.intel_panel.window) |*window| window else null;
-}
-
-fn intelPanelWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
-    // The notification center only holds the panel once its window exists, so creation's messages go without a header.
-    const header_height = if (intelWindow()) |window| window.panelSizes().header_height else 0;
-    if (drag.handleSharedMessage(app.currentThumbnailSet(), hwnd, msg, lParam, header_height)) |result| return result;
-    switch (msg) {
-        win32.WM_EXITSIZEMOVE => {
-            if (intelWindow()) |window| window.saveWindowPosition();
-            return 0;
-        },
-        win32.WM_LBUTTONDOWN => {
-            const running = app.g_app orelse return 0;
-            const window = intelWindow() orelse return 0;
-            const sizes = window.panelSizes();
-            const y = win32.lparamY(lParam);
-            if (y < sizes.header_height) return 0;
-
-            const row_index: usize = @intCast(@divTrunc(y - sizes.header_height, sizes.row_height));
-            if (row_index >= window.row_count) return 0;
-            const entry = running.notifications.intel_history.entryFromNewest(window.rows[row_index].first_index) orelse return 0;
-            if (entry.system) |system| running.map_panel.showSystem(system, running.thumbnail_set);
-            return 0;
-        },
-        else => return win32.DefWindowProcA(hwnd, msg, wParam, lParam),
-    }
-}

@@ -3,6 +3,7 @@ const win32 = @import("../platform/win32.zig");
 const config_mod = @import("../config.zig");
 const window = @import("window.zig");
 const overlay = @import("overlay.zig");
+const look = @import("look.zig");
 const font_cache_mod = @import("font_cache.zig");
 const zoom = @import("../layout/zoom.zig");
 const monitors = @import("../layout/monitors.zig");
@@ -78,7 +79,7 @@ pub const HoverZoom = struct {
     }
 
     /// Call after any thumbnail's overlay is redrawn; ignores all but the zoomed one.
-    pub fn renderOverlay(self: *HoverZoom, font_cache: *FontCache, thumbnail: *const ThumbnailWindow, settings: overlay.RenderSettings, config: *const Config) void {
+    pub fn renderOverlay(self: *HoverZoom, font_cache: *FontCache, thumbnail: *const ThumbnailWindow, settings: look.RenderSettings, config: *const Config) void {
         if (self.source_hwnd != thumbnail.source_hwnd) return;
         self.drawOverlay(font_cache, thumbnail, settings, config);
     }
@@ -125,7 +126,7 @@ pub const HoverZoom = struct {
     }
 
     /// Text keeps the thumbnail's font sizes; only the canvas grows.
-    fn drawOverlay(self: *HoverZoom, font_cache: *FontCache, thumbnail: *const ThumbnailWindow, settings: overlay.RenderSettings, config: *const Config) void {
+    fn drawOverlay(self: *HoverZoom, font_cache: *FontCache, thumbnail: *const ThumbnailWindow, settings: look.RenderSettings, config: *const Config) void {
         const windows = self.windows orelse return;
         const width = win32.rectWidth(self.rect);
         const height = win32.rectHeight(self.rect);

@@ -3,14 +3,15 @@ const win32 = @import("../platform/win32.zig");
 const animation = @import("../clients/animation.zig");
 const scout = @import("../clients/scout.zig");
 const config = @import("../config.zig");
+const set = @import("../thumbnail/set.zig");
 const manager_mod = @import("manager.zig");
 const log = @import("../log.zig");
 
 const HotkeyManager = manager_mod.HotkeyManager;
+const ThumbnailSet = set.ThumbnailSet;
 const slog = log.Scoped("hotkeys");
 
-pub fn toggleThumbnailExclusion(manager: *HotkeyManager, source_hwnd: win32.HWND) void {
-    const thumbnail_set = manager.app.thumbnail_set orelse return;
+pub fn toggleThumbnailExclusion(manager: *HotkeyManager, thumbnail_set: *ThumbnailSet, source_hwnd: win32.HWND) void {
     const thumbnail = thumbnail_set.getThumbnailBySourceHwnd(source_hwnd) orelse return;
     const character_name = thumbnail.character_name;
 
@@ -51,13 +52,12 @@ pub fn clearLoggedOutExclusion(manager: *HotkeyManager, character_name: []const 
 }
 
 /// No-op if nothing's hovered.
-pub fn assignHoveredToGroup(manager: *HotkeyManager, group_index: usize) void {
+pub fn assignHoveredToGroup(manager: *HotkeyManager, thumbnail_set: *ThumbnailSet, group_index: usize) void {
     if (group_index >= manager.config.hotkeyGroups.items.len) {
         slog.err("Failed to assign to group: index {} is out of range", .{group_index});
         return;
     }
 
-    const thumbnail_set = manager.app.thumbnail_set orelse return;
     const thumbnail = thumbnail_set.thumbnailUnderCursor() orelse {
         slog.debug("Group {} assign pressed but no thumbnail is under the cursor", .{group_index});
         return;
