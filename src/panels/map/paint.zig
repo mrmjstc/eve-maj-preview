@@ -88,6 +88,8 @@ pub const Measured = struct {
     intel_row_count: *usize,
     /// Borrowed for one render.
     popup: *popup_menu.PopupMenu,
+    /// Borrowed for one render.
+    search_stops: *search.Stops,
 };
 
 /// What's measured once a frame for colouring the map.
@@ -165,7 +167,7 @@ pub const Painter = struct {
                 if (self.stormLegend(scene)) |*storm_legend| legend_top = drawLegend(bitmap, storm_legend, areas, loaded.chrome, legend_top);
                 if (self.incursionLegend(scene)) |*incursion_legend| _ = drawLegend(bitmap, incursion_legend, areas, loaded.chrome, legend_top);
             }
-            self.drawSearchBox(bitmap, loaded.chrome);
+            self.drawSearchBox(bitmap, loaded.chrome, measured.search_stops);
             self.drawTooltip(bitmap, scene, loaded.chrome, now_ms);
             if (sidebar) |box| self.drawIntelRows(dc, loaded.chrome, box, intel_entries, measured);
             self.drawPopup(bitmap, loaded.chrome, measured.popup);
@@ -242,20 +244,47 @@ pub const Painter = struct {
         return buttons;
     }
 
-    /// Filled after the labels it covers, so GDI has to finish them first.
-    fn drawSearchBox(self: *const Painter, bitmap: *const gdi_overlay.OverlayBitmap, text: panel_chrome.Text) void {
+    /// Filled after the labels it covers, so GDI has to finish them first; `stops` gets where the query's gaps were drawn.
+    fn drawSearchBox(self: *const Painter, bitmap: *const gdi_overlay.OverlayBitmap, text: panel_chrome.Text, stops: *search.Stops) void {
         const box = self.areas.search_box;
-        const box_width = box.right - box.left;
         _ = win32.GdiFlush();
         // The cursor tends to stay on the box after the click that opens it.
         look.drawOverlayButton(bitmap.canvas(), box, self.state.hover.kind == .search_box and self.state.search == null);
 
         const dc = bitmap.mem_dc;
         _ = win32.SelectObject(dc, text.name_font);
-        const label: FixedText = if (self.state.search) |*open| .print("{s}_", .{open.query()}) else .print("Search map", .{});
-        const label_color = if (self.state.search != null) list_look.NAME else list_look.MUTED;
         const y = box.top + @divTrunc(box.bottom - box.top - text.name_height, 2);
-        _ = panel_chrome.drawFitted(dc, label.slice(), box.left + panel_look.BUTTON_GAP, y, label_color, box_width - 2 * panel_look.BUTTON_GAP);
+        const left = box.left + panel_look.BUTTON_GAP;
+        const right = box.right - panel_look.BUTTON_GAP;
+        const open = if (self.state.search) |*shown| shown else {
+            _ = panel_chrome.drawFitted(dc, "Search map", left, y, list_look.MUTED, right - left);
+            return;
+        };
+        const query = open.query();
+        var widths: @FieldType(search.Stops, "x_positions") = undefined;
+        for (widths[0 .. query.len + 1], 0..) |*width, i| width.* = panel_chrome.textWidth(dc, query[0..i]);
+        // A query wider than the box scrolls to keep the one-pixel cursor in it.
+        const scroll = @max(0, widths[open.cursor] - (right - left - 1));
+        for (widths[0 .. query.len + 1], stops.x_positions[0 .. query.len + 1]) |width, *stop| stop.* = left + width - scroll;
+        stops.count = query.len + 1;
+
+        // The selection and cursor go on the canvas first, as GDI's text lands on top.
+        const canvas = bitmap.canvas();
+        const height: usize = @intCast(@max(0, text.name_height));
+        const range = open.selection();
+        if (range.start != range.end) {
+            const start = std.math.clamp(stops.x_positions[range.start], left, right);
+            const end = std.math.clamp(stops.x_positions[range.end], left, right);
+            pixel_buffer.fillRect(canvas, @intCast(@max(0, start)), @intCast(@max(0, y)), @intCast(end - start), height, look.SEARCH_SELECTION);
+        }
+        pixel_buffer.fillRect(canvas, @intCast(@max(0, stops.x_positions[open.cursor])), @intCast(@max(0, y)), 1, height, list_look.NAME);
+
+        // Only whole characters, since nothing clips GDI's text to the box.
+        var first: usize = 0;
+        while (first < query.len and stops.x_positions[first] < left) first += 1;
+        var last = first;
+        while (last < query.len and stops.x_positions[last + 1] <= right) last += 1;
+        panel_chrome.drawLine(dc, query[first..last], stops.x_positions[first], y, list_look.NAME);
     }
 
     /// Bubbles coloured by the traffic the map shows, or by security when it shows neither.

@@ -78,6 +78,8 @@ pub const MapState = struct {
     menu: ?menu_mod.Menu = null,
     /// Null unless the search box is open, which gives it the keyboard.
     search: ?search_mod.Search = null,
+    /// From the last render that drew the search open.
+    search_stops: search_mod.Stops = .{},
     /// Where the last render drew the menu or search results, for hit testing.
     popup: popup_menu.PopupMenu = .{},
 

@@ -107,6 +107,8 @@ const AVOID: u32 = 0xFFFFFFFF;
 pub const FOCUS: u32 = 0xFFE8E6E1;
 /// Fills the selected system's disc and name chip, inside a FOCUS border.
 pub const FOCUS_MARK: u32 = 0xFF3A3D45;
+/// Behind the search's selected text.
+pub const SEARCH_SELECTION: u32 = 0xFF34507A;
 /// Magenta, which no security, heat or intel colour comes near.
 pub const RANGE: u32 = 0xFFFF4FD8;
 /// Dims what a jump range doesn't reach, a step below HEAT_NONE's quiet system.

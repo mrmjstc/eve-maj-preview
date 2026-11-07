@@ -419,7 +419,7 @@ pub const MapPanelWindow = struct {
             .panel_height = self.panel.height,
             .allocator = self.panel.allocator,
         };
-        painter.draw(bitmap, scene, fonts, intel_entries, now_ms, .{ .intel_rows = &self.state.intel_rows, .intel_row_count = &self.state.intel_row_count, .popup = &self.state.popup });
+        painter.draw(bitmap, scene, fonts, intel_entries, now_ms, .{ .intel_rows = &self.state.intel_rows, .intel_row_count = &self.state.intel_row_count, .popup = &self.state.popup, .search_stops = &self.state.search_stops });
 
         self.panel.present(map_settings.opacity, signature);
     }

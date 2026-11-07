@@ -199,7 +199,7 @@ The panel's own files in `panels/map/`:
 - `state.zig` (pure, tested): `MapState`, what the map shows and what's under the cursor, hit testing included.
 - `paint.zig`: draws a frame from `MapState` without changing it, handing back only the rows and popup boxes the next hit test needs.
 - `menu.zig` (pure, tested): the right-click menu's rows and what each press asks for.
-- `search.zig` (pure, tested): the search's query and results.
+- `search.zig` (pure, tested): the search's query, its cursor and selection, and its results.
 - `marks.zig` (pure, tested): the clients on the map.
 - `look.zig`: sizes, colours, markers and the panel's `Areas`.
 - `text.zig`: tooltips, legends and titles.

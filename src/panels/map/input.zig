@@ -1,9 +1,11 @@
 //! What the Map Panel does with the mouse and keyboard: hover, pan and zoom, clicks, the right-click menu and the search.
 const std = @import("std");
 const win32 = @import("../../platform/win32.zig");
+const vk = @import("../../platform/virtual_keys.zig");
 const config_mod = @import("../../config.zig");
 const look = @import("look.zig");
 const menu_mod = @import("menu.zig");
+const search = @import("search.zig");
 const state = @import("state.zig");
 const window_mod = @import("window.zig");
 const panel_host = @import("../panel_host.zig");
@@ -49,10 +51,14 @@ pub fn handleMessage(window: *MapPanelWindow, context: Context, msg: win32.UINT,
         win32.WM_MOUSEMOVE => return if (onMouseMove(window, context, win32.lparamX(lParam), win32.lparamY(lParam))) .redraw_paced else .none,
         win32.WM_MOUSELEAVE => onMouseLeave(window),
         win32.WM_LBUTTONDOWN => handleClick(window, context, win32.lparamX(lParam), win32.lparamY(lParam)),
-        win32.WM_LBUTTONUP => endPan(window),
+        win32.WM_LBUTTONUP => {
+            endPan(window);
+            endSelecting(window);
+        },
         win32.WM_CAPTURECHANGED => {
             // A pan ended by Windows rather than the button keeps the view it reached.
             window.state.pan = null;
+            if (window.state.search) |*open| open.is_selecting = false;
             return .none;
         },
         win32.WM_MOUSEWHEEL => return if (onWheel(window, wParam, lParam)) .redraw_paced else .none,
@@ -70,6 +76,7 @@ pub fn handleMessage(window: *MapPanelWindow, context: Context, msg: win32.UINT,
 
 pub fn closeSearch(window: *MapPanelWindow, context: Context, ending: SearchEnding) void {
     if (window.state.search == null) return;
+    endSelecting(window);
     window.state.search = null;
     window.state.popup.clear();
     context.host.run(.resume_hotkeys);
@@ -91,6 +98,12 @@ fn closePopup(window: *MapPanelWindow, context: Context) void {
 fn onMouseMove(window: *MapPanelWindow, context: Context, x: i32, y: i32) bool {
     if (!window.is_tracking_mouse) window.is_tracking_mouse = win32.trackMouseLeave(window.panel.hwnd);
     if (window.state.pan) |*pan| return continuePan(window, pan, x, y);
+    if (window.state.search) |*open| {
+        if (open.is_selecting) {
+            open.placeCursor(window.state.search_stops.indexAt(x), .extend);
+            return true;
+        }
+    }
     const hover = window.state.hitTest(window.currentAreas(), &window.config.historyPanel, x, y);
     if (hover.eql(window.state.hover)) return false;
     window.state.hover = hover;
@@ -164,7 +177,7 @@ fn handleClick(window: *MapPanelWindow, context: Context, x: i32, y: i32) void {
         .popup_row => pressPopupRow(window, context, hit.index),
         .submenu_row => pressSubmenuRow(window, context, hit.index),
         .nested_row => pressCharacterRow(window, context, hit.index),
-        .search_box => openSearch(window, context),
+        .search_box => pressSearchBox(window, context, x),
         .button => pressButton(window, @fromBackingInt(@intCast(hit.index))),
         .region => {
             if (win32.isCtrlPressed()) {
@@ -356,6 +369,22 @@ fn openSearch(window: *MapPanelWindow, context: Context) void {
     _ = win32.SetFocus(window.panel.hwnd);
 }
 
+/// Opens the search, or places its cursor and starts a selection once it's open.
+fn pressSearchBox(window: *MapPanelWindow, context: Context, x: i32) void {
+    const open = if (window.state.search) |*shown| shown else return openSearch(window, context);
+    open.placeCursor(window.state.search_stops.indexAt(x), if (win32.isShiftPressed()) .extend else .move);
+    open.is_selecting = true;
+    // So the drag carries on past the box's edge.
+    _ = win32.SetCapture(window.panel.hwnd);
+}
+
+fn endSelecting(window: *MapPanelWindow) void {
+    const open = if (window.state.search) |*shown| shown else return;
+    if (!open.is_selecting) return;
+    open.is_selecting = false;
+    _ = win32.ReleaseCapture();
+}
+
 /// Shows the hit on the map; a hit list that has since shrunk picks nothing.
 fn pickHit(window: *MapPanelWindow, context: Context, index: usize) void {
     const open = window.state.search orelse return;
@@ -374,11 +403,47 @@ fn onSearchChar(window: *MapPanelWindow, wParam: win32.WPARAM) void {
 
 fn onSearchKey(window: *MapPanelWindow, context: Context, wParam: win32.WPARAM) void {
     const open = if (window.state.search) |*shown| shown else return;
+    const is_ctrl_down = win32.isCtrlPressed();
+    const extent: search.Extent = if (win32.isShiftPressed()) .extend else .move;
     switch (wParam) {
         win32.VK_ESCAPE => closePopup(window, context),
         win32.VK_RETURN => pickHit(window, context, open.picked_index),
         win32.VK_UP => open.pickPrevious(),
         win32.VK_DOWN => open.pickNext(),
+        vk.VK_LEFT => open.move(if (is_ctrl_down) .word_left else .left, extent),
+        vk.VK_RIGHT => open.move(if (is_ctrl_down) .word_right else .right, extent),
+        vk.VK_HOME => open.move(.home, extent),
+        vk.VK_END => open.move(.end, extent),
+        vk.VK_DELETE => _ = open.deleteForward(),
+        // Letter keys' codes are their capitals; WM_CHAR's control characters for these are ignored.
+        'A' => if (is_ctrl_down) open.selectAll(),
+        'C' => if (is_ctrl_down) {
+            _ = copySelection(open);
+        },
+        'X' => if (is_ctrl_down and copySelection(open)) {
+            _ = open.deleteForward();
+        },
+        'V' => if (is_ctrl_down) paste(window, open),
         else => {},
     }
+}
+
+/// Whether there was a selection and it reached the clipboard.
+fn copySelection(open: *const search.Search) bool {
+    const selected = open.selectedText();
+    if (selected.len == 0) return false;
+    if (win32.setClipboardText(selected)) return true;
+    slog.warn("Failed to copy '{s}' from the map's search to the clipboard", .{selected});
+    return false;
+}
+
+fn paste(window: *const MapPanelWindow, open: *search.Search) void {
+    const allocator = window.panel.allocator;
+    const text = win32.getClipboardText(allocator) orelse {
+        slog.debug("The clipboard held no text to paste into the map's search", .{});
+        return;
+    };
+    defer allocator.free(text);
+    // A name copied from chat or a list often ends in a space or line break.
+    _ = open.insert(std.mem.trim(u8, text, " \t\r\n"));
 }
