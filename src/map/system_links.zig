@@ -1,8 +1,9 @@
-//! Where a system can be looked up on the web; no I/O.
+//! Where a system or region can be looked up on the web; no I/O.
 const std = @import("std");
 const evestars = @import("evestars.zig");
 const universe = @import("universe.zig");
 
+const RegionIndex = universe.RegionIndex;
 const SystemIndex = universe.SystemIndex;
 
 /// Fits the longest system name; a test holds the map to it.
@@ -30,6 +31,15 @@ pub fn siteUrl(site: Site, system: SystemIndex) evestars.Text {
     };
 }
 
+pub fn regionUrl(site: Site, region: RegionIndex) evestars.Text {
+    var name_buf: [MAX_NAME_LENGTH]u8 = undefined;
+    return switch (site) {
+        .dotlan => .print("https://evemaps.dotlan.net/map/{s}", .{dotlanName(&name_buf, universe.regionName(region))}),
+        .zkillboard => .print("https://zkillboard.com/region/{d}/", .{universe.regionId(region)}),
+        .eve_stars => .print(evestars.SITE_URL ++ "/{s}", .{eveStarsName(&name_buf, universe.regionName(region))}),
+    };
+}
+
 fn dotlanName(buffer: *[MAX_NAME_LENGTH]u8, name: []const u8) []const u8 {
     const copy = buffer[0..name.len];
     @memcpy(copy, name);
@@ -45,9 +55,12 @@ fn eveStarsName(buffer: *[MAX_NAME_LENGTH]u8, name: []const u8) []const u8 {
 
 const testing = std.testing;
 
-test "every system's name fits the buffer" {
+test "every system's and region's name fits the buffer" {
     for (0..universe.SYSTEM_COUNT) |index| {
         try testing.expect(universe.systemName(@intCast(index)).len <= MAX_NAME_LENGTH);
+    }
+    for (0..universe.REGION_COUNT) |index| {
+        try testing.expect(universe.regionName(@intCast(index)).len <= MAX_NAME_LENGTH);
     }
 }
 
@@ -59,6 +72,13 @@ test "Dotlan swaps a name's spaces for underscores" {
 test "zKillboard goes by the system's id" {
     const url = siteUrl(.zkillboard, universe.findSystem("Jita").?);
     try testing.expectEqualStrings("https://zkillboard.com/system/30000142/", url.slice());
+}
+
+test "a region's links go by its name, or zKillboard's by its id" {
+    const forge = universe.systemInfo(universe.findSystem("Jita").?).region;
+    try testing.expectEqualStrings("https://evemaps.dotlan.net/map/The_Forge", regionUrl(.dotlan, forge).slice());
+    try testing.expectEqualStrings("https://zkillboard.com/region/10000002/", regionUrl(.zkillboard, forge).slice());
+    try testing.expectEqualStrings(evestars.SITE_URL ++ "/the-forge", regionUrl(.eve_stars, forge).slice());
 }
 
 test "Eve Stars goes by the system's name, lowercased with hyphens for spaces" {

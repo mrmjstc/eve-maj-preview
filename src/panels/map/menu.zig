@@ -1,9 +1,12 @@
-//! The Map Panel's right-click menu on a system: its rows and submenus, and what pressing each asks for; no I/O.
+//! The Map Panel's menus: right-click on a system or region, and Layers; their rows and submenus, and what pressing each asks for; no I/O.
 const std = @import("std");
 const win32 = @import("../../platform/win32.zig");
 const types = @import("../../config/types.zig");
+const glyphs = @import("../glyphs.zig");
 const list_look = @import("../list_look.zig");
 const popup_look = @import("../popup_look.zig");
+const look = @import("look.zig");
+const text = @import("text.zig");
 const universe = @import("../../map/universe.zig");
 const jump_range = @import("../../map/jump_range.zig");
 const evestars = @import("../../map/evestars.zig");
@@ -12,15 +15,18 @@ const fixed_text = @import("../../util/fixed_text.zig");
 
 const FixedText = fixed_text.FixedText;
 const PopupRow = popup_look.PopupRow;
+const RegionIndex = universe.RegionIndex;
 const RoutePreference = types.RoutePreference;
 const SystemIndex = universe.SystemIndex;
 const Targets = evestars.Targets;
 
-/// The destination submenu's rows: the route's settings, "All", each group, then "Individual" for the characters.
-const PREFERENCE_ROW = 0;
-const ANSIBLEX_ROW = 1;
-const WAYPOINTS_ROW = 2;
-const ALL_ROW = 3;
+/// The destination submenu's rows: the route's heading and settings, then the sending heading, "All", each group, and "Individual" for the characters.
+const ROUTE_HEADING_ROW = 0;
+const PREFERENCE_ROW = 1;
+const ANSIBLEX_ROW = 2;
+const WAYPOINTS_ROW = 3;
+const SEND_HEADING_ROW = 4;
+const ALL_ROW = 5;
 pub const MAX_ROWS = ALL_ROW + 1 + evestars.MAX_TARGETS;
 const ROWS = [_]Row{ .heading, .set_destination, .open_site, .jump_range, .avoid_system, .copy_name };
 /// With Eve Stars off or no token, nothing can be sent.
@@ -178,13 +184,71 @@ pub const Menu = struct {
 
     fn mainRow(self: *const Menu, context: Context, index: usize) PopupRow {
         return switch (shownRows(context.has_eve_stars)[index]) {
-            .heading => .{ .text = .print("{s}", .{universe.systemName(self.system)}), .color = list_look.MUTED, .has_rule_below = true },
-            .set_destination => .{ .text = .print("Set Destination", .{}), .color = list_look.NAME, .has_submenu = true },
-            .open_site => .{ .text = .print("Open", .{}), .color = list_look.NAME, .has_submenu = true },
-            .jump_range => .{ .text = .print("Jump Range", .{}), .color = list_look.NAME, .has_submenu = true },
-            .avoid_system => .{ .text = avoidLabel(context.is_avoided), .color = list_look.NAME },
-            .copy_name => .{ .text = .print("Copy Name", .{}), .color = list_look.NAME },
+            .heading => headingRow(self.system),
+            .set_destination => .{ .text = .print("Set Destination", .{}), .glyph = .set_destination, .has_submenu = true },
+            .open_site => .{ .text = .print("Open", .{}), .glyph = .open_window, .has_submenu = true },
+            .jump_range => .{ .text = .print("Jump Range", .{}), .glyph = .jump_range, .has_submenu = true },
+            .avoid_system => .{ .text = avoidLabel(context.is_avoided), .glyph = .avoid },
+            .copy_name => .{ .text = .print("Copy Name", .{}), .glyph = .copy },
         };
+    }
+};
+
+/// Opened by right-clicking a region in New Eden, a region's name, or empty map.
+pub const RegionMenu = struct {
+    region: RegionIndex,
+    anchor: win32.POINT,
+
+    /// The heading, then a row a site.
+    pub const ROW_COUNT = 1 + system_links.SITES.len;
+
+    /// Null for the heading, or a row past the list.
+    pub fn siteAt(_: *const RegionMenu, row_index: usize) ?system_links.Site {
+        if (row_index == 0 or row_index >= ROW_COUNT) return null;
+        return system_links.SITES[row_index - 1];
+    }
+
+    /// `buffer` holds what's returned.
+    pub fn fill(self: *const RegionMenu, buffer: *[MAX_ROWS]PopupRow) []const PopupRow {
+        buffer[0] = .{ .text = .print("{s}", .{universe.regionName(self.region)}), .color = list_look.MUTED, .role = .heading, .has_rule_below = true };
+        for (buffer[1..ROW_COUNT], system_links.SITES) |*row, site| row.* = .{ .text = .print("Open in {s}", .{system_links.siteName(site)}), .glyph = siteGlyph(site) };
+        return buffer[0..ROW_COUNT];
+    }
+
+    /// The hovered row, past the heading.
+    pub fn litRow(_: *const RegionMenu, hovered_index: ?usize) ?usize {
+        const index = hovered_index orelse return null;
+        return if (index > 0) index else null;
+    }
+
+    pub fn hash(self: *const RegionMenu, hasher: *std.hash.Wyhash) void {
+        hasher.update(std.mem.asBytes(&self.region));
+        hasher.update(std.mem.asBytes(&self.anchor.x));
+        hasher.update(std.mem.asBytes(&self.anchor.y));
+    }
+};
+
+/// Opened from the Layers button; pressing a row turns its layer on or off and leaves the menu open.
+pub const LayersMenu = struct {
+    anchor: win32.POINT,
+
+    /// Null past the list.
+    pub fn layerAt(_: *const LayersMenu, row_index: usize) ?look.Layer {
+        if (row_index >= look.LAYER_ORDER.len) return null;
+        return look.LAYER_ORDER[row_index];
+    }
+
+    /// `shown` is by LAYER_ORDER; `buffer` holds what's returned.
+    pub fn fill(_: *const LayersMenu, shown: [look.LAYER_ORDER.len]bool, buffer: *[MAX_ROWS]PopupRow) []const PopupRow {
+        for (buffer[0..look.LAYER_ORDER.len], look.LAYER_ORDER, shown) |*row, layer, is_shown| {
+            row.* = .{ .text = .print("{s}", .{text.layerLabel(layer)}), .is_checked = is_shown, .color = if (is_shown) list_look.NAME else list_look.MUTED };
+        }
+        return buffer[0..look.LAYER_ORDER.len];
+    }
+
+    pub fn hash(self: *const LayersMenu, hasher: *std.hash.Wyhash) void {
+        hasher.update(std.mem.asBytes(&self.anchor.x));
+        hasher.update(std.mem.asBytes(&self.anchor.y));
     }
 };
 
@@ -239,6 +303,7 @@ fn shownRows(has_eve_stars: bool) []const Row {
 
 fn destinationAction(targets: *const Targets, row_index: usize) Action {
     switch (row_index) {
+        ROUTE_HEADING_ROW, SEND_HEADING_ROW => return .none,
         PREFERENCE_ROW => return .cycle_preference,
         ANSIBLEX_ROW => return .toggle_ansiblex,
         WAYPOINTS_ROW => return .toggle_waypoints,
@@ -262,71 +327,103 @@ fn rangeRowCount(has_reach: bool) usize {
 /// ALL_ROW is a status line while there are no targets.
 fn branchRow(context: Context, branch: Branch, index: usize) PopupRow {
     switch (branch) {
-        .sites => return .{ .text = .print("{s}", .{system_links.siteName(system_links.SITES[index])}), .color = list_look.NAME },
+        .sites => return siteRow(system_links.SITES[index]),
         .jump_range => return rangeRow(index),
         .destination => {},
     }
     switch (index) {
-        PREFERENCE_ROW => return .{ .text = preferenceLabel(context.preference), .color = list_look.NAME },
-        ANSIBLEX_ROW => return .{ .text = ansiblexLabel(context.uses_ansiblex), .color = list_look.NAME },
-        WAYPOINTS_ROW => return .{ .text = waypointsLabel(context.sets_every_waypoint), .color = list_look.NAME, .has_rule_below = true },
+        ROUTE_HEADING_ROW => return sectionRow("ROUTE"),
+        PREFERENCE_ROW => return preferenceRow(context.preference),
+        ANSIBLEX_ROW => return .{ .text = .print("Use Ansiblex Gates", .{}), .is_checked = context.uses_ansiblex },
+        WAYPOINTS_ROW => return .{ .text = .print("Every System as Waypoint", .{}), .is_checked = context.sets_every_waypoint, .has_rule_below = true },
+        SEND_HEADING_ROW => return sectionRow("SEND TO"),
         else => {},
     }
     const targets = context.targets.slice();
     if (targets.len == 0) return .{ .text = .print("{s}", .{if (context.is_loading) "Loading..." else "No characters"}), .color = list_look.MUTED };
     if (index == ALL_ROW) {
         const character_count = context.targets.sendableCharacterCount();
-        return .{ .text = allLabel(character_count), .color = if (character_count > 0) list_look.NAME else list_look.MUTED };
+        return .{ .text = .print("All", .{}), .value = .print("{d}", .{character_count}), .color = if (character_count > 0) list_look.NAME else list_look.MUTED, .glyph = .group };
     }
-    if (index == individualRow(context.targets)) return .{ .text = .print("Individual", .{}), .color = list_look.NAME, .has_submenu = true };
+    if (index == individualRow(context.targets)) return .{ .text = .print("Individual", .{}), .glyph = .person, .has_submenu = true };
     return targetRow(&targets[index - ALL_ROW - 1]);
 }
 
 /// Past the ships is the "Off" row.
 fn rangeRow(index: usize) PopupRow {
-    if (index == jump_range.SHIPS.len) return .{ .text = .print("Off", .{}), .color = list_look.NAME };
-    return .{ .text = rangeLabel(jump_range.SHIPS[index]), .color = list_look.NAME };
+    if (index == jump_range.SHIPS.len) return .{ .text = .print("Off", .{}), .glyph = .off };
+    return shipRow(jump_range.SHIPS[index]);
 }
 
-fn targetRow(target: *const evestars.Target) PopupRow {
-    return .{ .text = targetLabel(target), .color = targetColor(target) };
+/// A ship's row, with its range as the value.
+fn shipRow(ship: jump_range.Ship) PopupRow {
+    return .{ .text = .print("{s}", .{jump_range.shipName(ship)}), .value = .print("{d:.1} ly", .{jump_range.rangeLightYears(ship)}), .glyph = shipGlyph(ship) };
 }
 
-/// A ship's row on the menu.
-fn rangeLabel(ship: jump_range.Ship) FixedText {
-    return .print("{s}" ++ popup_look.POPUP_PART_GAP ++ "{d:.1} ly", .{ jump_range.shipName(ship), jump_range.rangeLightYears(ship) });
-}
-
-fn targetLabel(target: *const evestars.Target) FixedText {
-    const name = target.name.slice();
-    return switch (target.kind) {
-        .group => .print("{s} ({d})", .{ name, target.character_count }),
-        .character => if (target.can_send) .print("{s}", .{name}) else .print("{s} (can't send)", .{name}),
+/// The overview bracket the game gives its hull; the game has none of their own for command carriers, lancers or black ops.
+fn shipGlyph(ship: jump_range.Ship) glyphs.Glyph {
+    return switch (ship) {
+        .titan => .titan,
+        .jump_freighter => .freighter,
+        .carrier, .command_carrier => .carrier,
+        .dreadnought, .lancer_dreadnought => .dreadnought,
+        .black_ops => .battleship,
     };
 }
 
-fn targetColor(target: *const evestars.Target) u32 {
-    return if (target.can_send) list_look.NAME else list_look.MUTED;
+/// The system, its security and region, over the rows, as its tooltip's title shows them.
+fn headingRow(system: SystemIndex) PopupRow {
+    const info = universe.systemInfo(system);
+    const name = universe.systemName(system);
+    var security_buffer: [text.SECURITY_TEXT_MAX]u8 = undefined;
+    const security = text.securityText(&security_buffer, info.security_tenths);
+    return .{
+        .text = .print("{s}{s}", .{ name, security }),
+        .accent = .{ .start = name.len, .end = name.len + security.len, .color = look.securityTextColor(info.security_tenths) },
+        .value = .print("{s}", .{universe.regionName(info.region)}),
+        .role = .title,
+        .has_rule_below = true,
+    };
 }
 
-fn allLabel(character_count: usize) FixedText {
-    return .print("All ({d})", .{character_count});
+fn sectionRow(comptime label: []const u8) PopupRow {
+    return .{ .text = .print(label, .{}), .color = list_look.MUTED, .role = .heading };
 }
 
-fn preferenceLabel(preference: RoutePreference) FixedText {
-    return .print("Prefer: {s}", .{switch (preference) {
+/// A group's size, or why a character may not get the route, as the value.
+fn targetRow(target: *const evestars.Target) PopupRow {
+    const name = target.name.slice();
+    const color = if (target.can_send) list_look.NAME else list_look.MUTED;
+    return switch (target.kind) {
+        .group => .{ .text = .print("{s}", .{name}), .value = .print("{d}", .{target.character_count}), .color = color, .glyph = .group },
+        .character => .{ .text = .print("{s}", .{name}), .value = if (target.can_send) .{} else .print("can't send", .{}), .color = color, .glyph = .person },
+    };
+}
+
+/// The preference, with the others as the value in the order clicks reach them.
+fn preferenceRow(preference: RoutePreference) PopupRow {
+    const next = nextPreference(preference);
+    return .{ .text = .print("{s}", .{preferenceName(preference)}), .value = .print("{s}, {s}", .{ preferenceName(next), preferenceName(nextPreference(next)) }), .glyph = .route };
+}
+
+fn siteRow(site: system_links.Site) PopupRow {
+    return .{ .text = .print("{s}", .{system_links.siteName(site)}), .glyph = siteGlyph(site) };
+}
+
+fn siteGlyph(site: system_links.Site) glyphs.Glyph {
+    return switch (site) {
+        .dotlan => .map,
+        .zkillboard => .crosshair,
+        .eve_stars => .star,
+    };
+}
+
+fn preferenceName(preference: RoutePreference) []const u8 {
+    return switch (preference) {
         .Shorter => "Shorter",
         .Safer => "Safer",
         .LessSecure => "Less Secure",
-    }});
-}
-
-fn ansiblexLabel(uses_ansiblex: bool) FixedText {
-    return .print("Ansiblex: {s}", .{if (uses_ansiblex) "On" else "Off"});
-}
-
-fn waypointsLabel(sets_every_waypoint: bool) FixedText {
-    return .print("Waypoints: {s}", .{if (sets_every_waypoint) "Every System" else "Fewest"});
+    };
 }
 
 fn avoidLabel(is_avoided: bool) FixedText {
@@ -407,12 +504,14 @@ test "the route's settings change in place, leaving the menu open for the send" 
     var menu = testMenu();
     menu.branch = .destination;
     const settings = [_]Action{ .cycle_preference, .toggle_ansiblex, .toggle_waypoints };
-    for (settings, 0..) |expected, row_index| {
+    for (settings, PREFERENCE_ROW..) |expected, row_index| {
         const action = menu.pressSubmenuRow(context, row_index);
         try testing.expectEqual(expected, action);
         try testing.expect(!action.closesMenu());
     }
     try testing.expect(menu.pressSubmenuRow(context, ALL_ROW).closesMenu());
+    try testing.expectEqual(Action.none, menu.pressSubmenuRow(context, ROUTE_HEADING_ROW));
+    try testing.expectEqual(Action.none, menu.pressSubmenuRow(context, SEND_HEADING_ROW));
 }
 
 test "with no one to send to, All is a status line that sends nothing and isn't lit" {
@@ -462,22 +561,44 @@ test "an open submenu's row stays lit, and an open Individual stays lit among it
     try testing.expectEqual(individualRow(&targets), menu.litSubmenuRow(&targets, .destination, null));
 }
 
-test "a target's label says why it may not get the route" {
+test "a target's row says why it may not get the route, and a group's gives its size" {
     var target: evestars.Target = .{ .id = 1, .name = .print("Alpha", .{}), .kind = .character };
-    try testing.expectEqualStrings("Alpha", targetLabel(&target).slice());
+    try testing.expectEqualStrings("Alpha", targetRow(&target).text.slice());
+    try testing.expectEqualStrings("", targetRow(&target).value.slice());
     target.can_send = false;
-    try testing.expectEqualStrings("Alpha (can't send)", targetLabel(&target).slice());
+    try testing.expectEqualStrings("can't send", targetRow(&target).value.slice());
     target.kind = .group;
     target.character_count = 4;
-    try testing.expectEqualStrings("Alpha (4)", targetLabel(&target).slice());
+    try testing.expectEqualStrings("4", targetRow(&target).value.slice());
 }
 
-test "the route preference comes back round to where it started" {
-    try testing.expectEqualStrings("Prefer: Less Secure", preferenceLabel(nextPreference(.Safer)).slice());
+test "the route preference comes back round to where it started, its row naming the others in order" {
+    const row = preferenceRow(.Safer);
+    try testing.expectEqualStrings("Safer", row.text.slice());
+    try testing.expectEqualStrings("Less Secure, Shorter", row.value.slice());
     try testing.expectEqual(RoutePreference.Shorter, nextPreference(nextPreference(nextPreference(.Shorter))));
 }
 
-test "a ship's menu row gives its range" {
-    try testing.expectEqualStrings("Black Ops  8.0 ly", rangeLabel(.black_ops).slice());
-    try testing.expectEqualStrings("Command Carrier  7.5 ly", rangeLabel(.command_carrier).slice());
+test "a ship's menu row gives its range as the value" {
+    const row = shipRow(.black_ops);
+    try testing.expectEqualStrings("Black Ops", row.text.slice());
+    try testing.expectEqualStrings("8.0 ly", row.value.slice());
+}
+
+test "the region menu's rows past its heading open each site" {
+    const menu: RegionMenu = .{ .region = 0, .anchor = .{ .x = 0, .y = 0 } };
+    try testing.expectEqual(@as(?system_links.Site, null), menu.siteAt(0));
+    try testing.expectEqual(@as(?system_links.Site, system_links.SITES[0]), menu.siteAt(1));
+    try testing.expectEqual(@as(?system_links.Site, null), menu.siteAt(RegionMenu.ROW_COUNT));
+    var buffer: [MAX_ROWS]PopupRow = undefined;
+    try testing.expectEqualStrings("Open in Dotlan", menu.fill(&buffer)[1].text.slice());
+    try testing.expectEqual(@as(?usize, null), menu.litRow(0));
+}
+
+test "the menu's heading gives the system's security and region" {
+    const row = headingRow(universe.findSystem("Jita").?);
+    const accent = row.accent.?;
+    try testing.expectEqualStrings("Jita", row.text.slice()[0..accent.start]);
+    try testing.expectEqualStrings("0.9", row.text.slice()[accent.start..accent.end]);
+    try testing.expectEqualStrings("The Forge", row.value.slice());
 }

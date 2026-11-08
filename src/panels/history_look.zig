@@ -29,6 +29,14 @@ pub const Metrics = struct {
     footer_height: i32,
 };
 
+/// What follows a stacked row's system: the distance intel's wording puts in brackets after it, and the message.
+pub const AfterSystem = struct {
+    /// Borrows from the text split; empty for none.
+    distance: []const u8,
+    /// Borrows from the text split.
+    message: []const u8,
+};
+
 /// Rows and the header grow with the font as the client list's do.
 pub fn metrics(history_settings: *const HistoryPanelConfig) Metrics {
     const header_height = panel_look.headerHeight(history_settings);
@@ -95,6 +103,19 @@ pub fn countText(buffer: *[COUNT_TEXT_MAX]u8, count: usize) []const u8 {
     return std.mem.print(buffer, "+{d}", .{count}) catch unreachable;
 }
 
+/// `text` is what follows the system's name, as in "(3 jumps): 5 hostiles".
+pub fn splitAfterSystem(text: []const u8) AfterSystem {
+    var rest = std.mem.trimStart(u8, text, " ");
+    var distance: []const u8 = "";
+    if (std.mem.startsWith(u8, rest, "(")) {
+        if (std.mem.findScalar(u8, rest, ')')) |close| {
+            distance = rest[1..close];
+            rest = rest[close + 1 ..];
+        }
+    }
+    return .{ .distance = distance, .message = std.mem.trimStart(u8, rest, ": ") };
+}
+
 const testing = std.testing;
 
 test "filterAt finds the button under the cursor and misses the gaps" {
@@ -123,4 +144,19 @@ test "showsCategory ignores the filters while their buttons are hidden" {
     try testing.expect(!showsCategory(&history_settings, .Mining));
     history_settings.showCategoryFilters = false;
     try testing.expect(showsCategory(&history_settings, .Mining));
+}
+
+test "splitAfterSystem takes the bracketed distance out of the message" {
+    const split = splitAfterSystem("(3 jumps): 5 hostiles on gate");
+    try testing.expectEqualStrings("3 jumps", split.distance);
+    try testing.expectEqualStrings("5 hostiles on gate", split.message);
+}
+
+test "splitAfterSystem leaves a bare report with no message, and a nearby one with no distance" {
+    const bare = splitAfterSystem("(1 jump)");
+    try testing.expectEqualStrings("1 jump", bare.distance);
+    try testing.expectEqualStrings("", bare.message);
+    const here = splitAfterSystem(": neut in local");
+    try testing.expectEqualStrings("", here.distance);
+    try testing.expectEqualStrings("neut in local", here.message);
 }

@@ -41,7 +41,7 @@ pub const FontWeight = enum {
     }
 };
 
-/// `height_px` is the character height, leaving out internal leading, as a font setting's size means; `weight` is a Win32 FW_ value.
+/// `height_px` is the character height, leaving out internal leading, as a font setting's size means; `weight` is a Win32 FW_ value; smoothed in greyscale like the dialog's text, as ClearType fringes light text on dark or see-through pixels.
 pub fn create(name: [:0]const u8, height_px: i32, weight: i32, is_italic: bool) ?win32.HFONT {
     return win32.CreateFontA(
         -height_px,
@@ -55,7 +55,7 @@ pub fn create(name: [:0]const u8, height_px: i32, weight: i32, is_italic: bool) 
         win32.DEFAULT_CHARSET,
         win32.OUT_DEFAULT_PRECIS,
         win32.CLIP_DEFAULT_PRECIS,
-        win32.CLEARTYPE_QUALITY,
+        win32.ANTIALIASED_QUALITY,
         win32.DEFAULT_PITCH,
         name.ptr,
     );

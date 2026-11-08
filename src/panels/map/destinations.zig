@@ -1,9 +1,9 @@
-//! The Map Panel's Eve Stars state: who can be sent a destination, and how each call turned out; main thread only.
+//! The Map Panel's Eve Stars state: who can be sent a destination, the account's Ansiblex gates, and how each call turned out; main thread only.
 const std = @import("std");
-const evestars = @import("evestars.zig");
-const evestars_feed = @import("evestars_feed.zig");
-const universe = @import("universe.zig");
-const log = @import("../log.zig");
+const evestars = @import("../../map/evestars.zig");
+const evestars_feed = @import("../../map/evestars_feed.zig");
+const universe = @import("../../map/universe.zig");
+const log = @import("../../log.zig");
 
 const Notice = evestars.Notice;
 const SystemIndex = universe.SystemIndex;
@@ -15,6 +15,10 @@ const NOTICE_MS: u64 = 6 * std.time.ms_per_s;
 const FAILURE_NOTICE_MS: u64 = 20 * std.time.ms_per_s;
 /// Past the send's own timeout, so its reply is what clears the message.
 const SENDING_NOTICE_MS: u64 = 130 * std.time.ms_per_s;
+/// Eve Stars reads the gates from the game hourly.
+const BRIDGES_STALE_MS: u64 = 30 * std.time.ms_per_min;
+/// While Eve Stars is still loading them, or a call failed.
+const BRIDGES_RETRY_MS: u64 = 30 * std.time.ms_per_s;
 
 /// Lives as long as the app, like its feed.
 pub const Destinations = struct {
@@ -26,6 +30,10 @@ pub const Destinations = struct {
     notice: ?Notice = null,
     /// When `notice` goes, in ms since boot.
     notice_end_ms: u64 = 0,
+    /// The newest Ansiblex gates; empty until the first answer.
+    bridges: evestars.Bridges = .{},
+    /// When the gates are next asked for, in ms since boot; 0 asks at once.
+    bridges_due_ms: u64 = 0,
     /// Raised by anything shown changing, for the render signature.
     revision: u32 = 0,
 
@@ -48,6 +56,17 @@ pub const Destinations = struct {
             }
             self.revision +%= 1;
         }
+        if (self.feed.bridges.take()) |reply| {
+            switch (reply) {
+                .answer => |bridges| {
+                    self.bridges = bridges;
+                    if (!bridges.is_ready) self.bridges_due_ms = now_ms + BRIDGES_RETRY_MS;
+                    self.revision +%= 1;
+                },
+                // The feed logged it; the map keeps the gates it had.
+                .failure => self.bridges_due_ms = now_ms + BRIDGES_RETRY_MS,
+            }
+        }
         if (self.feed.send.take()) |reply| {
             switch (reply) {
                 .answer => |notice| self.show(notice, if (notice.is_failure) FAILURE_NOTICE_MS else NOTICE_MS, now_ms),
@@ -67,6 +86,14 @@ pub const Destinations = struct {
         }
         self.targets_asked_ms = now_ms;
         self.feed.startCharacters(allocator, token);
+    }
+
+    /// While the map shows Ansiblex gates; asking for the characters too while Eve Stars hasn't loaded the gates, as that's what starts it loading them.
+    pub fn refreshBridges(self: *Destinations, allocator: std.mem.Allocator, token: []const u8, now_ms: u64) void {
+        if (now_ms < self.bridges_due_ms or self.feed.bridges.isBusy()) return;
+        self.bridges_due_ms = now_ms + BRIDGES_STALE_MS;
+        if (!self.bridges.is_ready) self.refreshTargets(allocator, token, now_ms);
+        self.feed.startBridges(allocator, token);
     }
 
     /// Sets `system` as the destination of `target`, or says why it can't be.

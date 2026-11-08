@@ -1,6 +1,7 @@
 //! Where a few regions' systems, gates and name labels go inside a pixel area, on CCP's flattened map; no I/O.
 const std = @import("std");
 const universe = @import("universe.zig");
+const wormholes = @import("wormholes.zig");
 const box_mod = @import("../util/box.zig");
 
 const RegionIndex = universe.RegionIndex;
@@ -17,6 +18,8 @@ pub const MAX_NODES = universe.MAX_REGION_SYSTEMS * MAX_REGIONS;
 /// A gate between two regions shown is an edge rather than an exit.
 pub const MAX_EDGES = (MAX_REGION_EDGES + MAX_REGION_EXITS) * MAX_REGIONS;
 pub const MAX_EXITS = MAX_REGION_EXITS * MAX_REGIONS;
+/// Wormhole and Ansiblex stubs on the map at once; past the forty-odd wormholes both hubs have open across New Eden and the gates out of a coalition's busiest regions.
+pub const MAX_PORTALS = 96;
 /// Between regions shown together, in CCP's map units, where a gate inside a region is about 65 long.
 const REGION_GAP: f32 = 160;
 /// Packing stops sooner, once no two regions overlap.
@@ -37,14 +40,20 @@ const EXIT_LENGTH: f32 = 16;
 const EXIT_LABEL_GAP = 3;
 /// How far from a system its label sits at full fit, and the box its marker keeps clear of labels.
 pub const NODE_CLEARANCE = 5;
+/// The most gates freestStep weighs; no system has more than a dozen.
+const MAX_LINKS = 16;
 /// Kept free on each side of a label, so two names on a line don't read as one.
 const LABEL_SIDE_GAP = 2;
-/// Around a name, inside the chip behind it: an exit's, the selected system's, or a client's tag.
+/// Around a client tag's name inside its chip, and the room a system's or exit's name keeps.
 pub const CHIP_PADDING_X = 5;
 pub const CHIP_PADDING_Y = 2;
 /// How close the cursor must come to a system or an exit, in pixels.
 const HIT_RADIUS = 9;
-const TAKEN_CAPACITY = MAX_NODES * 2 + MAX_EXITS * 2;
+/// The most boxes floating over the map that names keep clear of: its cards, bars and controls.
+pub const MAX_COVERED = 10;
+const TAKEN_CAPACITY = MAX_COVERED + MAX_NODES * 2 + (MAX_EXITS + MAX_PORTALS) * 2;
+/// What covering a system, a name or a card costs a region's name, against one for each gate it crosses, so it crosses any number of gates first.
+const COVERING_COST = 1000;
 pub const MAX_ZOOM: f32 = 8;
 /// In Layout.node_index, for a system with no node.
 const NO_NODE = std.math.maxInt(u16);
@@ -78,10 +87,10 @@ pub const View = struct {
         return moved.clamped(area);
     }
 
-    /// So the map's edge can't leave the middle of the area.
+    /// So the map's edge can't pass the middle of the area, which leaves half the area to pan at full fit.
     fn clamped(self: View, area: Box) View {
-        const reach_x = @as(f32, @floatFromInt(area.right - area.left)) * (self.zoom - 1) / 2;
-        const reach_y = @as(f32, @floatFromInt(area.bottom - area.top)) * (self.zoom - 1) / 2;
+        const reach_x = @as(f32, @floatFromInt(area.right - area.left)) * self.zoom / 2;
+        const reach_y = @as(f32, @floatFromInt(area.bottom - area.top)) * self.zoom / 2;
         return .{ .zoom = self.zoom, .pan_x = std.math.clamp(self.pan_x, -reach_x, reach_x), .pan_y = std.math.clamp(self.pan_y, -reach_y, reach_y) };
     }
 };
@@ -158,6 +167,13 @@ pub const Node = struct {
 /// A pixel on the area.
 pub const PixelPoint = struct { x: i32, y: i32 };
 
+/// How a system's name sits, where it differs from the rest: on more lines, or further off for a mark around the system.
+pub const LabelShape = struct {
+    line_count: u8 = 1,
+    /// The least room from the system; the placers' own clearance when larger.
+    clearance: i32 = 0,
+};
+
 /// A place to try a region's name, against the box around its systems.
 const RegionLabelSpot = struct {
     side: Side,
@@ -205,6 +221,44 @@ pub const Exit = struct {
     label: ?Box = null,
 };
 
+/// Where a portal leads: a wormhole hub, which isn't on the map, or the far end of an Ansiblex gate, which isn't shown.
+pub const PortalTarget = union(enum) {
+    hub: wormholes.Hub,
+    system: SystemIndex,
+
+    pub fn eql(self: PortalTarget, other: PortalTarget) bool {
+        return switch (self) {
+            .hub => |hub| other == .hub and other.hub == hub,
+            .system => |system| other == .system and other.system == system,
+        };
+    }
+
+    /// One number a target, for hashing without the union's padding.
+    pub fn key(self: PortalTarget) u32 {
+        return switch (self) {
+            .hub => |hub| @backingInt(hub),
+            .system => |system| @as(u32, system) + @as(u32, std.enums.values(wormholes.Hub).len),
+        };
+    }
+};
+
+/// A way off the map that isn't a gate, from a system shown, drawn as a short stub with where it leads, like an exit.
+pub const Portal = struct {
+    /// Its place in `nodes`.
+    from_index: u16,
+    target: PortalTarget,
+    x: i32 = 0,
+    y: i32 = 0,
+    /// Null when no spot was free.
+    label: ?Box = null,
+};
+
+/// A system with a way to `target`, for setPortals.
+pub const PortalEnd = struct {
+    system: SystemIndex,
+    target: PortalTarget,
+};
+
 /// A few regions side by side, or a handful of systems around one, laid out; gathered again when the regions change, and placed again when the area or view does.
 pub const Layout = struct {
     regions: Regions = .{},
@@ -233,6 +287,11 @@ pub const Layout = struct {
     region_bounds: [MAX_REGIONS]Bounds = @splat(.{}),
     /// Which way each exit points on CCP's map, as a unit step, by its place in `exits`.
     exit_steps: [MAX_EXITS]Vector = undefined,
+    /// Set by setPortals, and dropped when the regions change.
+    portals: [MAX_PORTALS]Portal = undefined,
+    portal_count: usize = 0,
+    /// Which way each portal points on CCP's map, as a unit step, by its place in `portals`.
+    portal_steps: [MAX_PORTALS]Vector = undefined,
     /// Places in `nodes`, most connected first, for placeLabels.
     label_order: [MAX_NODES]u16 = undefined,
     /// Each system's place in `nodes`, or NO_NODE; a lookup, as the panel asks for it per client and mark each frame.
@@ -251,6 +310,98 @@ pub const Layout = struct {
         // Only the long gates between regions run past other systems; a region's own diagram keeps clear of them.
         for (self.edges[0..self.edge_count]) |*edge| edge.bend = if (edge.kind == .between_regions) self.bendAround(edge.first_index, edge.second_index) else 0;
         self.placeExits();
+        self.placePortals();
+    }
+
+    /// Replaces the portals with one a system and target among `ends`, those not shown left out; one to a hub points into the widest gap between its system's gates, and one to a system toward it on CCP's map, as an exit does; drops their labels until placeLabels.
+    pub fn setPortals(self: *Layout, ends: []const PortalEnd) void {
+        self.portal_count = 0;
+        for (ends) |end| {
+            if (self.portal_count == MAX_PORTALS) break;
+            const from = self.nodeOf(end.system) orelse continue;
+            if (self.hasPortal(from, end.target)) continue;
+            self.portal_steps[self.portal_count] = switch (end.target) {
+                .hub => self.freestStep(from),
+                .system => |system| stepToward(universe.systemInfo(end.system), universe.systemInfo(system)),
+            };
+            self.portals[self.portal_count] = .{ .from_index = from, .target = end.target };
+            self.portal_count += 1;
+        }
+        self.placePortals();
+    }
+
+    fn hasPortal(self: *const Layout, from: u16, target: PortalTarget) bool {
+        for (self.portals[0..self.portal_count]) |portal| {
+            if (portal.from_index == from and portal.target.eql(target)) return true;
+        }
+        return false;
+    }
+
+    /// Halfway across the widest gap between the ways its gates and portals already set leave the node at `from`, on CCP's map; up with none.
+    fn freestStep(self: *const Layout, from: u16) Vector {
+        var angles: [MAX_LINKS + MAX_PORTALS]f32 = undefined;
+        var count: usize = 0;
+        const info = universe.systemInfo(self.nodes[from].system);
+        var links = universe.neighbours(self.nodes[from].system);
+        while (links.next()) |neighbour| {
+            if (count == MAX_LINKS) break;
+            const other = universe.systemInfo(neighbour);
+            const delta_x: f32 = @floatFromInt(@as(i32, other.x) - info.x);
+            const delta_y: f32 = @floatFromInt(@as(i32, other.y) - info.y);
+            if (delta_x == 0 and delta_y == 0) continue;
+            angles[count] = std.math.atan2(delta_y, delta_x);
+            count += 1;
+        }
+        for (self.portals[0..self.portal_count], self.portal_steps[0..self.portal_count]) |portal, step| {
+            if (portal.from_index != from) continue;
+            angles[count] = std.math.atan2(step[1], step[0]);
+            count += 1;
+        }
+        if (count == 0) return .{ 0, -1 };
+        std.mem.sort(f32, angles[0..count], {}, std.sort.asc(f32));
+        // The gap past the last wraps round to the first.
+        var best_start = angles[count - 1];
+        var best_size = angles[0] + 2 * std.math.pi - angles[count - 1];
+        for (angles[0 .. count - 1], angles[1..count]) |start, end| {
+            if (end - start <= best_size) continue;
+            best_start = start;
+            best_size = end - start;
+        }
+        const middle = best_start + best_size / 2;
+        return .{ @cos(middle), @sin(middle) };
+    }
+
+    /// The nearest portal within reach of the cursor.
+    pub fn portalAt(self: *const Layout, x: i32, y: i32) ?u16 {
+        var nearest: ?u16 = null;
+        var nearest_distance: i32 = HIT_RADIUS * HIT_RADIUS + 1;
+        for (self.portals[0..self.portal_count], 0..) |portal, index| {
+            const distance = distanceSquared(x, y, portal.x, portal.y);
+            if (distance < nearest_distance) {
+                nearest_distance = distance;
+                nearest = @intCast(index);
+            }
+        }
+        return nearest;
+    }
+
+    /// The portal whose name, with its padding, is under the cursor; placed labels never overlap, so the first is the only one.
+    pub fn portalLabelAt(self: *const Layout, x: i32, y: i32) ?u16 {
+        for (self.portals[0..self.portal_count], 0..) |portal, index| {
+            const label = portal.label orelse continue;
+            if (chipBox(label).containsPoint(x, y)) return @intCast(index);
+        }
+        return null;
+    }
+
+    /// Each a short step from its system, like an exit.
+    fn placePortals(self: *Layout) void {
+        for (self.portals[0..self.portal_count], self.portal_steps[0..self.portal_count]) |*portal, step| {
+            const node = self.nodes[portal.from_index];
+            portal.x = node.x + @as(i32, @intFromFloat(@round(step[0] * EXIT_LENGTH)));
+            portal.y = node.y + @as(i32, @intFromFloat(@round(step[1] * EXIT_LENGTH)));
+            portal.label = null;
+        }
     }
 
     /// Only the gates among `systems`, at least one of them: those in the first's region become nodes, in order, and the rest exits.
@@ -283,19 +434,24 @@ pub const Layout = struct {
         self.sortLabelOrder();
     }
 
-    /// Greedily, the most connected systems first, `clearance` from their systems; `node_widths` and `exit_widths` are pixel widths in `nodes` and `exits` order.
-    pub fn placeLabels(self: *Layout, node_widths: []const i32, exit_widths: []const i32, line_height: i32, clearance: i32) void {
+    /// Greedily, the most connected systems first, then exits and portals, `clearance` from their systems, inside `label_area` and clear of `covered`, the first MAX_COVERED of what floats over the map; `node_widths`, `exit_widths` and `portal_widths` are pixel widths in `nodes`, `exits` and `portals` order; `node_shapes` is in `nodes` order, or empty for one line each.
+    pub fn placeLabels(self: *Layout, label_area: Box, covered: []const Box, node_widths: []const i32, node_shapes: []const LabelShape, exit_widths: []const i32, portal_widths: []const i32, line_height: i32, clearance: i32) void {
         var taken: [TAKEN_CAPACITY]Box = undefined;
-        var taken_count = self.takeMarkers(&taken);
-        self.labelNodes(self.label_order[0..self.node_count], node_widths, line_height, clearance, &taken, &taken_count);
-        self.labelExits(exit_widths, line_height, &taken, &taken_count);
+        var taken_count = takeCovered(&taken, covered);
+        taken_count += self.takeMarkers(taken[taken_count..]);
+        self.labelNodes(label_area, self.label_order[0..self.node_count], node_widths, node_shapes, line_height, clearance, &taken, &taken_count);
+        self.labelExits(label_area, exit_widths, line_height, &taken, &taken_count);
+        for (self.portals[0..self.portal_count], portal_widths[0..self.portal_count]) |*portal, width| {
+            portal.label = claimSpot(label_area, &taken, &taken_count, portal.x, portal.y, width, line_height, NODE_CLEARANCE);
+        }
     }
 
-    /// Only while several regions show, after placeLabels: around each region, the first spot that touches no system, name, exit or gate, else the one touching fewest; `widths` are by place in `regions`.
-    pub fn placeRegionLabels(self: *Layout, widths: []const i32, line_height: i32) void {
+    /// Only while several regions show, after placeLabels: around each region, the first spot that touches no system, name, exit, gate or `covered` box, else the least crowded, inside `label_area`; `widths` are by place in `regions`.
+    pub fn placeRegionLabels(self: *Layout, label_area: Box, covered: []const Box, widths: []const i32, line_height: i32) void {
         if (self.regions.count < 2) return;
         var taken: [TAKEN_CAPACITY + MAX_REGIONS]Box = undefined;
-        var taken_count = self.takeMarkers(&taken);
+        var taken_count = takeCovered(&taken, covered);
+        taken_count += self.takeMarkers(taken[taken_count..]);
         for (self.nodes[0..self.node_count]) |node| {
             taken[taken_count] = node.label orelse continue;
             taken_count += 1;
@@ -305,20 +461,25 @@ pub const Layout = struct {
             taken[taken_count] = chipBox(label);
             taken_count += 1;
         }
+        for (self.portals[0..self.portal_count]) |portal| {
+            const label = portal.label orelse continue;
+            taken[taken_count] = chipBox(label);
+            taken_count += 1;
+        }
         for (self.region_areas[0..self.regions.count], widths[0..self.regions.count], self.region_labels[0..self.regions.count]) |around, width, *region_label| {
-            region_label.* = self.leastCrowdedSpot(around, width, line_height, taken[0..taken_count]);
+            region_label.* = self.leastCrowdedSpot(label_area, around, width, line_height, taken[0..taken_count]);
             taken[taken_count] = region_label.* orelse continue;
             taken_count += 1;
         }
     }
 
-    /// Null when no spot lies inside the area.
-    fn leastCrowdedSpot(self: *const Layout, around: Box, width: i32, line_height: i32, taken: []const Box) ?Box {
+    /// Null when no spot lies inside `label_area`.
+    fn leastCrowdedSpot(self: *const Layout, label_area: Box, around: Box, width: i32, line_height: i32, taken: []const Box) ?Box {
         var best: ?Box = null;
         var best_crowding: usize = std.math.maxInt(usize);
         for (REGION_LABEL_SPOTS) |spot| {
             const box = spot.place(around, width, line_height);
-            if (!self.area.contains(box)) continue;
+            if (!label_area.contains(box)) continue;
             const crowding = self.crowdingAt(box, taken, best_crowding);
             if (crowding >= best_crowding) continue;
             best = box;
@@ -328,11 +489,11 @@ pub const Layout = struct {
         return best;
     }
 
-    /// What `box` touches, counted up to `limit`, past which it can't win.
+    /// What `box` touches, each of `taken` at COVERING_COST and each gate at one, counted up to `limit`, past which it can't win.
     fn crowdingAt(self: *const Layout, box: Box, taken: []const Box, limit: usize) usize {
         var count: usize = 0;
         for (taken) |other| {
-            if (box.overlaps(other)) count += 1;
+            if (box.overlaps(other)) count += COVERING_COST;
         }
         for (self.exits[0..self.exit_count]) |exit| {
             if (count >= limit) return count;
@@ -358,12 +519,12 @@ pub const Layout = struct {
         return count;
     }
 
-    /// Like placeLabels, first come first served along `order`, places in `nodes`; a node left out keeps no label.
+    /// Like placeLabels inside the area the map fits to, first come first served along `order`, places in `nodes`; a node left out keeps no label.
     pub fn placeLabelsInOrder(self: *Layout, order: []const u16, node_widths: []const i32, exit_widths: []const i32, line_height: i32) void {
         var taken: [TAKEN_CAPACITY]Box = undefined;
         var taken_count = self.takeMarkers(&taken);
-        self.labelNodes(order, node_widths, line_height, NODE_CLEARANCE, &taken, &taken_count);
-        self.labelExits(exit_widths, line_height, &taken, &taken_count);
+        self.labelNodes(self.area, order, node_widths, &.{}, line_height, NODE_CLEARANCE, &taken, &taken_count);
+        self.labelExits(self.area, exit_widths, line_height, &taken, &taken_count);
     }
 
     /// The nearest system within reach of the cursor.
@@ -389,13 +550,34 @@ pub const Layout = struct {
         return null;
     }
 
-    /// The exit whose chip is under the cursor; placed labels never overlap, so the first is the only one.
+    /// The exit whose name, with its padding, is under the cursor; placed labels never overlap, so the first is the only one.
     pub fn exitLabelAt(self: *const Layout, x: i32, y: i32) ?u16 {
         for (self.exits[0..self.exit_count], 0..) |exit, index| {
             const label = exit.label orelse continue;
             if (chipBox(label).containsPoint(x, y)) return @intCast(index);
         }
         return null;
+    }
+
+    /// The region whose name is under the cursor, else the one with the system nearest it; null with no systems.
+    pub fn regionNear(self: *const Layout, x: i32, y: i32) ?RegionIndex {
+        for (self.region_labels[0..self.regions.count], self.regions.slice()) |region_label, region| {
+            const label = region_label orelse continue;
+            if (label.containsPoint(x, y)) return region;
+        }
+        var nearest: ?RegionIndex = null;
+        var nearest_distance: i64 = std.math.maxInt(i64);
+        for (self.nodes[0..self.node_count]) |node| {
+            // Wide, as a zoomed-in map puts far systems well off the area.
+            const delta_x: i64 = node.x - x;
+            const delta_y: i64 = node.y - y;
+            const distance = delta_x * delta_x + delta_y * delta_y;
+            if (distance < nearest_distance) {
+                nearest_distance = distance;
+                nearest = universe.systemInfo(node.system).region;
+            }
+        }
+        return nearest;
     }
 
     /// The nearest exit within reach of the cursor.
@@ -451,6 +633,7 @@ pub const Layout = struct {
         self.node_count = 0;
         self.edge_count = 0;
         self.exit_count = 0;
+        self.portal_count = 0;
     }
 
     /// A system listed twice keeps its first place for nodeOf.
@@ -503,19 +686,24 @@ pub const Layout = struct {
             taken[taken_count] = markerBox(exit.x, exit.y);
             taken_count += 1;
         }
+        for (self.portals[0..self.portal_count]) |portal| {
+            taken[taken_count] = markerBox(portal.x, portal.y);
+            taken_count += 1;
+        }
         return taken_count;
     }
 
-    fn labelNodes(self: *Layout, order: []const u16, node_widths: []const i32, line_height: i32, clearance: i32, taken: []Box, taken_count: *usize) void {
+    fn labelNodes(self: *Layout, label_area: Box, order: []const u16, node_widths: []const i32, node_shapes: []const LabelShape, line_height: i32, clearance: i32, taken: []Box, taken_count: *usize) void {
         for (order) |index| {
             const node = &self.nodes[index];
-            node.label = claimSpot(self.area, taken, taken_count, node.x, node.y, node_widths[index], line_height, clearance);
+            const shape: LabelShape = if (node_shapes.len == 0) .{} else node_shapes[index];
+            node.label = claimSpot(label_area, taken, taken_count, node.x, node.y, node_widths[index], line_height * shape.line_count, @max(clearance, shape.clearance));
         }
     }
 
-    fn labelExits(self: *Layout, exit_widths: []const i32, line_height: i32, taken: []Box, taken_count: *usize) void {
+    fn labelExits(self: *Layout, label_area: Box, exit_widths: []const i32, line_height: i32, taken: []Box, taken_count: *usize) void {
         for (self.exits[0..self.exit_count], exit_widths[0..self.exit_count]) |*exit, width| {
-            exit.label = claimSpot(self.area, taken, taken_count, exit.x, exit.y, width, line_height, NODE_CLEARANCE);
+            exit.label = claimSpot(label_area, taken, taken_count, exit.x, exit.y, width, line_height, NODE_CLEARANCE);
         }
     }
 
@@ -581,25 +769,27 @@ pub const Layout = struct {
             buffer[1] = .{ .x = second.x, .y = second.y };
             return buffer[0..2];
         }
-        const from = vectorOf(first);
-        const along = vectorOf(second) - from;
-        const length = @sqrt(@reduce(.Add, along * along));
-        const left: Vector = .{ along[1] / length, -along[0] / length };
         for (buffer[1..], 1..) |*point, step| {
-            const progress = @as(f32, @floatFromInt(step)) / CURVE_SEGMENTS;
-            const place = @round(from + along * @as(Vector, @splat(progress)) + left * @as(Vector, @splat(2 * edge.bend * progress * (1 - progress))));
-            point.* = .{ .x = @intFromFloat(place[0]), .y = @intFromFloat(place[1]) };
+            const place = self.edgePlace(edge, @as(f32, @floatFromInt(step)) / CURVE_SEGMENTS);
+            point.* = .{ .x = @intFromFloat(@round(place[0])), .y = @intFromFloat(@round(place[1])) };
         }
         return buffer;
     }
 
-    /// Placed by placeExits; one with nowhere to point points up.
+    /// Where `edge` is `progress` of the way along, from 0 to 1, in sub-pixels; bowed to its left by `bend`.
+    pub fn edgePlace(self: *const Layout, edge: Edge, progress: f32) [2]f32 {
+        const from = vectorOf(self.nodes[edge.first_index]);
+        const along = vectorOf(self.nodes[edge.second_index]) - from;
+        const length = @sqrt(@reduce(.Add, along * along));
+        if (length == 0) return from;
+        const left: Vector = .{ along[1] / length, -along[0] / length };
+        return from + along * @as(Vector, @splat(progress)) + left * @as(Vector, @splat(2 * edge.bend * progress * (1 - progress)));
+    }
+
+    /// Placed by placeExits.
     fn addExit(self: *Layout, from: u16, destination: SystemIndex, info: universe.SystemInfo, other: universe.SystemInfo) void {
         if (self.exit_count == MAX_EXITS) return;
-        const delta_x: f32 = @floatFromInt(@as(i32, other.x) - info.x);
-        const delta_y: f32 = @floatFromInt(@as(i32, other.y) - info.y);
-        const length = @sqrt(delta_x * delta_x + delta_y * delta_y);
-        self.exit_steps[self.exit_count] = if (length > 0) .{ delta_x / length, delta_y / length } else .{ 0, -1 };
+        self.exit_steps[self.exit_count] = stepToward(info, other);
         self.exits[self.exit_count] = .{ .from_index = from, .destination = destination, .region = other.region, .x = 0, .y = 0 };
         self.exit_count += 1;
     }
@@ -705,7 +895,7 @@ pub fn claimSpot(area: Box, taken: []Box, taken_count: *usize, x: i32, y: i32, w
     return null;
 }
 
-/// The chip behind a name whose text fills `label`.
+/// A name's padded box: a client tag's chip, or the room a system's or exit's name keeps.
 pub fn chipBox(label: Box) Box {
     return .{ .left = label.left - CHIP_PADDING_X, .top = label.top - CHIP_PADDING_Y, .right = label.right + CHIP_PADDING_X, .bottom = label.bottom + CHIP_PADDING_Y };
 }
@@ -769,6 +959,13 @@ fn centerOf(low: i32, high: i32) f32 {
 
 fn markerBox(x: i32, y: i32) Box {
     return .{ .left = x - NODE_CLEARANCE, .top = y - NODE_CLEARANCE, .right = x + NODE_CLEARANCE, .bottom = y + NODE_CLEARANCE };
+}
+
+/// The first MAX_COVERED of `covered`, at the start of `taken`.
+fn takeCovered(taken: []Box, covered: []const Box) usize {
+    const count = @min(covered.len, MAX_COVERED);
+    @memcpy(taken[0..count], covered[0..count]);
+    return count;
 }
 
 fn overlapsAny(box: Box, others: []const Box) bool {
@@ -856,6 +1053,14 @@ fn distanceSquared(from_x: i32, from_y: i32, to_x: i32, to_y: i32) i32 {
     const delta_x = from_x - to_x;
     const delta_y = from_y - to_y;
     return delta_x * delta_x + delta_y * delta_y;
+}
+
+/// A unit step from `info` toward `other` on CCP's map; up when they share a place.
+fn stepToward(info: universe.SystemInfo, other: universe.SystemInfo) Vector {
+    const delta_x: f32 = @floatFromInt(@as(i32, other.x) - info.x);
+    const delta_y: f32 = @floatFromInt(@as(i32, other.y) - info.y);
+    const length = @sqrt(delta_x * delta_x + delta_y * delta_y);
+    return if (length > 0) .{ delta_x / length, delta_y / length } else .{ 0, -1 };
 }
 
 const testing = std.testing;
@@ -1058,19 +1263,22 @@ test "region names stay inside the area and clear of each other, and a lone regi
     var regions: Regions = .one(try regionNamed("Delve"));
     var layout: Layout = .{};
     layout.build(regions, TEST_AREA);
-    layout.placeLabels(&widths, &exit_widths, TEST_LINE_HEIGHT, NODE_CLEARANCE);
-    layout.placeRegionLabels(&region_widths, 24);
+    layout.placeLabels(TEST_AREA, &.{}, &widths, &.{}, &exit_widths, &.{}, TEST_LINE_HEIGHT, NODE_CLEARANCE);
+    layout.placeRegionLabels(TEST_AREA, &.{}, &region_widths, 24);
     try testing.expect(layout.region_labels[0] == null);
 
     try testing.expect(regions.add(try regionNamed("Fountain")));
     try testing.expect(regions.add(try regionNamed("Querious")));
     layout.build(regions, TEST_AREA);
-    layout.placeLabels(&widths, &exit_widths, TEST_LINE_HEIGHT, NODE_CLEARANCE);
-    layout.placeRegionLabels(&region_widths, 24);
+    layout.placeLabels(TEST_AREA, &.{}, &widths, &.{}, &exit_widths, &.{}, TEST_LINE_HEIGHT, NODE_CLEARANCE);
+    layout.placeRegionLabels(TEST_AREA, &.{}, &region_widths, 24);
     for (layout.region_labels[0..regions.count], 0..) |region_label, index| {
         const label = region_label.?;
         try testing.expect(TEST_AREA.contains(label));
         for (layout.region_labels[index + 1 .. regions.count]) |other| try testing.expect(!label.overlaps(other.?));
+        for (layout.nodes[0..layout.node_count]) |node| {
+            if (node.label) |name| try testing.expect(!label.overlaps(name));
+        }
     }
 }
 
@@ -1115,7 +1323,7 @@ test "placed labels never overlap each other or a marker, and stay inside the ar
     const widths: [universe.MAX_REGION_SYSTEMS]i32 = @splat(TEST_LABEL_WIDTH);
     const exit_widths: [MAX_EXITS]i32 = @splat(TEST_LABEL_WIDTH);
     layout.build(.one(try regionNamed("Domain")), TEST_AREA);
-    layout.placeLabels(&widths, &exit_widths, TEST_LINE_HEIGHT, NODE_CLEARANCE);
+    layout.placeLabels(TEST_AREA, &.{}, &widths, &.{}, &exit_widths, &.{}, TEST_LINE_HEIGHT, NODE_CLEARANCE);
 
     var placed_count: usize = 0;
     for (layout.nodes[0..layout.node_count], 0..) |node, index| {
@@ -1137,8 +1345,28 @@ test "a label sits at the clearance it's given" {
     var layout: Layout = .{};
     const widths = [_]i32{TEST_LABEL_WIDTH};
     layout.buildAround(&.{universe.findSystem("Jita").?}, TEST_AREA);
-    layout.placeLabels(&widths, &.{}, TEST_LINE_HEIGHT, 20);
+    layout.placeLabels(TEST_AREA, &.{}, &widths, &.{}, &.{}, &.{}, TEST_LINE_HEIGHT, 20);
     try testing.expectEqual(layout.nodes[0].y + 20, layout.nodes[0].label.?.top);
+}
+
+test "a label's shape gives it more lines and more room from its system" {
+    var layout: Layout = .{};
+    const widths = [_]i32{TEST_LABEL_WIDTH};
+    layout.buildAround(&.{universe.findSystem("Jita").?}, TEST_AREA);
+    layout.placeLabels(TEST_AREA, &.{}, &widths, &.{.{ .line_count = 2, .clearance = 30 }}, &.{}, &.{}, TEST_LINE_HEIGHT, 20);
+    const label = layout.nodes[0].label.?;
+    try testing.expectEqual(layout.nodes[0].y + 30, label.top);
+    try testing.expectEqual(2 * TEST_LINE_HEIGHT, label.bottom - label.top);
+}
+
+test "a label keeps clear of what covers the map" {
+    var layout: Layout = .{};
+    const widths = [_]i32{TEST_LABEL_WIDTH};
+    layout.buildAround(&.{universe.findSystem("Jita").?}, TEST_AREA);
+    layout.placeLabels(TEST_AREA, &.{}, &widths, &.{}, &.{}, &.{}, TEST_LINE_HEIGHT, 20);
+    const first_spot = layout.nodes[0].label.?;
+    layout.placeLabels(TEST_AREA, &.{first_spot}, &widths, &.{}, &.{}, &.{}, TEST_LINE_HEIGHT, 20);
+    try testing.expect(!layout.nodes[0].label.?.overlaps(first_spot));
 }
 
 test "buildAround keeps its systems in order, joined by the gates among them alone" {
@@ -1186,6 +1414,20 @@ test "nodeAt finds a system within reach and nothing further off" {
     try testing.expect(layout.nodeAt(TEST_AREA.left, TEST_AREA.top) == null);
 }
 
+test "regionNear gives the region of the system nearest the cursor, however far off" {
+    var layout: Layout = .{};
+    const forge = try regionNamed("The Forge");
+    const domain = try regionNamed("Domain");
+    layout.build(.one(forge), TEST_AREA);
+    try testing.expectEqual(@as(?RegionIndex, forge), layout.regionNear(TEST_AREA.left, TEST_AREA.top));
+    var regions: Regions = .one(forge);
+    _ = regions.add(domain);
+    layout.build(regions, TEST_AREA);
+    for (layout.nodes[0..layout.node_count]) |node| {
+        try testing.expectEqual(@as(?RegionIndex, universe.systemInfo(node.system).region), layout.regionNear(node.x, node.y));
+    }
+}
+
 test "zooming keeps the map's point under the cursor" {
     var layout: Layout = .{};
     layout.build(.one(try regionNamed("The Forge")), TEST_AREA);
@@ -1201,17 +1443,19 @@ test "the view stops at full fit and at its largest zoom" {
     try testing.expectEqual(MAX_ZOOM, (View{ .zoom = 7 }).zoomedAt(TEST_AREA, 100, 100, 4).zoom);
 }
 
-test "zooming back out brings the map back to its fit" {
+test "zooming back out to full fit keeps the map within half the area of its place" {
     const zoomed = (View{}).zoomedAt(TEST_AREA, 40, 60, 4);
     const fitted = zoomed.zoomedAt(TEST_AREA, 700, 500, 0.25);
-    try testing.expectEqual(@as(f32, 0), fitted.pan_x);
-    try testing.expectEqual(@as(f32, 0), fitted.pan_y);
+    try testing.expect(fitted.isFitted());
+    try testing.expect(@abs(fitted.pan_x) <= 380);
+    try testing.expect(@abs(fitted.pan_y) <= 255);
 }
 
-test "panning does nothing at full fit, and stops at the map's edge when zoomed" {
-    try testing.expectEqual(@as(f32, 0), (View{}).panned(TEST_AREA, 50, 50).pan_x);
+test "panning reaches half the area at full fit, and more as the map zooms" {
+    try testing.expectEqual(@as(f32, 50), (View{}).panned(TEST_AREA, 50, 50).pan_x);
+    try testing.expectEqual(@as(f32, -380), (View{}).panned(TEST_AREA, -9999, 0).pan_x);
     const zoomed: View = .{ .zoom = 2 };
-    try testing.expectEqual(@as(f32, 380), zoomed.panned(TEST_AREA, 9999, 0).pan_x);
+    try testing.expectEqual(@as(f32, 760), zoomed.panned(TEST_AREA, 9999, 0).pan_x);
 }
 
 test "a system zoomed off the area loses its label" {
@@ -1220,13 +1464,13 @@ test "a system zoomed off the area loses its label" {
     layout.build(.one(try regionNamed("The Forge")), TEST_AREA);
     const widths: [universe.MAX_REGION_SYSTEMS]i32 = @splat(TEST_LABEL_WIDTH);
     const exit_widths: [MAX_EXITS]i32 = @splat(TEST_LABEL_WIDTH);
-    layout.placeLabels(&widths, &exit_widths, TEST_LINE_HEIGHT, NODE_CLEARANCE);
+    layout.placeLabels(TEST_AREA, &.{}, &widths, &.{}, &exit_widths, &.{}, TEST_LINE_HEIGHT, NODE_CLEARANCE);
     for (layout.nodes[0..layout.node_count]) |node| {
         if (!TEST_AREA.contains(.{ .left = node.x, .top = node.y, .right = node.x, .bottom = node.y })) try testing.expect(node.label == null);
     }
 }
 
-test "exitLabelAt finds an exit by its chip, and not past it" {
+test "exitLabelAt finds an exit by its padded name, and not past it" {
     var layout: Layout = .{};
     layout.exits[0] = .{ .from_index = 0, .destination = 1, .region = 0, .x = 0, .y = 0 };
     layout.exits[1] = .{ .from_index = 0, .destination = 2, .region = 0, .x = 0, .y = 0, .label = .{ .left = 10, .top = 10, .right = 50, .bottom = 20 } };
@@ -1244,4 +1488,24 @@ test "labelAt finds a system by its name, and not past the label" {
     layout.node_count = 2;
     try testing.expectEqual(@as(?u16, 1), layout.labelAt(10, 19));
     try testing.expect(layout.labelAt(50, 15) == null);
+}
+
+test "a portal points between its system's gates, once a hub, and only for a system shown" {
+    var layout: Layout = .{};
+    layout.build(.one(try regionNamed("The Forge")), TEST_AREA);
+    const obe = universe.findSystem("Obe").?;
+    layout.setPortals(&.{ .{ .system = obe, .target = .{ .hub = .thera } }, .{ .system = obe, .target = .{ .hub = .thera } }, .{ .system = universe.findSystem("Amarr").?, .target = .{ .hub = .thera } } });
+    try testing.expectEqual(@as(usize, 1), layout.portal_count);
+    const step = layout.portal_steps[0];
+    const info = universe.systemInfo(obe);
+    var links = universe.neighbours(obe);
+    while (links.next()) |neighbour| {
+        const other = universe.systemInfo(neighbour);
+        const toward: Vector = .{ @floatFromInt(@as(i32, other.x) - info.x), @floatFromInt(@as(i32, other.y) - info.y) };
+        const unit = toward / @as(Vector, @splat(@sqrt(@reduce(.Add, toward * toward))));
+        // Pointing at a gate would draw the stub over it.
+        try testing.expect(@reduce(.Add, unit * step) < 0.95);
+    }
+    layout.build(.one(try regionNamed("Domain")), TEST_AREA);
+    try testing.expectEqual(@as(usize, 0), layout.portal_count);
 }

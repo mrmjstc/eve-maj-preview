@@ -47,8 +47,6 @@ pub const WM_SIZE = 0x0005;
 pub const SIZE_MINIMIZED = 1;
 pub const WM_PAINT = 0x000F;
 pub const WM_GETMINMAXINFO = 0x0024;
-pub const WM_MOUSEACTIVATE = 0x0021;
-pub const MA_NOACTIVATE: LRESULT = 3;
 pub const WM_CLOSE = 0x0010;
 /// wParam is FALSE when the shutdown or logoff was cancelled.
 pub const WM_ENDSESSION = 0x0016;
@@ -934,6 +932,15 @@ pub const FILETIME = extern struct {
         return seconds + std.time.epoch.windows;
     }
 };
+pub extern "kernel32" fn GetSystemTimeAsFileTime(lpSystemTimeAsFileTime: *FILETIME) callconv(.c) void;
+
+/// The wall clock, UTC.
+pub fn unixSecondsNow() i64 {
+    var now: FILETIME = undefined;
+    GetSystemTimeAsFileTime(&now);
+    return now.toUnixSeconds();
+}
+
 pub extern "kernel32" fn GetProcessTimes(hProcess: HANDLE, lpCreationTime: *FILETIME, lpExitTime: *FILETIME, lpKernelTime: *FILETIME, lpUserTime: *FILETIME) callconv(.c) BOOL;
 
 pub const SYSTEMTIME = extern struct {
@@ -965,6 +972,8 @@ pub extern "gdi32" fn TextOutW(hdc: HDC, x: c_int, y: c_int, lpString: [*]const 
 pub extern "gdi32" fn GetTextExtentPoint32W(hdc: HDC, lpString: [*]const u16, c: c_int, psizl: *SIZE) callconv(.c) BOOL;
 pub extern "gdi32" fn SetBkMode(hdc: HDC, mode: c_int) callconv(.c) c_int;
 pub extern "gdi32" fn SetTextColor(hdc: HDC, color: DWORD) callconv(.c) DWORD;
+/// Returns the previous spacing, or 0x80000000 on failure.
+pub extern "gdi32" fn SetTextCharacterExtra(hdc: HDC, extra: c_int) callconv(.c) c_int;
 pub extern "gdi32" fn AddFontMemResourceEx(pFileView: [*]const u8, cjSize: DWORD, pvReserved: ?*anyopaque, pNumFonts: *DWORD) callconv(.c) ?HANDLE;
 pub extern "gdi32" fn CreateFontA(
     cHeight: c_int,
@@ -1033,7 +1042,7 @@ pub const FW_BOLD = 700;
 pub const DEFAULT_CHARSET = 1;
 pub const OUT_DEFAULT_PRECIS = 0;
 pub const CLIP_DEFAULT_PRECIS = 0;
-pub const CLEARTYPE_QUALITY = 5;
+pub const ANTIALIASED_QUALITY = 4;
 pub const DEFAULT_PITCH = 0;
 
 pub const LWA_ALPHA = 0x00000002;

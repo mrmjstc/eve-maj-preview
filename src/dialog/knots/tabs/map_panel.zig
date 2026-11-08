@@ -52,6 +52,8 @@ fn eveStars(context: *ui.Frame, ref: MapRef, is_shown: bool) !void {
     try bind.toggle(context, ref, "routeAvoidZone5", "Avoid Zone 5 (over 20 ly)");
     try widgets.hintText(context, .src(@src()), "Stops routes taking gates that land this far from their alliance's capital.");
     try zones.close(context);
+    try bind.toggle(context, ref, "showAnsiblex", "Show Ansiblex Gates");
+    try widgets.hintText(context, .src(@src()), "Draws the gates your Eve Stars characters can jump, as dashed arcs. A read-only token is enough.");
     try avoidedSystems(context);
     try options.close(context);
     try section.close(context);
@@ -76,20 +78,15 @@ fn intelPanel(context: *ui.Frame, ref: IntelRef) !void {
     try widgets.hintText(context, .src(@src()), "Lists reports at any distance.");
     const options = try widgets.openGroup(context, .src(@src()), ref.get("show"));
     try bind.toggle(context, ref, "attached", "Inside Map");
-    try widgets.hintText(context, .src(@src()), "Shows as a sidebar in the map's window, which grows to fit it. Off gives it a window of its own.");
-    const inside = try widgets.openGroup(context, .src(@src()), ref.get("attached"));
-    try bind.segmented(context, ref, "side", "Side", &.{ "Left", "Right" });
-    try widgets.hintText(context, .src(@src()), "Which side of the map the sidebar sits on.");
-    try inside.close(context);
-    const size = try widgets.openBinding(context, .src(@src()), "Size");
-    // Inside the map, the panel is the map's height.
-    if (ref.get("attached")) try bind.unitNumberBox(context, ref, "width", "px", .{}) else try bind.sizeBoxes(context, ref, "width", "height");
-    try size.close(context);
-    try bind.slider(context, ref, "opacity", "Opacity", .{ .display = .percent_of_255 });
-    try widgets.hintText(context, .src(@src()), "Lower lets you see through the panel.");
+    try widgets.hintText(context, .src(@src()), "Shows as a card over the map, below its search, with as many reports as fit. Off gives it a window of its own.");
     try bind.toggle(context, ref, "colorSystemNames", "Color System Names");
     try widgets.hintText(context, .src(@src()), "Shows each system in the same color as its name on thumbnails: System Colors first, then unique colors if those are on.");
     const detached = try widgets.openGroup(context, .src(@src()), !ref.get("attached"));
+    const size = try widgets.openBinding(context, .src(@src()), "Size");
+    try bind.sizeBoxes(context, ref, "width", "height");
+    try size.close(context);
+    try bind.slider(context, ref, "opacity", "Opacity", .{ .display = .percent_of_255 });
+    try widgets.hintText(context, .src(@src()), "Lower lets you see through the panel.");
     try bind.toggle(context, ref, "rememberPosition", "Remember Position");
     try widgets.hintText(context, .src(@src()), "Opens the panel where you last left it.");
     try panel_settings.alwaysOnTop(context, ref, .intel);
@@ -109,7 +106,7 @@ fn layout(context: *ui.Frame, ref: MapRef, is_shown: bool) !void {
     try bind.fontBoxes(context, ref, "fontName", "fontSize", "fontWeight");
     try font.close(context);
     try widgets.hintText(context, .src(@src()), "Names that don't fit show when you hover their system.");
-    try widgets.hintText(context, .src(@src()), "The buttons and tooltips use the History Panel's font, so the two panels match.");
+    try widgets.hintText(context, .src(@src()), "The buttons, cards and tooltips use this window's font and colors.");
     try options.close(context);
     try section.close(context);
 }
@@ -128,7 +125,17 @@ fn behavior(context: *ui.Frame, ref: MapRef, is_shown: bool) !void {
     try widgets.hintText(context, .src(@src()), "Marks metaliminal storms and how far they spread. Positions come from EVE-Scout's player reports, so they can lag.");
     try bind.toggle(context, ref, "showIncursions", "Show Incursions");
     try widgets.hintText(context, .src(@src()), "Marks the systems each incursion infests and where it stages, as reported by CCP.");
+    try bind.toggle(context, ref, "showSovTimers", "Show Sov Timers");
+    try widgets.hintText(context, .src(@src()), "Squares each system with a sovereignty campaign, with a countdown to its start, then the defender's score once it runs.");
+    try bind.toggle(context, ref, "showWormholes", "Show Thera and Turnur");
+    try widgets.hintText(context, .src(@src()), "Marks each system with a wormhole to Thera or Turnur, from EVE-Scout's player reports. Hover the mark for its signatures.");
     try live_stats.close(context);
+    try bind.toggle(context, ref, "showKills", "Show zKillboard Kills");
+    try widgets.hintText(context, .src(@src()), "Follows zKillboard's live feed while the map shows: each kill ripples out and leaves a fading mark, and the Intel card's Kills tab lists those on the map.");
+    const kills = try widgets.openGroup(context, .src(@src()), ref.get("showKills"));
+    try bind.number(context, ref, "killLifetimeMin", "Kill Lifetime", .{ .unit = "min" });
+    try widgets.hintText(context, .src(@src()), "How long a kill stays on the map and in the list.");
+    try kills.close(context);
     try bind.toggle(context, ref, "showIntel", "Mark Systems With Intel");
     try widgets.hintText(context, .src(@src()), "Highlights systems named in intel channels. Needs log monitoring and an intel rule.");
     const intel = try widgets.openGroup(context, .src(@src()), ref.get("showIntel"));

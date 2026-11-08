@@ -1,9 +1,11 @@
 //! Eve Stars' route API: its addresses, and what its answers mean to the Map Panel; no I/O.
 const std = @import("std");
 const types = @import("../config/types.zig");
+const universe = @import("universe.zig");
 const fixed_text = @import("../util/fixed_text.zig");
 const log = @import("../log.zig");
 
+const SystemIndex = universe.SystemIndex;
 const slog = log.Scoped("map");
 pub const Text = fixed_text.FixedText;
 
@@ -16,6 +18,9 @@ const NOTICE_MAX_LINES = 2;
 pub const ANSIBLEX_ZONE_COUNT = 5;
 
 pub const CHARACTERS_URL = BASE_URL ++ "/characters";
+pub const ANSIBLEX_URL = BASE_URL ++ "/ansiblex";
+/// Past the few hundred one-way gates the biggest coalition's network has; any beyond it go unshown.
+pub const MAX_BRIDGES = 1024;
 
 const FAILED_TO_REACH = "Couldn't reach Eve Stars";
 const FAILED_TO_READ = "Couldn't read Eve Stars' answer";
@@ -139,7 +144,36 @@ const CharactersAnswer = struct { characters: []const CharacterRow = &.{}, group
 const SentRow = struct { character: Place = .{}, set: bool = false, said: []const u8 = "", code: []const u8 = "" };
 const AnsiblexRow = struct { ready: bool = true };
 const SendAnswer = struct { to: Place = .{}, sent: []const SentRow = &.{}, ansiblex: ?AnsiblexRow = null };
+const BridgeEnd = struct { id: u32 = 0 };
+const BridgeRow = struct { from: BridgeEnd = .{}, to: BridgeEnd = .{} };
+const BridgesAnswer = struct { ready: bool = false, ansiblex: []const BridgeRow = &.{} };
 const ErrorAnswer = struct { @"error": []const u8 = "", code: []const u8 = "" };
+
+/// One way through an Ansiblex gate.
+pub const Bridge = struct {
+    from: SystemIndex,
+    to: SystemIndex,
+};
+
+/// The account's Ansiblex gates its characters may jump.
+pub const Bridges = struct {
+    bridges: [MAX_BRIDGES]Bridge = undefined,
+    count: usize = 0,
+    /// False while Eve Stars is still reading them from the game, so the list is empty or partial.
+    is_ready: bool = false,
+
+    pub fn slice(self: *const Bridges) []const Bridge {
+        return self.bridges[0..self.count];
+    }
+
+    /// Whether the way back from `bridge`'s far end is listed too.
+    pub fn isTwoWay(self: *const Bridges, bridge: Bridge) bool {
+        for (self.slice()) |other| {
+            if (other.from == bridge.to and other.to == bridge.from) return true;
+        }
+        return false;
+    }
+};
 
 /// Leaves out `from`, so each character starts where it is, and goes to every target in one call; caller frees.
 pub fn sendUrl(allocator: std.mem.Allocator, system_id: u32, target_ids: []const u64, options: *const RouteOptions) ![]u8 {
@@ -190,6 +224,23 @@ pub fn parseTargets(arena: std.mem.Allocator, body: []const u8) !Targets {
         });
     }
     return targets;
+}
+
+/// `body` is GET /ansiblex's answer; a gate at a system the map doesn't have is skipped; `arena` is scratch.
+pub fn parseBridges(arena: std.mem.Allocator, body: []const u8) !Bridges {
+    const answer = try parseAnswer(BridgesAnswer, arena, body);
+    var parsed: Bridges = .{ .is_ready = answer.ready };
+    for (answer.ansiblex) |row| {
+        if (parsed.count == MAX_BRIDGES) {
+            slog.warn("Failed to show every Ansiblex gate: more than {d}", .{MAX_BRIDGES});
+            break;
+        }
+        const from = universe.findSystemById(row.from.id) orelse continue;
+        const to = universe.findSystemById(row.to.id) orelse continue;
+        parsed.bridges[parsed.count] = .{ .from = from, .to = to };
+        parsed.count += 1;
+    }
+    return parsed;
 }
 
 /// `body` is POST /route's answer, whose status says nothing of how each character fared; `arena` is scratch.
@@ -287,6 +338,22 @@ const testing = std.testing;
 
 fn testArena() std.heap.ArenaAllocator {
     return .init(testing.allocator);
+}
+
+test "parseBridges reads each gate's ends, and whether the list is ready" {
+    var arena = testArena();
+    defer arena.deinit();
+    const bridges = try parseBridges(arena.allocator(),
+        \\{"ready":true,"readAt":"2026-11-09T08:00:00Z","count":3,"barred":0,"ansiblex":[
+        \\{"id":1,"from":{"id":30000142,"name":"Jita","security":0.9},"to":{"id":30002187,"name":"Amarr","security":1.0},"zone":2,"standsIn":1},
+        \\{"id":2,"from":{"id":30002187},"to":{"id":30000142},"zone":null,"standsIn":null},
+        \\{"id":3,"from":{"id":30000142},"to":{"id":31000005}}]}
+    );
+    try testing.expect(bridges.is_ready);
+    try testing.expectEqual(@as(usize, 2), bridges.count);
+    try testing.expectEqual(universe.findSystem("Jita").?, bridges.bridges[0].from);
+    try testing.expect(bridges.isTwoWay(bridges.bridges[0]));
+    try testing.expect(!(try parseBridges(arena.allocator(), "{\"ready\":false}")).is_ready);
 }
 
 test "sendUrl leaves out the start, so each character sets off from where it is" {

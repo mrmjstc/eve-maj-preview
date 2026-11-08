@@ -344,31 +344,36 @@ The History Panel: recent notifications from all characters. Also toggled from t
 
 ### mapPanel
 
-The Map: a schematic of one region, or up to four side by side (Ctrl+click a region or an exit to add it), with live stats, client positions and chat intel. Also toggled from the tray.
+The Map: a schematic of one region, or up to four side by side (Ctrl+click a region or an exit to add it), with live stats, client positions and chat intel. Its Layers button turns each overlay on and off; clicking Kills or NPC in the metric bar again switches to Pods or NPC delta. Also toggled from the tray.
 
 | Key | Type | Default | Range | Notes |
 |---|---|---|---|---|
 | `show` | bool | `false` | | Closing the map's window, or hiding it from the tray or a hotkey, turns this off. |
 | `x`, `y` | int | `330`, `60` | screen | |
-| `width` | int | `760` | 300–3840 | Inside the window's frame, without the Intel Panel's sidebar. Saved when the window is resized. |
-| `height` | int | `600` | 240–2160 | Inside the window's frame. Saved when the window is resized. |
+| `width` | int | `760` | 520–3840 | Inside the window's frame. Saved when the window is resized. |
+| `height` | int | `600` | 330–2160 | Inside the window's frame. Saved when the window is resized. |
 | `alwaysOnTop` | bool | `true` | | Keep the window above others, game clients included. |
 | `rememberPosition` | bool | `true` | | Save position on drag. |
 | `hideWhenNoCharacters` | bool | `false` | | |
 | `hideWhenNoEveFocus` | bool | `false` | | As `historyPanel.hideWhenNoEveFocus`. |
 | `hideDebounceMs` | int | `500` | 0–5000 | Delay before hiding. |
 | `opacity` | int | `255` | opacity | |
-| `fontName` | string | `"Segoe UI"` | | Names on the map only. Its header, buttons and tooltips use `historyPanel.fontName`, size and weight, so both panels match. |
-| `fontSize` | int | `10` | font size | Names on the map only. |
+| `fontName` | string | `"Segoe UI"` | | Names on the map only. Its cards, buttons and tooltips use the configuration window's font, Geist, and its colours. |
+| `fontSize` | int | `12` | font size | Names on the map only. |
 | `fontWeight` | enum | `Regular` | weight | Names on the map only. |
 | `regionId` | int | `10000002` | | The first region shown, by CCP's ID; The Forge by default. Set by picking a region. |
 | `extraRegionId1` … `3` | int | `0` | | Further regions shown beside it, by CCP's ID; `0` for none. Set by Ctrl+clicking a region or an exit. |
 | `followActive` | bool | `true` | | Open the active client's region when it leaves those shown. Needs log monitoring. |
-| `metric` | enum | `Security` | `Security`, `ShipKills`, `NpcKills`, `Jumps`, `Sovereignty` | What the markers show. |
+| `metric` | enum | `Security` | `Security`, `ShipKills`, `PodKills`, `NpcKills`, `NpcDelta`, `Jumps`, `Sovereignty`, `FactionWarfare` | What the markers show. `ShipKills` counts ships only. `NpcDelta` is the change in NPC kills from the hour before, known once the panel has seen two hourly figures. `FactionWarfare` colours warzone systems by occupier, stronger the further each is contested. |
 | `showCharacterNames` | bool | `true` | | Tag each system with a client in it; more than one shows as a count. |
-| `liveStats` | bool | `true` | | Fetch kills, jumps, sovereignty and incursions from ESI, and storms from EVE-Scout, every 15 minutes while the panel shows; also each sov-holding alliance's logo, once, for its colour. |
+| `liveStats` | bool | `true` | | Fetch kills, jumps, sovereignty, faction warfare, sov campaigns and incursions from ESI, and storms and Thera's and Turnur's connections from EVE-Scout, every 15 minutes while the panel shows; also each sov-holding alliance's logo, once, for its colour. |
 | `showStorms` | bool | `true` | | Mark metaliminal storms and the gates they cover. Needs `liveStats`. Off only hides them. |
 | `showIncursions` | bool | `true` | | Mark incursions, the systems they infest and where they stage. Needs `liveStats`. Off only hides them. |
+| `showSovTimers` | bool | `true` | | Square each system with a sov campaign, with a countdown to its start beside its name, then the defender's score once it runs. Needs `liveStats`. Off only hides them. |
+| `showWormholes` | bool | `true` | | Draw a stub labelled Thera or Turnur from each system with a connection to it, and ring Turnur; and list every connection in New Eden in a card under the Intel card, a tab a hub, which scrolls, and whose rows open the system. Needs `liveStats`. Off only hides them. |
+| `showAnsiblex` | bool | `true` | | Draw the Eve Stars account's Ansiblex gates: an arc between two systems shown, or a stub naming the far end. Needs `evestarsToken`; a read-only token is enough. Fetched every 30 minutes while shown. |
+| `showKills` | bool | `true` | | Follow zKillboard's live feed while the panel shows: each kill ripples and leaves a fading mark, and the Intel card gains a Kills tab listing those in the regions shown. Kills only NPCs took part in are left out. |
+| `killLifetimeMin` | int | `30` | 1–120 | Minutes a kill stays on the map and in the Kills tab. |
 | `showIntel` | bool | `true` | | Highlight systems named in intel channels. Off only hides the pins. |
 | `intelShrinkSec` | int | `300` | 1–900 | Seconds an intel pin shows, its halo shrinking all the while. |
 | `intelShowClear` | bool | `true` | | Turn a live pin yellow and restart its shrink when intel calls its system `clear` or `clr`, even if the rule excludes those words. Only the first system a message names is cleared. Off, those messages are ignored. |
@@ -379,22 +384,21 @@ The Map: a schematic of one region, or up to four side by side (Ctrl+click a reg
 
 ### intelPanel
 
-The Intel Panel lists every report that names a system in a channel an intel rule follows, at any distance, against the nearest client. It uses the default wording, whatever a rule's `custom_text` or `text_color`, and the History Panel's font, timestamp and merge settings. A rule's exclusions don't apply here: `clr` and `nv` lines list too, though they stay off the map and don't alert. Clicking a row opens its system on the map. Also toggled from the tray. Clearing the history clears both.
+The Intel Panel lists every report that names a system in a channel an intel rule follows, at any distance, against the nearest client. It uses the default wording, whatever a rule's `custom_text` or `text_color`, and the History Panel's timestamp and merge settings, and its font when detached. A rule's exclusions don't apply here: `clr` and `nv` lines list too, though they stay off the map and don't alert. Clicking a row opens its system on the map. Also toggled from the tray. Clearing the history clears both.
 
 | Key | Type | Default | Range | Notes |
 |---|---|---|---|---|
 | `show` | bool | `false` | | Reports are collected whether or not this is on. Intel never goes to the History Panel. |
-| `attached` | bool | `true` | | Draw it as a sidebar inside the map's window, which grows by `width`; the settings below marked *detached* don't apply. Turned off in the dialog, the panel stays up past its auto-hide, like the tray toggle. |
-| `side` | enum | `Right` | `Left`, `Right` | Which side of the map the sidebar sits on. |
+| `attached` | bool | `true` | | Draw it as a card over the map, below its search, showing 2 to 6 reports as they fit, with a Kills tab beside it while `mapPanel.showKills` is on; the settings below marked *detached* don't apply. Turned off in the dialog, the panel stays up past its auto-hide, like the tray toggle. |
 | `x`, `y` | int | `1100`, `60` | screen | *Detached.* |
-| `width` | int | `340` | 160–3840 | |
+| `width` | int | `340` | 160–3840 | *Detached.* |
 | `height` | int | `400` | 120–2160 | *Detached.* |
 | `rememberPosition` | bool | `true` | | *Detached.* Save position on drag. |
 | `alwaysOnTop` | bool | `true` | | *Detached.* Keep the panel above other windows, game clients included. |
 | `hideWhenNoCharacters` | bool | `false` | | *Detached.* |
 | `hideWhenNoEveFocus` | bool | `false` | | *Detached.* As `historyPanel.hideWhenNoEveFocus`. |
 | `hideDebounceMs` | int | `500` | 0–5000 | *Detached.* Delay before hiding. |
-| `opacity` | int | `255` | opacity | |
+| `opacity` | int | `255` | opacity | *Detached.* Inside the map it takes the map's. |
 | `colorSystemNames` | bool | `true` | | Draw each row's system in its name colour: `systemColors`, then unique colours if on, then the default. Doesn't need a rule's `color_system_name`. |
 
 ### thumbnailSpaces
@@ -772,7 +776,7 @@ A window must pass both lists; a filter with both empty matches nothing. Non-EVE
 | `oreTable` | `[{name, price}]` | `[]` | ISK/unit overrides, 0–1e12. A name also covers its grade variants (`Veldspar` → `Veldspar II-Grade`). Others use built-in Jita prices. |
 | `orePricesFetchedAtSeconds` | int | `0` | Unix time of the last Fetch Prices. |
 | `evestarsEnabled` | bool | `true` | Off, the map drops its right-click destinations and Avoid System, whatever `evestarsToken` holds. |
-| `evestarsToken` | string | `""` | Eve Stars API token. Set, it adds the map's right-click destinations and Avoid System. Plain text in this file, left out of the log. |
+| `evestarsToken` | string | `""` | Eve Stars API token. Set, it adds the map's right-click destinations, Avoid System and Ansiblex gates. Plain text in this file, left out of the log. |
 
 ## Command line and protocol
 

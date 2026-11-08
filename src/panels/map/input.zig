@@ -3,16 +3,19 @@ const std = @import("std");
 const win32 = @import("../../platform/win32.zig");
 const vk = @import("../../platform/virtual_keys.zig");
 const config_mod = @import("../../config.zig");
+const destinations_mod = @import("destinations.zig");
 const look = @import("look.zig");
 const menu_mod = @import("menu.zig");
 const search = @import("search.zig");
 const state = @import("state.zig");
 const window_mod = @import("window.zig");
 const panel_host = @import("../panel_host.zig");
+const popup_look = @import("../popup_look.zig");
 const universe = @import("../../map/universe.zig");
 const evestars = @import("../../map/evestars.zig");
-const destinations_mod = @import("../../map/destinations.zig");
 const system_links = @import("../../map/system_links.zig");
+const zkill = @import("../../map/zkill.zig");
+const wormhole_list = @import("wormhole_list.zig");
 const log = @import("../../log.zig");
 
 const Destinations = destinations_mod.Destinations;
@@ -88,8 +91,19 @@ pub fn closeSearch(window: *MapPanelWindow, context: Context, ending: SearchEndi
     }
 }
 
+/// Shows the regions Ctrl-clicked in New Eden once Ctrl is let go; with none, New Eden stays.
+pub fn finishChoosingRegions(window: *MapPanelWindow) void {
+    if (!window.state.is_choosing_regions or win32.isCtrlPressed()) return;
+    window.state.is_choosing_regions = false;
+    const chosen = window.state.chosen_regions orelse return;
+    if (!window.state.is_picking_region or chosen.count == 0) return;
+    window.chooseRegions(chosen);
+}
+
 fn closePopup(window: *MapPanelWindow, context: Context) void {
     window.state.menu = null;
+    window.state.region_menu = null;
+    window.state.layers_menu = null;
     window.state.popup.clear();
     closeSearch(window, context, .hand_back);
 }
@@ -104,7 +118,7 @@ fn onMouseMove(window: *MapPanelWindow, context: Context, x: i32, y: i32) bool {
             return true;
         }
     }
-    const hover = window.state.hitTest(window.currentAreas(), &window.config.historyPanel, x, y);
+    const hover = window.state.hitTest(window.currentAreas(), x, y);
     if (hover.eql(window.state.hover)) return false;
     window.state.hover = hover;
     if (hover.kind == .popup_row) {
@@ -147,30 +161,67 @@ fn endPan(window: *MapPanelWindow) void {
     if (!pan.has_moved) window.state.focus_system = null;
 }
 
-/// Whether the map zoomed; `wParam` and `lParam` are WM_MOUSEWHEEL's, whose position is on the screen.
+/// Whether the map zoomed, New Eden opened or closed, or the wormhole list scrolled; `wParam` and `lParam` are WM_MOUSEWHEEL's, whose position is on the screen.
 fn onWheel(window: *MapPanelWindow, wParam: win32.WPARAM, lParam: win32.LPARAM) bool {
-    if (window.state.is_picking_region or window.state.isPopupOpen()) return false;
+    if (window.state.isPopupOpen()) return false;
     var point: win32.POINT = .{ .x = win32.lparamX(lParam), .y = win32.lparamY(lParam) };
     _ = win32.ScreenToClient(window.panel.hwnd, &point);
+    if (window.state.wormhole_card) |*card| {
+        if (card.box.containsPoint(point.x, point.y)) {
+            const notches: i32 = @divTrunc(@as(i32, win32.getWheelDelta(@truncate(wParam))), @as(i32, win32.WHEEL_DELTA));
+            const scroll = wormhole_list.scrolled(window.state.wormhole_scroll, notches, window.state.wormhole_entry_count, card.visible_count);
+            if (scroll == window.state.wormhole_scroll) return false;
+            window.state.wormhole_scroll = scroll;
+            return true;
+        }
+    }
     const area = window.currentAreas().map;
     if (point.x < area.left or point.x >= area.right or point.y >= area.bottom) return false;
     const notches = @as(f32, @floatFromInt(win32.getWheelDelta(@truncate(wParam)))) / win32.WHEEL_DELTA;
+    if (window.state.is_picking_region) {
+        if (notches <= 0) return false;
+        leaveNewEden(window, window.state.overview.regionAt(point.x, point.y));
+        return true;
+    }
+    if (notches < 0 and window.state.layout.view.isFitted()) {
+        openNewEden(window);
+        return true;
+    }
     window.state.layout.view = window.state.layout.view.zoomedAt(area, point.x, point.y, std.math.pow(f32, ZOOM_STEP, notches));
     return true;
 }
 
+/// Collapses the cards, which would cover the regions.
+fn openNewEden(window: *MapPanelWindow) void {
+    window.state.is_picking_region = true;
+    window.state.is_choosing_regions = false;
+    window.state.chosen_regions = null;
+    window.state.is_intel_collapsed = true;
+    window.state.is_wormholes_collapsed = true;
+    window.state.is_timers_collapsed = true;
+    // A hovered system's place means nothing over New Eden.
+    window.state.hover = .{};
+}
+
+/// Opens `region` when it isn't shown, else goes back to the regions shown.
+fn leaveNewEden(window: *MapPanelWindow, region: ?universe.RegionIndex) void {
+    if (region) |picked| {
+        if (!window.state.regions.contains(picked)) return window.chooseRegion(picked);
+    }
+    window.state.is_picking_region = false;
+    window.state.hover = .{};
+}
+
 fn handleClick(window: *MapPanelWindow, context: Context, x: i32, y: i32) void {
-    const hit = window.state.hitTest(window.currentAreas(), &window.config.historyPanel, x, y);
+    const hit = window.state.hitTest(window.currentAreas(), x, y);
     switch (hit.kind) {
         .none => {
             if (window.state.isPopupOpen()) {
                 closePopup(window, context);
                 return;
             }
-            if (window.state.is_picking_region) {
-                window.state.is_picking_region = false;
-                return;
-            }
+            // New Eden stays until a region is picked, or its title closes it.
+            if (window.state.is_picking_region) return;
             beginPan(window, x, y);
         },
         .map_control => pressMapControl(window, @fromBackingInt(@intCast(hit.index))),
@@ -178,15 +229,37 @@ fn handleClick(window: *MapPanelWindow, context: Context, x: i32, y: i32) void {
         .submenu_row => pressSubmenuRow(window, context, hit.index),
         .nested_row => pressCharacterRow(window, context, hit.index),
         .search_box => pressSearchBox(window, context, x),
-        .button => pressButton(window, @fromBackingInt(@intCast(hit.index))),
+        .title => if (window.state.is_picking_region) {
+            window.state.is_picking_region = false;
+        } else {
+            openNewEden(window);
+        },
+        .metric => window.store.update(.{ .mapPanel = .{ .metric = look.metricAfterClick(window.config.mapPanel.metric, @fromBackingInt(@intCast(hit.index))) } }),
+        .toggle => pressToggle(window, @fromBackingInt(@intCast(hit.index))),
+        .bar => {},
+        .intel_header => window.state.is_intel_collapsed = !window.state.is_intel_collapsed,
         .region => {
             if (win32.isCtrlPressed()) {
-                _ = window.toggleRegion(context.destinations, @intCast(hit.index));
+                window.toggleChosenRegion(context.destinations, @intCast(hit.index));
                 return;
             }
             window.chooseRegion(@intCast(hit.index));
         },
         .intel_row => openIntelRow(window, hit.index),
+        .wormhole_header => window.state.is_wormholes_collapsed = !window.state.is_wormholes_collapsed,
+        .wormhole_row => openWormholeRow(window, hit.index),
+        .timer_header => window.state.is_timers_collapsed = !window.state.is_timers_collapsed,
+        .timer_row => openTimerRow(window, hit.index),
+        .wormhole_tab => {
+            window.state.wormhole_hub = @fromBackingInt(@intCast(hit.index));
+            window.state.wormhole_scroll = 0;
+            window.state.is_wormholes_collapsed = false;
+        },
+        .kill_row => openKillRow(window, context, hit.index),
+        .card_tab => {
+            window.state.card_tab = @fromBackingInt(@intCast(hit.index));
+            window.state.is_intel_collapsed = false;
+        },
         .node => {
             const system = window.state.layout.nodes[hit.index].system;
             window.state.focus_system = if (window.state.focus_system == system) null else system;
@@ -205,35 +278,58 @@ fn handleClick(window: *MapPanelWindow, context: Context, x: i32, y: i32) void {
             window.chooseRegion(exit.region);
             window.state.focus_system = exit.destination;
         },
+        .portal => switch (window.state.layout.portals[hit.index].target) {
+            .hub => window.state.focus_system = window.state.layout.nodes[window.state.layout.portals[hit.index].from_index].system,
+            // Like an exit: the gate's far end, in its region.
+            .system => |destination| {
+                const region = universe.systemInfo(destination).region;
+                if (win32.isCtrlPressed()) {
+                    if (window.toggleRegion(context.destinations, region)) window.state.focus_system = destination;
+                    return;
+                }
+                window.chooseRegion(region);
+                window.state.focus_system = destination;
+            },
+        },
     }
 }
 
+/// Zooming out past the fit opens New Eden, and zooming in leaves it.
 fn pressMapControl(window: *MapPanelWindow, control: look.MapControl) void {
     const area = window.currentAreas().map;
     const x = @divTrunc(area.left + area.right, 2);
     const y = @divTrunc(area.top + area.bottom, 2);
+    const is_zoomable = !window.state.is_picking_region;
     switch (control) {
-        .zoom_in => window.state.layout.view = window.state.layout.view.zoomedAt(area, x, y, ZOOM_STEP),
-        .zoom_out => window.state.layout.view = window.state.layout.view.zoomedAt(area, x, y, 1 / ZOOM_STEP),
-        .fit => window.state.layout.view = .{},
+        .zoom_in => {
+            if (!is_zoomable) return leaveNewEden(window, null);
+            window.state.layout.view = window.state.layout.view.zoomedAt(area, x, y, ZOOM_STEP);
+        },
+        .zoom_out => {
+            if (!is_zoomable) return;
+            if (window.state.layout.view.isFitted()) return openNewEden(window);
+            window.state.layout.view = window.state.layout.view.zoomedAt(area, x, y, 1 / ZOOM_STEP);
+        },
+        .fit => if (is_zoomable) {
+            window.state.layout.view = .{};
+        },
         .always_on_top => window.store.update(.{ .mapPanel = .{ .alwaysOnTop = !window.config.mapPanel.alwaysOnTop } }),
     }
 }
 
-fn pressButton(window: *MapPanelWindow, button: look.Button) void {
-    if (look.metricOf(button)) |metric| {
-        window.store.update(.{ .mapPanel = .{ .metric = metric } });
-        return;
-    }
-    switch (button) {
-        .regions => window.state.is_picking_region = !window.state.is_picking_region,
+fn pressToggle(window: *MapPanelWindow, toggle: look.Toggle) void {
+    const map_settings = &window.config.mapPanel;
+    switch (toggle) {
+        // Above the button, as the bar sits along the bottom; a press while it's open lands outside it and closes it.
+        .layers => {
+            const box = window.state.chrome.toggles[@backingInt(look.Toggle.layers)];
+            window.state.layers_menu = .{ .anchor = .{ .x = box.left - 2 * popup_look.TOOLTIP_PADDING, .y = box.top - popup_look.TOOLTIP_PADDING } };
+            window.state.hover = .{};
+        },
         .follow => {
-            window.store.update(.{ .mapPanel = .{ .followActive = !window.config.mapPanel.followActive } });
+            window.store.update(.{ .mapPanel = .{ .followActive = !map_settings.followActive } });
             window.state.followed_region = null;
         },
-        .storms => window.store.update(.{ .mapPanel = .{ .showStorms = !window.config.mapPanel.showStorms } }),
-        .incursions => window.store.update(.{ .mapPanel = .{ .showIncursions = !window.config.mapPanel.showIncursions } }),
-        .security, .kills, .npc_kills, .jumps, .sovereignty => {},
     }
 }
 
@@ -243,16 +339,63 @@ fn openIntelRow(window: *MapPanelWindow, row_index: usize) void {
     if (entry.system) |system| window.selectSystem(system);
 }
 
+/// Opens `system`'s region unless it's shown, selects it and ripples it once.
+fn pingSystem(window: *MapPanelWindow, system: SystemIndex) void {
+    window.selectSystem(system);
+    window.state.ping = .{ .system = system, .started_ms = win32.Ticks.now().ms };
+}
+
+fn openWormholeRow(window: *MapPanelWindow, row_index: usize) void {
+    const entry = window.state.wormholeEntryAt(row_index) orelse return;
+    pingSystem(window, entry.system);
+}
+
+fn openTimerRow(window: *MapPanelWindow, row_index: usize) void {
+    const entry = window.state.timerEntryAt(row_index) orelse return;
+    pingSystem(window, entry.system);
+}
+
+/// Pings the kill's system, or with Ctrl opens the kill on zKillboard.
+fn openKillRow(window: *MapPanelWindow, context: Context, row_index: usize) void {
+    const kill = window.state.kill_rows[row_index];
+    if (!win32.isCtrlPressed()) {
+        pingSystem(window, kill.system);
+        return;
+    }
+    const url: evestars.Text = .print(zkill.KILL_URL_FORMAT, .{kill.id});
+    openUrl(context.destinations, .zkillboard, url);
+}
+
 fn handleRightClick(window: *MapPanelWindow, context: Context, x: i32, y: i32) void {
-    const hit = window.state.hitTest(window.currentAreas(), &window.config.historyPanel, x, y);
+    const hit = window.state.hitTest(window.currentAreas(), x, y);
     if (window.state.isPopupOpen()) {
         closePopup(window, context);
         return;
     }
-    const node_index = nodeWithMenuAt(window, hit, x, y) orelse return;
+    // A listed system may be off the map, so its menu opens at the cursor.
+    if (listedSystemAt(window, hit)) |system| {
+        openSystemMenu(window, context, system, .{ .x = x, .y = y });
+        return;
+    }
+    const node_index = nodeWithMenuAt(window, hit, x, y) orelse {
+        if (regionWithMenuAt(window, hit, x, y)) |region| openRegionMenu(window, region, x, y);
+        return;
+    };
     const node = window.state.layout.nodes[node_index];
-    window.state.focus_system = node.system;
-    window.state.menu = .{ .system = node.system, .anchor = .{ .x = node.x, .y = node.y } };
+    openSystemMenu(window, context, node.system, .{ .x = node.x, .y = node.y });
+}
+
+/// The system a card row under `hit` lists; null off the rows.
+fn listedSystemAt(window: *const MapPanelWindow, hit: Hover) ?SystemIndex {
+    if (hit.kind == .wormhole_row) return (window.state.wormholeEntryAt(hit.index) orelse return null).system;
+    if (hit.kind == .timer_row) return (window.state.timerEntryAt(hit.index) orelse return null).system;
+    return null;
+}
+
+/// Selects `system` and opens its right-click menu beside `anchor`.
+fn openSystemMenu(window: *MapPanelWindow, context: Context, system: SystemIndex, anchor: win32.POINT) void {
+    window.state.focus_system = system;
+    window.state.menu = .{ .system = system, .anchor = anchor };
     window.state.hover = .{};
     if (window.hasEveStars()) context.destinations.refreshTargets(window.panel.allocator, window.evestarsToken(), win32.Ticks.now().ms);
 }
@@ -264,6 +407,18 @@ fn nodeWithMenuAt(window: *const MapPanelWindow, hit: Hover, x: i32, y: i32) ?u1
     return window.state.layout.labelAt(x, y);
 }
 
+/// A region in New Eden, or on the map a region's name or empty space, which counts as the region of the nearest system.
+fn regionWithMenuAt(window: *const MapPanelWindow, hit: Hover, x: i32, y: i32) ?universe.RegionIndex {
+    if (hit.kind == .region) return @intCast(hit.index);
+    if (hit.kind != .none or window.state.is_picking_region) return null;
+    return window.state.layout.regionNear(x, y);
+}
+
+fn openRegionMenu(window: *MapPanelWindow, region: universe.RegionIndex, x: i32, y: i32) void {
+    window.state.region_menu = .{ .region = region, .anchor = .{ .x = x, .y = y } };
+    window.state.hover = .{};
+}
+
 /// Drops the popup's boxes for the submenus the menu has closed.
 fn followMenu(window: *MapPanelWindow) void {
     const menu = window.state.menu orelse return;
@@ -272,10 +427,32 @@ fn followMenu(window: *MapPanelWindow) void {
 }
 
 fn pressPopupRow(window: *MapPanelWindow, context: Context, row_index: usize) void {
+    if (window.state.region_menu) |region_menu| return pressRegionRow(window, context, region_menu, row_index);
+    if (window.state.layers_menu) |*layers_menu| return toggleLayer(window, layers_menu.layerAt(row_index) orelse return);
     const menu = if (window.state.menu) |*open| open else return pickHit(window, context, row_index);
     const action = menu.pressRow(window.hasEveStars(), row_index);
     followMenu(window);
     runMenuAction(window, context, action);
+}
+
+fn toggleLayer(window: *MapPanelWindow, layer: look.Layer) void {
+    const is_shown = !look.isLayerShown(&window.config.mapPanel, layer);
+    switch (layer) {
+        .storms => window.store.update(.{ .mapPanel = .{ .showStorms = is_shown } }),
+        .incursions => window.store.update(.{ .mapPanel = .{ .showIncursions = is_shown } }),
+        .sov_timers => window.store.update(.{ .mapPanel = .{ .showSovTimers = is_shown } }),
+        .wormholes => window.store.update(.{ .mapPanel = .{ .showWormholes = is_shown } }),
+        .ansiblex => window.store.update(.{ .mapPanel = .{ .showAnsiblex = is_shown } }),
+        .kills => window.store.update(.{ .mapPanel = .{ .showKills = is_shown } }),
+        .intel => window.store.update(.{ .mapPanel = .{ .showIntel = is_shown } }),
+        .names => window.store.update(.{ .mapPanel = .{ .showCharacterNames = is_shown } }),
+    }
+}
+
+fn pressRegionRow(window: *MapPanelWindow, context: Context, region_menu: menu_mod.RegionMenu, row_index: usize) void {
+    const site = region_menu.siteAt(row_index) orelse return;
+    closePopup(window, context);
+    openUrl(context.destinations, site, system_links.regionUrl(site, region_menu.region));
 }
 
 fn pressSubmenuRow(window: *MapPanelWindow, context: Context, row_index: usize) void {
@@ -300,7 +477,7 @@ fn runMenuAction(window: *MapPanelWindow, context: Context, action: menu_mod.Act
         .none => {},
         .avoid_system => toggleAvoided(window, destinations, menu.system),
         .copy_name => copySystemName(destinations, menu.system),
-        .open_site => |site| openSite(destinations, site, menu.system),
+        .open_site => |site| openUrl(destinations, site, system_links.siteUrl(site, menu.system)),
         .show_range => |ship| window.state.reach = if (ship) |shown| .measure(menu.system, shown) else null,
         .cycle_preference => window.store.update(.{ .mapPanel = .{ .routePreference = menu_mod.nextPreference(map_settings.routePreference) } }),
         .toggle_ansiblex => window.store.update(.{ .mapPanel = .{ .routeAnsiblex = !map_settings.routeAnsiblex } }),
@@ -338,8 +515,7 @@ fn copySystemName(destinations: *Destinations, system: SystemIndex) void {
     destinations.showFailureText(.print("Couldn't copy {s}", .{name}), now_ms);
 }
 
-fn openSite(destinations: *Destinations, site: system_links.Site, system: SystemIndex) void {
-    const url = system_links.siteUrl(site, system);
+fn openUrl(destinations: *Destinations, site: system_links.Site, url: evestars.Text) void {
     if (win32.shellOpenUrl(url.slice())) return;
     slog.warn("Failed to open '{s}'", .{url.slice()});
     destinations.showFailureText(.print("Couldn't open {s}", .{system_links.siteName(site)}), win32.Ticks.now().ms);
@@ -357,10 +533,12 @@ fn routeOptions(config: *const config_mod.Config) evestars.RouteOptions {
     return options;
 }
 
-/// A click doesn't activate the panel, so the keyboard has to be asked for; the hotkeys let go of it meanwhile.
+/// Asks for the keyboard as well as the click's activation did; the hotkeys let go of it meanwhile.
 fn openSearch(window: *MapPanelWindow, context: Context) void {
     if (window.state.search != null) return;
     window.state.menu = null;
+    window.state.region_menu = null;
+    window.state.layers_menu = null;
     window.state.popup.clear();
     window.state.search = .{};
     window.search_return_hwnd = win32.GetForegroundWindow();
@@ -391,7 +569,7 @@ fn pickHit(window: *MapPanelWindow, context: Context, index: usize) void {
     const hit = open.hitAt(index) orelse return;
     closePopup(window, context);
     switch (hit) {
-        .system => |system| window.selectSystem(system),
+        .system => |system| pingSystem(window, system),
         .region => |region| window.chooseRegion(region),
     }
 }
@@ -401,8 +579,12 @@ fn onSearchChar(window: *MapPanelWindow, wParam: win32.WPARAM) void {
     _ = open.typeChar(wParam);
 }
 
+/// Ctrl+F opens the search while it's closed.
 fn onSearchKey(window: *MapPanelWindow, context: Context, wParam: win32.WPARAM) void {
-    const open = if (window.state.search) |*shown| shown else return;
+    const open = if (window.state.search) |*shown| shown else {
+        if (wParam == 'F' and win32.isCtrlPressed()) openSearch(window, context);
+        return;
+    };
     const is_ctrl_down = win32.isCtrlPressed();
     const extent: search.Extent = if (win32.isShiftPressed()) .extend else .move;
     switch (wParam) {

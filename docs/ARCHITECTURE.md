@@ -124,11 +124,13 @@ Throttled work uses `util/schedule.zig`: intervals measure from the tick's start
 | Clipboard upload | `hotkeys/paste_upload.zig`, one per press, at most 4 at once | None; slots claimed through atomics |
 | Dialog helpers | `pickers.zig`, `prices.zig`, `portraits.zig`, one-shot | `WM_KNOTS_COMMAND` |
 | Map stats | `map/stats_feed.zig`, one-shot every 15 minutes while the Map Panel shows; after the figures, it fetches logos of alliances it hasn't seen | Atomic snapshot and logo colour swaps, taken on the tick |
-| Eve Stars calls | `map/evestars_feed.zig`, one-shot per character list or send, one at a time for each | Atomic reply swap, taken on the tick or the panel's 100ms timer |
+| Eve Stars calls | `map/evestars_feed.zig`, one-shot per character list, send or Ansiblex list, one at a time for each | Atomic reply swap, taken on the tick or the panel's 100ms timer |
+| Live sov campaigns | `map/campaigns_feed.zig`, one-shot every 10 s while a running sov timer is listed for the regions shown | Atomic campaigns swap, taken on the tick and laid over the snapshot's |
+| zKillboard feed | `map/zkill_feed.zig`, one-shot runs while the Map Panel shows kills: each reads zKillboard's R2Z2 files from where the last stopped, up to 50, then names new ships and victims through ESI; the next starts once its batch is taken, at once while behind, 6 s at the newest file | Atomic batch swap, taken on the tick; the read position and asked-for ids belong to whichever run is going, or main between runs |
 
 TTS and sound share `notifications/worker.zig`'s lazily started `Worker`. Alerts go through `pushAlert`, which drops the oldest waiting alerts past a limit (speech: the profile's `tts_max_waiting`; sound: 3); voice settings go through `push` and are never dropped.
 
-The one-shot threads (update check, clipboard uploads, dialog helpers, map stats) are started through `util/detached.zig`, which counts them; `main.zig` waits up to 2 s at exit for them to finish before tearing down what they use; if any are still running, it saves with `App.saveBeforeAbruptExit` and ends the process rather than freeing state they still hold.
+The one-shot threads (update check, clipboard uploads, dialog helpers, map stats, Eve Stars calls, zKillboard runs) are started through `util/detached.zig`, which counts them; `main.zig` waits up to 2 s at exit for them to finish before tearing down what they use; if any are still running, it saves with `App.saveBeforeAbruptExit` and ends the process rather than freeing state they still hold.
 
 Cross-thread data:
 
@@ -175,9 +177,11 @@ Rendering:
 - `panels/list_view.zig` + `list_look.zig`: `ClientList` and `ThumbnailsAndList` view modes; App owns the window, built and torn down with the thumbnail set. `list_look` is pure and shared with the dialog preview.
 - `panels/panel_look.zig` + `panel_chrome.zig`: what the History, Map and Intel panels share, so they match: fonts, header, footer buttons, frame, and when they show.
 - `panels/panel_lifecycle.zig`: when those three have a window. Their `show` setting makes one; the tray, a hotkey or the Map Panel's close button turns `show` off.
-- `panels/history_rows.zig`: the rows the History and Intel panels list. The Map Panel draws them in a sidebar; `panels/intel_panel.zig` is the Intel Panel's own window for when it's detached.
+- `panels/history_rows.zig`: the rows the History and Intel panels list. The Map Panel draws them, two lines each, in its Intel card; `panels/intel_panel.zig` is the Intel Panel's own window for when it's detached.
 - `panels/map_panel.zig` + `panels/map/`: the Map Panel's window and input; see [Map Panel](#map-panel).
 - `panels/popup_menu.zig` + `popup_look.zig`: a menu with two levels of submenu, drawn inside a panel, plus tooltip placement. The Map Panel's right-click menu and search results use it; a panel supplies its own rows and actions.
+- `panels/glyphs.zig` (pure, tested): the menus' 16px icons, drawn at compile time from strokes, so no image files ship.
+- `panels/palette.zig`: the configuration window's colours, sizes and fonts, so the GDI panels match it.
 - `thumbnail/hover_zoom.zig` + `layout/zoom.zig`: click-through enlarged copy under the cursor.
 
 Layout (`layout/`, mostly pure):
@@ -190,7 +194,7 @@ Layout (`layout/`, mostly pure):
 
 ## Map Panel
 
-`panels/map_panel.zig` holds `MapPanel`: the feeds, stats, pins and Eve Stars destinations, the window's lifecycle, its window procedure and when it redraws. App owns the panel, so it survives thumbnail set rebuilds.
+`panels/map_panel.zig` holds `MapPanel`: the feeds, stats, pins, zKillboard's kills and their names, and Eve Stars destinations and Ansiblex gates, the window's lifecycle, its window procedure and when it redraws. App owns the panel, so it survives thumbnail set rebuilds.
 
 The panel's own files in `panels/map/`:
 
@@ -198,23 +202,27 @@ The panel's own files in `panels/map/`:
 - `input.zig`: mouse and keyboard to `MapState` changes, the right-click menu's actions and the search. It reaches past the window only through a `Context` (destinations, host) and hands back a `Response` saying how to redraw, so it doesn't import `map_panel.zig`.
 - `state.zig` (pure, tested): `MapState`, what the map shows and what's under the cursor, hit testing included.
 - `paint.zig`: draws a frame from `MapState` without changing it, handing back only the rows and popup boxes the next hit test needs.
-- `menu.zig` (pure, tested): the right-click menu's rows and what each press asks for.
+- `menu.zig` (pure, tested): the right-click menus on a system and on a region, and the Layers checklist; their rows and what each press asks for.
 - `search.zig` (pure, tested): the search's query, its cursor and selection, and its results.
 - `marks.zig` (pure, tested): the clients on the map.
 - `look.zig`: sizes, colours, markers and the panel's `Areas`.
 - `text.zig`: tooltips, legends and titles.
+- `wormhole_list.zig` (pure, tested): the Thera and Turnur card's list, one hub a tab, sorted by region, and its scrolling.
+- `timer_list.zig` (pure, tested): the sov timer card's list, the shown regions' campaigns, soonest first.
+- `destinations.zig`: who can be sent an Eve Stars destination, the account's Ansiblex gates, and how each call turned out.
 
 What it draws from, in `map/`:
 
 - `universe.zig`: the embedded map, built by `.claude/tools/build_universe.py`.
-- `layout.zig`: positions on CCP's flattened map, with up to four regions packed side by side and the gates between them bent around systems; zoom and pan; label placement.
+- `layout.zig`: positions on CCP's flattened map, with up to four regions packed side by side and the gates between them bent around systems; exits, and portals (stubs to Thera, Turnur or an Ansiblex gate's far end, set each time those change); zoom and pan; label placement.
 - `overview.zig`: New Eden as bubbles, for picking a region.
 - `search.zig`: names in the embedded map.
 - `jump_range.zig`: ship ranges and the systems in reach, by the embedded map's true 3D positions.
-- `stats.zig` + `stats_feed.zig`: ESI figures, ESI's incursions through `incursions.zig`, and EVE-Scout's storms through `storms.zig`.
+- `stats.zig` + `stats_feed.zig`: ESI figures, with each hour's change in NPC kills carried from the snapshot before; ESI's incursions, sov campaigns and faction warfare through `incursions.zig`, `campaigns.zig` and `faction_warfare.zig`, a running timer's scores refreshed between snapshots by `campaigns_feed.zig`; and EVE-Scout's storms and Thera's and Turnur's connections through `storms.zig` and `wormholes.zig`.
+- `zkill.zig` + `zkill_feed.zig`: zKillboard's live kills, and the names of their ships and victims.
 - `holder_colors.zig`: sovereignty colours; NPC factions' are fixed, alliances' picked from their logos.
 - `intel_pins.zig`: systems named in intel channels.
-- `evestars.zig` + `evestars_feed.zig` + `destinations.zig`: the Eve Stars route API.
+- `evestars.zig` + `evestars_feed.zig`: the Eve Stars route API, and its Ansiblex list.
 - `system_links.zig`: a system's pages on the web.
 
 Drawing and input:
@@ -223,7 +231,11 @@ Drawing and input:
 - `PanelWindow.present` paints at once, as `WM_PAINT` would otherwise wait out a moving mouse.
 - A pan or zoom only re-places the layout; the systems and gates are gathered again only when the regions change.
 - The menu and search results are drawn in the panel.
-- Clicks on the map don't activate the window (`WM_MOUSEACTIVATE`), so the game keeps the keyboard, though its title bar activates as usual.
+- A click anywhere on the map activates the window, as other windows do.
+- Names keep clear of the cards over the map: they're placed after each render measures the chrome, the Intel, Thera and Turnur and sov timer cards, and the legends.
+- A new intel pin or kill, or a system picked from the search, plays a ripple on its own fast timer, which stops once no ripple is playing.
+- While sov timers or kills show, the render signature takes the minute too, so countdowns, ages and fading kill marks move on.
+- A system with a sov timer gets a two-line name, the countdown under it, kept clear of the timer's square and sized for the widest countdown so it never moves; names are placed again only when the systems with timers change.
 - The search takes the keyboard, unbinding the hotkeys while it's open.
 
 ## Input and control

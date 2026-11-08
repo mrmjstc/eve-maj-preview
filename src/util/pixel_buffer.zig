@@ -243,25 +243,32 @@ pub fn drawRoundedFrame(canvas: Canvas, radius: usize, argb: u32) void {
 
 /// Anti-aliased, and clipped to the canvas; only the stretch over it is walked, as a zoomed map runs gates far off it.
 pub fn drawLine(canvas: Canvas, from_x: i32, from_y: i32, to_x: i32, to_y: i32, argb: u32) void {
+    drawLineExact(canvas, @floatFromInt(from_x), @floatFromInt(from_y), @floatFromInt(to_x), @floatFromInt(to_y), argb);
+}
+
+/// drawLine between sub-pixel ends, so short pieces of a curve keep its slope.
+pub fn drawLineExact(canvas: Canvas, from_x: f32, from_y: f32, to_x: f32, to_y: f32, argb: u32) void {
     const is_steep = @abs(to_y - from_y) > @abs(to_x - from_x);
     var start_major = if (is_steep) from_y else from_x;
     var start_minor = if (is_steep) from_x else from_y;
     var end_major = if (is_steep) to_y else to_x;
     var end_minor = if (is_steep) to_x else to_y;
     if (start_major > end_major) {
-        std.mem.swap(i32, &start_major, &end_major);
-        std.mem.swap(i32, &start_minor, &end_minor);
+        std.mem.swap(f32, &start_major, &end_major);
+        std.mem.swap(f32, &start_minor, &end_minor);
     }
-    const major_limit: i32 = @intCast(if (is_steep) canvas.height else canvas.width);
-    const minor_limit: i32 = @intCast(if (is_steep) canvas.width else canvas.height);
+    const major_limit: f32 = @floatFromInt(if (is_steep) canvas.height else canvas.width);
+    const minor_limit: f32 = @floatFromInt(if (is_steep) canvas.width else canvas.height);
     // Each step also touches the pixel after its own, so a line one short of the edge still shows.
     if (@max(start_minor, end_minor) < -1 or @min(start_minor, end_minor) >= minor_limit) return;
+    if (end_major < 0 or start_major >= major_limit) return;
 
     const length = end_major - start_major;
-    const gradient: f32 = if (length == 0) 0 else @as(f32, @floatFromInt(end_minor - start_minor)) / @as(f32, @floatFromInt(length));
-    var major = @max(start_major, 0);
-    while (major <= @min(end_major, major_limit - 1)) : (major += 1) {
-        const minor = @as(f32, @floatFromInt(start_minor)) + gradient * @as(f32, @floatFromInt(major - start_major));
+    const gradient: f32 = if (length == 0) 0 else (end_minor - start_minor) / length;
+    var major: i32 = @intFromFloat(@max(@ceil(start_major), 0));
+    const last_major: i32 = @intFromFloat(@min(@floor(end_major), major_limit - 1));
+    while (major <= last_major) : (major += 1) {
+        const minor = start_minor + gradient * (@as(f32, @floatFromInt(major)) - start_major);
         const floor = @floor(minor);
         const whole: i32 = @intFromFloat(floor);
         const fraction = minor - floor;
@@ -321,6 +328,15 @@ pub fn outlineMask(canvas: Canvas, mask: *const Mask, thickness: f32, argb: u32)
     }
 }
 
+/// `coverage` is rows `width` wide of 0 for none up to 255 for all of `argb`, its corner at `left` and `top`; clipped to the canvas.
+pub fn fillCoverage(canvas: Canvas, left: i32, top: i32, coverage: []const u8, width: i32, argb: u32) void {
+    for (coverage, 0..) |value, index| {
+        if (value == 0) continue;
+        const offset: i32 = @intCast(index);
+        blendPixel(canvas, left + @mod(offset, width), top + @divTrunc(offset, width), argb, @as(f32, @floatFromInt(value)) / 255);
+    }
+}
+
 /// Over a premultiplied pixel, so it suits a transparent overlay as well as an opaque canvas; `coverage` is 0 to 1, on top of `argb`'s own alpha.
 fn blendPixel(canvas: Canvas, x: i32, y: i32, argb: u32, coverage: f32) void {
     if (x < 0 or y < 0) return;
@@ -365,6 +381,15 @@ test "fillRect fills only its rect and skips one that would overrun" {
     try testing.expectEqualSlices(u32, &.{ 0, 0, 0, 0, 0, 7, 7, 0, 0, 0, 0, 0 }, &buffer);
     fillRect(canvas, 3, 0, 2, 1, 9);
     try testing.expectEqual(@as(u32, 0), buffer[3]);
+}
+
+test "fillCoverage paints by coverage and clips what falls off the canvas" {
+    var buffer: [3 * 2]u32 = @splat(0xFF000000);
+    const canvas: Canvas = .{ .pixels = &buffer, .width = 3, .height = 2 };
+    fillCoverage(canvas, 1, 0, &.{ 255, 0, 0, 255 }, 2, 0xFFFFFFFF);
+    try testing.expectEqualSlices(u32, &.{ 0xFF000000, 0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFF000000, 0xFFFFFFFF }, &buffer);
+    fillCoverage(canvas, 2, 1, &.{ 0, 255 }, 2, 0xFFFF0000);
+    try testing.expectEqual(@as(u32, 0xFFFFFFFF), buffer[5]);
 }
 
 test "fillRoundedRect softens its corners alike and fills its middle" {

@@ -145,7 +145,7 @@ fn centeredText(hdc: win32.HDC, rect: win32.RECT, top: c_int, font: ?win32.HFONT
 
 /// Null falls back to the DC's own font.
 fn createFont(height: c_int, weight: c_int) ?win32.HFONT {
-    const font = win32.CreateFontA(height, 0, 0, 0, weight, 0, 0, 0, win32.DEFAULT_CHARSET, win32.OUT_DEFAULT_PRECIS, win32.CLIP_DEFAULT_PRECIS, win32.CLEARTYPE_QUALITY, win32.DEFAULT_PITCH, "Segoe UI");
+    const font = win32.CreateFontA(height, 0, 0, 0, weight, 0, 0, 0, win32.DEFAULT_CHARSET, win32.OUT_DEFAULT_PRECIS, win32.CLIP_DEFAULT_PRECIS, win32.ANTIALIASED_QUALITY, win32.DEFAULT_PITCH, "Segoe UI");
     if (font == null) slog.warn("Failed to create the client window's font, using the default", .{});
     return font;
 }

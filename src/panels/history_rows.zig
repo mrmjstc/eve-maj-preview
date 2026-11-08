@@ -5,6 +5,7 @@ const panels = @import("../config/panels.zig");
 const notifications_mod = @import("../config/notifications.zig");
 const notification = @import("../notifications/notification.zig");
 const history = @import("../notifications/history.zig");
+const universe = @import("../map/universe.zig");
 const history_look = @import("history_look.zig");
 const list_look = @import("list_look.zig");
 const panel_chrome = @import("panel_chrome.zig");
@@ -14,7 +15,7 @@ const HistoryPanelConfig = panels.HistoryPanelConfig;
 const IntelPanelConfig = panels.IntelPanelConfig;
 const NotificationConfig = notifications_mod.NotificationConfig;
 
-const INTEL_EMPTY_TEXT = "No intel yet";
+pub const INTEL_EMPTY_TEXT = "No intel yet";
 /// Granularity of the timestamp text baked into the render signature, so it doesn't redraw every scan tick.
 const TIMESTAMP_BUCKET_MS: u64 = 15_000;
 
@@ -44,6 +45,17 @@ pub const Area = struct {
     shows_names: bool = true,
     /// Off draws each entry's lead in the message's colour.
     shows_leads: bool = true,
+};
+
+/// Where a two-line row is drawn, from its top-left text corner to `right`.
+pub const StackedArea = struct {
+    left: i32,
+    top: i32,
+    right: i32,
+    line_gap: i32,
+    shows_timestamp: bool,
+    /// Off draws the first line in the name colour rather than the lead's.
+    shows_leads: bool,
 };
 
 /// The History Panel's merge settings, which the Intel Panel follows too; `filter` is BuildOptions.filter.
@@ -148,6 +160,56 @@ pub fn drawIntel(dc: win32.HDC, text: panel_chrome.Text, rows: []const Row, entr
 pub fn drawEmpty(dc: win32.HDC, text: panel_chrome.Text, message: []const u8, area: Area) void {
     _ = win32.SelectObject(dc, text.name_font);
     panel_chrome.drawLine(dc, message, area.left + list_look.PADDING_X, area.top + @divTrunc(area.row_height - text.name_height, 2), list_look.MUTED);
+}
+
+/// The row's lead, else its system, over the rest of its message, with its distance, any merged count and its age on the first line.
+pub fn drawStacked(dc: win32.HDC, text: panel_chrome.Text, entries: []const history.Entry, row: Row, notifications: *const NotificationConfig, area: StackedArea, now: win32.Ticks) void {
+    const entry = &entries[row.first_index];
+    var message = entry.text();
+    var heading: []const u8 = message;
+    var heading_color = list_look.NAME;
+    var distance: []const u8 = "";
+    if (entry.lead) |lead| {
+        heading = message[0..lead.length];
+        if (area.shows_leads) heading_color = lead.color;
+        const after_system = history_look.splitAfterSystem(message[lead.length..]);
+        distance = after_system.distance;
+        message = after_system.message;
+    } else if (entry.system) |system| {
+        heading = universe.systemName(system);
+    } else {
+        message = "";
+    }
+
+    var heading_right = area.right;
+    _ = win32.SelectObject(dc, text.small_font);
+    const small_top = area.top + @divTrunc(text.name_height - text.small_height, 2);
+    if (area.shows_timestamp) {
+        var time_buf: [panel_look.TIME_TEXT_MAX]u8 = undefined;
+        drawMutedBefore(dc, panel_look.relativeTime(&time_buf, now.elapsedSince(entry.timestamp)), area.left, &heading_right, small_top);
+    }
+    if (row.count > 1) {
+        var count_buf: [history_look.COUNT_TEXT_MAX]u8 = undefined;
+        drawMutedBefore(dc, history_look.countText(&count_buf, row.count), area.left, &heading_right, small_top);
+    }
+
+    _ = win32.SelectObject(dc, text.name_font);
+    const heading_width = panel_chrome.drawFitted(dc, heading, area.left, area.top, heading_color, heading_right - area.left);
+    if (distance.len > 0) {
+        const distance_left = area.left + heading_width + history_look.TEXT_GAP;
+        _ = win32.SelectObject(dc, text.small_font);
+        _ = panel_chrome.drawFitted(dc, distance, distance_left, small_top, list_look.MUTED, heading_right - distance_left);
+        _ = win32.SelectObject(dc, text.name_font);
+    }
+    if (message.len == 0) return;
+    _ = panel_chrome.drawFitted(dc, message, area.left, area.top + text.name_height + area.line_gap, messageColor(notifications, entry), area.right - area.left);
+}
+
+/// Flush against `right`, no further left than `left`, then moves `right` past it and a gap.
+fn drawMutedBefore(dc: win32.HDC, text: []const u8, left: i32, right: *i32, top: i32) void {
+    right.* -= panel_chrome.textWidth(dc, text);
+    panel_chrome.drawLine(dc, text, @max(left, right.*), top, list_look.MUTED);
+    right.* -= history_look.TEXT_GAP;
 }
 
 fn messageColor(notifications: *const NotificationConfig, entry: *const history.Entry) u32 {

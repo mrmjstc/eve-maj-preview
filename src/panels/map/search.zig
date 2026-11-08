@@ -170,7 +170,7 @@ pub const Search = struct {
         }
         for (hits, buffer[0..hits.len]) |hit, *row| {
             const label = hitLabel(hit);
-            row.* = .{ .text = label.text, .color = list_look.NAME, .accent = label.security };
+            row.* = .{ .text = label.text, .accent = label.security };
         }
         return buffer[0..hits.len];
     }

@@ -73,7 +73,7 @@ pub const HistoryPanelConfig = struct {
     hideWhenNoEveFocus: bool = false,
     hideDebounceMs: u32 = 500,
     opacity: u8 = 255,
-    /// Also the Map and Intel panels' header, buttons and tooltips, so the panels match.
+    /// Also the detached Intel Panel's, so the panels match.
     fontName: []const u8 = "Segoe UI",
     fontSize: i32 = 13,
     fontWeight: types.FontWeight = .Regular,
@@ -123,9 +123,9 @@ pub const MapPanelConfig = struct {
     hideWhenNoEveFocus: bool = false,
     hideDebounceMs: u32 = 500,
     opacity: u8 = 255,
-    /// For the names on the map; its buttons and tooltips use the History Panel's font.
+    /// For the names on the map; its cards, buttons and tooltips use the configuration window's font.
     fontName: []const u8 = "Segoe UI",
-    fontSize: i32 = 10,
+    fontSize: i32 = 12,
     fontWeight: types.FontWeight = .Regular,
     /// The first region shown, by CCP's ID, which outlasts a map update; The Forge by default.
     regionId: u32 = 10000002,
@@ -140,12 +140,22 @@ pub const MapPanelConfig = struct {
     metric: types.MapMetric = .Security,
     /// Names the characters in a system beside it, as well as ringing it.
     showCharacterNames: bool = true,
-    /// Asks ESI for kills, jumps, sovereignty and incursions while the panel shows.
+    /// Asks ESI and EVE-Scout for the map's figures while the panel shows.
     liveStats: bool = true,
     /// Off only hides them; liveStats is what fetches them.
     showStorms: bool = true,
     /// Off only hides them; liveStats is what fetches them.
     showIncursions: bool = true,
+    /// Off only hides them; liveStats is what fetches them.
+    showSovTimers: bool = true,
+    /// Thera's and Turnur's connections; off only hides them, and liveStats is what fetches them.
+    showWormholes: bool = true,
+    /// The Eve Stars account's Ansiblex gates; fetched only while shown, with a token.
+    showAnsiblex: bool = true,
+    /// zKillboard's live kills, followed only while shown.
+    showKills: bool = true,
+    /// How long a kill stays on the map and in the Kills list.
+    killLifetimeMin: i32 = 30,
     /// Off only hides the pins, so turning it back on shows those still live.
     showIntel: bool = true,
     /// How long an intel pin shows, its halo shrinking all the while.
@@ -168,10 +178,10 @@ pub const MapPanelConfig = struct {
     /// With routeAnsiblex: refuses gates landing over 20 ly from their alliance's capital.
     routeAvoidZone5: bool = false,
 
-    /// Also the smallest the map's window can be dragged to.
-    pub const MIN_WIDTH = 300;
-    /// Also the smallest the map's window can be dragged to.
-    pub const MIN_HEIGHT = 240;
+    /// Also the smallest the map's window can be dragged to; the bars along the bottom keep clear of the zoom controls.
+    pub const MIN_WIDTH = 520;
+    /// Also the smallest the map's window can be dragged to; the Intel card's least rows keep clear of the map controls.
+    pub const MIN_HEIGHT = 330;
 
     pub const ranges = .{
         .x = SCREEN_X,
@@ -181,11 +191,16 @@ pub const MapPanelConfig = struct {
         .fontSize = ranges_mod.FONT_SIZE,
         .opacity = ranges_mod.OPACITY,
         .intelShrinkSec = .{ 1, 900 },
+        .killLifetimeMin = .{ 1, 120 },
         .hideDebounceMs = HIDE_DEBOUNCE_MS,
     };
 
     pub fn validate(self: *MapPanelConfig) void {
         ranges_mod.clamp(MapPanelConfig, self);
+    }
+
+    pub fn killLifetimeSeconds(self: *const MapPanelConfig) i64 {
+        return @as(i64, @max(1, self.killLifetimeMin)) * std.time.s_per_min;
     }
 
     pub fn intelShrinkMs(self: *const MapPanelConfig) u64 {
@@ -197,9 +212,8 @@ pub const MapPanelConfig = struct {
 
 pub const IntelPanelConfig = struct {
     show: bool = false,
-    /// Draws it as a sidebar inside the Map Panel, which then decides its height, position and when it shows.
+    /// Draws it as a card inside the Map Panel, which then decides its size, position and when it shows.
     attached: bool = true,
-    side: types.PanelSide = .Right,
     x: i32 = 1100,
     y: i32 = 60,
     width: i32 = 340,

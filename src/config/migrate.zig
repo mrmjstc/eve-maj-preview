@@ -110,7 +110,6 @@ const PANEL_MOVES = [_]Move{
     .{ .old = "mapPanelRouteAvoidZone5", .section = "mapPanel", .new = "routeAvoidZone5" },
     .{ .old = "showIntelPanel", .section = "intelPanel", .new = "show" },
     .{ .old = "intelPanelAttached", .section = "intelPanel", .new = "attached" },
-    .{ .old = "intelPanelSide", .section = "intelPanel", .new = "side" },
     .{ .old = "intelPanelX", .section = "intelPanel", .new = "x" },
     .{ .old = "intelPanelY", .section = "intelPanel", .new = "y" },
     .{ .old = "intelPanelWidth", .section = "intelPanel", .new = "width" },

@@ -16,19 +16,25 @@ const Method = enum { get, post };
 pub const EveStarsFeed = struct {
     characters: Call(evestars.Targets, evestars.parseTargets) = .{},
     send: Call(evestars.Notice, evestars.parseSend) = .{},
+    bridges: Call(evestars.Bridges, evestars.parseBridges) = .{},
 
     /// After the calls' threads have finished.
     pub fn deinit(self: *EveStarsFeed) void {
         _ = self.characters.take();
         _ = self.send.take();
+        _ = self.bridges.take();
     }
 
     pub fn isBusy(self: *const EveStarsFeed) bool {
-        return self.characters.isBusy() or self.send.isBusy();
+        return self.characters.isBusy() or self.send.isBusy() or self.bridges.isBusy();
     }
 
     pub fn startCharacters(self: *EveStarsFeed, allocator: std.mem.Allocator, token: []const u8) void {
         _ = self.characters.start(allocator, token, evestars.CHARACTERS_URL, .get);
+    }
+
+    pub fn startBridges(self: *EveStarsFeed, allocator: std.mem.Allocator, token: []const u8) void {
+        _ = self.bridges.start(allocator, token, evestars.ANSIBLEX_URL, .get);
     }
 
     /// Whether the send started.

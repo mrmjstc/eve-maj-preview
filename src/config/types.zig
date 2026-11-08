@@ -61,11 +61,9 @@ pub const TextPosition = enum {
 };
 
 /// What the Map Panel's markers show; saved into profiles by name.
-pub const MapMetric = enum { Security, ShipKills, NpcKills, Jumps, Sovereignty };
+pub const MapMetric = enum { Security, ShipKills, PodKills, NpcKills, NpcDelta, Jumps, Sovereignty, FactionWarfare };
 /// How routes sent from the Map Panel are planned, as the game's autopilot words it; saved into profiles by name.
 pub const RoutePreference = enum { Shorter, Safer, LessSecure };
-/// Which side of the Map Panel the Intel Panel sits on.
-pub const PanelSide = enum { Left, Right };
 
 /// In the order the Display tab offers them.
 pub const ViewMode = enum {

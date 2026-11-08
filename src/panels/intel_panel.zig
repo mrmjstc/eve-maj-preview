@@ -1,4 +1,4 @@
-//! The Intel Panel's own window, for when it's detached from the Map Panel, which otherwise draws the same rows in a sidebar.
+//! The Intel Panel's own window, for when it's detached from the Map Panel, which otherwise draws the same reports in a card.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const panel_window = @import("../platform/panel_window.zig");

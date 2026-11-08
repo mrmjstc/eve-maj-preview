@@ -1,4 +1,4 @@
-//! Fetches the Map Panel's ESI figures, EVE-Scout's storms and alliances' logo colours on a background thread, and hands each to the main thread.
+//! Fetches the Map Panel's ESI figures, faction warfare and sov campaigns, EVE-Scout's storms and wormhole hubs, and alliances' logo colours on a background thread, and hands each to the main thread.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const wic = @import("../platform/wic.zig");
@@ -16,6 +16,7 @@ const slog = log.Scoped("map");
 const ESI_BASE = "https://esi.evetech.net/latest";
 const ESI_QUERY = "/?datasource=tranquility";
 const EVE_SCOUT_OBSERVATIONS = "https://api.eve-scout.com/v2/public/observations";
+const EVE_SCOUT_SIGNATURES = "https://api.eve-scout.com/v2/public/signatures?system_name=";
 /// ESI's per-system figures refresh hourly; asked more often so a new hour shows soon after it lands.
 const REFRESH_INTERVAL_MS: u64 = 15 * std.time.ms_per_min;
 const RETRY_INTERVAL_MS: u64 = 2 * std.time.ms_per_min;
@@ -184,10 +185,14 @@ fn fetchSnapshot(allocator: std.mem.Allocator) !*Snapshot {
     fetchInto(&session, snapshot, "/universe/system_jumps", Snapshot.applyJumps);
     fetchInto(&session, snapshot, "/sovereignty/map", Snapshot.applySovereignty);
     fetchInto(&session, snapshot, "/incursions", Snapshot.applyIncursions);
-    fetchStorms(&session, snapshot);
+    fetchInto(&session, snapshot, "/sovereignty/campaigns", Snapshot.applyCampaigns);
+    fetchInto(&session, snapshot, "/fw/systems", Snapshot.applyWarfare);
+    fetchEveScout(&session, snapshot, EVE_SCOUT_OBSERVATIONS, Snapshot.applyStorms, "storms");
+    fetchEveScout(&session, snapshot, EVE_SCOUT_SIGNATURES ++ "Thera", Snapshot.applyThera, "Thera connections");
+    fetchEveScout(&session, snapshot, EVE_SCOUT_SIGNATURES ++ "Turnur", Snapshot.applyTurnur, "Turnur connections");
     if (!snapshot.hasAnything()) return error.StatsFetchFailed;
 
-    if (snapshot.has_sovereignty) fetchHolderNames(&session, snapshot);
+    if (snapshot.holder_ids.items.len > 0) fetchHolderNames(&session, snapshot);
     snapshot.fetched_ms = win32.Ticks.now().ms;
     return snapshot;
 }
@@ -202,13 +207,14 @@ fn fetchInto(session: *const http_client.Session, snapshot: *Snapshot, comptime 
     };
 }
 
-fn fetchStorms(session: *const http_client.Session, snapshot: *Snapshot) void {
+/// `what` names the reply in the log.
+fn fetchEveScout(session: *const http_client.Session, snapshot: *Snapshot, comptime url: []const u8, comptime apply: fn (*Snapshot, []const u8) anyerror!void, comptime what: []const u8) void {
     const allocator = snapshot.allocator;
     // Logs its own failures.
-    const body = session.fetch(allocator, EVE_SCOUT_OBSERVATIONS, .{}) catch return;
+    const body = session.fetch(allocator, url, .{}) catch return;
     defer allocator.free(body);
-    snapshot.applyStorms(body) catch |err| {
-        slog.warn("Failed to read EVE-Scout's storms: {}", .{err});
+    apply(snapshot, body) catch |err| {
+        slog.warn("Failed to read EVE-Scout's " ++ what ++ ": {}", .{err});
     };
 }
 
