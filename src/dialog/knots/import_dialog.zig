@@ -28,12 +28,12 @@ const Group = struct { label: []const u8, ids: []const []const u8 };
 
 /// EVE-Maj profile sections grouped like the sidebar's tabs, by Config field name; a section left out lands in "Other".
 const MAJ_GROUPS = [_]Group{
-    .{ .label = "Clients", .ids = &.{ "characters", "hotkeyGroups", "windowFilters", "exclusion" } },
-    .{ .label = "Display", .ids = &.{ "display", "thumbnail", "thumbnailSpaces", "snapping", "autoMovePosition", "avoidedSystems", "listView", "historyPanel", "mapPanel", "intelPanel" } },
-    .{ .label = "Input", .ids = &.{ "hotkeys", "interaction", "panelSnapping", "autoMinimize", "closeAll" } },
-    .{ .label = "Alerts", .ids = &.{ "chatlog", "travel", "systemColors" } },
-    .{ .label = "Overlays", .ids = &.{ "mining", "combat", "bounty", "resources", "ping" } },
-    .{ .label = "App", .ids = &.{ "timer", "accentColor" } },
+    .{ .label = "Clients", .ids = &.{ "characters", "hotkeyGroups", "autoMinimize", "autoMovePosition", "timer", "windowFilters" } },
+    .{ .label = "Display", .ids = &.{ "display", "thumbnail", "systemColors", "thumbnailSpaces", "snapping", "panelSnapping", "mining", "combat", "bounty", "resources", "ping" } },
+    .{ .label = "Panels", .ids = &.{ "listView", "historyPanel", "mapPanel", "intelPanel", "avoidedSystems" } },
+    .{ .label = "Input", .ids = &.{ "hotkeys", "interaction", "exclusion", "closeAll" } },
+    .{ .label = "Alerts", .ids = &.{ "chatAlerts", "travel" } },
+    .{ .label = "App", .ids = &.{ "chatlog", "accentColor" } },
 };
 
 const Section = struct {
@@ -159,6 +159,7 @@ pub fn applyImport() !void {
     const source: ?[]const u8 = if (analysis.profile_names.len > 0) analysis.profile_names[analysis.source_index] else null;
     const built = try importer.build(arena(), text, source, chosen.items, lang.text("Cycle Group {n}"), session.profile().ptr);
     try session.applyOps(arena(), built.ops);
+    try session.applyGlobalOps(arena(), built.global_ops);
     const notes = try arena().alloc([]const u8, built.notes.len);
     for (built.notes, notes) |note, *out| out.* = try translate(arena(), note);
     g_summary = .{ .section_count = chosen.items.len, .notes = notes, .skipped = built.skipped, .has_backup = !g_imports_into_new };

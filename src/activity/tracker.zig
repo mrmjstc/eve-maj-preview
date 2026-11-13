@@ -89,7 +89,7 @@ pub const CombatWindow = struct {
         if (hit.is_incoming and hit.counts_for_alert and hit.timestamp.ms > self.last_incoming_hit.ms) self.last_incoming_hit = hit.timestamp;
     }
 
-    /// Fires once per burst of incoming damage and stays silent once combat stops; how often it repeats is the Notifications tab's throttle.
+    /// Fires once per burst of incoming damage and stays silent once combat stops; how often it repeats is its Cooldown on the Game Events tab.
     pub fn checkDamageAlert(self: *CombatWindow) bool {
         if (self.last_incoming_hit.isZero()) return false;
         if (self.last_incoming_hit.ms <= self.last_damage_alert.ms) return false;

@@ -23,13 +23,13 @@ const DirectoryRow = struct {
 };
 
 pub fn show(context: *ui.Frame) !void {
-    const chatlog = session.profile().child("chatlog");
+    const chatlog = session.global().child("chatlog");
     try monitoring(context, chatlog);
     if (session.global().get("advancedMode")) try polling(context, chatlog);
 }
 
 fn monitoring(context: *ui.Frame, chatlog: ChatlogRef) !void {
-    const section = try widgets.openSection(context, "Log Monitoring", "Reads EVE's logs for systems, alerts, and combat, mining and bounty rates.", &style.section);
+    const section = try widgets.openSharedSection(context, "Log Monitoring", "Reads EVE's logs for systems, alerts, and combat, mining and bounty rates.", &style.section);
     try bind.toggle(context, chatlog, "enabled", "Enable Log Monitoring");
     const options = try widgets.openGroup(context, .src(@src()), chatlog.get("enabled"));
     try directory(context, chatlog, .{
@@ -70,7 +70,7 @@ fn directory(context: *ui.Frame, chatlog: ChatlogRef, comptime row_settings: Dir
 }
 
 fn polling(context: *ui.Frame, chatlog: ChatlogRef) !void {
-    const section = try widgets.openSection(context, "Polling & Performance", "How often the logs are read, and how a quiet log is read less often.", &style.section);
+    const section = try widgets.openSharedSection(context, "Polling & Performance", "How often the logs are read, and how a quiet log is read less often.", &style.section);
     const options = try widgets.openGroup(context, .src(@src()), chatlog.get("enabled"));
     try bind.number(context, chatlog, "pollIntervalMs", "Poll Interval", .{ .shows_seconds = true, .unit = "s" });
     try widgets.hintText(context, .src(@src()), "How often logs are checked for new lines.");

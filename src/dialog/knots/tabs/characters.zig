@@ -41,7 +41,7 @@ const FLAGS = [_]Flag{
     .{ .field = "excludeFromAutoMove", .label = "Exclude from Auto-Move", .hint = "Its window is never moved to its saved position." },
     .{ .field = "excludeFromChatAlerts", .label = "Exclude from Chat Alerts", .hint = "This client never receives chat alerts." },
     .{ .field = "hideThumbnail", .label = "Hide Thumbnail", .hint = "Also hides its row in the client list." },
-    .{ .field = "notificationsMuted", .label = "Mute Notifications", .hint = "No alerts for this character at all." },
+    .{ .field = "notificationsMuted", .label = "Mute Alerts", .hint = "No alerts for this character at all." },
 };
 
 const Flag = struct { field: []const u8, label: []const u8, hint: []const u8 };
@@ -241,7 +241,7 @@ fn colors(context: *ui.Frame, character: CharacterRef) !void {
     const inherited = &session.profile().ptr.thumbnail;
     const borders = character.get("borderColors") orelse config.CharacterBorderColorsConfig{};
     var next = borders;
-    if (try widgets.optionalColor(context, ui.Key.str("knots.character.active").indexed(character.index), "Active Border Color", borders.activeBorderColor, inherited.borderColor)) |change| {
+    if (try widgets.optionalColor(context, ui.Key.str("knots.character.active").indexed(character.index), "Active Border Color", borders.activeBorderColor, session.profile().ptr.focusedBorderColor())) |change| {
         next.activeBorderColor = switch (change) {
             .cleared => null,
             .set => |argb| argb,

@@ -214,16 +214,17 @@ pub fn drawDashedRectOutline(canvas: Canvas, x: i32, y: i32, rect_width: usize, 
     }
 }
 
-/// A 1px border round the whole canvas with `radius` rounded corners; outside them the pixels are cleared so the desktop shows through.
+/// A 1px border round the whole canvas with `radius` rounded, anti-aliased corners; outside them the desktop shows through.
 pub fn drawRoundedFrame(canvas: Canvas, radius: usize, argb: u32) void {
     const pixels = canvas.pixels;
     const width = canvas.width;
     const height = canvas.height;
-    fillRect(canvas, 0, 0, width, 1, argb);
-    fillRect(canvas, 0, height - 1, width, 1, argb);
-    fillRect(canvas, 0, 0, 1, height, argb);
-    fillRect(canvas, width - 1, 0, 1, height, argb);
-    if (width < 2 * radius or height < 2 * radius) return;
+    const corner = if (width < 2 * radius or height < 2 * radius) 0 else radius;
+    fillRect(canvas, corner, 0, width - 2 * corner, 1, argb);
+    fillRect(canvas, corner, height - 1, width - 2 * corner, 1, argb);
+    fillRect(canvas, 0, corner, 1, height - 2 * corner, argb);
+    fillRect(canvas, width - 1, corner, 1, height - 2 * corner, argb);
+    if (corner == 0) return;
 
     const arc_radius: f32 = @floatFromInt(radius);
     for (0..radius) |row| {
@@ -232,11 +233,11 @@ pub fn drawRoundedFrame(canvas: Canvas, radius: usize, argb: u32) void {
             const offset_x = arc_radius - @as(f32, @floatFromInt(column)) - 0.5;
             const offset_y = arc_radius - @as(f32, @floatFromInt(row)) - 0.5;
             const distance = @sqrt(offset_x * offset_x + offset_y * offset_y);
-            const pixel: u32 = if (distance > arc_radius) 0 else if (distance > arc_radius - 1) argb else continue;
-            pixels[row * width + column] = pixel;
-            pixels[row * width + width - 1 - column] = pixel;
-            pixels[(height - 1 - row) * width + column] = pixel;
-            pixels[(height - 1 - row) * width + width - 1 - column] = pixel;
+            const inside_frame = std.math.clamp(arc_radius + 0.5 - distance, 0, 1);
+            const inside_border = std.math.clamp(arc_radius - 0.5 - distance, 0, 1);
+            for ([_]usize{ row * width + column, row * width + width - 1 - column, (height - 1 - row) * width + column, (height - 1 - row) * width + width - 1 - column }) |index| {
+                pixels[index] = framedPixel(pixels[index], argb, inside_border, inside_frame - inside_border);
+            }
         }
     }
 }
@@ -356,6 +357,18 @@ fn blendPixel(canvas: Canvas, x: i32, y: i32, argb: u32, coverage: f32) void {
         blended |= ((over * alpha + under * (255 - alpha) + 127) / 255) << shift;
     }
     pixel.* = blended;
+}
+
+/// `content` and `border` premultiplied, weighted by how much of the pixel each covers; the rest is clear.
+fn framedPixel(content: u32, border: u32, content_weight: f32, border_weight: f32) u32 {
+    var out: u32 = 0;
+    inline for (.{ 24, 16, 8, 0 }) |shift| {
+        const content_channel: f32 = @floatFromInt((content >> shift) & 0xFF);
+        const border_channel: f32 = @floatFromInt((border >> shift) & 0xFF);
+        const channel: u32 = @intFromFloat(@round(std.math.clamp(content_channel * content_weight + border_channel * border_weight, 0, 255)));
+        out |= channel << shift;
+    }
+    return out;
 }
 
 fn clampedTo(value: i32, limit: usize) usize {
@@ -560,4 +573,11 @@ test "drawRoundedFrame borders the buffer and clears outside its corners" {
     try testing.expectEqual(@as(u32, 0), buffer[0]);
     try testing.expectEqual(@as(u32, 0xFF000000), buffer[4]);
     try testing.expectEqual(@as(u32, 0xFFFFFFFF), buffer[4 * 8 + 4]);
+}
+
+test "drawRoundedFrame blends a corner's edge rather than stepping it" {
+    var buffer: [16 * 16]u32 = @splat(0xFFFFFFFF);
+    drawRoundedFrame(.{ .pixels = &buffer, .width = 16, .height = 16 }, 6, 0xFF000000);
+    const edge_alpha = buffer[3] >> 24;
+    try testing.expect(edge_alpha > 0 and edge_alpha < 255);
 }

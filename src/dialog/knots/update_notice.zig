@@ -4,6 +4,7 @@ const ui = @import("ui");
 const win32 = @import("../../platform/win32.zig");
 const update = @import("../../update.zig");
 const session = @import("session.zig");
+const release_notes = @import("release_notes.zig");
 const style = @import("style.zig");
 const widgets = @import("widgets.zig");
 const lang = @import("../../lang/lang.zig");
@@ -64,7 +65,7 @@ pub fn show(context: *ui.Frame) !void {
         if (!win32.shellOpenUrl(g_url)) slog.warn("Failed to open '{s}' in the browser", .{g_url});
     }
     try line.close(context);
-    if (g_notes) |notes| try context.e(Text{ .selectable = false, .key = .src(@src()), .content = notes, .style = &style.modal_text });
+    if (g_notes) |notes| try notesColumn(context, notes);
     const actions = Rect{ .key = .src(@src()), .style = &style.modal_actions };
     _ = try actions.open(context);
     if ((try context.interact(Button{ .key = .src(@src()), .label = lang.text("Close"), .style = &style.outline_button })).clicked) {
@@ -73,6 +74,23 @@ pub fn show(context: *ui.Frame) !void {
     }
     try actions.close(context);
     try dialog.close(context);
+}
+
+/// A Text a line, its Markdown drawn as headings and bullets, since knots shows text as typed.
+fn notesColumn(context: *ui.Frame, notes: []const u8) !void {
+    const column = Rect{ .key = .src(@src()), .style = &style.release_notes };
+    _ = try column.open(context);
+    var lines: release_notes.Lines = .init(notes);
+    var index: usize = 0;
+    while (lines.next()) |line| : (index += 1) {
+        const key = ui.Key.str("knots.update.note").indexed(index);
+        try context.e(switch (line.kind) {
+            .heading => Text{ .selectable = false, .key = key, .content = line.text, .style = &style.subheading },
+            .bullet => Text{ .selectable = false, .key = key, .content = try context.arena().print("\u{2022}  {s}", .{line.text}), .style = &style.modal_text },
+            .text => Text{ .selectable = false, .key = key, .content = line.text, .style = &style.modal_text },
+        });
+    }
+    try column.close(context);
 }
 
 /// Once when the window opens, and once more if the check hadn't finished yet.

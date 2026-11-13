@@ -5,7 +5,7 @@ const gamelog_events = @import("../notifications/gamelog_events.zig");
 
 pub const LOCAL_CHANNEL = "Local";
 /// EVE starts each chatlog line with one, inside the UTF-16 file's own.
-pub const LINE_BOM = "\u{FEFF}";
+const LINE_BOM = "\u{FEFF}";
 /// EVE's own limit.
 pub const MAX_CHARACTER_NAME_LENGTH = 37;
 /// Longer names are cut; real ones run under 20.
@@ -44,12 +44,12 @@ pub const Stamp = struct {
     }
 
     /// "yyyy.MM.dd HH:mm:ss", as inside a line's brackets.
-    pub fn writeLine(self: Stamp, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+    fn writeLine(self: Stamp, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.print("{d:0>4}.{d:0>2}.{d:0>2} {d:0>2}:{d:0>2}:{d:0>2}", .{ self.year, self.month, self.day, self.hour, self.minute, self.second });
     }
 
     /// "yyyyMMdd_HHmmss", as in a log's file name.
-    pub fn writeFile(self: Stamp, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+    fn writeFile(self: Stamp, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.print("{d:0>4}{d:0>2}{d:0>2}_{d:0>2}{d:0>2}{d:0>2}", .{ self.year, self.month, self.day, self.hour, self.minute, self.second });
     }
 };
@@ -164,7 +164,7 @@ pub const Activity = enum {
 };
 
 /// One line of MINING_REPLAY.
-pub const Replayed = struct {
+const Replayed = struct {
     /// From the replay's start.
     offset_seconds: u16,
     /// After the timestamp.
@@ -226,22 +226,6 @@ pub fn characterId(name: []const u8) u64 {
     var digest: [std.crypto.hash.Md5.digest_length]u8 = undefined;
     std.crypto.hash.Md5.hash(name, &digest, .{});
     return CHARACTER_ID_BASE + @as(u64, std.mem.readInt(u32, digest[0..4], .little)) % CHARACTER_ID_SPAN;
-}
-
-/// As in real logs: built-in channels have fixed IDs, a fleet its fleet's number, and a player channel a hash.
-pub fn writeChannelId(writer: *std.Io.Writer, channel: []const u8) std.Io.Writer.Error!void {
-    const fixed_ids = [_]struct { []const u8, []const u8 }{
-        .{ LOCAL_CHANNEL, "local" },
-        .{ "Corp", "corp" },
-        .{ "Alliance", "alliance" },
-        .{ "Fleet", FLEET_CHANNEL_ID },
-    };
-    for (fixed_ids) |fixed| {
-        if (std.mem.eql(u8, channel, fixed[0])) return writer.writeAll(fixed[1]);
-    }
-    var digest: [std.crypto.hash.Md5.digest_length]u8 = undefined;
-    std.crypto.hash.Md5.hash(channel, &digest, .{});
-    try writer.print("player_{s}", .{&std.fmt.bytesToHex(digest, .lower)});
 }
 
 /// "<channel>_yyyyMMdd_HHmmss_<id>.txt".
@@ -310,6 +294,22 @@ pub fn writeJump(writer: *std.Io.Writer, stamp: Stamp, from: []const u8, to: []c
 /// Letters and digits kept, anything else an underscore, for a file named after a character.
 pub fn writeSafeName(writer: *std.Io.Writer, name: []const u8) std.Io.Writer.Error!void {
     for (name) |byte| try writer.writeByte(if (std.ascii.isAlphanumeric(byte)) byte else '_');
+}
+
+/// As in real logs: built-in channels have fixed IDs, a fleet its fleet's number, and a player channel a hash.
+fn writeChannelId(writer: *std.Io.Writer, channel: []const u8) std.Io.Writer.Error!void {
+    const fixed_ids = [_]struct { []const u8, []const u8 }{
+        .{ LOCAL_CHANNEL, "local" },
+        .{ "Corp", "corp" },
+        .{ "Alliance", "alliance" },
+        .{ "Fleet", FLEET_CHANNEL_ID },
+    };
+    for (fixed_ids) |fixed| {
+        if (std.mem.eql(u8, channel, fixed[0])) return writer.writeAll(fixed[1]);
+    }
+    var digest: [std.crypto.hash.Md5.digest_length]u8 = undefined;
+    std.crypto.hash.Md5.hash(channel, &digest, .{});
+    try writer.print("player_{s}", .{&std.fmt.bytesToHex(digest, .lower)});
 }
 
 const testing = std.testing;

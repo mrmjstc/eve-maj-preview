@@ -16,7 +16,6 @@ const Text = ui.component.Text;
 const Button = ui.component.Button;
 const Image = ui.component.Image;
 const Tooltip = ui.component.Tooltip;
-const Canvas = ui.component.Canvas;
 const Box = widgets.Box;
 const measuredBox = widgets.measuredBox;
 
@@ -80,7 +79,7 @@ pub fn show(context: *ui.Frame) !void {
     inline for (chips.CHIPS, 0..) |chip, index| {
         try showChip(context, chip, index, stage_box, stage_size, scale);
     }
-    try focusedBorder(context, thumbnail, stage_size);
+    try focusedBorder(context, session.profile().ptr, stage_size);
 
     try stage.close(context);
     try frame.close(context);
@@ -101,7 +100,7 @@ fn popover(context: *ui.Frame) !void {
             }
         }
     }
-    const reason = try dialog.closeResponse(context);
+    const reason = try widgets.closePopover(context, dialog);
     if (reason != .backdrop) return;
     const mouse = ui_state.input.mouse_pos;
     const point = [2]f32{ @floatCast(mouse[0]), @floatCast(mouse[1]) };
@@ -188,12 +187,7 @@ fn showChip(context: *ui.Frame, comptime chip: chips.Chip, comptime index: usize
     };
     try context.e(Text{ .selectable = false, .key = key.indexed(1), .content = chip.sample, .style = text_style });
     // Hover and selection draw the accent outline instead.
-    if (!is_shown and !is_hovered and !is_selected) {
-        const outline_style = try arena.create(ui.Style);
-        // Absolute children start inside the padding, so step back out to the chip's edge.
-        outline_style.* = .{ .position = .absolute, .offset = .{ -padding[0], -padding[1] }, .width = .fixed(chip_size[0]), .height = .fixed(chip_size[1]) };
-        try context.e(Canvas{ .key = key.indexed(3), .commands = try dashedOutline(arena, chip_size, style.MUTED.value), .style = outline_style });
-    }
+    if (!is_shown and !is_hovered and !is_selected) try widgets.dashedOutline(context, key.indexed(3), chip_size, padding);
     try button.close(context);
     try tip.close(context);
 }
@@ -268,21 +262,23 @@ fn stageBackground(context: *ui.Frame, stage_size: [2]f32, opacity: f32) !void {
 }
 
 /// Drawn by the thumbnail's own border code at real size, then scaled with the stage.
-fn focusedBorder(context: *ui.Frame, thumbnail: *const config.ThumbnailConfig, stage_size: [2]f32) !void {
+fn focusedBorder(context: *ui.Frame, profile: *const config.Config, stage_size: [2]f32) !void {
+    const thumbnail = &profile.thumbnail;
     if (!thumbnail.showBorderWhenFocused) return;
+    const border_color = profile.focusedBorderColor();
     const width: usize = @intCast(@max(thumbnail.width, 1));
     const height: usize = @intCast(@max(thumbnail.height, 1));
     // drawBorder needs room for both sides.
     const border_width = @min(thumbnail.borderWidth, @min(width, height) / 2);
     const pixels = try context.arena().alloc(u32, width * height);
     @memset(pixels, 0);
-    draw.drawBorder(.{ .pixels = pixels.ptr, .width = width, .height = height }, border_width, thumbnail.borderColor, thumbnail.borderStyle);
+    draw.drawBorder(.{ .pixels = pixels.ptr, .width = width, .height = height }, border_width, border_color, thumbnail.borderStyle);
 
     const look = extern struct { width: u32, height: u32, border_width: u32, color: u32, style: u32 }{
         .width = @intCast(width),
         .height = @intCast(height),
         .border_width = @intCast(border_width),
-        .color = thumbnail.borderColor,
+        .color = border_color,
         .style = @backingInt(thumbnail.borderStyle),
     };
     const image_style = try context.arena().create(ui.Style);
@@ -306,25 +302,6 @@ fn focusedBorder(context: *ui.Frame, thumbnail: *const config.ThumbnailConfig, s
         },
         .style = image_style,
     });
-}
-
-/// Knots borders can't be dashed, so the dashes are drawn.
-fn dashedOutline(arena: std.mem.Allocator, size: [2]f32, color: [4]f32) ![]const Canvas.DrawCmd {
-    const dash = style.CHIP_DASH_LENGTH;
-    var commands: std.ArrayList(Canvas.DrawCmd) = .empty;
-    var x: f32 = 0;
-    while (x < size[0]) : (x += dash * 2) {
-        const length = @min(dash, size[0] - x);
-        try commands.append(arena, .{ .fill_rect = .{ .x = x, .y = 0, .w = length, .h = 1, .color = color } });
-        try commands.append(arena, .{ .fill_rect = .{ .x = x, .y = size[1] - 1, .w = length, .h = 1, .color = color } });
-    }
-    var y: f32 = 0;
-    while (y < size[1]) : (y += dash * 2) {
-        const length = @min(dash, size[1] - y);
-        try commands.append(arena, .{ .fill_rect = .{ .x = 0, .y = y, .w = 1, .h = length, .color = color } });
-        try commands.append(arena, .{ .fill_rect = .{ .x = size[0] - 1, .y = y, .w = 1, .h = length, .color = color } });
-    }
-    return commands.items;
 }
 
 fn scaleAlpha(argb: u32, alpha: f32) ui.Color {

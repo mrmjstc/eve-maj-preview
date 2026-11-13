@@ -175,8 +175,8 @@ pub const ThumbnailSet = struct {
     }
 
     /// For the Intel Panel, which lists every report; `message` is copied.
-    pub fn listIntel(self: *ThumbnailSet, system: universe.SystemIndex, message: []const u8) void {
-        dispatch.listIntel(self.dispatchContext(), self.thumbnails.items, system, message);
+    pub fn listIntel(self: *ThumbnailSet, system: universe.SystemIndex, message: []const u8, is_clear: bool) void {
+        dispatch.listIntel(self.dispatchContext(), self.thumbnails.items, system, message, is_clear);
     }
 
     pub fn showTestNotification(self: *ThumbnailSet, notification_type: notification_mod.NotificationType, type_config: config_mod.NotificationTypeConfig) !void {

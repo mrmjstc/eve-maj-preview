@@ -48,8 +48,8 @@ pub const RenderSettings = struct {
     character_name_bg_color: u32 = 0x80000000,
     system_name_bg_color: u32 = 0x80000000,
     /// Borrows from config.
-    character_name_font_name: []const u8 = "Segoe UI",
-    character_name_font_size: i32 = 14,
+    character_name_font_name: []const u8 = types.DEFAULT_FONT,
+    character_name_font_size: i32 = types.DEFAULT_FONT_SIZE,
     character_name_font_weight: types.FontWeight = .Regular,
     character_name_position: TextPosition = .TopLeft,
     character_name_offset_x: i32 = 0,
@@ -58,8 +58,8 @@ pub const RenderSettings = struct {
     system_name_offset_x: i32 = 0,
     system_name_offset_y: i32 = 0,
     /// Borrows from config.
-    system_name_font_name: []const u8 = "Segoe UI",
-    system_name_font_size: i32 = 12,
+    system_name_font_name: []const u8 = types.DEFAULT_FONT,
+    system_name_font_size: i32 = types.DEFAULT_FONT_SIZE,
     system_name_font_weight: types.FontWeight = .Regular,
     show_notifications: bool = false,
     /// Borrows the notification stack's text, freed as entries expire, so compare by notification_revision.
@@ -70,8 +70,8 @@ pub const RenderSettings = struct {
     notifications_offset_x: i32 = 0,
     notifications_offset_y: i32 = 0,
     /// Borrows from config.
-    notifications_font_name: []const u8 = "Segoe UI",
-    notifications_font_size: i32 = 12,
+    notifications_font_name: []const u8 = types.DEFAULT_FONT,
+    notifications_font_size: i32 = types.DEFAULT_FONT_SIZE,
     notifications_font_weight: types.FontWeight = .Regular,
     notifications_bg_color: u32 = 0x80000000,
 
@@ -92,8 +92,8 @@ pub const RenderSettings = struct {
     group_badge_offset_x: i32 = 0,
     group_badge_offset_y: i32 = 0,
     /// Borrows from config.
-    group_badge_font_name: []const u8 = "Segoe UI",
-    group_badge_font_size: i32 = 12,
+    group_badge_font_name: []const u8 = types.DEFAULT_FONT,
+    group_badge_font_size: i32 = types.DEFAULT_FONT_SIZE,
     group_badge_font_weight: types.FontWeight = .Regular,
     group_badge_bg_color: u32 = 0x80000000,
 
@@ -105,8 +105,8 @@ pub const RenderSettings = struct {
     session_timer_offset_x: i32 = 0,
     session_timer_offset_y: i32 = -24,
     /// Borrows from config.
-    session_timer_font_name: []const u8 = "Segoe UI",
-    session_timer_font_size: i32 = 12,
+    session_timer_font_name: []const u8 = types.DEFAULT_FONT,
+    session_timer_font_size: i32 = types.DEFAULT_FONT_SIZE,
     session_timer_font_weight: types.FontWeight = .Regular,
     session_timer_bg_color: u32 = 0x80000000,
 
@@ -189,7 +189,7 @@ pub fn renderSettings(config: *const config_mod.Config, subject: *const Subject)
     const hides_all = !is_shown or subject.is_hidden_for_character or is_active_hidden;
     const show_text = !hides_all and thumbnail_config.showText;
     const forces_opaque_backgrounds = thumbnail_config.applyOpacityToOverlayTexts;
-    const border = resolveBorder(thumbnail_config, subject, state_config, hides_all);
+    const border = resolveBorder(config, subject, state_config, hides_all);
     const dpi_scale = subject.dpi_scale;
     const stats = subject.stats;
     const session_minutes = if (show_text and thumbnail_config.showSessionTimer) subject.session_minutes else null;
@@ -341,7 +341,8 @@ fn resolveTextBgColor(state_config: config_mod.StateVisualConfig, base_color: u3
 }
 
 /// Lowest first: Active/Inactive base, state override, newest alert's type, then the character's colours.
-fn resolveBorder(thumbnail_config: *const config_mod.ThumbnailConfig, subject: *const Subject, state_config: config_mod.StateVisualConfig, hides_all: bool) Border {
+fn resolveBorder(config: *const config_mod.Config, subject: *const Subject, state_config: config_mod.StateVisualConfig, hides_all: bool) Border {
+    const thumbnail_config = &config.thumbnail;
     const state = subject.state;
     const is_focused = subject.is_focused;
     // Alert builds on Active, being an attention event.
@@ -355,7 +356,7 @@ fn resolveBorder(thumbnail_config: *const config_mod.ThumbnailConfig, subject: *
 
     // With suppress_when_focused, a focused character's alert borders as Active.
     const is_suppressed = if (newest) |notification| notification.suppress_when_focused and is_focused else false;
-    var color = state_config.borderColor orelse (if (uses_focused_look) thumbnail_config.borderColor else thumbnail_config.inactiveBorderColor);
+    var color = state_config.borderColor orelse (if (uses_focused_look) config.focusedBorderColor() else thumbnail_config.inactiveBorderColor);
     if (newest) |notification| {
         if (!is_suppressed) {
             if (notification.border_color_override) |override| color = override;
@@ -465,7 +466,7 @@ test "the focused thumbnail shows the focused border" {
     const subject = testSubject(.active);
     const settings = renderSettings(&config, &subject);
     try testing.expect(settings.show_border);
-    try testing.expectEqual(config.thumbnail.borderColor, settings.border_color);
+    try testing.expectEqual(config.focusedBorderColor(), settings.border_color);
     try testing.expectEqual(config.thumbnail.borderWidth, settings.border_width);
 }
 
@@ -500,7 +501,7 @@ test "a focused character's suppressed alert keeps its active border colour" {
     var subject = testSubject(.alert);
     subject.is_focused = true;
     subject.notifications = &notifications;
-    try testing.expectEqual(config.thumbnail.borderColor, renderSettings(&config, &subject).border_color);
+    try testing.expectEqual(config.focusedBorderColor(), renderSettings(&config, &subject).border_color);
     subject.border_colors = .{ .activeBorderColor = 0xFF00FF00 };
     try testing.expectEqual(@as(u32, 0xFF00FF00), renderSettings(&config, &subject).border_color);
 }

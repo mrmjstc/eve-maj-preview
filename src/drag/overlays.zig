@@ -119,7 +119,7 @@ pub const GhostOverlay = struct {
         }
 
         // Reduced alpha, so it reads as a ghost rather than a real thumbnail.
-        const outline_color: u32 = color.withAlpha(config.thumbnail.borderColor, 0xB0);
+        const outline_color: u32 = color.withAlpha(config.focusedBorderColor(), 0xB0);
         const text_color: u32 = 0xE0FFFFFF;
 
         for (groups) |group| {

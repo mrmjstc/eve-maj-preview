@@ -11,7 +11,7 @@ const avoided_systems = @import("config/avoided_systems.zig");
 const hotkeys_mod = @import("config/hotkeys.zig");
 const spaces = @import("config/spaces.zig");
 const migrate = @import("config/migrate.zig");
-const chatlog_mod = @import("config/chatlog.zig");
+const chatlog = @import("config/chatlog.zig");
 const activity = @import("config/activity.zig");
 const notifications = @import("config/notifications.zig");
 const window_filters = @import("config/window_filters.zig");
@@ -30,9 +30,7 @@ const slog = log.Scoped("config");
 
 pub const setEnvironMap = files.setEnvironMap;
 pub const environMap = files.environMap;
-pub const PROFILES_DIR = files.PROFILES_DIR;
 pub const DEFAULT_PROFILE = files.DEFAULT_PROFILE;
-pub const GLOBAL_SETTINGS_FILE = files.GLOBAL_SETTINGS_FILE;
 pub const atomicWriteFile = files.atomicWriteFile;
 pub const migrateLegacyLayout = files.migrateLegacyLayout;
 pub const loadProfile = profiles.load;
@@ -55,7 +53,6 @@ pub const parseBackupName = profiles.parseBackupName;
 pub const profileFileName = profiles.fileNameFor;
 pub const profileDisplayName = profiles.displayName;
 pub const ProfileStore = store.ProfileStore;
-pub const Argb = wire.Argb;
 pub const KeyList = key_list.KeyList;
 pub const parseHexColor = wire.parseHexColor;
 
@@ -74,7 +71,8 @@ pub const AvoidedSystemConfig = avoided_systems.AvoidedSystemConfig;
 pub const HotkeyGroupConfig = hotkeys_mod.HotkeyGroupConfig;
 pub const ThumbnailSpace = spaces.ThumbnailSpace;
 pub const migrateProfileJson = migrate.profile;
-pub const ChatlogConfig = chatlog_mod.ChatlogConfig;
+pub const migrateProfileChatlog = migrate.profileChatlog;
+pub const ChatlogConfig = chatlog.ChatlogConfig;
 pub const CombatConfig = activity.CombatConfig;
 pub const MiningConfig = activity.MiningConfig;
 pub const BountyConfig = activity.BountyConfig;
@@ -107,7 +105,7 @@ pub const AutoColorStore = auto_colors.AutoColorStore;
 
 pub const PROFILE_FORMAT_IDENTIFIER = "eve-maj-preview";
 /// Bumped only for schema changes needing a migration, independent of the release version; see config/migrate.zig and Config.fromWire.
-pub const PROFILE_FORMAT_VERSION: u32 = migrate.PANELS_VERSION;
+pub const PROFILE_FORMAT_VERSION: u32 = migrate.FOLLOWS_ACCENT_VERSION;
 
 pub const ShownColors = struct {
     system_name_color: u32,
@@ -143,7 +141,6 @@ pub const Config = struct {
     autoMovePosition: AutoMovePositionConfig = .{},
     exclusion: ExclusionConfig = .{},
     closeAll: CloseAllConfig = .{},
-    chatlog: ChatlogConfig = .{},
     combat: CombatConfig = .{},
     mining: MiningConfig = .{},
     bounty: BountyConfig = .{},
@@ -328,19 +325,27 @@ pub const Config = struct {
         return self.characterSetting(character_name, "displayName", null) orelse character_name;
     }
 
+    pub fn listActiveColor(self: *const Config) u32 {
+        return self.listView.activeColor orelse self.accentColor;
+    }
+
+    pub fn focusedBorderColor(self: *const Config) u32 {
+        return self.thumbnail.borderColor orelse self.accentColor;
+    }
+
     /// The colour settings of whichever view is shown, since the client list alone has its own.
     pub fn shownColors(self: *const Config) ShownColors {
         return switch (self.display.viewMode) {
             .ClientList => .{
                 .system_name_color = self.listView.systemNameColor,
-                .active_color = self.listView.activeColor,
+                .active_color = self.listActiveColor(),
                 .uses_unique_system_colors = self.listView.useUniqueSystemColors,
                 .uses_unique_name_colors = self.listView.useUniqueCharacterNameColors,
                 .uses_unique_border_colors = self.listView.useUniqueActiveColors,
             },
             .Thumbnails, .ThumbnailsAndList, .Nothing => .{
                 .system_name_color = self.thumbnail.systemNameColor,
-                .active_color = self.thumbnail.borderColor,
+                .active_color = self.focusedBorderColor(),
                 .uses_unique_system_colors = self.thumbnail.useUniqueSystemColors,
                 .uses_unique_name_colors = self.thumbnail.useUniqueCharacterNameColors,
                 .uses_unique_border_colors = self.thumbnail.useUniqueCharacterBorderColors,
@@ -496,6 +501,16 @@ test "shownColors follows the thumbnails when the list is shown beside them" {
     defer config.deinit();
 
     try testing.expectEqual(@as(u32, 0xFF000002), config.shownColors().active_color);
+}
+
+test "an unset active colour and focused border follow the accent" {
+    var config = try testConfig(
+        \\{"accentColor": "0xFFD97AA0"}
+    );
+    defer config.deinit();
+
+    try testing.expectEqual(@as(u32, 0xFFD97AA0), config.listActiveColor());
+    try testing.expectEqual(@as(u32, 0xFFD97AA0), config.focusedBorderColor());
 }
 
 test "getOrCreateCharacter returns an existing character rather than adding another" {

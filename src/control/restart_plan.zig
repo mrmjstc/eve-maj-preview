@@ -17,7 +17,7 @@ pub const Step = enum {
     /// Stops the chatlog worker but keeps the monitor and its scan state, so it must be started again.
     pause_monitor,
     destroy_monitor,
-    /// The chatlog worker reads the global settings' ore prices, so they're replaced only while it's stopped.
+    /// The chatlog worker reads the global settings, its own and the ore prices, so they're replaced only while it's stopped.
     adopt_global_draft,
     destroy_hotkey_manager,
     /// Keeps each client's system name for build_thumbnail_set to seed the new set with.
@@ -46,7 +46,7 @@ pub const Facts = struct {
     is_profile_replaced: bool,
     has_thumbnail_set: bool,
     has_monitor: bool,
-    /// The running monitor follows the log folders the next profile does, so it can be paused and kept rather than rebuilt.
+    /// The running monitor follows the log folders the next settings do, so it can be paused and kept rather than rebuilt.
     is_monitor_on_next_folders: bool,
     is_chatlog_enabled_next: bool,
     has_global_draft: bool,

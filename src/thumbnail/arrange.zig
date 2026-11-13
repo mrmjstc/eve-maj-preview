@@ -117,7 +117,7 @@ pub fn repositionAll(thumbnail_set: *ThumbnailSet) void {
     for (thumbnail_set.thumbnails.items, assignment.space_indices, assignment.rank, 0..) |thumbnail, assigned_space, rank, index| {
         if (!thumbnail.is_win32_enabled) continue;
         // Hidden before it moves, or it shows at its new place until the next render hides it.
-        if (thumbnail.cached_hide_thumbnail) thumbnail.show(false);
+        if (thumbnail.cached_is_thumbnail_hidden) thumbnail.show(false);
         if (assigned_space) |space_index| {
             if (cells[space_index]) |cell| {
                 const position = cell.position(rank);

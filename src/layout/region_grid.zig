@@ -6,8 +6,8 @@ const types = @import("../config/types.zig");
 
 const Position = characters.Position;
 
-/// box_* is each column's or row's share of the region, which picks the column count; cell_* is the aspect-corrected thumbnail size it's positioned by.
-pub const RegionFitGrid = struct { columns: u32, rows: u32, box_width: i32, box_height: i32, cell_width: i32, cell_height: i32 };
+/// cell_* is the aspect-corrected thumbnail size the grid is positioned by.
+pub const RegionFitGrid = struct { columns: u32, rows: u32, cell_width: i32, cell_height: i32 };
 
 pub const RegionFitCap = struct { width: i32, height: i32 };
 
@@ -74,7 +74,7 @@ fn regionFitGridForSize(region_width: i32, region_height: i32, columns: u32, row
     const fit_width = if (max_cell) |cap| @min(box_width, cap.width) else box_width;
     const fit_height = if (max_cell) |cap| @min(box_height, cap.height) else box_height;
     const cell = fitAspect(fit_width, fit_height, aspect_ratio);
-    return .{ .columns = columns, .rows = rows, .box_width = box_width, .box_height = box_height, .cell_width = cell.width, .cell_height = cell.height };
+    return .{ .columns = columns, .rows = rows, .cell_width = cell.width, .cell_height = cell.height };
 }
 
 fn regionFitCellArea(grid: RegionFitGrid) i64 {
@@ -203,7 +203,7 @@ test "regionFitColumnRow puts each index of a full grid in its own cell" {
 
 test "regionFitPositionForGrid strides by cell size plus spacing from the region's corner" {
     const region: win32.RECT = .{ .left = 100, .top = 50, .right = 1710, .bottom = 960 };
-    const grid: RegionFitGrid = .{ .columns = 2, .rows = 2, .box_width = 800, .box_height = 450, .cell_width = 800, .cell_height = 450 };
+    const grid: RegionFitGrid = .{ .columns = 2, .rows = 2, .cell_width = 800, .cell_height = 450 };
     const bottom_right = regionFitPositionForGrid(region, grid, 3, .RowFirst_LTR_TTB, 10);
     try testing.expectEqual(@as(i32, 910), bottom_right.x);
     try testing.expectEqual(@as(i32, 510), bottom_right.y);

@@ -12,7 +12,9 @@ const FixedText = fixed_text.FixedText;
 /// Around a tooltip's text, and how far it keeps from what it describes.
 pub const TOOLTIP_PADDING: i32 = 6;
 /// Between a popup's edge and its rows, so a lit row nearly fills the width.
-const POPUP_PADDING: i32 = 4;
+const POPUP_PADDING: i32 = palette.MENU_PADDING;
+/// From a popup's left edge to a `.title` row's text; a detailed tooltip's title sits there too.
+pub const TITLE_INSET_X: i32 = POPUP_PADDING + MENU_CHECK_LEFT;
 /// Between a list's row edges and its text.
 pub const POPUP_TEXT_INSET: i32 = 7;
 /// A menu row's height, the dialog's control height.
@@ -20,7 +22,7 @@ pub const MENU_ROW_HEIGHT: i32 = palette.CONTROL_HEIGHT;
 /// From a menu row's left edge to its check mark's column.
 pub const MENU_CHECK_LEFT: i32 = 8;
 /// Holds a glyph or a check mark.
-pub const MENU_CHECK_WIDTH: i32 = glyphs.SIZE;
+const MENU_CHECK_WIDTH: i32 = glyphs.SIZE;
 /// From a menu row's left edge to its text, past the check mark's column, so checked and unchecked rows line up.
 pub const MENU_TEXT_LEFT: i32 = MENU_CHECK_LEFT + MENU_CHECK_WIDTH + MENU_PART_GAP;
 /// From a menu row's right edge to its arrow's point.
@@ -31,20 +33,20 @@ pub const MENU_ARROW_ROOM: i32 = 12;
 pub const MENU_PART_GAP: i32 = 8;
 /// Before a title's value, as before a tooltip's aside.
 pub const MENU_TITLE_VALUE_GAP: i32 = 16;
-const SUBMENU_ARROW_SIZE: i32 = 3;
+/// Where chevron_right's point sits across its glyph.
+const CHEVRON_RIGHT_TIP: i32 = 10;
 /// Between a row's parts, e.g. a search result's name, security and region.
 pub const POPUP_PART_GAP = "  ";
 
 /// A popup's corners.
-pub const BOX_RADIUS: usize = palette.RADIUS;
-/// A lit row's corners, inside the popup's.
-pub const ROW_RADIUS: usize = 4;
+const BOX_RADIUS: usize = palette.RADIUS;
+/// A lit row's corners, as the dialog's menu rows.
+pub const ROW_RADIUS: usize = palette.RADIUS;
 
-// The colours below are 0xAARRGGBB, not premultiplied, and the map's cards', so a menu matches its tooltips.
-pub const MENU_FILL: u32 = palette.SURFACE;
-pub const MENU_BORDER: u32 = palette.BORDER_STRONG;
-/// SURFACE_ALT sits too close to the fill to show.
-pub const MENU_LIT: u32 = palette.BORDER;
+// The colours below are 0xAARRGGBB, not premultiplied, and the dialog's menu's, so every popup looks alike.
+const MENU_FILL: u32 = palette.PANEL;
+const MENU_BORDER: u32 = palette.BORDER_STRONG;
+pub const MENU_LIT: u32 = palette.SURFACE;
 /// Between a menu's groups of rows.
 pub const MENU_RULE: u32 = palette.BORDER;
 /// A menu's headings, values and arrows.
@@ -133,6 +135,11 @@ pub fn rowHeightForBox(box_height: i32) i32 {
     return box_height - 2 * POPUP_PADDING;
 }
 
+/// From a popup's top edge to a `.title` row's text in a font `name_height` tall.
+pub fn titleInsetY(name_height: i32) i32 {
+    return POPUP_PADDING + @divTrunc(MENU_ROW_HEIGHT - name_height, 2);
+}
+
 /// Beside `x`,`y` while there's room, else on the other side; always inside `area`.
 pub fn tooltipBox(area: Box, x: i32, y: i32, width: i32, height: i32) Box {
     const beside = x + TOOLTIP_PADDING * 2 + width;
@@ -151,21 +158,19 @@ pub fn drawBorderedBox(canvas: pixel_buffer.Canvas, box: Box, radius: usize, fil
     pixel_buffer.fillRoundedRect(canvas, @intCast(box.left + 1), @intCast(box.top + 1), @intCast(box.right - box.left - 2), @intCast(box.bottom - box.top - 2), radius -| 1, fill);
 }
 
+/// A menu's or tooltip's box, as the dialog draws both.
+pub fn drawPopupBox(canvas: pixel_buffer.Canvas, box: Box) void {
+    drawBorderedBox(canvas, box, BOX_RADIUS, MENU_FILL, MENU_BORDER);
+}
+
 /// A tick filling the check mark's column from `left`, around `y`.
 pub fn drawCheck(canvas: pixel_buffer.Canvas, left: i32, y: i32, check_color: u32) void {
-    const x = left + @divTrunc(MENU_CHECK_WIDTH - 10, 2);
-    // Twice over, a pixel apart, as one line is too thin to read as a tick.
-    for ([_]i32{ 0, 1 }) |offset| {
-        pixel_buffer.drawLine(canvas, x, y + offset, x + 3, y + 3 + offset, check_color);
-        pixel_buffer.drawLine(canvas, x + 3, y + 3 + offset, x + 9, y - 3 + offset, check_color);
-    }
+    glyphs.draw(canvas, .check, left, y - @divTrunc(glyphs.SIZE, 2), check_color);
 }
 
 /// A chevron with its point at `right`,`y`.
 pub fn drawSubmenuArrow(canvas: pixel_buffer.Canvas, right: i32, y: i32, arrow_color: u32) void {
-    const left = right - SUBMENU_ARROW_SIZE;
-    pixel_buffer.drawLine(canvas, left, y - SUBMENU_ARROW_SIZE, right, y, arrow_color);
-    pixel_buffer.drawLine(canvas, right, y, left, y + SUBMENU_ARROW_SIZE, arrow_color);
+    glyphs.draw(canvas, .chevron_right, right - CHEVRON_RIGHT_TIP, y - @divTrunc(glyphs.SIZE, 2), arrow_color);
 }
 
 fn popupShape(area: Box, row_count: usize, column_width: i32, row_height: i32) PopupShape {

@@ -9,7 +9,7 @@ const SystemIndex = universe.SystemIndex;
 
 pub const MAX_ENTRIES = wormholes.MAX_CONNECTIONS;
 /// Rows a wheel notch scrolls.
-pub const SCROLL_STEP = 3;
+const SCROLL_STEP = 3;
 
 pub const Entry = struct {
     /// Its place in the Connections it was built from.

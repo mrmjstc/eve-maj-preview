@@ -322,40 +322,7 @@ pub fn presentLayered(hwnd: win32.HWND, bitmap: *const OverlayBitmap, opacity: u
     _ = win32.UpdateLayeredWindow(hwnd, null, null, @constCast(&window_size), bitmap.mem_dc, @constCast(&source_point), 0, &blend, win32.ULW_ALPHA);
 }
 
-/// Longest prefix of `text` (plus "...") that fits within `max_width` pixels measured on `dc`, written into `out`; returns the prefix as-is (no ellipsis) if it already fits.
-pub fn truncateTextToFit(comptime buf_size: usize, dc: win32.HDC, out: *[buf_size:0]u8, text: []const u8, max_width: usize) []const u8 {
-    var buf: [buf_size:0]u8 = undefined;
-    // -4 leaves room for the "..." suffix.
-    const original_length = @min(text.len, buf_size - 4);
-    @memcpy(buf[0..original_length], text[0..original_length]);
-    buf[original_length] = 0;
-    // A failed measure reads as empty, like measureTextSize's.
-    var size: win32.SIZE = .{ .cx = 0, .cy = 0 };
-    _ = win32.GetTextExtentPoint32A(dc, &buf, @intCast(original_length), &size);
-    if (@as(usize, @intCast(@max(0, size.cx))) <= max_width) return writeFitted(buf_size, out, text[0..original_length], "");
-
-    var ellipsis_size: win32.SIZE = .{ .cx = 0, .cy = 0 };
-    _ = win32.GetTextExtentPoint32A(dc, ELLIPSIS, ELLIPSIS.len, &ellipsis_size);
-    const budget: i32 = @as(i32, @intCast(max_width)) - ellipsis_size.cx;
-    if (budget <= 0) return out[0..0];
-
-    var low: usize = 0;
-    var high: usize = original_length;
-    while (low < high) {
-        const middle = (low + high + 1) / 2;
-        @memcpy(buf[0..middle], text[0..middle]);
-        buf[middle] = 0;
-        _ = win32.GetTextExtentPoint32A(dc, &buf, @intCast(middle), &size);
-        if (size.cx <= budget) {
-            low = middle;
-        } else {
-            high = middle - 1;
-        }
-    }
-    return writeFitted(buf_size, out, text[0..low], ELLIPSIS);
-}
-
-/// Like truncateTextToFit, for UTF-8 text such as chat; it never cuts a character in half.
+/// Longest prefix of `text` plus "..." that fits `max_width` pixels on `dc`, or all of it if it fits; UTF-8, never cut mid-character.
 pub fn truncateUtf8ToFit(comptime buf_size: usize, dc: win32.HDC, out: *[buf_size:0]u8, text: []const u8, max_width: usize) []const u8 {
     // -4 leaves room for the "..." suffix.
     const original_length = utf8.prefixLength(text, buf_size - 4);

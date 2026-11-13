@@ -1,4 +1,4 @@
-//! The configuration window's Placement tab: the placement mode and a screen preview, then hand-placement settings or a list of thumbnail spaces beside the selected one's details; main thread only.
+//! The configuration window's Placement tab: the thumbnail placement mode and a screen preview, hand-placement settings or a list of thumbnail spaces beside the selected one's details, then panel snapping; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const win32 = @import("../../../platform/win32.zig");
@@ -77,6 +77,16 @@ const Destination = enum {
 var g_selected_id: u32 = 0;
 
 pub fn show(context: *ui.Frame) !void {
+    if (session.showsThumbnails()) try thumbnailPlacement(context);
+    try panelSnapping(context);
+}
+
+/// Spaces mode fills the window like Characters; Manual's settings, or both modes during a search, scroll instead.
+pub fn fillsWindow() bool {
+    return session.showsThumbnails() and session.profile().ptr.display.placementMode == .ThumbnailSpaces and !search.isActive();
+}
+
+fn thumbnailPlacement(context: *ui.Frame) !void {
     const profile = session.profile();
     const display = profile.child("display");
     // A search shows both modes' settings, so a match in the other mode is still found.
@@ -108,9 +118,24 @@ pub fn show(context: *ui.Frame) !void {
     }
 }
 
-/// Spaces mode fills the window like Characters; Manual's settings, or both modes during a search, scroll instead.
-pub fn fillsWindow() bool {
-    return session.profile().ptr.display.placementMode == .ThumbnailSpaces and !search.isActive();
+fn panelSnapping(context: *ui.Frame) !void {
+    const section = try widgets.openSection(context, "Panel Snapping", "How the client list and the other panels line up as you drag them.", &style.section);
+    const ref = session.profile().child("panelSnapping");
+    try bind.toggle(context, ref, "enabled", "Snap While Dragging");
+    try widgets.hintText(context, .src(@src()), "Turns all the snapping below on or off.");
+    const group = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
+    try bind.toggle(context, ref, "screenEdges", "Snap to Screen Edges");
+    try widgets.hintText(context, .src(@src()), "Panels stick to the edges of your monitors.");
+    try bind.toggle(context, ref, "panelEdges", "Snap to Other Panels");
+    try widgets.hintText(context, .src(@src()), "Panels stick to each other's edges.");
+    if (session.showsThumbnails()) {
+        try bind.toggle(context, ref, "thumbnailEdges", "Snap to Thumbnail Edges");
+        try widgets.hintText(context, .src(@src()), "Panels stick to thumbnails' edges.");
+    }
+    try bind.number(context, ref, "threshold", "Snap Distance", .{ .unit = "px" });
+    try widgets.hintText(context, .src(@src()), "How close a panel gets before it snaps into place.");
+    try group.close(context);
+    try section.close(context);
 }
 
 fn manual(context: *ui.Frame, display: DisplayRef) !void {
@@ -124,7 +149,7 @@ fn manual(context: *ui.Frame, display: DisplayRef) !void {
     const drag = try widgets.openGroup(context, .src(@src()), !interaction.get("clickThrough"));
     try bind.toggle(context, interaction, "enableDragging", "Enable Dragging");
     try drag.close(context);
-    try widgets.hintText(context, .src(@src()), "Stays off while Click Through is on in the Behavior tab.");
+    try widgets.hintText(context, .src(@src()), "Stays off while Click Through is on in the Mouse tab.");
     try bind.toggle(context, display, "honorSavedPositions", "Restore Saved Positions");
     try widgets.hintText(context, .src(@src()), "When off, thumbnails always start at the Start Position.");
     try dragging.close(context);
@@ -288,7 +313,7 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
         _ = try name.open(context);
         try context.e(Text{ .selectable = false, .key = .src(@src()), .content = lang.text(space.get("name")), .style = &style.space_fixed_name_text });
         try name.close(context);
-        const tag = Rect{ .key = .src(@src()), .style = &style.space_built_in_tag };
+        const tag = Rect{ .key = .src(@src()), .style = &style.outline_tag };
         _ = try tag.open(context);
         try context.e(Text{ .selectable = false, .key = .src(@src()), .content = lang.text("Built-in"), .style = &style.hint_plain });
         try tag.close(context);

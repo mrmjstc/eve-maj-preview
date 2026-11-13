@@ -180,7 +180,10 @@ Rendering:
 - `panels/history_rows.zig`: the rows the History and Intel panels list. The Map Panel draws them, two lines each, in its Intel card; `panels/intel_panel.zig` is the Intel Panel's own window for when it's detached.
 - `panels/map_panel.zig` + `panels/map/`: the Map Panel's window and input; see [Map Panel](#map-panel).
 - `panels/popup_menu.zig` + `popup_look.zig`: a menu with two levels of submenu, drawn inside a panel, plus tooltip placement. The Map Panel's right-click menu and search results use it; a panel supplies its own rows and actions.
-- `panels/glyphs.zig` (pure, tested): the menus' 16px icons, drawn at compile time from strokes, so no image files ship.
+- `panels/glyphs.zig` (pure, tested): the one icon set the dialog, map and panels draw, built at compile time from strokes on a 16-unit grid at whatever size a caller needs, with the same 1.5px line, so no image files ship. `dialog/knots/glyphs.zig` lays them out as canvas pixels.
+- `panels/panel_header.zig` (pure, tested) + `header_panel.zig`: the header the Client List, History and Intel panels share (chevron, title, buttons) and its window procedure; `panel_chrome.zig` draws it.
+- `panels/panel_menu.zig` + `panel_menu_look.zig` (pure, tested): the ⋯ menu, a borderless topmost window of its own under the button, shared by those three panels; each supplies what it shows and what its rows do.
+- `panels/segmented.zig` (pure, tested): the segmented control the Map Panel's metric bar, the Intel Panel's range filter and the ⋯ menu's Order row share.
 - `panels/palette.zig`: the configuration window's colours, sizes and fonts, so the GDI panels match it.
 - `thumbnail/hover_zoom.zig` + `layout/zoom.zig`: click-through enlarged copy under the cursor.
 
@@ -313,9 +316,9 @@ Immediate-mode (knots on Vulkan), main thread, nested message loop so the tick a
 
 - `knots/host.zig`: window lifecycle, nested loop, close prompt, saved position. Every save goes through `saveChanges`, which refuses while hotkeys conflict. Anything that replaces documents or touches the app is posted as `WM_KNOTS_COMMAND` and runs between frames.
 - `knots/session.zig`: edits `store.live` and a `GlobalConfig` draft. Every change goes through `Ref.set` (or list `append`/`remove`/`move`): copies strings, clamps, calls `App.onLiveProfileEdited`. Replaced strings are freed a frame later. Dirty = differs from saved. `save()` commits, restarts subsystems and adopts the global draft.
-- `knots/form.zig`: header, sidebar, open tab, footer, prompts. `knots/tabs/`: one file per tab.
+- `knots/form.zig`: header, sidebar, open tab, footer, prompts. The sidebar groups tabs under Clients, Display, Panels, Input, Alerts and App. `knots/tabs/`: one file per tab, plus sections kept in their own files (`panel_settings.zig`, `window_filters.zig`, `chatlog.zig`). `widgets.openSharedSection` tags a section whose settings every profile shares.
 - `knots/widgets.zig`, `bind.zig`, `style.zig`: layout pieces, setting-bound controls, styles.
-- `knots/roster.zig`, `selection.zig`: a list tab's rows and which item its details show (pure, tested). `tabs/panel_preview.zig`: the panel previews' stage, frame and header.
+- `knots/roster.zig`, `selection.zig`: a list tab's rows and which item its details show (pure, tested). `tabs/panel_preview.zig`: the panel previews' stage, frame, header and clickable parts.
 - `knots/hotkey.zig`: recording field; pauses live hotkeys while recording. Draws its key caps compact when full size would overrun the room `widgets.controlsRoom` reports beside the row's label. Finds conflicting combos and names their holders, using `labels.zig`'s hotkey labels.
 - `tools/region_select.zig`: full-screen overlay for drawing a thumbnail space; math in `region_math.zig`.
 - `tools/esi_prices.zig`: Jita ore prices. `tools/ultra_potato.zig`: patches EVE's graphics YAML.
@@ -326,7 +329,7 @@ Immediate-mode (knots on Vulkan), main thread, nested message loop so the tick a
 - Direct calls, no event bus. Code is handed `*App` or just what it needs.
 - Win32 callbacks have no context pointer: window procs and hooks read `app.g_app` (or `app.currentThumbnailSet()`) and pass it down, except the panels', which get App's `PANEL_HOST` (the Map Panel through `MapPanel.host`, set by `App.init`) and find what they belong to through their window's owner. Modules below them never read the global. Scout keeps a private pointer for its own hooks so it stays testable.
 - A panel finds its own window struct from the `hwnd`: its owner attaches it with `PanelWindow.attachOwner` once it's stored, and the window proc reads it back with `panel_window.ownerOf`.
-- The dialog reaches the app through `session.runningApp()`. App doesn't import the dialog: `host.init` hands it `DialogHooks` (redraw, is open, close for exit, the live global settings).
+- The dialog reaches the app through `session.runningApp()`. App doesn't import the dialog: `host.init` hands it `DialogHooks` (redraw, is open, close for exit, the live global settings, open at a panel's settings page).
 - `platform/` depends on nothing app-specific. Win32 declarations live in `platform/win32.zig`, which never logs.
 - Pure logic is split into its own file (marked "no I/O" in its header) and tested.
 

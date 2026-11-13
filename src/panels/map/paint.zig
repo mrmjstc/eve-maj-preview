@@ -17,6 +17,7 @@ const text_mod = @import("text.zig");
 const panel_chrome = @import("../panel_chrome.zig");
 const panel_look = @import("../panel_look.zig");
 const popup_look = @import("../popup_look.zig");
+const segmented = @import("../segmented.zig");
 const popup_menu = @import("../popup_menu.zig");
 const universe = @import("../../map/universe.zig");
 const layout_mod = @import("../../map/layout.zig");
@@ -31,7 +32,6 @@ const evestars = @import("../../map/evestars.zig");
 const zkill = @import("../../map/zkill.zig");
 const intel_pins = @import("../../map/intel_pins.zig");
 const window = @import("../../thumbnail/window.zig");
-const color_mod = @import("../../util/color.zig");
 const fixed_text = @import("../../util/fixed_text.zig");
 const pixel_buffer = @import("../../util/pixel_buffer.zig");
 const log = @import("../../log.zig");
@@ -59,6 +59,8 @@ const slog = log.Scoped("map_panel");
 
 /// The metric's or the jump range's, the storms' and the incursions'.
 const MAX_LEGENDS = 3;
+/// Fits a wormhole row's longest ship size, its gap and a u16 of hours.
+const DETAIL_TEXT_MAX = 16;
 
 /// What the panel shows besides its own settings.
 pub const Scene = struct {
@@ -88,6 +90,8 @@ pub const MapFonts = struct {
     chrome: panel_chrome.Text,
     /// A picked segment's label and the cards' headings.
     semibold_font: win32.HFONT,
+    /// A menu's headings.
+    small_semibold_font: win32.HFONT,
     /// The title card's heading.
     heading_font: win32.HFONT,
     heading_height: i32,
@@ -189,7 +193,7 @@ pub const Painter = struct {
         }
         self.drawSearchBox(bitmap, loaded.chrome, measured.search_stops);
         self.drawTooltip(bitmap, scene, loaded, now_ms);
-        self.drawPopup(bitmap, .{ .chrome = loaded.chrome, .title = loaded.semibold_font }, measured.popup);
+        self.drawPopup(bitmap, .{ .chrome = loaded.chrome, .title = loaded.semibold_font, .heading = loaded.small_semibold_font }, measured.popup);
         drawNotice(bitmap, scene.destinations, areas, self.state.chrome.toggle_bar, loaded);
     }
 
@@ -203,13 +207,11 @@ pub const Painter = struct {
         return card;
     }
 
-    /// What a centred toggle bar keeps clear of; 0 without legends.
+    /// What a centred toggle bar keeps clear of; the region view's while picking, so the bars don't move.
     pub fn legendCardWidth(self: *const Painter, dc: win32.HDC, scene: Scene, text: panel_chrome.Text) i32 {
-        if (self.state.is_picking_region) return 0;
         const paint = self.mapPaint(scene);
         var legend_buffer: [MAX_LEGENDS]text_mod.Legend = undefined;
-        const shown = self.legends(scene, &paint, &legend_buffer);
-        return if (shown.len == 0) 0 else cardWidth(dc, shown, text);
+        return cardWidth(dc, self.legends(scene, &paint, &legend_buffer), text);
     }
 
     /// The metric's, or the jump range's while one shows, then any storms' and incursions'; `buffer` holds what's returned.
@@ -292,7 +294,7 @@ pub const Painter = struct {
         if (card.is_collapsed) return;
         if (card.tab == .kills) return self.drawKillRows(dc, text, card, scene);
         if (card.row_count == 0) {
-            panel_chrome.drawLine(dc, history_rows.INTEL_EMPTY_TEXT, left, card.header.bottom + look.INTEL_PADDING_Y, list_look.MUTED);
+            _ = panel_chrome.drawFitted(dc, history_rows.INTEL_EMPTY_TEXT, left, card.header.bottom + look.INTEL_PADDING_Y, list_look.MUTED, right - left);
             return;
         }
         const now = win32.Ticks.now();
@@ -329,19 +331,19 @@ pub const Painter = struct {
         _ = win32.SelectObject(dc, text.name_font);
         if (card.is_collapsed) return;
         const listed = connections orelse {
-            panel_chrome.drawLine(dc, "Waiting for EVE-Scout", left, card.header.bottom + look.INTEL_PADDING_Y, list_look.MUTED);
+            _ = panel_chrome.drawFitted(dc, "Waiting for EVE-Scout", left, card.header.bottom + look.INTEL_PADDING_Y, list_look.MUTED, right - left);
             return;
         };
         if (card.row_count == 0) {
-            panel_chrome.drawLine(dc, "No connections reported", left, card.header.bottom + look.INTEL_PADDING_Y, list_look.MUTED);
+            _ = panel_chrome.drawFitted(dc, "No connections reported", left, card.header.bottom + look.INTEL_PADDING_Y, list_look.MUTED, right - left);
             return;
         }
         for (card.rows[0..card.row_count], 0..) |box, row_index| {
             const item = self.state.wormholeEntryAt(row_index) orelse break;
             const top = centredTop(box, text.name_height);
             const connection = &listed.connections[item.index];
-            var detail_buf: [32]u8 = undefined;
-            const detail = std.fmt.bufPrint(&detail_buf, "{s}  {d}h", .{ text_mod.shipSizeShort(connection.ship_size), connection.remaining_hours }) catch unreachable;
+            var detail_buffer: [DETAIL_TEXT_MAX]u8 = undefined;
+            const detail = std.fmt.bufPrint(&detail_buffer, "{s}  {d}h", .{ text_mod.shipSizeShort(connection.ship_size), connection.remaining_hours }) catch unreachable;
             const detail_width = panel_chrome.textWidth(dc, detail);
             panel_chrome.drawLine(dc, detail, right - detail_width, top, list_look.MUTED);
             const system_name = universe.systemName(item.system);
@@ -386,9 +388,9 @@ pub const Painter = struct {
         const left = card.box.left + look.INTEL_PADDING_X;
         const right = card.box.right - look.INTEL_PADDING_X;
         if (card.row_count == 0) {
-            var empty_buf: [panel_chrome.MAX_TEXT_LENGTH]u8 = undefined;
-            const empty = std.fmt.bufPrint(&empty_buf, "No kills here in the last {d}m", .{self.config.mapPanel.killLifetimeMin}) catch unreachable;
-            panel_chrome.drawLine(dc, empty, left, card.header.bottom + look.INTEL_PADDING_Y, list_look.MUTED);
+            var empty_buffer: [panel_chrome.MAX_TEXT_LENGTH]u8 = undefined;
+            const empty = std.fmt.bufPrint(&empty_buffer, "No kills in the last {d}m", .{self.config.mapPanel.killLifetimeMin}) catch unreachable;
+            _ = panel_chrome.drawFitted(dc, empty, left, card.header.bottom + look.INTEL_PADDING_Y, list_look.MUTED, right - left);
             return;
         }
         for (self.state.kill_rows[0..card.row_count], card.rows[0..card.row_count]) |*kill, box| {
@@ -399,8 +401,8 @@ pub const Painter = struct {
             panel_chrome.drawLine(dc, value.slice(), right - value_width, top, list_look.MUTED);
             _ = panel_chrome.drawFitted(dc, text_mod.killShipName(scene.kill_names, kill), left, top, list_look.NAME, right - value_width - look.LEGEND_VALUE_GAP - left);
 
-            var age_buf: [panel_look.TIME_TEXT_MAX]u8 = undefined;
-            const age = text_mod.killAge(&age_buf, kill, scene.now_seconds);
+            var age_buffer: [panel_look.TIME_TEXT_MAX]u8 = undefined;
+            const age = text_mod.killAge(&age_buffer, kill, scene.now_seconds);
             const age_width = panel_chrome.textWidth(dc, age);
             panel_chrome.drawLine(dc, age, right - age_width, second_top, list_look.MUTED);
             const system_name = universe.systemName(kill.system);
@@ -498,7 +500,7 @@ pub const Painter = struct {
             // A picked region's ring is heavier than a hover's, so the picks stay visible while pointing elsewhere.
             const ring_thickness = if (self.state.ringedRegions().contains(region)) look.FOCUS_RING_THICKNESS else if (is_hovered) look.RING_THICKNESS else null;
             if (ring_thickness) |thickness| pixel_buffer.drawRing(canvas, bubble.x, bubble.y, bubble.radius + look.RING_GAP, thickness, look.FOCUS);
-            if (self.state.marks.countIn(region) > 0) pixel_buffer.drawRing(canvas, bubble.x, bubble.y, bubble.radius + 2 * look.RING_GAP, look.RING_THICKNESS, self.config.listView.activeColor);
+            if (self.state.marks.countIn(region) > 0) pixel_buffer.drawRing(canvas, bubble.x, bubble.y, bubble.radius + 2 * look.RING_GAP, look.RING_THICKNESS, self.config.listActiveColor());
         }
         // Outside those rings, stepping out as a region can hold more than one storm or incursion.
         var ring_gaps: [universe.REGION_COUNT]f32 = @splat(3);
@@ -525,7 +527,7 @@ pub const Painter = struct {
             const region: RegionIndex = @intCast(index);
             const label = bubble.label orelse continue;
             const is_hovered = self.state.hover.kind == .region and self.state.hover.index == region;
-            const label_color = if (self.state.marks.countIn(region) > 0) self.config.listView.activeColor else if (is_hovered or self.state.ringedRegions().contains(region)) list_look.NAME else look.LABEL;
+            const label_color = if (self.state.marks.countIn(region) > 0) self.config.listActiveColor() else if (is_hovered or self.state.ringedRegions().contains(region)) list_look.NAME else look.LABEL;
             drawHaloText(dc, universe.regionName(region), label.left, label.top, label_color, .full);
         }
     }
@@ -552,15 +554,15 @@ pub const Painter = struct {
         const title_room = title_box.right - look.TITLE_PADDING_X - look.CHEVRON_OFFSET - title_x;
         look.drawChevron(canvas, title_x + @min(title_width, title_room) + look.CHEVRON_OFFSET, title_y + @divTrunc(fonts.heading_height, 2), self.state.is_picking_region);
 
-        look.drawBar(canvas, chrome.metric_bar);
+        segmented.drawBar(canvas, chrome.metric_bar);
         const picked_segment = look.segmentOf(map_settings.metric);
         for (look.SEGMENT_ORDER, chrome.metrics) |segment, box| {
-            if (segment == picked_segment) look.fillSegment(canvas, box, accent) else if (self.isHovered(.metric, @backingInt(segment))) look.fillSegment(canvas, box, look.SEGMENT_HOVER);
+            if (segmented.buttonFill(self.segmentState(segment, picked_segment), accent)) |fill| segmented.fillButton(canvas, box, fill);
         }
-        look.drawBar(canvas, chrome.toggle_bar);
+        segmented.drawBar(canvas, chrome.toggle_bar);
         for (look.TOGGLE_ORDER, chrome.toggles) |toggle, box| {
-            if (self.isHovered(.toggle, @backingInt(toggle))) look.fillSegment(canvas, box, look.SEGMENT_HOVER);
-            look.drawToggleMark(canvas, box, toggle, self.isToggleOn(toggle), self.config.listView.activeColor);
+            if (self.isHovered(.toggle, @backingInt(toggle))) segmented.fillButton(canvas, box, segmented.HOVER);
+            look.drawToggleMark(canvas, box, toggle, self.isToggleOn(toggle), self.config.listActiveColor());
         }
         look.drawToggleDivider(canvas, chrome.toggle_bar, chrome.toggleDividerX());
 
@@ -574,9 +576,9 @@ pub const Painter = struct {
         for (look.SEGMENT_ORDER, chrome.metrics) |segment, box| {
             const is_picked = segment == picked_segment;
             _ = win32.SelectObject(dc, if (is_picked) fonts.semibold_font else fonts.chrome.name_font);
-            const label = text_mod.metricLabel(if (is_picked) map_settings.metric else look.segmentMetrics(segment)[0]);
-            const label_color = if (is_picked) color_mod.inkFor(accent) else if (self.isHovered(.metric, @backingInt(segment))) list_look.NAME else look.SEGMENT_TEXT;
-            // Centred, as the segments are sized for the semibold label.
+            const label = text_mod.metricLabel(look.shownMetric(segment, map_settings.metric));
+            const label_color = segmented.labelColor(self.segmentState(segment, picked_segment), accent);
+            // Centred, as each segment is sized for its label in semibold.
             const label_x = box.left + @divTrunc(box.right - box.left - panel_chrome.textWidth(dc, label), 2);
             panel_chrome.drawLine(dc, label, label_x, centredTop(box, name_height), label_color);
         }
@@ -585,6 +587,11 @@ pub const Painter = struct {
             const is_lit = self.isToggleOn(toggle) or self.isHovered(.toggle, @backingInt(toggle));
             panel_chrome.drawLine(dc, text_mod.toggleLabel(toggle), box.left + look.TOGGLE_PADDING_X + look.TOGGLE_MARK_ROOM, centredTop(box, name_height), if (is_lit) list_look.NAME else look.CARD_MUTED);
         }
+    }
+
+    fn segmentState(self: *const Painter, segment: look.MetricSegment, picked: look.MetricSegment) segmented.State {
+        if (segment == picked) return .picked;
+        return if (self.isHovered(.metric, @backingInt(segment))) .hovered else .idle;
     }
 
     fn isHovered(self: *const Painter, kind: state_mod.Hover.Kind, index: usize) bool {
@@ -609,10 +616,19 @@ pub const Painter = struct {
         const canvas = bitmap.canvas();
         const area = self.areas.body;
         const layout = &self.state.layout;
-        var taken: [layout_mod.MAX_NODES + marks.MAX_MARKS]Box = undefined;
+        var taken: [layout_mod.MAX_NODES + layout_mod.MAX_EXITS + layout_mod.MAX_PORTALS + layout_mod.MAX_REGIONS + marks.MAX_MARKS]Box = undefined;
         var taken_count: usize = 0;
-        for (layout.nodes[0..layout.node_count]) |node| {
-            const label = node.label orelse continue;
+        // Every name on the map, a region's and an exit's too, so no tag lands on one.
+        const labels = .{ layout.nodes[0..layout.node_count], layout.exits[0..layout.exit_count], layout.portals[0..layout.portal_count] };
+        inline for (labels) |placed| {
+            for (placed) |item| {
+                const label = item.label orelse continue;
+                taken[taken_count] = layout_mod.chipBox(label);
+                taken_count += 1;
+            }
+        }
+        for (layout.region_labels[0..layout.regions.count]) |region_label| {
+            const label = region_label orelse continue;
             taken[taken_count] = layout_mod.chipBox(label);
             taken_count += 1;
         }
@@ -652,7 +668,7 @@ pub const Painter = struct {
     }
 
     fn markColor(self: *const Painter, mark: marks.Mark) u32 {
-        return if (mark.is_active) self.config.listView.activeColor else mark.color;
+        return if (mark.is_active) self.config.listActiveColor() else mark.color;
     }
 
     /// The colour of the client whose tag names the selected system, else FOCUS.
@@ -950,9 +966,10 @@ pub const Painter = struct {
         var main_rows: [menu_mod.MAX_ROWS]PopupRow = undefined;
         var options: popup_menu.DrawOptions = .{
             .rows = self.fillMainRows(&main_rows),
+            .check_color = self.config.accentColor,
             .min_column_width = if (is_searching) look.SEARCH_WIDTH else 0,
             .lit_row = self.litPopupRow(),
-            .flat_lit_color = if (is_searching) look.SEGMENT_HOVER else null,
+            .flat_lit_color = if (is_searching) popup_look.MENU_LIT else null,
             .row_height = if (is_searching) popup_look.rowHeightForBox(search_box.bottom - search_box.top) else null,
         };
         var submenu_rows: [menu_mod.MAX_ROWS]PopupRow = undefined;
@@ -1021,7 +1038,7 @@ pub fn shownBridges(config: *const config_mod.Config, has_eve_stars: bool, scene
 pub fn cardTabName(tab: look.CardTab) []const u8 {
     return switch (tab) {
         .intel => "Intel",
-        .kills => "Kills",
+        .kills => "zKillboard",
     };
 }
 
@@ -1170,7 +1187,7 @@ fn drawNotice(bitmap: *const gdi_overlay.OverlayBitmap, destinations: *const Des
 fn tooltipShape(dc: win32.HDC, tooltip: *const text_mod.Tooltip, fonts: MapFonts) TooltipShape {
     const text = fonts.chrome;
     const is_detailed = tooltip.isDetailed();
-    const padding: win32.POINT = if (is_detailed) .{ .x = look.TOOLTIP_PADDING_X, .y = look.TOOLTIP_PADDING_Y } else .{ .x = popup_look.TOOLTIP_PADDING, .y = popup_look.TOOLTIP_PADDING };
+    const padding: win32.POINT = if (is_detailed) .{ .x = popup_look.TITLE_INSET_X, .y = popup_look.titleInsetY(text.name_height) } else .{ .x = popup_look.TOOLTIP_PADDING, .y = popup_look.TOOLTIP_PADDING };
     _ = win32.SelectObject(dc, tooltipTitleFont(tooltip, fonts));
     var header_width = panel_chrome.wideTextWidth(dc, tooltip.line(0));
     if (tooltip.accent.length > 0) header_width += look.TOOLTIP_PART_GAP + panel_chrome.wideTextWidth(dc, tooltip.accent.slice());
@@ -1211,7 +1228,7 @@ fn drawTextBox(bitmap: *const gdi_overlay.OverlayBitmap, tooltip: *const text_mo
     const text = fonts.chrome;
     _ = win32.GdiFlush();
     const canvas = bitmap.canvas();
-    look.drawCard(canvas, box);
+    popup_look.drawPopupBox(canvas, box);
     const left = box.left + shape.padding.x;
     const right = box.right - shape.padding.x;
     const top = box.top + shape.padding.y;
@@ -1283,7 +1300,7 @@ fn legendFor(scene: Scene, paint: *const MapPaint, nodes: []const layout_mod.Nod
     };
 }
 
-/// Null where no storm covers the gate between them, or `storms` is.
+/// Null where no storm covers the gate between them, or while `storms` is null.
 fn stormEdgeColor(storms: ?*const Storms, first: SystemIndex, second: SystemIndex) ?u32 {
     const shown = storms orelse return null;
     const mark = shown.edgeMark(first, second) orelse return null;
@@ -1297,7 +1314,7 @@ fn stormCenterColor(storms: ?*const Storms, system: SystemIndex) ?u32 {
     return look.stormColor(storm.kind);
 }
 
-/// Null where no incursion covers the gate between them, or `incursions` is.
+/// Null where no incursion covers the gate between them, or while `incursions` is null.
 fn incursionEdgeColor(incursions: ?*const Incursions, first: SystemIndex, second: SystemIndex) ?u32 {
     const shown = incursions orelse return null;
     return if (shown.coversGate(first, second)) look.INCURSION else null;

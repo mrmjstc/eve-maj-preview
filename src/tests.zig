@@ -34,6 +34,7 @@ test {
     _ = @import("dialog/knots/color_convert.zig");
     _ = @import("dialog/knots/field_strings.zig");
     _ = @import("dialog/knots/labels.zig");
+    _ = @import("dialog/knots/release_notes.zig");
     _ = @import("dialog/knots/screen_math.zig");
     _ = @import("dialog/knots/selection.zig");
     _ = @import("dialog/tools/region_math.zig");
@@ -76,6 +77,7 @@ test {
     _ = @import("notifications/worker.zig");
     _ = @import("panels/glyphs.zig");
     _ = @import("panels/history_look.zig");
+    _ = @import("panels/intel_look.zig");
     _ = @import("panels/list_look.zig");
     _ = @import("panels/map/look.zig");
     _ = @import("panels/map/marks.zig");
@@ -83,8 +85,11 @@ test {
     _ = @import("panels/map/search.zig");
     _ = @import("panels/map/state.zig");
     _ = @import("panels/map/text.zig");
+    _ = @import("panels/panel_header.zig");
     _ = @import("panels/panel_look.zig");
+    _ = @import("panels/panel_menu_look.zig");
     _ = @import("panels/popup_look.zig");
+    _ = @import("panels/segmented.zig");
     _ = @import("platform/virtual_keys.zig");
     _ = @import("protocol/url.zig");
     _ = @import("sim/journal.zig");

@@ -5,6 +5,9 @@ const notification = @import("../notifications/notification.zig");
 const wire = @import("wire.zig");
 const ranges_mod = @import("ranges.zig");
 
+/// Combat runs on for minutes, so a reminder a minute is enough.
+const TAKING_DAMAGE_THROTTLE_MS: u32 = 60_000;
+
 pub const NotificationTypeConfig = struct {
     enabled: bool = true,
     /// Off leaves its border, sound, speech and history entry, for an alert with no words on screen.
@@ -37,6 +40,7 @@ pub const NotificationTypeConfig = struct {
     /// Chat alerts have no throttle: it would drop a different message, and each rule has a cooldown instead.
     fn defaultFor(notification_type: notification.NotificationType) NotificationTypeConfig {
         if (notification.isUserAction(notification_type)) return .{ .duration_ms = 3000, .throttle_ms = 0 };
+        if (notification_type == .TakingDamage) return .{ .throttle_ms = TAKING_DAMAGE_THROTTLE_MS };
         return if (notification.notificationCategory(notification_type) == .Chat) .{ .throttle_ms = 0 } else .{};
     }
 
@@ -169,8 +173,8 @@ pub const NotificationConfig = struct {
     position: types.TextPosition = .Center,
     offset_x: i32 = 0,
     offset_y: i32 = 0,
-    font_name: []const u8 = "Segoe UI",
-    font_size: i32 = 12,
+    font_name: []const u8 = types.DEFAULT_FONT,
+    font_size: i32 = types.DEFAULT_FONT_SIZE,
     font_weight: types.FontWeight = .Regular,
     /// A type without a text colour of its own uses this.
     color: u32 = 0xFFFFFFFF,

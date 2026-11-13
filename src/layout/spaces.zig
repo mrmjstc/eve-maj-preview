@@ -41,13 +41,13 @@ const RankContext = struct {
         return if (space.holdsUnassigned or holdsGroupOf(self.config, space, name)) 0 else 1;
     }
 
-    fn lessThan(self: RankContext, a_index: usize, b_index: usize) bool {
-        const a_name = self.names[a_index];
-        const b_name = self.names[b_index];
-        const a_tier = self.tier(a_name);
-        const b_tier = self.tier(b_name);
-        if (a_tier != b_tier) return a_tier < b_tier;
-        return config_mod.orderMapLessThan(self.order_map, a_name, b_name, a_index, b_index);
+    fn lessThan(self: RankContext, first_index: usize, second_index: usize) bool {
+        const first_name = self.names[first_index];
+        const second_name = self.names[second_index];
+        const first_tier = self.tier(first_name);
+        const second_tier = self.tier(second_name);
+        if (first_tier != second_tier) return first_tier < second_tier;
+        return config_mod.orderMapLessThan(self.order_map, first_name, second_name, first_index, second_index);
     }
 };
 
@@ -63,10 +63,6 @@ pub fn rect(space: *const ThumbnailSpace) ?win32.RECT {
 pub fn activeRect(space: *const ThumbnailSpace) ?win32.RECT {
     if (!space.enabled) return null;
     return rect(space);
-}
-
-pub fn isActive(space: *const ThumbnailSpace) bool {
-    return activeRect(space) != null;
 }
 
 /// The spaces layout considers, in list order; none in Manual placement mode.
@@ -147,6 +143,10 @@ pub fn assign(allocator: std.mem.Allocator, config: *const Config, names: []cons
         for (members[0..member_count], 0..) |name_index, cell_index| rank[name_index] = cell_index;
     }
     return assignment;
+}
+
+fn isActive(space: *const ThumbnailSpace) bool {
+    return activeRect(space) != null;
 }
 
 fn firstActiveWith(items: []const ThumbnailSpace, comptime flag_name: []const u8) ?usize {

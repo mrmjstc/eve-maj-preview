@@ -15,6 +15,9 @@ pub const Context = struct {
     instance: win32.HINSTANCE,
 };
 
+/// Where in the config dialog a panel menu's settings row opens it.
+pub const SettingsPage = enum { client_list, history_panel, intel_panel };
+
 /// What a panel's input asks App to do.
 pub const Request = union(enum) {
     /// As a thumbnail click does.
@@ -24,6 +27,7 @@ pub const Request = union(enum) {
     /// While the Map Panel's search has the keyboard.
     suspend_hotkeys,
     resume_hotkeys,
+    open_settings: SettingsPage,
 };
 
 /// App fills it in; main thread only.

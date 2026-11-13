@@ -22,7 +22,9 @@ const hotkeys = @import("tabs/hotkeys.zig");
 const hotkey_groups = @import("tabs/hotkey_groups.zig");
 const display = @import("tabs/display.zig");
 const characters = @import("tabs/characters.zig");
-const behavior = @import("tabs/behavior.zig");
+const client_windows = @import("tabs/client_windows.zig");
+const client_list = @import("tabs/client_list.zig");
+const mouse = @import("tabs/mouse.zig");
 const notifications = @import("tabs/notifications.zig");
 const event_alerts = @import("tabs/event_alerts.zig");
 const chat_alerts = @import("tabs/chat_alerts.zig");
@@ -40,9 +42,9 @@ const Canvas = ui.component.Canvas;
 const Category = enum {
     clients,
     display,
+    panels,
     input,
     alerts,
-    overlays,
     app,
 
     fn label(self: Category) []const u8 {
@@ -50,9 +52,9 @@ const Category = enum {
             .app => "APP",
             .clients => "CLIENTS",
             .display => "DISPLAY",
+            .panels => "PANELS",
             .input => "INPUT",
             .alerts => "ALERTS",
-            .overlays => "OVERLAYS",
         };
     }
 };
@@ -61,16 +63,18 @@ const Category = enum {
 const Tab = enum {
     characters,
     hotkey_groups,
+    client_windows,
     appearance,
     placement,
+    mining,
+    client_list,
+    notification_history,
     map_panel,
     hotkeys,
-    behavior,
+    mouse,
     notifications,
     event_alerts,
     chat_alerts,
-    notification_history,
-    mining,
     general,
     backups,
     about,
@@ -79,16 +83,18 @@ const Tab = enum {
         return switch (self) {
             .characters => "Characters",
             .hotkey_groups => "Hotkey Groups",
+            .client_windows => "Client Windows",
             .appearance => "Appearance",
             .placement => "Placement",
-            .map_panel => "Map",
+            .mining => "Mining",
+            .client_list => "Client List",
+            .notification_history => "Alert History",
+            .map_panel => "Map & Intel",
             .hotkeys => "Hotkeys",
-            .behavior => "Behavior",
-            .notifications => "Notifications",
+            .mouse => "Mouse",
+            .notifications => "Alert Options",
             .event_alerts => "Game Events",
             .chat_alerts => "Chat Events",
-            .notification_history => "History Panel",
-            .mining => "Mining",
             .general => "General",
             .about => "About",
             .backups => "Backups",
@@ -97,31 +103,33 @@ const Tab = enum {
 
     fn category(self: Tab) Category {
         return switch (self) {
-            .characters, .hotkey_groups => .clients,
-            .appearance, .placement, .map_panel => .display,
-            .hotkeys, .behavior => .input,
-            .notifications, .event_alerts, .chat_alerts, .notification_history => .alerts,
-            .mining => .overlays,
+            .characters, .hotkey_groups, .client_windows => .clients,
+            .appearance, .placement, .mining => .display,
+            .client_list, .notification_history, .map_panel => .panels,
+            .hotkeys, .mouse => .input,
+            .notifications, .event_alerts, .chat_alerts => .alerts,
             .about, .backups, .general => .app,
         };
     }
 
     fn glyph(self: Tab) glyphs.Glyph {
         return switch (self) {
-            .characters => .list,
+            .characters => .person,
             .hotkey_groups => .split_square,
+            .client_windows => .open_window,
             .appearance => .thumbnail,
             .placement => .tiles,
+            .mining => .pickaxe,
+            .client_list => .list,
+            .notification_history => .clock,
             .map_panel => .map,
             .hotkeys => .keyboard,
-            .behavior => .pointer,
+            .mouse => .pointer,
             .notifications => .envelope,
             .event_alerts => .bell,
             .chat_alerts => .speech,
-            .notification_history => .clock,
-            .mining => .pickaxe,
             .general => .gear,
-            .about => .star,
+            .about => .info,
             .backups => .reset,
         };
     }
@@ -129,14 +137,7 @@ const Tab = enum {
     fn isAdvanced(self: Tab) bool {
         return switch (self) {
             .mining => true,
-            .characters, .hotkey_groups, .appearance, .placement, .map_panel, .hotkeys, .behavior, .notifications, .event_alerts, .chat_alerts, .notification_history, .general, .about, .backups => false,
-        };
-    }
-
-    fn needsThumbnails(self: Tab) bool {
-        return switch (self) {
-            .placement => true,
-            .characters, .hotkey_groups, .appearance, .map_panel, .hotkeys, .behavior, .notifications, .event_alerts, .chat_alerts, .notification_history, .mining, .general, .about, .backups => false,
+            .characters, .hotkey_groups, .client_windows, .appearance, .placement, .client_list, .notification_history, .map_panel, .hotkeys, .mouse, .notifications, .event_alerts, .chat_alerts, .general, .about, .backups => false,
         };
     }
 
@@ -145,7 +146,7 @@ const Tab = enum {
         return switch (self) {
             .characters, .hotkey_groups, .event_alerts, .chat_alerts => true,
             .placement => placement.fillsWindow(),
-            .appearance, .map_panel, .hotkeys, .behavior, .notifications, .notification_history, .mining, .general, .about, .backups => false,
+            .client_windows, .appearance, .mining, .client_list, .notification_history, .map_panel, .hotkeys, .mouse, .notifications, .general, .about, .backups => false,
         };
     }
 
@@ -161,12 +162,9 @@ const Tab = enum {
 /// Which tabs the sidebar offers this frame.
 const Offered = struct {
     is_advanced_mode: bool,
-    shows_thumbnails: bool,
 
     fn has(self: Offered, tab: Tab) bool {
-        if (!self.is_advanced_mode and tab.isAdvanced()) return false;
-        if (!self.shows_thumbnails and tab.needsThumbnails()) return false;
-        return true;
+        return self.is_advanced_mode or !tab.isAdvanced();
     }
 };
 
@@ -185,12 +183,14 @@ pub fn frame(_: *knots.View, context: *ui.Frame) !void {
     search.beginFrame();
     try hotkey.beginFrame(context);
     applyAccent(context);
-    const offered = Offered{
-        .is_advanced_mode = session.global().get("advancedMode"),
-        .shows_thumbnails = session.showsThumbnails(),
-    };
-    // Turning Advanced Mode off or leaving thumbnail mode can hide the open tab.
-    if (!offered.has(g_tab)) selectTab(context, if (g_tab.needsThumbnails()) .appearance else .about);
+    const offered = Offered{ .is_advanced_mode = session.global().get("advancedMode") };
+    if (host.takeRequestedPage()) |page| selectTab(context, switch (page) {
+        .client_list => .client_list,
+        .history_panel => .notification_history,
+        .intel_panel => .map_panel,
+    });
+    // Turning Advanced Mode off can hide the open tab.
+    if (!offered.has(g_tab)) selectTab(context, .about);
     const size = context.input().logical_extent;
     // Style pointers must outlive the frame's layout, which the arena does.
     const root_style = try context.arena().create(ui.Style);
@@ -227,6 +227,7 @@ pub fn frame(_: *knots.View, context: *ui.Frame) !void {
     if (widgets.takeNoticeTarget()) |target| selectTab(context, switch (target) {
         .notifications => .notifications,
         .log_monitoring => .general,
+        .appearance => .appearance,
     });
 
     try footer(context);
@@ -252,7 +253,9 @@ fn showTab(context: *ui.Frame, tab: Tab) !void {
         .placement => try placement.show(context),
         .map_panel => try map_panel.show(context),
         .characters => try characters.show(context),
-        .behavior => try behavior.show(context),
+        .client_windows => try client_windows.show(context),
+        .client_list => try client_list.show(context),
+        .mouse => try mouse.show(context),
         .notifications => try notifications.show(context),
         .event_alerts => try event_alerts.show(context),
         .chat_alerts => try chat_alerts.show(context),

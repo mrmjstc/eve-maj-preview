@@ -1,4 +1,4 @@
-//! The configuration window's Hotkeys tab: how hotkeys behave, then every fixed binding by what it does, profile switching, and app and URL hotkeys; main thread only.
+//! The configuration window's Hotkeys tab: how hotkeys behave, then cycling and every other fixed binding by what it does, profile switching, and app and URL hotkeys; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const global_mod = @import("../../../config/global.zig");
@@ -111,6 +111,20 @@ pub fn show(context: *ui.Frame) !void {
     try widgets.hintText(context, .src(@src()), "A hotkey on 1 won't fire on Alt+1, so Alt+1 still reaches the game.");
     try system.close(context);
 
+    const clients = try widgets.openSharedSection(context, "Client Cycling", "Step through every open EVE client, in the loaded profile's Characters order.", &style.section);
+    try bind.toggle(context, global, "cycleAllClientsRespectExclusions", "Skip Excluded Characters");
+    try widgets.hintText(context, .src(@src()), "Uses the excluded characters from the Mouse tab.");
+    try pair(context, global, "hotkeyCycleAllClientsBackward", "hotkeyCycleAllClientsForward", "Every logged-in client, in Characters tab order.");
+    try pair(context, global, "hotkeyCycleNotLoggedInBackward", "hotkeyCycleNotLoggedInForward", "Clients at the login screen, oldest logout first.");
+    try clients.close(context);
+
+    const cycling = try widgets.openSection(context, "Special Cycling", "Step through the excluded characters, or the ones that recently notified.", &style.section);
+    try pair(context, profile_hotkeys, "hotkeyPreviousExcluded", "hotkeyNextExcluded", "Steps through only the characters you've excluded.");
+    try pair(context, profile_hotkeys, "hotkeyPreviousNotified", "hotkeyCycleNotified", "Characters with a recent alert. Set how recent on the Alert Options tab.");
+    try binding(context, profile_hotkeys, "hotkeyToggleExclusion");
+    try widgets.hintText(context, .src(@src()), "Acts on the EVE window you're in, not the thumbnail under the mouse.");
+    try cycling.close(context);
+
     const actions = try widgets.openSection(context, "Window Actions", "Close or minimize clients, hide thumbnails, or restore saved positions.", &style.section);
     try binding(context, profile_hotkeys, "hotkeyCloseAll");
     try widgets.hintText(context, .src(@src()), "Closes every EVE client, except those set below.");
@@ -120,7 +134,7 @@ pub fn show(context: *ui.Frame) !void {
         const was_undivided = widgets.useUndividedRows(true);
         defer _ = widgets.useUndividedRows(was_undivided);
         try bind.toggle(context, close_all, "excludeCycleExcludedClients", "Skip Excluded Characters");
-        try widgets.hintText(context, .src(@src()), "Uses the excluded characters from the Behavior tab.");
+        try widgets.hintText(context, .src(@src()), "Uses the excluded characters from the Mouse tab.");
         try bind.toggle(context, close_all, "excludeLoginScreenClients", "Skip Logged-Out Clients");
         try widgets.hintText(context, .src(@src()), "Leaves clients at the login screen running.");
     }
@@ -143,26 +157,16 @@ pub fn show(context: *ui.Frame) !void {
     try widgets.hintText(context, .src(@src()), "Alerts you when a character is left behind on a jump.");
     try modes.close(context);
 
-    const history = try widgets.openSection(context, "Notification History", "Show, hide or clear the history panel. Both are also in the tray menu.", &style.section);
+    const panels = try widgets.openSection(context, "Panels", "Show or hide the panels, or clear the alert history. Also in the tray menu.", &style.section);
     try binding(context, profile_hotkeys, "hotkeyToggleNotificationHistory");
-    try widgets.hintText(context, .src(@src()), "Shows or hides the history panel.");
+    try widgets.hintText(context, .src(@src()), "Shows or hides the alert history.");
     try binding(context, profile_hotkeys, "hotkeyClearNotificationHistory");
-    try widgets.hintText(context, .src(@src()), "Empties the history panel.");
-    try history.close(context);
-
-    const map = try widgets.openSection(context, "Map", "Show or hide the map. Also in the tray menu.", &style.section);
+    try widgets.hintText(context, .src(@src()), "Empties the alert history.");
     try binding(context, profile_hotkeys, "hotkeyToggleMapPanel");
     try widgets.hintText(context, .src(@src()), "Shows or hides the map.");
     try binding(context, profile_hotkeys, "hotkeyToggleIntelPanel");
     try widgets.hintText(context, .src(@src()), "Shows or hides the intel panel.");
-    try map.close(context);
-
-    const cycling = try widgets.openSection(context, "Special Cycling", "Step through the excluded characters, or the ones that recently notified.", &style.section);
-    try pair(context, profile_hotkeys, "hotkeyPreviousExcluded", "hotkeyNextExcluded", "Steps through only the characters you've excluded.");
-    try pair(context, profile_hotkeys, "hotkeyPreviousNotified", "hotkeyCycleNotified", "Characters with a recent alert. Set how recent on the Notifications tab.");
-    try binding(context, profile_hotkeys, "hotkeyToggleExclusion");
-    try widgets.hintText(context, .src(@src()), "Acts on the EVE window you're in, not the thumbnail under the mouse.");
-    try cycling.close(context);
+    try panels.close(context);
 
     const suspend_exit = try widgets.openSection(context, "Suspend, Mute and Exit", "Pause hotkeys or audio alerts, or close EVE-Maj Preview.", &style.section);
     try binding(context, profile_hotkeys, "hotkeySuspend");
@@ -173,19 +177,12 @@ pub fn show(context: *ui.Frame) !void {
     try widgets.hintText(context, .src(@src()), "Closes EVE-Maj Preview; your EVE clients stay open.");
     try suspend_exit.close(context);
 
-    const clients = try widgets.openSection(context, "Client Cycling", "Step through every open EVE client, in the loaded profile's Characters order.", &style.section);
-    try bind.toggle(context, global, "cycleAllClientsRespectExclusions", "Skip Excluded Characters");
-    try widgets.hintText(context, .src(@src()), "Uses the excluded characters from the Behavior tab.");
-    try pair(context, global, "hotkeyCycleAllClientsBackward", "hotkeyCycleAllClientsForward", "Every logged-in client, in Characters tab order.");
-    try pair(context, global, "hotkeyCycleNotLoggedInBackward", "hotkeyCycleNotLoggedInForward", "Clients at the login screen, oldest logout first.");
-    try clients.close(context);
-
-    const profile_section = try widgets.openSection(context, "Profiles", "Cycle through profiles, or switch straight to one.", &style.section);
+    const profile_section = try widgets.openSharedSection(context, "Profiles", "Cycle through profiles, or switch straight to one.", &style.section);
     try pair(context, global, "hotkeyPreviousProfile", "hotkeyNextProfile", "Loads the previous or next profile.");
     try profileSwitchRows(context);
     try profile_section.close(context);
 
-    const outside = try widgets.openSection(context, "Outside EVE", "Jump to the last app you used, a running app, or a URL in your browser.", &style.section);
+    const outside = try widgets.openSharedSection(context, "Outside EVE", "Jump to the last app you used, a running app, or a URL in your browser.", &style.section);
     try pair(context, global, "hotkeyCycleAppsBackward", "hotkeyCycleAppsForward", "Steps through the running apps below, in order.");
     try binding(context, global, "hotkeyReturnToLastApp");
     try widgets.hintText(context, .src(@src()), "Jumps back to the app you used before EVE.");

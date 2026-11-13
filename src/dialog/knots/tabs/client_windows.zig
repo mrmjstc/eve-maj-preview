@@ -1,4 +1,4 @@
-//! The configuration window's Behavior tab: mouse interaction, panel snapping, auto-minimize, exclusion, saved window positions and Ultra Potato Mode; main thread only.
+//! The configuration window's Client Windows tab: how EVE windows animate, minimize and return to their saved positions, then, in Advanced Mode, which windows are tracked and Ultra Potato Mode; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const config = @import("../../../config.zig");
@@ -9,6 +9,7 @@ const positions = @import("../positions.zig");
 const status = @import("../status.zig");
 const style = @import("../style.zig");
 const widgets = @import("../widgets.zig");
+const window_filters = @import("window_filters.zig");
 const lang = @import("../../../lang/lang.zig");
 const log = @import("../../../log.zig");
 
@@ -63,61 +64,19 @@ pub fn reset() void {
 }
 
 pub fn show(context: *ui.Frame) !void {
-    try interaction(context);
-    try panelSnapping(context);
+    try animation(context);
     try autoMinimize(context);
-    try exclusion(context);
     try windowPosition(context);
-    if (session.global().get("advancedMode")) try ultraPotato(context);
+    if (!session.global().get("advancedMode")) return;
+    try scanning(context);
+    try window_filters.show(context);
+    try ultraPotato(context);
 }
 
-fn interaction(context: *ui.Frame) !void {
-    const section = try widgets.openSection(context, "Interaction", "How thumbnails and the client list react to the mouse, and how clients animate.", &style.section);
-    const ref = session.profile().child("interaction");
-    try bind.segmented(context, ref, "animationStyle", "Animation Style", &.{ "None", "Original" });
+fn animation(context: *ui.Frame) !void {
+    const section = try widgets.openSection(context, "Animation", "How clients minimize and restore as you switch between them.", &style.section);
+    try bind.segmented(context, session.profile().child("interaction"), "animationStyle", "Animation Style", &.{ "None", "Original" });
     try widgets.hintText(context, .src(@src()), "Original plays Windows' own minimize and restore animation.");
-    try bind.toggle(context, ref, "clickThrough", "Click Through");
-    try widgets.hintText(context, .src(@src()), "Clicks go through thumbnails and the client list to what's behind.");
-    const is_click_through = ref.get("clickThrough");
-
-    const mouse_options = try widgets.openGroup(context, .src(@src()), !is_click_through);
-    try bind.segmented(context, ref, "clickTrigger", "Click Trigger", &.{ "Mouse Down", "Mouse Up" });
-    try widgets.hintText(context, .src(@src()), "Mouse Up waits until you let go, so sliding off first cancels the click.");
-    try bind.choice(context, ref, "hoverCursor", "Hover Cursor");
-    try widgets.hintText(context, .src(@src()), "The pointer shown over thumbnails and the client list.");
-    try mouse_options.close(context);
-    if (session.showsThumbnails()) try hoverZoom(context, ref, is_click_through);
-    try section.close(context);
-}
-
-fn hoverZoom(context: *ui.Frame, ref: session.Ref(config.InteractionConfig), is_click_through: bool) !void {
-    const zoom_options = try widgets.openGroup(context, .src(@src()), !is_click_through);
-    try bind.toggle(context, ref, "hoverZoomEnabled", "Zoom on Hover");
-    try widgets.hintText(context, .src(@src()), "Shows a bigger copy of a thumbnail while you hover over it.");
-    const zoom = try widgets.openGroup(context, .src(@src()), ref.get("hoverZoomEnabled"));
-    try bind.number(context, ref, "hoverZoomPercent", "Zoom Size", .{ .unit = "%" });
-    try widgets.hintText(context, .src(@src()), "Shrinks to fit if it would go off the monitor.");
-    try bind.choice(context, ref, "hoverZoomAnchor", "Zoom Anchor");
-    try widgets.hintText(context, .src(@src()), "The part of the thumbnail that stays put as it grows.");
-    try zoom.close(context);
-    try zoom_options.close(context);
-}
-
-fn panelSnapping(context: *ui.Frame) !void {
-    const section = try widgets.openSection(context, "Panel Snapping", "How the client list and the other panels line up as you drag them.", &style.section);
-    const ref = session.profile().child("panelSnapping");
-    try bind.toggle(context, ref, "enabled", "Snap While Dragging");
-    try widgets.hintText(context, .src(@src()), "Turns all the snapping below on or off.");
-    const group = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
-    try bind.toggle(context, ref, "screenEdges", "Snap to Screen Edges");
-    try widgets.hintText(context, .src(@src()), "Panels stick to the edges of your monitors.");
-    try bind.toggle(context, ref, "panelEdges", "Snap to Other Panels");
-    try widgets.hintText(context, .src(@src()), "Panels stick to each other's edges.");
-    try bind.toggle(context, ref, "thumbnailEdges", "Snap to Thumbnail Edges");
-    try widgets.hintText(context, .src(@src()), "Panels stick to thumbnails' edges.");
-    try bind.number(context, ref, "threshold", "Snap Distance", .{ .unit = "px" });
-    try widgets.hintText(context, .src(@src()), "How close a panel gets before it snaps into place.");
-    try group.close(context);
     try section.close(context);
 }
 
@@ -136,29 +95,11 @@ fn autoMinimize(context: *ui.Frame) !void {
     try section.close(context);
 }
 
-fn exclusion(context: *ui.Frame) !void {
-    const section = try widgets.openSection(context, "Character Exclusion", "Controls Shift+Click exclusion of characters from hotkey cycling.", &style.section);
-    const ref = session.profile().child("exclusion");
-    // The Toggle Character Exclusion hotkey excludes too, so the settings below don't depend on Shift+Click.
-    try bind.toggle(context, ref, "enableShiftClickExclude", "Enable Shift+Click to Exclude");
-    try widgets.hintText(context, .src(@src()), "Shift+click a thumbnail to skip its character when cycling.");
-    try bind.toggle(context, ref, "autoMinimizeExcluded", "Auto-Minimize Excluded Characters");
-    try widgets.hintText(context, .src(@src()), "Minimizes them straight away, without the delay.");
-    try bind.toggle(context, ref, "logoutClearsExclusion", "Logging Out Clears Exclusion");
-    try widgets.hintText(context, .src(@src()), "A character stops being excluded once you log it out.");
-    if (session.showsThumbnails()) try exclusionOverlay(context);
+fn scanning(context: *ui.Frame) !void {
+    const section = try widgets.openSection(context, "Scanning", "How often to check for new EVE windows.", &style.section);
+    try bind.number(context, session.profile().child("timer"), "scanIntervalMs", "Scan Interval", .{ .shows_seconds = true, .unit = "s" });
+    try widgets.hintText(context, .src(@src()), "How often to look for opened or closed clients.");
     try section.close(context);
-}
-
-/// Drawn over an excluded thumbnail; the client list dims the row instead.
-fn exclusionOverlay(context: *ui.Frame) !void {
-    const thumbnail = session.profile().child("thumbnail");
-    try bind.choice(context, thumbnail, "exclusionOverlayStyle", "Overlay Style");
-    try widgets.hintText(context, .src(@src()), "How excluded thumbnails are marked.");
-    try bind.rgb(context, thumbnail, "exclusionOverlayColor", "Overlay Color");
-    try widgets.hintText(context, .src(@src()), "The tint laid over excluded thumbnails.");
-    try bind.alphaSlider(context, thumbnail, "exclusionOverlayColor", "Overlay Opacity");
-    try widgets.hintText(context, .src(@src()), "How strongly excluded thumbnails are tinted.");
 }
 
 fn windowPosition(context: *ui.Frame) !void {

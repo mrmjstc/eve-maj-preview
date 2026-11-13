@@ -55,7 +55,7 @@ pub const RouteOptions = struct {
     avoid_ids: [types.MAX_AVOIDED_SYSTEMS]u32 = undefined,
     avoid_count: usize = 0,
 
-    pub fn avoidIds(self: *const RouteOptions) []const u32 {
+    fn avoidIds(self: *const RouteOptions) []const u32 {
         return self.avoid_ids[0..self.avoid_count];
     }
 

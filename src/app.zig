@@ -55,6 +55,8 @@ pub const DialogHooks = struct {
     close_for_exit: *const fn () bool,
     /// The global settings as the dialog is editing them, else the saved ones.
     live_global: *const fn () *const config.GlobalConfig,
+    /// Opens the dialog, or brings it forward, on `page`'s tab.
+    open_at: *const fn (page: panel_host.SettingsPage) void,
 };
 
 /// What restartSubsystems' earlier steps hand to its later ones.
@@ -383,7 +385,7 @@ pub const App = struct {
                 }
             }
             if (sighting.is_message_first) {
-                if (self.thumbnail_set) |active_set| active_set.listIntel(sighting.system, sighting.message);
+                if (self.thumbnail_set) |active_set| active_set.listIntel(sighting.system, sighting.message, sighting.is_clear);
             }
         }
 
@@ -451,7 +453,7 @@ pub const App = struct {
         };
     }
 
-    pub fn destroyThumbnailSet(self: *App) void {
+    fn destroyThumbnailSet(self: *App) void {
         if (self.list_window) |*list_window| {
             list_window.deinit();
             self.list_window = null;
@@ -476,7 +478,7 @@ pub const App = struct {
             // Clients are already where the user put them; only startup and new arrivals auto-move.
             .should_move_to_saved = false,
             // Only while monitoring stays on, or a stale name would never update.
-            .system_names = if (self.store.saved.chatlog.enabled) system_names else null,
+            .system_names = if (self.global_settings.chatlog.enabled) system_names else null,
         });
     }
 
@@ -530,7 +532,7 @@ pub const App = struct {
         self.requestProfileSwitch(target_profile);
     }
 
-    pub fn destroyHotkeyManager(self: *App) void {
+    fn destroyHotkeyManager(self: *App) void {
         const manager = self.hotkey_manager orelse return;
         self.hotkey_manager = null;
         manager.deinit();
@@ -539,10 +541,10 @@ pub const App = struct {
 
     /// Created with its worker thread stopped, so the trackers can be wired in before it runs.
     pub fn createChatlogMonitor(self: *App) !*chatlog.ChatlogMonitor {
-        return chatlog.ChatlogMonitor.init(self.allocator, self.io, &self.store.saved.chatlog, &self.global_settings, &self.character_ids);
+        return chatlog.ChatlogMonitor.init(self.allocator, self.io, &self.global_settings.chatlog, &self.global_settings, &self.character_ids);
     }
 
-    pub fn destroyChatlogMonitor(self: *App) void {
+    fn destroyChatlogMonitor(self: *App) void {
         const monitor = self.chatlog_monitor orelse return;
         self.chatlog_monitor = null;
         monitor.deinit();
@@ -602,17 +604,18 @@ pub const App = struct {
     fn restartSubsystems(self: *App, timer_hwnd: win32.HWND, replacement: ?config.ProfileStore, global_draft: ?*config.GlobalConfig) !void {
         var pending = replacement;
         errdefer if (pending) |*store| store.deinit();
-        const next: *const config.Config = if (pending) |*store| &store.saved else &self.store.saved;
+        // Shared by every profile, so a Save's global draft holds what comes next.
+        const next_chatlog = if (global_draft) |draft| &draft.chatlog else &self.global_settings.chatlog;
 
         const plan: restart_plan.Plan = .init(.{
             .is_profile_replaced = pending != null,
             .has_thumbnail_set = self.thumbnail_set != null,
             .has_monitor = self.chatlog_monitor != null,
-            .is_monitor_on_next_folders = if (self.chatlog_monitor) |monitor| monitor.runsWith(&next.chatlog) else false,
-            .is_chatlog_enabled_next = next.chatlog.enabled,
+            .is_monitor_on_next_folders = if (self.chatlog_monitor) |monitor| monitor.runsWith(next_chatlog) else false,
+            .is_chatlog_enabled_next = next_chatlog.enabled,
             .has_global_draft = global_draft != null,
         });
-        if (!next.chatlog.enabled) slog.info("Chatlog monitoring disabled in this profile", .{});
+        if (!next_chatlog.enabled) slog.info("Chatlog monitoring disabled", .{});
 
         var restart: Restart = .{ .timer_hwnd = timer_hwnd, .pending = &pending, .global_draft = global_draft, .system_names = .init(self.allocator) };
         defer restart.system_names.deinit();
@@ -675,7 +678,7 @@ pub const App = struct {
             .populate_thumbnail_set => if (self.thumbnail_set) |thumbnail_set| thumbnail_set.populate(restart.eve_windows, .{ .should_move_to_saved = false }),
             .clear_log_readings => if (self.thumbnail_set) |thumbnail_set| thumbnail_set.clearLogReadings(),
             .apply_monitor_settings => if (self.chatlog_monitor) |monitor| {
-                monitor.applySettings(&self.store.saved.chatlog);
+                monitor.applySettings(&self.global_settings.chatlog);
                 slog.info("Kept chatlog monitoring without rescanning logs", .{});
             },
             .create_monitor => self.chatlog_monitor = self.createChatlogMonitor() catch |err| blk: {
@@ -752,6 +755,13 @@ fn runPanelRequest(request: panel_host.Request) void {
             const manager = app.hotkey_manager orelse return;
             const timer_hwnd = app.timer_hwnd orelse return;
             manager.typingResumeHotkeys(timer_hwnd);
+        },
+        .open_settings => |page| {
+            const dialog = app.dialog orelse {
+                slog.err("Failed to open the settings: the configuration window hasn't started", .{});
+                return;
+            };
+            dialog.open_at(page);
         },
     }
 }

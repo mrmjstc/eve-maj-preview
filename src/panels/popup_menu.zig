@@ -18,6 +18,8 @@ pub const Fonts = struct {
     chrome: panel_chrome.Text,
     /// A `.title` row's, the same height as `chrome`'s name font.
     title: win32.HFONT,
+    /// A `.heading` row's, the same height as `chrome`'s small font; semibold, as the dialog's menu captions are.
+    heading: win32.HFONT,
 };
 
 pub const Submenu = struct {
@@ -31,6 +33,8 @@ pub const Submenu = struct {
 pub const DrawOptions = struct {
     /// Borrowed for the draw.
     rows: []const PopupRow,
+    /// Every list's ticks, as the panels' menus draw them in the accent.
+    check_color: u32,
     /// So a list doesn't resize as its rows come and go.
     min_column_width: i32 = 0,
     lit_row: ?usize = null,
@@ -50,6 +54,9 @@ const Kind = enum {
     /// Text alone, its accents lined up flush right.
     list,
 };
+
+/// What a list lights: its lit row, in `lit_color`, and its ticks.
+const BoxColors = struct { lit_row: ?usize, lit_color: u32, check_color: u32 };
 
 /// The widest of each part of a list's rows with accents, which sets where those parts line up.
 const AccentColumns = struct {
@@ -94,22 +101,22 @@ pub const PopupMenu = struct {
         self.submenu = null;
         self.nested = null;
         const main_lit_color = options.flat_lit_color orelse popup_look.MENU_LIT;
-        drawBox(bitmap, fonts, &grid, options.rows, options.lit_row, main_lit_color, main_kind);
+        drawBox(bitmap, fonts, &grid, options.rows, .{ .lit_row = options.lit_row, .lit_color = main_lit_color, .check_color = options.check_color }, main_kind);
 
         const submenu = options.submenu orelse return;
-        const submenu_grid = drawBeside(bitmap, fonts, area, &grid, &submenu);
+        const submenu_grid = drawBeside(bitmap, fonts, area, &grid, &submenu, options.check_color);
         self.submenu = submenu_grid;
 
         const nested = options.nested orelse return;
-        self.nested = drawBeside(bitmap, fonts, area, &submenu_grid, &nested);
+        self.nested = drawBeside(bitmap, fonts, area, &submenu_grid, &nested, options.check_color);
     }
 };
 
-fn drawBeside(bitmap: *const gdi_overlay.OverlayBitmap, fonts: Fonts, area: Box, parent: *const PopupGrid, submenu: *const Submenu) PopupGrid {
+fn drawBeside(bitmap: *const gdi_overlay.OverlayBitmap, fonts: Fonts, area: Box, parent: *const PopupGrid, submenu: *const Submenu, check_color: u32) PopupGrid {
     const row_top = parent.cell(submenu.parent_index).top;
     const width = columnWidth(bitmap.mem_dc, fonts, submenu.rows, 0, .menu);
     const grid: PopupGrid = .beside(area, parent.box, row_top, submenu.rows.len, width, popup_look.MENU_ROW_HEIGHT);
-    drawBox(bitmap, fonts, &grid, submenu.rows, submenu.lit_row, popup_look.MENU_LIT, .menu);
+    drawBox(bitmap, fonts, &grid, submenu.rows, .{ .lit_row = submenu.lit_row, .lit_color = popup_look.MENU_LIT, .check_color = check_color }, .menu);
     return grid;
 }
 
@@ -153,15 +160,15 @@ fn columnWidth(dc: win32.HDC, fonts: Fonts, rows: []const PopupRow, min_width: i
 }
 
 /// The box and its lit row, rules, arrows and ticks go on the canvas first, as GDI's text lands on top.
-fn drawBox(bitmap: *const gdi_overlay.OverlayBitmap, fonts: Fonts, grid: *const PopupGrid, rows: []const PopupRow, lit_row: ?usize, lit_color: u32, kind: Kind) void {
+fn drawBox(bitmap: *const gdi_overlay.OverlayBitmap, fonts: Fonts, grid: *const PopupGrid, rows: []const PopupRow, colors: BoxColors, kind: Kind) void {
     const text = fonts.chrome;
     _ = win32.GdiFlush();
     const canvas = bitmap.canvas();
-    popup_look.drawBorderedBox(canvas, grid.box, popup_look.BOX_RADIUS, popup_look.MENU_FILL, popup_look.MENU_BORDER);
-    if (lit_row) |lit| {
+    popup_look.drawPopupBox(canvas, grid.box);
+    if (colors.lit_row) |lit| {
         if (lit < rows.len and rows[lit].role == .item) {
             const cell = grid.cell(lit);
-            pixel_buffer.fillRoundedRect(canvas, @intCast(cell.left), @intCast(cell.top), @intCast(cell.right - cell.left), @intCast(cell.bottom - cell.top), popup_look.ROW_RADIUS, lit_color);
+            pixel_buffer.fillRoundedRect(canvas, @intCast(cell.left), @intCast(cell.top), @intCast(cell.right - cell.left), @intCast(cell.bottom - cell.top), popup_look.ROW_RADIUS, colors.lit_color);
         }
     }
     for (rows, 0..) |*row, index| {
@@ -169,7 +176,7 @@ fn drawBox(bitmap: *const gdi_overlay.OverlayBitmap, fonts: Fonts, grid: *const 
         const middle = cell.top + @divTrunc(cell.bottom - cell.top, 2);
         if (row.has_rule_below) pixel_buffer.fillRect(canvas, @intCast(cell.left), @intCast(cell.bottom - 1), @intCast(cell.right - cell.left), 1, popup_look.MENU_RULE);
         if (row.has_submenu) popup_look.drawSubmenuArrow(canvas, cell.right - popup_look.MENU_RIGHT_INSET, middle, popup_look.MENU_MUTED);
-        if (row.is_checked) popup_look.drawCheck(canvas, cell.left + popup_look.MENU_CHECK_LEFT, middle, row.color);
+        if (row.is_checked) popup_look.drawCheck(canvas, cell.left + popup_look.MENU_CHECK_LEFT, middle, colors.check_color);
         if (row.glyph) |glyph| glyphs.draw(canvas, glyph, cell.left + popup_look.MENU_CHECK_LEFT, middle - @divTrunc(glyphs.SIZE, 2), row.color);
     }
 
@@ -198,7 +205,7 @@ fn drawMenuRow(dc: win32.HDC, fonts: Fonts, row: *const PopupRow, cell: Box, arr
     const left = cell.left + menuTextLeft(row.role);
     const height = cell.bottom - cell.top;
     if (row.role == .heading) {
-        _ = win32.SelectObject(dc, text.small_font);
+        _ = win32.SelectObject(dc, fonts.heading);
         _ = panel_chrome.drawFitted(dc, row.text.slice(), left, cell.top + @divTrunc(height - text.small_height, 2), popup_look.MENU_MUTED, cell.right - popup_look.MENU_RIGHT_INSET - left);
         return;
     }
@@ -224,7 +231,7 @@ fn drawMenuRow(dc: win32.HDC, fonts: Fonts, row: *const PopupRow, cell: Box, arr
 fn rowFont(fonts: Fonts, role: popup_look.RowRole) win32.HFONT {
     return switch (role) {
         .item => fonts.chrome.name_font,
-        .heading => fonts.chrome.small_font,
+        .heading => fonts.heading,
         .title => fonts.title,
     };
 }

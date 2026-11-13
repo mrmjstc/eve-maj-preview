@@ -11,9 +11,9 @@ pub const Box = box_mod.Box;
 /// The most regions shown at once, as names stop fitting past it.
 pub const MAX_REGIONS = 4;
 /// The most gates inside any region; a test holds every region to it.
-pub const MAX_REGION_EDGES = 300;
+const MAX_REGION_EDGES = 300;
 /// The most gates out of any region; a test holds every region to it.
-pub const MAX_REGION_EXITS = 48;
+const MAX_REGION_EXITS = 48;
 pub const MAX_NODES = universe.MAX_REGION_SYSTEMS * MAX_REGIONS;
 /// A gate between two regions shown is an edge rather than an exit.
 pub const MAX_EDGES = (MAX_REGION_EDGES + MAX_REGION_EXITS) * MAX_REGIONS;
@@ -45,8 +45,8 @@ const MAX_LINKS = 16;
 /// Kept free on each side of a label, so two names on a line don't read as one.
 const LABEL_SIDE_GAP = 2;
 /// Around a client tag's name inside its chip, and the room a system's or exit's name keeps.
-pub const CHIP_PADDING_X = 5;
-pub const CHIP_PADDING_Y = 2;
+const CHIP_PADDING_X = 5;
+const CHIP_PADDING_Y = 2;
 /// How close the cursor must come to a system or an exit, in pixels.
 const HIT_RADIUS = 9;
 /// The most boxes floating over the map that names keep clear of: its cards, bars and controls.
@@ -887,7 +887,7 @@ pub fn claimSpot(area: Box, taken: []Box, taken_count: *usize, x: i32, y: i32, w
     };
     for (spots) |spot| {
         const padded: Box = .{ .left = spot.left - LABEL_SIDE_GAP, .top = spot.top, .right = spot.right + LABEL_SIDE_GAP, .bottom = spot.bottom };
-        if (!area.contains(spot) or overlapsAny(padded, taken[0..taken_count.*])) continue;
+        if (!area.contains(spot) or padded.overlapsAny(taken[0..taken_count.*])) continue;
         taken[taken_count.*] = padded;
         taken_count.* += 1;
         return spot;
@@ -966,13 +966,6 @@ fn takeCovered(taken: []Box, covered: []const Box) usize {
     const count = @min(covered.len, MAX_COVERED);
     @memcpy(taken[0..count], covered[0..count]);
     return count;
-}
-
-fn overlapsAny(box: Box, others: []const Box) bool {
-    for (others) |other| {
-        if (box.overlaps(other)) return true;
-    }
-    return false;
 }
 
 fn regionLabelSpots() [(2 * REGION_LABEL_STEPS + 2) * 3]RegionLabelSpot {

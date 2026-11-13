@@ -80,11 +80,13 @@ pub const ThumbnailWindow = struct {
     cached_system_color: u32 = 0,
     /// Null when "Unique Character Name Colors" is off; callers fall back to their default.
     cached_character_color: ?u32 = null,
+    /// cached_character_color by the client list's own unique name colour setting.
+    cached_list_name_color: ?u32 = null,
     /// Borrows from config or character_name.
     cached_display_name: []const u8 = "",
     cached_border_colors: ?config_mod.CharacterBorderColorsConfig = null,
-    cached_excluded_from_minimize: bool = false,
-    cached_hide_thumbnail: bool = false,
+    cached_is_excluded_from_minimize: bool = false,
+    cached_is_thumbnail_hidden: bool = false,
     cached_thumbnail_size: ?config_mod.CharacterThumbnailSizeConfig = null,
     cached_opacity: u8 = 255,
     /// Owned; the badge-enabled groups this character is in, comma-joined ("1, 3"), or "" for none.
@@ -95,10 +97,11 @@ pub const ThumbnailWindow = struct {
         self.cached_system_color = if (self.system_name.len > 0) auto_colors.systemNameColor(config, self.system_name) else config.shownColors().system_name_color;
         const is_logged_in = !scout.isGenericCharacterName(self.character_name);
         self.cached_character_color = if (is_logged_in) auto_colors.characterNameColor(config, self.character_name) else null;
+        self.cached_list_name_color = if (is_logged_in) auto_colors.listNameColor(config, self.character_name) else null;
         self.cached_display_name = config.getDisplayName(self.character_name);
         self.cached_border_colors = if (is_logged_in) auto_colors.characterBorderColors(config, self.character_name) else null;
-        self.cached_excluded_from_minimize = config.isExcludedFromMinimize(self.character_name);
-        self.cached_hide_thumbnail = config.isThumbnailHidden(self.character_name);
+        self.cached_is_excluded_from_minimize = config.isExcludedFromMinimize(self.character_name);
+        self.cached_is_thumbnail_hidden = config.isThumbnailHidden(self.character_name);
         self.cached_thumbnail_size = config.getCharacterSize(self.character_name);
         self.cached_opacity = config.getCharacterOpacity(self.character_name);
     }

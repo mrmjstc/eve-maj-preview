@@ -4,7 +4,7 @@ const log = @import("../log.zig");
 
 const slog = log.Scoped("protocol");
 
-pub const SCHEME = "evemajpreview://";
+const SCHEME = "evemajpreview://";
 /// Sent by any second launch so the running instance opens its configuration window.
 pub const OPEN_CONFIG_URL = SCHEME ++ "config";
 

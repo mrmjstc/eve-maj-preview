@@ -61,7 +61,10 @@ pub const TAB_CONTENT_KEY: ui.Key = .str("knots.content");
 pub const Box = @FieldType(ui.State.Measured, "box");
 
 /// What a notice's button opens, named here since the tabs can't reach form's Tab.
-pub const NoticeTarget = enum { notifications, log_monitoring };
+pub const NoticeTarget = enum { notifications, log_monitoring, appearance };
+
+/// Whose settings a section holds.
+const SectionScope = enum { profile, all_profiles };
 
 const BindingRow = struct {
     /// Last frame's width inside the row's insets.
@@ -128,8 +131,11 @@ pub const Row = struct {
     is_clicked: bool,
     /// openWrappingBinding's box around the controls, measured to choose their line.
     controls: ?Rect = null,
+    /// Translated, with its style; set by the bindings, so a popover can fit the row.
+    label: ?RowLabel = null,
 
     pub fn close(self: Row, context: *ui.Frame) !void {
+        if (g_open.popover_depth > 0) try self.fitPopover(context);
         g_open.row_depth -|= 1;
         g_open.is_row_lit = false;
         g_open.is_row_click_pending = false;
@@ -138,6 +144,25 @@ pub const Row = struct {
         try self.rect.close(context);
         if (self.divider) |divider| try divider.close(context);
     }
+
+    /// Widens the open popover, from the next frame, to the row's label and controls side by side; measured last frame.
+    fn fitPopover(self: Row, context: *ui.Frame) !void {
+        const label = self.label orelse return;
+        const ui_state = context.ui();
+        const row_width = measuredBox(ui_state, self.rect.key).w();
+        if (row_width == 0) return;
+        const gap = style.aligned_row.gap.?;
+        // The label grows into the spare width, so the controls are what's left of the row; wrapped, they have their own box.
+        const controls_width = if (self.controls) |controls| measuredBox(ui_state, controls.key).w() else row_width - 2 * style.ROW_INSET - measuredBox(ui_state, self.rect.key.indexed(1)).w() - gap;
+        fitPopoverWidth(2 * style.ROW_INSET + try textWidth(context, label.text, label.label_style) + gap + controls_width);
+    }
+};
+
+/// A row's label, for fitting a popover to it.
+const RowLabel = struct {
+    /// Translated; borrowed for the frame.
+    text: []const u8,
+    label_style: *const ui.Style,
 };
 
 pub const LinkedSwitch = struct { is_flipped: bool, is_link_clicked: bool };
@@ -238,7 +263,7 @@ pub const RosterAction = enum { none, add, add_open_clients };
 pub const RowSettings = struct { is_aligned: bool, label_style: *const ui.Style };
 
 /// Shown faded rather than hidden, so a preview's text that's turned off can still be clicked to turn it back on.
-pub const TextOptions = struct { is_grown: bool = false, is_shown: bool = true };
+pub const TextOptions = struct { is_grown: bool = false, is_shown: bool = true, is_bold: bool = false };
 
 /// What an optional colour row changed to.
 pub const ColorChange = union(enum) { cleared, set: u32 };
@@ -337,6 +362,8 @@ const Open = struct {
     is_row_click_pending: bool = false,
     /// The open binding row, for controlsRoom; null outside one.
     binding_row: ?BindingRow = null,
+    /// Popovers opened and not yet closed, whose rows widen them.
+    popover_depth: usize = 0,
 };
 
 /// Measured by one frame for the next, which beginFrame hands over.
@@ -352,6 +379,9 @@ const Carried = struct {
     /// Every master list's width this frame: wide enough for last frame's widest footer and row names.
     roster_width: f32 = style.ROSTER_WIDTH,
     roster_width_next: f32 = style.ROSTER_WIDTH,
+    /// The open popover's width this frame: what last frame's widest row in it needed.
+    popover_width: f32 = style.POPOVER_MIN_WIDTH,
+    popover_width_next: f32 = style.POPOVER_MIN_WIDTH,
 };
 
 /// A row being dragged to a new place in its list.
@@ -400,6 +430,7 @@ pub fn beginFrame() void {
         .row_hints_before = previous.row_hints,
         .detail_column = previous.detail_column_next,
         .roster_width = previous.roster_width_next,
+        .popover_width = previous.popover_width_next,
     };
 }
 
@@ -421,33 +452,17 @@ pub fn reset() void {
 
 /// A card under its heading and intro hint; the caller closes it.
 pub fn openSection(context: *ui.Frame, comptime title: []const u8, comptime hint: []const u8, section_style: *const ui.Style) !Section {
-    const key: ui.Key = .str("knots.section:" ++ title);
-    const id = key.hash();
-    const ui_state = context.ui();
-    _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, id);
-    const shown_title = lang.text(title);
-    search.captureSection(id);
-    search.captureText(shown_title);
-    search.captureText(lang.text(hint));
-    // A section the search doesn't match is laid out of sight rather than skipped, so its caller needn't know.
-    const is_hidden = !search.sectionMatches(id);
-    const block_style = try context.arena().create(ui.Style);
-    block_style.* = style.section_block.with(.{ .height = section_style.height });
-    const block = Rect{ .key = key, .style = if (is_hidden) &style.section_hidden else block_style };
-    _ = try block.open(context);
+    return openScopedSection(context, title, title, hint, section_style, .profile);
+}
 
-    const intro = Rect{ .key = .str("knots.intro:" ++ title), .style = &style.section_intro };
-    _ = try intro.open(context);
-    try context.e(Text{ .selectable = false, .key = .str("knots.title:" ++ title), .content = shown_title, .style = &style.heading });
-    if (hint.len > 0) try boxedText(context, .str("knots.hint:" ++ title), hint, &style.section_hint_box, &style.hint);
-    try intro.close(context);
+/// openSection keyed by `name` rather than its title, for a title two sections on one tab share.
+pub fn openNamedSection(context: *ui.Frame, comptime name: []const u8, comptime title: []const u8, comptime hint: []const u8, section_style: *const ui.Style) !Section {
+    return openScopedSection(context, name, title, hint, section_style, .profile);
+}
 
-    const card = Rect{ .key = .str("knots.card:" ++ title), .style = section_style };
-    _ = try card.open(context);
-    g_open.section = id;
-    g_open.section_row_count = 0;
-    g_open.last_labelled_row = null;
-    return .{ .block = block, .card = card };
+/// openSection for settings every profile shares, tagged so beside its heading.
+pub fn openSharedSection(context: *ui.Frame, comptime title: []const u8, comptime hint: []const u8, section_style: *const ui.Style) !Section {
+    return openScopedSection(context, title, title, hint, section_style, .all_profiles);
 }
 
 /// A label-then-controls row; the caller adds the controls and closes it.
@@ -459,7 +474,9 @@ pub fn openBinding(context: *ui.Frame, key: ui.Key, label: []const u8) !Row {
     const room = measuredBox(context.ui(), key).w() - 2 * style.ROW_INSET;
     g_open.binding_row = if (room > 0) .{ .room = room, .label = shown, .label_style = label_style } else null;
     try rowLabel(context, key, key.indexed(1), shown, label_style);
-    return row;
+    var labelled = row;
+    labelled.label = .{ .text = shown, .label_style = label_style };
+    return labelled;
 }
 
 /// openBinding whose controls drop under the label when they don't fit beside it; aligned rows only, elsewhere it's openBinding.
@@ -485,6 +502,7 @@ pub fn openWrappingBinding(context: *ui.Frame, key: ui.Key, label: []const u8) !
     const controls = Rect{ .key = controls_key, .style = &style.row_controls };
     _ = try controls.open(context);
     row.controls = controls;
+    row.label = .{ .text = shown, .label_style = label_style };
     return row;
 }
 
@@ -505,7 +523,7 @@ pub fn modal(key: ui.Key, is_open: *bool, panel_style: *const ui.Style) Dialog {
     return .{ .is_open = is_open, .key = key, .style = panel_style, .parts = .{ .backdrop = &style.modal_backdrop } };
 }
 
-/// On whichever side of `anchor` has room; in closeResponse, `.backdrop` is a click outside.
+/// On whichever side of `anchor` has room; close it with closePopover, whose `.backdrop` is a click outside.
 pub fn openPopover(context: *ui.Frame, key: ui.Key, is_open: *bool, anchor: Box) !Dialog {
     const ui_state = context.ui();
     const extent = context.input().logical_extent;
@@ -513,7 +531,8 @@ pub fn openPopover(context: *ui.Frame, key: ui.Key, is_open: *bool, anchor: Box)
     const panel_key = key.indexed(DIALOG_PANEL_INDEX);
     _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, panel_key.hash());
     const panel_box = measuredBox(ui_state, panel_key);
-    const panel_size = [2]f32{ style.POPOVER_WIDTH, if (panel_box.h() > 0) panel_box.h() else POPOVER_HEIGHT_GUESS };
+    const width = std.math.clamp(@ceil(g_carried.popover_width) + 2 * style.popover.padding.?.left(), style.POPOVER_MIN_WIDTH, style.POPOVER_MAX_WIDTH);
+    const panel_size = [2]f32{ width, if (panel_box.h() > 0) panel_box.h() else POPOVER_HEIGHT_GUESS };
 
     const right_of_anchor = anchor.x() + anchor.w() + POPOVER_GAP;
     const x = if (right_of_anchor + panel_size[0] + POPOVER_MARGIN <= viewport[0])
@@ -521,7 +540,19 @@ pub fn openPopover(context: *ui.Frame, key: ui.Key, is_open: *bool, anchor: Box)
     else
         @max(POPOVER_MARGIN, anchor.x() - POPOVER_GAP - panel_size[0]);
     const y = std.math.clamp(anchor.y(), POPOVER_MARGIN, @max(POPOVER_MARGIN, viewport[1] - panel_size[1] - POPOVER_MARGIN));
-    return openPlaced(context, key, is_open, &style.popover, .{ x, y });
+    const panel_style = try context.arena().create(ui.Style);
+    panel_style.* = style.popover.with(.{ .width = .fixed(width) });
+    g_open.popover_depth += 1;
+    // What fits it is measured afresh each frame, so a row it no longer has doesn't keep it wide.
+    g_carried.popover_width_next = 0;
+    return openPlaced(context, key, is_open, panel_style, .{ x, y });
+}
+
+/// Closes what openPopover opened; returns how, as Dialog.closeResponse does.
+pub fn closePopover(context: *ui.Frame, dialog: Dialog) !?Dialog.CloseReason {
+    g_open.popover_depth -|= 1;
+    if (g_carried.popover_width_next != g_carried.popover_width) context.requestRedraw();
+    return dialog.closeResponse(context);
 }
 
 /// Aligned to `anchor`'s left edge, or its right where there's no room; the caller fills and closes it.
@@ -537,7 +568,9 @@ pub fn openMenu(context: *ui.Frame, key: ui.Key, is_open: *bool, anchor: Box) !D
 pub fn popoverTitle(context: *ui.Frame, key: ui.Key, title: []const u8) !bool {
     const row = Rect{ .key = key, .style = &style.popover_title };
     _ = try row.open(context);
-    try context.e(Text{ .selectable = false, .key = key.indexed(1), .content = lang.text(title), .style = &style.heading });
+    const shown = lang.text(title);
+    fitPopoverWidth(2 * style.ROW_INSET + try textWidth(context, shown, &style.heading) + style.CONTROL_HEIGHT);
+    try context.e(Text{ .selectable = false, .key = key.indexed(1), .content = shown, .style = &style.heading });
     const is_close_clicked = (try context.interact(Button{ .key = key.indexed(2), .label = "\u{00D7}", .style = &style.popover_close })).clicked;
     try row.close(context);
     return is_close_clicked;
@@ -547,6 +580,30 @@ pub fn popoverTitle(context: *ui.Frame, key: ui.Key, title: []const u8) !bool {
 pub fn measuredBox(ui_state: *ui.UI, key: ui.Key) Box {
     const measured = ui_state.state.get(.measured, key.hash()) orelse return .zero;
     return measured.box;
+}
+
+/// Over the open element's edge, `size` big; `padding` is the element's, which absolute children start inside.
+pub fn dashedOutline(context: *ui.Frame, key: ui.Key, size: [2]f32, padding: [2]f32) !void {
+    const arena = context.arena();
+    const color = style.MUTED.value;
+    const dash = style.CHIP_DASH_LENGTH;
+    // Knots borders can't be dashed, so the dashes are drawn.
+    var commands: std.ArrayList(Canvas.DrawCmd) = .empty;
+    var x: f32 = 0;
+    while (x < size[0]) : (x += dash * 2) {
+        const length = @min(dash, size[0] - x);
+        try commands.append(arena, .{ .fill_rect = .{ .x = x, .y = 0, .w = length, .h = 1, .color = color } });
+        try commands.append(arena, .{ .fill_rect = .{ .x = x, .y = size[1] - 1, .w = length, .h = 1, .color = color } });
+    }
+    var y: f32 = 0;
+    while (y < size[1]) : (y += dash * 2) {
+        const length = @min(dash, size[1] - y);
+        try commands.append(arena, .{ .fill_rect = .{ .x = 0, .y = y, .w = 1, .h = length, .color = color } });
+        try commands.append(arena, .{ .fill_rect = .{ .x = size[0] - 1, .y = y, .w = 1, .h = length, .color = color } });
+    }
+    const outline_style = try arena.create(ui.Style);
+    outline_style.* = .{ .position = .absolute, .offset = .{ -padding[0], -padding[1] }, .width = .fixed(size[0]), .height = .fixed(size[1]) };
+    try context.e(Canvas{ .key = key, .commands = commands.items, .style = outline_style });
 }
 
 /// style.select as wide as the longest of `labels`, with SelectInput's padding, arrow and border around it.
@@ -596,6 +653,21 @@ pub fn textWidth(context: *ui.Frame, text: []const u8, text_style: *const ui.Sty
     const face = try ui_state.font.getFace(text_style.font);
     const scale = ui_state.content_scale;
     return (try face.measure(text, font_size * scale)).width / scale;
+}
+
+/// `text` cut short with "..." to fit `max_width`, as the panels' own text is, since knots only clips; `text` itself when it fits or `max_width` isn't known yet, else made in the frame's arena.
+pub fn fittedText(context: *ui.Frame, text: []const u8, text_style: *const ui.Style, max_width: f32) ![]const u8 {
+    if (max_width <= 0 or try textWidth(context, text, text_style) <= max_width) return text;
+    const ellipsis = "...";
+    var end = text.len;
+    while (end > 0) {
+        end -= 1;
+        // Back to the start of a UTF-8 character, so none is cut in half.
+        while (end > 0 and text[end] & 0xC0 == 0x80) end -= 1;
+        const candidate = try context.arena().print("{s}{s}", .{ std.mem.trimEnd(u8, text[0..end], " "), ellipsis });
+        if (try textWidth(context, candidate, text_style) <= max_width) return candidate;
+    }
+    return ellipsis;
 }
 
 /// From the next frame, so `name` stays on one line beside `lead` (portrait or dot, 0 for none) and `badge` ("" for none), up to style.ROSTER_MAX_WIDTH.
@@ -892,6 +964,13 @@ pub fn colorParts(is_aligned: bool) ColorPicker.Parts {
 /// Unset inherits `fallback`, shown struck through; Reset unsets it.
 pub fn optionalColor(context: *ui.Frame, key: ui.Key, label: []const u8, current: ?u32, fallback: u32) !?ColorChange {
     const row = try openBinding(context, key, label);
+    const change = try optionalColorBox(context, key, current, fallback);
+    try row.close(context);
+    return change;
+}
+
+/// Just optionalColor's picker, for a row with more in it.
+pub fn optionalColorBox(context: *ui.Frame, key: ui.Key, current: ?u32, fallback: u32) !?ColorChange {
     var change: ?ColorChange = null;
     var value = color_convert.fromArgb(current orelse fallback);
     var is_reset = false;
@@ -906,7 +985,6 @@ pub fn optionalColor(context: *ui.Frame, key: ui.Key, label: []const u8, current
         .reset = &is_reset,
     })).changed) change = .{ .set = color_convert.toArgb(value) };
     if (is_reset) change = .cleared;
-    try row.close(context);
     return change;
 }
 
@@ -1155,11 +1233,54 @@ pub fn textStyle(arena: std.mem.Allocator, color: u32, size: f32, options: TextO
     const text_style = try arena.create(ui.Style);
     text_style.* = .{
         .foreground = color_convert.solid(color),
+        .font = if (options.is_bold) style.FONT_SEMIBOLD else null,
         .font_size = .{ .px = size },
         .opacity = if (options.is_shown) 1 else style.OFF_TEXT_OPACITY,
     };
     if (options.is_grown) text_style.width = .grow();
     return text_style;
+}
+
+fn openScopedSection(context: *ui.Frame, comptime name: []const u8, comptime title: []const u8, comptime hint: []const u8, section_style: *const ui.Style, scope: SectionScope) !Section {
+    const key: ui.Key = .str("knots.section:" ++ name);
+    const id = key.hash();
+    const ui_state = context.ui();
+    _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, id);
+    const shown_title = lang.text(title);
+    search.captureSection(id);
+    search.captureText(shown_title);
+    search.captureText(lang.text(hint));
+    // A section the search doesn't match is laid out of sight rather than skipped, so its caller needn't know.
+    const is_hidden = !search.sectionMatches(id);
+    const block_style = try context.arena().create(ui.Style);
+    block_style.* = style.section_block.with(.{ .height = section_style.height });
+    const block = Rect{ .key = key, .style = if (is_hidden) &style.section_hidden else block_style };
+    _ = try block.open(context);
+
+    const intro = Rect{ .key = .str("knots.intro:" ++ name), .style = &style.section_intro };
+    _ = try intro.open(context);
+    switch (scope) {
+        .profile => try context.e(Text{ .selectable = false, .key = .str("knots.title:" ++ name), .content = shown_title, .style = &style.heading }),
+        .all_profiles => {
+            const title_row = Rect{ .key = .str("knots.title_row:" ++ name), .style = &style.section_title_row };
+            _ = try title_row.open(context);
+            try context.e(Text{ .selectable = false, .key = .str("knots.title:" ++ name), .content = shown_title, .style = &style.heading });
+            const tag = Rect{ .key = .str("knots.scope:" ++ name), .style = &style.outline_tag };
+            _ = try tag.open(context);
+            try context.e(Text{ .selectable = false, .key = .str("knots.scope_text:" ++ name), .content = lang.text("All Profiles"), .style = &style.hint_plain });
+            try tag.close(context);
+            try title_row.close(context);
+        },
+    }
+    if (hint.len > 0) try boxedText(context, .str("knots.hint:" ++ name), hint, &style.section_hint_box, &style.hint);
+    try intro.close(context);
+
+    const card = Rect{ .key = .str("knots.card:" ++ name), .style = section_style };
+    _ = try card.open(context);
+    g_open.section = id;
+    g_open.section_row_count = 0;
+    g_open.last_labelled_row = null;
+    return .{ .block = block, .card = card };
 }
 
 fn linkedSwitchRow(context: *ui.Frame, key: ui.Key, label: []const u8, link_label: ?[]const u8, is_checked: *bool) !LinkedSwitch {
@@ -1352,6 +1473,11 @@ fn alignedLabelStyle(context: *ui.Frame, shown: []const u8) !*const ui.Style {
     const fitted = try context.arena().create(ui.Style);
     fitted.* = base.with(.{ .width = .{ .kind = .grow, .min = @ceil(widest) } });
     return fitted;
+}
+
+/// Widens the open popover, from the next frame, to `needed`.
+fn fitPopoverWidth(needed: f32) void {
+    g_carried.popover_width_next = @max(g_carried.popover_width_next, @ceil(needed));
 }
 
 fn reportMisuse(problem: []const u8) void {

@@ -1,4 +1,4 @@
-//! The configuration window's Appearance tab: how clients are shown, then that mode's settings, texts and system colours; main thread only.
+//! The configuration window's Appearance tab: how clients are shown, then the thumbnails' size, borders, texts and visibility, and system colours; main thread only.
 const ui = @import("ui");
 const win32 = @import("../../../platform/win32.zig");
 const config = @import("../../../config.zig");
@@ -7,7 +7,6 @@ const bind = @import("../bind.zig");
 const status = @import("../status.zig");
 const style = @import("../style.zig");
 const widgets = @import("../widgets.zig");
-const client_list = @import("client_list.zig");
 const text_overlays = @import("text_overlays.zig");
 const system_colors = @import("system_colors.zig");
 const log = @import("../../../log.zig");
@@ -64,7 +63,6 @@ pub fn show(context: *ui.Frame) !void {
         try borders(context, thumbnail);
         try visibility(context, thumbnail);
     }
-    if (view_mode.showsClientList()) try client_list.show(context, session.profile().child("listView"));
     if (view_mode.showsThumbnails() or view_mode.showsClientList()) try system_colors.show(context);
 }
 
@@ -179,7 +177,11 @@ fn borderRow(context: *ui.Frame, thumbnail: ThumbnailRef, comptime fields: Borde
     try bind.choiceBox(context, thumbnail, fields.style_field);
     // Unique colours replace it per character.
     const color = try widgets.openInlineGroup(context, .str("knots.border.color:" ++ fields.label), !is_color_overridden);
-    try bind.colorBox(context, thumbnail, fields.color_field);
+    if (comptime @FieldType(config.ThumbnailConfig, fields.color_field) == ?u32) {
+        try bind.optionalColorBox(context, thumbnail, fields.color_field, session.profile().ptr.accentColor);
+    } else {
+        try bind.colorBox(context, thumbnail, fields.color_field);
+    }
     try color.close(context);
     try settings.close(context);
     try bind.toggle(context, thumbnail, fields.show_field, "");
@@ -204,7 +206,7 @@ fn visibility(context: *ui.Frame, thumbnail: ThumbnailRef) !void {
     try section.close(context);
 }
 
-/// Picks which of the tab's other sections are drawn, and whether the Placement tab is offered.
+/// Picks which of the tab's other sections are drawn.
 fn displayMode(context: *ui.Frame, display: DisplayRef) !void {
     const section = try widgets.openSection(context, "Display Mode", "How clients are shown. With None, hotkeys and alerts keep working.", &style.section);
     try bind.segmented(context, display, "viewMode", "Show Clients As", &.{ "Thumbnails", "Client List", "Both", "None" });

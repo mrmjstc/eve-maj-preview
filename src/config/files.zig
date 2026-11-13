@@ -8,6 +8,9 @@ pub const PROFILES_DIR = "profiles";
 pub const DEFAULT_PROFILE = "default.json";
 pub const GLOBAL_SETTINGS_FILE = "profiles/global.settings.json";
 pub const MAX_CONFIG_FILE_SIZE: u64 = 300 * 1024;
+/// A locked file is often freed within moments, e.g. once an antivirus scan or sync lets go of it.
+const READ_ATTEMPTS = 5;
+const READ_RETRY_MS = 100;
 
 /// App state that isn't a setting, kept out of PROFILES_DIR so copying profiles doesn't carry it along.
 const DATA_DIR = "data";
@@ -87,6 +90,19 @@ pub fn createDirIfMissing(io: std.Io, path: []const u8) !void {
     };
 }
 
+/// A settings file, up to MAX_CONFIG_FILE_SIZE, read again after a short wait while another program holds it; FileNotFound fails at once; caller owns the result and logs.
+pub fn readSettingsFile(allocator: std.mem.Allocator, io: std.Io, path: []const u8) ![]u8 {
+    var attempt: usize = 1;
+    while (true) : (attempt += 1) {
+        return std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(MAX_CONFIG_FILE_SIZE)) catch |err| {
+            if (err == error.FileNotFound or attempt == READ_ATTEMPTS) return err;
+            // The read's error is the one worth reporting, not the wait's.
+            std.Io.sleep(io, .fromMilliseconds(READ_RETRY_MS), .awake) catch return err;
+            continue;
+        };
+    }
+}
+
 /// Logs every failure itself.
 pub fn atomicWriteFile(allocator: std.mem.Allocator, io: std.Io, path: []const u8, content: []const u8) !void {
     // Unique per call so overlapping saves of the same path can't share a temp file.
@@ -129,36 +145,36 @@ pub fn expandEnvironmentVariables(allocator: std.mem.Allocator, path: []const u8
     var result: std.ArrayList(u8) = .empty;
     errdefer result.deinit(allocator);
 
-    var i: usize = 0;
-    while (i < path.len) {
-        if (path[i] == '%') {
-            const start = i + 1;
+    var index: usize = 0;
+    while (index < path.len) {
+        if (path[index] == '%') {
+            const start = index + 1;
             const end = std.mem.findScalarPos(u8, path, start, '%') orelse {
                 try result.append(allocator, '%');
-                i += 1;
+                index += 1;
                 continue;
             };
 
             const variable_name = path[start..end];
             if (variable_name.len == 0) {
                 try result.append(allocator, '%');
-                i += 1;
+                index += 1;
                 continue;
             }
 
             const variable_value = environmentVariable(variable_name) orelse {
                 slog.warn("Failed to read environment variable '{s}'", .{variable_name});
-                try result.appendSlice(allocator, path[i .. end + 1]);
-                i = end + 1;
+                try result.appendSlice(allocator, path[index .. end + 1]);
+                index = end + 1;
                 continue;
             };
 
             try result.appendSlice(allocator, variable_value);
 
-            i = end + 1;
+            index = end + 1;
         } else {
-            try result.append(allocator, path[i]);
-            i += 1;
+            try result.append(allocator, path[index]);
+            index += 1;
         }
     }
 

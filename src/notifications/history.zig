@@ -7,6 +7,14 @@ const config = @import("../config.zig");
 
 pub const CAPACITY = config.HistoryPanelConfig.MAX_ROWS[1];
 
+/// What an intel report's entry knows besides its text.
+pub const IntelFacts = struct {
+    /// From the nearest client.
+    jumps: u8,
+    /// The report calls its system clear.
+    is_clear: bool,
+};
+
 /// One past notification a panel lists; fixed-size buffers avoid a heap allocation per notification.
 pub const Entry = struct {
     source_hwnd: win32.HWND,
@@ -24,7 +32,8 @@ pub const Entry = struct {
     lead: ?notification.Lead = null,
     /// The system an Intel Panel row opens on the map.
     system: ?universe.SystemIndex = null,
-    is_unmerged: bool = false,
+    /// Intel only.
+    intel: ?IntelFacts = null,
 
     pub fn characterName(self: *const Entry) []const u8 {
         return self.character_name_buf[0..self.character_name_length];
@@ -43,8 +52,8 @@ pub const NotificationHistory = struct {
     /// Bumped on every change so a panel can cheaply detect one.
     revision: u32 = 0,
 
-    pub fn push(self: *NotificationHistory, source_hwnd: win32.HWND, character_name: []const u8, notification_text: []const u8, notification_type: notification.NotificationType, character_color: ?u32, text_color: ?u32, lead: ?notification.Lead, system: ?universe.SystemIndex) void {
-        var entry: Entry = .{ .source_hwnd = source_hwnd, .notification_type = notification_type, .timestamp = win32.Ticks.now(), .character_color = character_color, .text_color = text_color, .system = system };
+    pub fn push(self: *NotificationHistory, source_hwnd: win32.HWND, character_name: []const u8, notification_text: []const u8, notification_type: notification.NotificationType, character_color: ?u32, text_color: ?u32, lead: ?notification.Lead, system: ?universe.SystemIndex, intel: ?IntelFacts) void {
+        var entry: Entry = .{ .source_hwnd = source_hwnd, .notification_type = notification_type, .timestamp = win32.Ticks.now(), .character_color = character_color, .text_color = text_color, .system = system, .intel = intel };
 
         const name_length = @min(character_name.len, entry.character_name_buf.len);
         @memcpy(entry.character_name_buf[0..name_length], character_name[0..name_length]);
@@ -75,15 +84,6 @@ pub const NotificationHistory = struct {
     /// `index` is a newest-first index, as returned by snapshot; null past the last entry.
     pub fn entryFromNewest(self: *const NotificationHistory, index: usize) ?*const Entry {
         return if (index < self.entry_count) &self.entries[self.indexFromNewest(index)] else null;
-    }
-
-    /// `first_index` and `last_index` are newest-first indices, as returned by snapshot.
-    pub fn unmergeRange(self: *NotificationHistory, first_index: usize, last_index: usize) void {
-        var index = first_index;
-        while (index <= last_index and index < self.entry_count) : (index += 1) {
-            self.entries[self.indexFromNewest(index)].is_unmerged = true;
-        }
-        self.revision +%= 1;
     }
 
     fn indexFromNewest(self: *const NotificationHistory, newest_index: usize) usize {

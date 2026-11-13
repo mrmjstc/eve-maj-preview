@@ -17,6 +17,8 @@ pub const AutoColorStore = struct {
     system: color_mod.AutoColors = .{},
     character: color_mod.AutoColors = .{},
     is_loaded: bool = false,
+    /// The file couldn't be read or parsed, so saving would replace every colour in it with this run's few.
+    is_file_unreadable: bool = false,
 
     const File = struct {
         systemColors: []const Entry = &.{},
@@ -66,12 +68,12 @@ pub const AutoColorStore = struct {
 
     /// The character's own override, then the unique colour if enabled; null means the caller's own default.
     pub fn characterNameColor(self: *AutoColorStore, config: *const config_mod.Config, character_name: []const u8) ?u32 {
-        if (config.findCharacterConst(character_name)) |character| {
-            if (character.nameColor) |custom_color| return custom_color;
-        }
-        if (!config.shownColors().uses_unique_name_colors) return null;
+        return self.nameColor(config, character_name, config.shownColors().uses_unique_name_colors);
+    }
 
-        return self.characterColor(config, character_name);
+    /// characterNameColor for the client list, whose unique name colours are its own setting in every view mode.
+    pub fn listNameColor(self: *AutoColorStore, config: *const config_mod.Config, character_name: []const u8) ?u32 {
+        return self.nameColor(config, character_name, config.listView.useUniqueCharacterNameColors);
     }
 
     /// The character's own active border colour, else the unique colour if enabled; the inactive one is left as set.
@@ -82,6 +84,15 @@ pub const AutoColorStore = struct {
         var colors = configured orelse config_mod.CharacterBorderColorsConfig{};
         if (colors.activeBorderColor == null) colors.activeBorderColor = self.characterColor(config, character_name);
         return colors;
+    }
+
+    fn nameColor(self: *AutoColorStore, config: *const config_mod.Config, character_name: []const u8, uses_unique: bool) ?u32 {
+        if (config.findCharacterConst(character_name)) |character| {
+            if (character.nameColor) |custom_color| return custom_color;
+        }
+        if (!uses_unique) return null;
+
+        return self.characterColor(config, character_name);
     }
 
     /// Shared by the character's name and border; avoids every character's own name and active border colours.
@@ -108,13 +119,16 @@ pub const AutoColorStore = struct {
         self.is_loaded = true;
 
         const content = std.Io.Dir.cwd().readFileAlloc(self.io, AUTO_COLORS_FILE, self.allocator, .limited(files.MAX_CONFIG_FILE_SIZE)) catch |err| {
-            if (err != error.FileNotFound) slog.warn("Failed to read '{s}': {}", .{ AUTO_COLORS_FILE, err });
+            if (err == error.FileNotFound) return;
+            slog.warn("Failed to read '{s}', so it isn't saved over: {}", .{ AUTO_COLORS_FILE, err });
+            self.is_file_unreadable = true;
             return;
         };
         defer self.allocator.free(content);
 
         const parsed = wire.parse(File, self.allocator, content) catch |err| {
-            slog.warn("Failed to parse '{s}': {}", .{ AUTO_COLORS_FILE, err });
+            slog.warn("Failed to parse '{s}', so it isn't saved over: {}", .{ AUTO_COLORS_FILE, err });
+            self.is_file_unreadable = true;
             return;
         };
         defer parsed.deinit();
@@ -141,6 +155,10 @@ pub const AutoColorStore = struct {
     }
 
     fn save(self: *const AutoColorStore) void {
+        if (self.is_file_unreadable) {
+            slog.info("Left '{s}' as it was: it couldn't be read, so this run's colours aren't saved", .{AUTO_COLORS_FILE});
+            return;
+        }
         var arena = std.heap.ArenaAllocator.init(self.allocator);
         defer arena.deinit();
 
@@ -161,9 +179,7 @@ pub const AutoColorStore = struct {
         };
         defer self.allocator.free(json);
 
-        files.atomicWriteFile(self.allocator, self.io, AUTO_COLORS_FILE, json) catch |err| {
-            slog.warn("Failed to save '{s}': {}", .{ AUTO_COLORS_FILE, err });
-        };
+        files.atomicWriteFile(self.allocator, self.io, AUTO_COLORS_FILE, json) catch return;
     }
 
     fn entriesToWire(allocator: std.mem.Allocator, store: *const color_mod.AutoColors) ![]const Entry {

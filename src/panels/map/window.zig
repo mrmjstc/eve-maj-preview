@@ -4,6 +4,7 @@ const win32 = @import("../../platform/win32.zig");
 const gdi_overlay = @import("../../platform/gdi_overlay.zig");
 const panel_window = @import("../../platform/panel_window.zig");
 const config_mod = @import("../../config.zig");
+const types = @import("../../config/types.zig");
 const history = @import("../../notifications/history.zig");
 const history_rows = @import("../history_rows.zig");
 const list_look = @import("../list_look.zig");
@@ -48,6 +49,15 @@ const DEFAULT_REGION_ID = 10000002;
 /// When the screen's refresh rate can't be read.
 const FALLBACK_REFRESH_HZ: u64 = 60;
 
+/// What the cards sized to their text show this render.
+const ChromeShown = struct {
+    /// Borrowed for the render.
+    title: []const u8,
+    metric: types.MapMetric,
+    /// The legends' card's, so the toggle bar can keep clear of it.
+    legend_width: i32,
+};
+
 pub const MapPanelWindow = struct {
     panel: PanelWindow,
     /// For the names on the map, smaller than the panel's own fonts so more of them fit.
@@ -59,6 +69,8 @@ pub const MapPanelWindow = struct {
     ui_small_font: gdi_overlay.CachedFont = .{},
     /// A picked segment's label and the cards' headings.
     ui_semibold_font: gdi_overlay.CachedFont = .{},
+    /// A menu's headings.
+    ui_small_semibold_font: gdi_overlay.CachedFont = .{},
     /// The title card's heading.
     ui_heading_font: gdi_overlay.CachedFont = .{},
     /// Borrowed; outlives the window.
@@ -109,6 +121,7 @@ pub const MapPanelWindow = struct {
         self.ui_font.deinit(self.panel.allocator);
         self.ui_small_font.deinit(self.panel.allocator);
         self.ui_semibold_font.deinit(self.panel.allocator);
+        self.ui_small_semibold_font.deinit(self.panel.allocator);
         self.ui_heading_font.deinit(self.panel.allocator);
         self.panel.deinit();
     }
@@ -192,10 +205,16 @@ pub const MapPanelWindow = struct {
     }
 
     /// Keeps the regions shown when they hold `system`.
-    pub fn selectSystem(self: *MapPanelWindow, system: SystemIndex) void {
+    fn selectSystem(self: *MapPanelWindow, system: SystemIndex) void {
         const region = universe.systemInfo(system).region;
         if (self.state.regions.contains(region)) self.state.is_picking_region = false else self.chooseRegion(region);
         self.state.focus_system = system;
+    }
+
+    /// selectSystem, then ripples it once so the eye finds it.
+    pub fn pingSystem(self: *MapPanelWindow, system: SystemIndex) void {
+        self.selectSystem(system);
+        self.state.ping = .{ .system = system, .started_ms = win32.Ticks.now().ms };
     }
 
     fn isIntelInside(self: *const MapPanelWindow) bool {
@@ -292,7 +311,7 @@ pub const MapPanelWindow = struct {
     }
 
     /// While Thera and Turnur show and are fetched.
-    pub fn showsWormholeCard(self: *const MapPanelWindow) bool {
+    fn showsWormholeCard(self: *const MapPanelWindow) bool {
         return self.config.mapPanel.showWormholes and self.config.mapPanel.liveStats;
     }
 
@@ -348,7 +367,6 @@ pub const MapPanelWindow = struct {
             self.state.kill_rows[count] = kill.*;
             count += 1;
         }
-        self.state.kill_row_count = count;
         return count;
     }
 
@@ -356,7 +374,7 @@ pub const MapPanelWindow = struct {
         return .init(self.panel.width, self.panel.height, palette.CONTROL_HEIGHT, self.hasSideCard() or self.showsWormholeCard() or self.showsTimerCard());
     }
 
-    /// A new pin's ripple is playing in a shown region, or a search ping's, which wants frames faster than the tick.
+    /// A new pin's or kill's ripple is playing in a shown region, or a ping's, which wants frames faster than the tick.
     pub fn hasRipple(self: *const MapPanelWindow, scene: paint.Scene, now_ms: u64) bool {
         if (self.state.ping) |ping| {
             if (look.rippleAt(now_ms -| ping.started_ms) != null) return true;
@@ -442,7 +460,7 @@ pub const MapPanelWindow = struct {
         hasher.update(std.mem.asBytes(&self.hasSideCard()));
         if (scene.kills) |kills| hasher.update(std.mem.asBytes(&kills.revision));
         hasher.update(std.mem.asBytes(&self.config.accentColor));
-        hasher.update(std.mem.asBytes(&self.config.listView.activeColor));
+        hasher.update(std.mem.asBytes(&self.config.listActiveColor()));
         hasher.update(std.mem.asBytes(&map_settings.alwaysOnTop));
         hasher.update(std.mem.asBytes(&map_settings.routePreference));
         hasher.update(std.mem.asBytes(&map_settings.routeAnsiblex));
@@ -658,6 +676,7 @@ pub const MapPanelWindow = struct {
         const name_font = self.ui_font.handle orelse return null;
         const small_font = self.ui_small_font.handle orelse return null;
         const semibold_font = self.ui_semibold_font.handle orelse return null;
+        const small_semibold_font = self.ui_small_semibold_font.handle orelse return null;
         const heading_font = self.ui_heading_font.handle orelse return null;
         const label_font = self.label_font.handle orelse return null;
         const title_font = self.title_font.handle orelse return null;
@@ -673,6 +692,7 @@ pub const MapPanelWindow = struct {
         return .{
             .chrome = chrome,
             .semibold_font = semibold_font,
+            .small_semibold_font = small_semibold_font,
             .heading_font = heading_font,
             .heading_height = heading_height,
             .label_font = label_font,
@@ -693,6 +713,7 @@ pub const MapPanelWindow = struct {
         try self.ui_font.ensure(self.panel.allocator, "Map Panel text", palette.FACE, palette.FONT_SIZE, .Regular);
         try self.ui_small_font.ensure(self.panel.allocator, "Map Panel small text", palette.FACE, palette.SMALL_FONT_SIZE, .Regular);
         try self.ui_semibold_font.ensure(self.panel.allocator, "Map Panel semibold text", palette.SEMIBOLD_FACE, palette.FONT_SIZE, .Regular);
+        try self.ui_small_semibold_font.ensure(self.panel.allocator, "Map Panel menu headings", palette.SEMIBOLD_FACE, palette.SMALL_FONT_SIZE, .Regular);
         try self.ui_heading_font.ensure(self.panel.allocator, "Map Panel heading", palette.SEMIBOLD_FACE, look.TITLE_FONT_SIZE, .Regular);
 
         self.updateMarks(scene);
@@ -727,15 +748,32 @@ pub const MapPanelWindow = struct {
             .allocator = self.panel.allocator,
         };
         const title = paint.titleText(&self.state);
-        if (fonts) |loaded| self.state.chrome = measureChrome(dc, loaded, areas, title.slice(), painter.legendCardWidth(dc, scene, loaded.chrome));
+        if (fonts) |loaded| self.state.chrome = measureChrome(dc, loaded, areas, .{ .title = title.slice(), .metric = map_settings.metric, .legend_width = painter.legendCardWidth(dc, scene, loaded.chrome) });
         self.state.intel_card = if (fonts) |loaded| self.placeIntelCard(dc, areas, loaded, intel_entries, scene) else null;
         self.state.wormhole_card = if (fonts) |loaded| self.placeWormholeCard(dc, areas, loaded, scene) else null;
         self.state.timer_card = if (fonts) |loaded| self.placeTimerCard(areas, loaded) else null;
         var covered_buffer: [layout.MAX_COVERED]Box = undefined;
-        self.ensureLabels(dc, areas, fonts, self.coveredBoxes(&painter, dc, scene, fonts, &covered_buffer), paint.shownCampaigns(self.config, scene));
+        const covered = self.coveredBoxes(&painter, dc, scene, fonts, &covered_buffer);
+        if (self.revealPing(areas, covered, now_ms)) {
+            self.ensureLayout(areas);
+            self.ensurePortals(scene);
+        }
+        self.ensureLabels(dc, areas, fonts, covered, paint.shownCampaigns(self.config, scene));
         painter.draw(bitmap, scene, fonts, intel_entries, now_ms, .{ .popup = &self.state.popup, .search_stops = &self.state.search_stops });
 
         self.panel.present(map_settings.opacity, signature);
+    }
+
+    /// Pans a new ping out from under the cards, restarting its ripple there; whether the view moved.
+    fn revealPing(self: *MapPanelWindow, areas: look.Areas, covered: []const Box, now_ms: u64) bool {
+        const ping = if (self.state.ping) |*active| active else return false;
+        if (ping.is_revealed) return false;
+        ping.is_revealed = true;
+        const node_index = self.state.layout.nodeOf(ping.system) orelse return false;
+        const node = self.state.layout.nodes[node_index];
+        self.state.layout.view = look.revealedView(self.state.layout.view, areas, covered, node.x, node.y) orelse return false;
+        ping.started_ms = now_ms;
+        return true;
     }
 
     fn updateTitle(self: *MapPanelWindow, scene: Scene, now_ms: u64) void {
@@ -764,19 +802,16 @@ fn hashRipple(hasher: *std.hash.Wyhash, ripple: look.Ripple, scale: f32) void {
     hasher.update(std.mem.asBytes(&ripple.alpha));
 }
 
-/// `legend_width` is the legends' card's, so the toggle bar can keep clear of it; leaves `dc` holding the chrome's name font.
-fn measureChrome(dc: win32.HDC, fonts: MapFonts, areas: look.Areas, title: []const u8, legend_width: i32) look.Chrome {
+/// Leaves `dc` holding the chrome's name font.
+fn measureChrome(dc: win32.HDC, fonts: MapFonts, areas: look.Areas, shown: ChromeShown) look.Chrome {
     var text: look.ChromeText = undefined;
-    text.legend_width = legend_width;
+    text.legend_width = shown.legend_width;
     _ = win32.SelectObject(dc, fonts.heading_font);
-    text.title_width = panel_chrome.textWidth(dc, title);
+    text.title_width = panel_chrome.textWidth(dc, shown.title);
     text.title_height = fonts.heading_height;
-    // Semibold, the picked segment's font and the wider of the two, and each segment's widest label, so picking one doesn't resize the bar.
+    // Semibold, the picked segment's font and the wider of the two, so picking a segment doesn't resize the bar.
     _ = win32.SelectObject(dc, fonts.semibold_font);
-    for (look.SEGMENT_ORDER, &text.metric_widths) |segment, *width| {
-        width.* = 0;
-        for (look.segmentMetrics(segment)) |metric| width.* = @max(width.*, panel_chrome.textWidth(dc, text_mod.metricLabel(metric)));
-    }
+    for (look.SEGMENT_ORDER, &text.metric_widths) |segment, *width| width.* = panel_chrome.textWidth(dc, text_mod.metricLabel(look.shownMetric(segment, shown.metric)));
     _ = win32.SelectObject(dc, fonts.chrome.name_font);
     for (look.TOGGLE_ORDER, &text.toggle_widths) |toggle, *width| width.* = panel_chrome.textWidth(dc, text_mod.toggleLabel(toggle));
     return .init(areas, text);

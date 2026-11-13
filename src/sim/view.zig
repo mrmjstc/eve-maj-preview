@@ -10,6 +10,7 @@ const fleet_mod = @import("fleet.zig");
 const lines = @import("lines.zig");
 const scenarios = @import("scenarios.zig");
 const schedule = @import("schedule.zig");
+const log = @import("../log.zig");
 
 const Rect = ui.component.Rect;
 const Text = ui.component.Text;
@@ -21,6 +22,7 @@ const Fleet = fleet_mod.Fleet;
 const Burst = fleet_mod.Burst;
 const Scenario = scenarios.Scenario;
 const Via = schedule.Via;
+const slog = log.Scoped("sim");
 
 /// How many "Test Client N" the list's footer button adds.
 const QUICK_CLIENT_COUNT = 10;
@@ -66,7 +68,7 @@ const JOURNAL_CLOCK: ui.Style = .{ .width = .fixed(52), .font_size = .xs, .foreg
 const JOURNAL_INFO: ui.Style = .{ .font_size = .xs, .width = .grow(), .wrap = true, .foreground = .{ .color = style.TEXT_SECONDARY } };
 const JOURNAL_SUCCESS: ui.Style = JOURNAL_INFO.with(.{ .foreground = .{ .color = style.SUCCESS } });
 const JOURNAL_EXPECT: ui.Style = JOURNAL_INFO.with(.{ .foreground = .{ .color = style.SKY } });
-const JOURNAL_WARNING: ui.Style = JOURNAL_INFO.with(.{ .foreground = .accent });
+const JOURNAL_WARNING: ui.Style = JOURNAL_INFO.with(.{ .foreground = .{ .color = style.CAUTION } });
 const JOURNAL_FAILURE: ui.Style = JOURNAL_INFO.with(.{ .foreground = .{ .color = style.ERROR } });
 /// After a row's input, one width for every row, so the inputs line up.
 const ROW_NOTE: ui.Style = .{ .width = .fixed(130), .foreground = .{ .color = style.MUTED } };
@@ -402,11 +404,8 @@ fn travelTab(context: *ui.Frame, fleet: *Fleet, controls: *Controls, picked: []c
     try context.e(TextInput{ .key = .src(@src()), .buf = &controls.age_seconds, .style = &NUMBER_INPUT });
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "seconds ago", .style = &ROW_NOTE });
     try age_row.close(context);
-    // Anything but a whole number stamps the lines now.
-    const age = std.fmt.parseInt(u32, std.mem.trim(u8, controls.age_seconds.items, " "), 10) catch |err| switch (err) {
-        error.InvalidCharacter, error.Overflow => 0,
-    };
     if (try buttonRow(context, .src(@src()), &.{ "Gate jump", "Gamelog only", "Local only" }, picked.len > 0 and system.len > 0)) |choice| {
+        const age = stampAge(fleet, controls.age_seconds.items);
         const via: Via = switch (choice) {
             0 => .both,
             1 => .gamelog,
@@ -618,6 +617,17 @@ fn choose(context: *ui.Frame, key: ui.Key, labels: []const []const u8, selected:
         .parts = .{ .popup = &style.select_popup },
     });
     if (response.selected) |choice| selected.* = choice.value;
+}
+
+/// Read only when a move is sent, so a bad entry is reported once; anything but a whole number stamps the lines now.
+fn stampAge(fleet: *Fleet, typed: []const u8) u32 {
+    const trimmed = std.mem.trim(u8, typed, " ");
+    if (trimmed.len == 0) return 0;
+    return std.fmt.parseInt(u32, trimmed, 10) catch |err| blk: {
+        slog.warn("Failed to read '{s}' as seconds ago, so the lines are stamped now: {}", .{ trimmed, err });
+        fleet.note(.warning, "'{s}' isn't a whole number of seconds, so the lines are stamped now", .{trimmed});
+        break :blk 0;
+    };
 }
 
 /// "FleetInvite" reads "Fleet Invite"; made in `arena`.

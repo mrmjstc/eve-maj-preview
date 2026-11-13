@@ -183,8 +183,8 @@ pub const TrayIcon = struct {
         _ = win32.AppendMenuA(menu, win32.MF_STRING, win32.IDM_RESTORE_SAVED_POSITIONS, "Restore Saved Positions");
         _ = win32.AppendMenuA(menu, win32.MF_SEPARATOR, 0, null);
 
-        appendChecked(menu, app.notifications.panel.isVisible(config, scout.anyCharacterLoggedIn(app.scout.getWindows())), win32.IDM_TOGGLE_NOTIF_HISTORY, "Show Notification History");
-        _ = win32.AppendMenuA(menu, win32.MF_STRING, win32.IDM_CLEAR_NOTIF_HISTORY, "Clear Notification History");
+        appendChecked(menu, app.notifications.panel.isVisible(config, scout.anyCharacterLoggedIn(app.scout.getWindows())), win32.IDM_TOGGLE_NOTIF_HISTORY, "Show Alert History");
+        _ = win32.AppendMenuA(menu, win32.MF_STRING, win32.IDM_CLEAR_NOTIF_HISTORY, "Clear Alert History");
         appendChecked(menu, app.map_panel.isVisible(config, scout.anyCharacterLoggedIn(app.scout.getWindows())), win32.IDM_TOGGLE_MAP_PANEL, "Show Map");
         appendChecked(menu, app.isIntelPanelVisible(), win32.IDM_TOGGLE_INTEL_PANEL, "Show Intel Panel");
         appendChecked(menu, alert_effects.isMuted(), win32.IDM_TOGGLE_ALERT_MUTE, "Mute Audio Alerts");

@@ -1,66 +1,25 @@
-//! The window's drawn icons, as pixel bitmaps: Geist lacks most of these symbols, and knots draws lines and triangles without antialiasing.
+//! The window's drawn icons: the panels' glyph set, laid out as canvas pixels, since Geist lacks most of these symbols and knots draws lines without antialiasing.
 const std = @import("std");
 const ui = @import("ui");
+const panel_glyphs = @import("../../panels/glyphs.zig");
 
 const DrawCmd = ui.component.Canvas.DrawCmd;
+/// The same set the panels and map draw, so an icon looks alike everywhere.
+pub const Glyph = panel_glyphs.Glyph;
 
-/// A sidebar glyph's box: an 11px glyph in a 14px-wide cell.
+/// A sidebar glyph's box.
 pub const TAB_SIZE = 14;
 pub const ICON_SIZE = 16;
+/// The sizes the glyphs are built at; a box gets the largest that fits it.
+const SIZES = [_]usize{ 10, 12, 14, 16 };
 
-pub const Glyph = enum {
-    star,
-    gear,
-    thumbnail,
-    list,
-    pointer,
-    keyboard,
-    split_square,
-    envelope,
-    pickaxe,
-    tiles,
-    bell,
-    clock,
-    add,
-    copy,
-    delete,
-    reset,
-    import,
-    pencil,
-    refresh,
-    grip,
-    speech,
-    speaker,
-    check,
-    map,
-};
-
-/// The glyph centred in a `box`-sized square, moved onto whole device pixels by `snap` (see snapOffset).
+/// The glyph centred in a `box`-sized square, moved onto whole device pixels by `snap` (see snapOffset); `color`'s alpha is scaled by each pixel's coverage.
 pub fn commands(arena: std.mem.Allocator, glyph: Glyph, box: f32, snap: [2]f32, color: [4]f32) ![]const DrawCmd {
-    const rows = bitmap(glyph);
-    const width: f32 = @floatFromInt(rows[0].len);
-    const height: f32 = @floatFromInt(rows.len);
-    const origin = [2]f32{ @floor((box - width) / 2) + snap[0], @floor((box - height) / 2) + snap[1] };
-    var list: std.ArrayList(DrawCmd) = .empty;
-    for (rows, 0..) |row, y| {
-        var x: usize = 0;
-        while (x < row.len) {
-            if (row[x] != '#') {
-                x += 1;
-                continue;
-            }
-            const start = x;
-            while (x < row.len and row[x] == '#') x += 1;
-            try list.append(arena, .{ .fill_rect = .{
-                .x = origin[0] + @as(f32, @floatFromInt(start)),
-                .y = origin[1] + @as(f32, @floatFromInt(y)),
-                .w = @floatFromInt(x - start),
-                .h = 1,
-                .color = color,
-            } });
-        }
+    inline for (0..SIZES.len) |position| {
+        const size = SIZES[SIZES.len - 1 - position];
+        if (box >= @as(f32, @floatFromInt(size)) or position == SIZES.len - 1) return maskCommands(arena, panel_glyphs.mask(glyph, size), size, box, snap, color);
     }
-    return list.items;
+    unreachable;
 }
 
 /// The shift that lands a canvas on whole device pixels, from last frame's layout.
@@ -73,290 +32,22 @@ pub fn snapOffset(context: *ui.Frame, key: ui.Key) ![2]f32 {
     return .{ @round(x * scale) / scale - x, @round(y * scale) / scale - y };
 }
 
-/// The glyph's rows, `#` for a lit pixel.
-fn bitmap(glyph: Glyph) []const []const u8 {
-    return switch (glyph) {
-        .map => &.{
-            "..##.......",
-            ".#..#......",
-            ".#..#....##",
-            "..##....#..",
-            "...#...#...",
-            "....#.#....",
-            ".....#.....",
-            "....#.#....",
-            "...#...##..",
-            "..#...#..#.",
-            ".......##..",
-        },
-        .star => &.{
-            ".....#.....",
-            ".....#.....",
-            "....###....",
-            "....###....",
-            "###########",
-            ".#########.",
-            "..#######..",
-            "...#####...",
-            "..###.###..",
-            "..##...##..",
-            ".#.......#.",
-        },
-        .gear => &.{
-            "....###....",
-            ".##.###.##.",
-            ".#########.",
-            "..##...##..",
-            "###.....###",
-            "###.....###",
-            "###.....###",
-            "..##...##..",
-            ".#########.",
-            ".##.###.##.",
-            "....###....",
-        },
-        .thumbnail => &.{
-            "...........",
-            "...........",
-            "###########",
-            "#.........#",
-            "#.........#",
-            "#.........#",
-            "#.........#",
-            "#.........#",
-            "###########",
-        },
-        .list => &.{
-            "...........",
-            "...........",
-            "###########",
-            "...........",
-            "...........",
-            "###########",
-            "...........",
-            "...........",
-            "###########",
-        },
-        .pointer => &.{
-            "#..........",
-            "##.........",
-            "###........",
-            "####.......",
-            "#####......",
-            "######.....",
-            "#######....",
-            "####.......",
-            "##.##......",
-            "#...##.....",
-            "....##.....",
-        },
-        .keyboard => &.{
-            "...........",
-            "###########",
-            "#.........#",
-            "#.#.#.#.#.#",
-            "#.........#",
-            "#.#.#.#.#.#",
-            "#.........#",
-            "#..#####..#",
-            "#.........#",
-            "###########",
-        },
-        .split_square => &.{
-            "###########",
-            "#....#....#",
-            "#....#....#",
-            "#....#....#",
-            "#....#....#",
-            "#....#....#",
-            "#....#....#",
-            "#....#....#",
-            "#....#....#",
-            "#....#....#",
-            "###########",
-        },
-        .envelope => &.{
-            "...........",
-            "###########",
-            "##.......##",
-            "#.#.....#.#",
-            "#..#...#..#",
-            "#...#.#...#",
-            "#....#....#",
-            "#.........#",
-            "#.........#",
-            "###########",
-        },
-        .pickaxe => &.{
-            "..#####....",
-            "......##...",
-            ".......##..",
-            "......#.##.",
-            ".....#...#.",
-            "....#....##",
-            "...#......#",
-            "..#........",
-            ".#.........",
-            "#..........",
-        },
-        .tiles => &.{
-            "#####.#####",
-            "#...#.#...#",
-            "#...#.#...#",
-            "#...#.#####",
-            "#####......",
-            "......#####",
-            "#####.#...#",
-            "#...#.#...#",
-            "#...#.#...#",
-            "#####.#####",
-        },
-        .bell => &.{
-            ".....#.....",
-            "...#####...",
-            "..#######..",
-            "..#######..",
-            "..#######..",
-            "..#######..",
-            ".#########.",
-            "###########",
-            "...........",
-            "....###....",
-        },
-        .clock => &.{
-            "...#####...",
-            ".##.....##.",
-            ".#...#...#.",
-            "#....#....#",
-            "#....#....#",
-            "#....###..#",
-            "#.........#",
-            ".#.......#.",
-            ".##.....##.",
-            "...#####...",
-        },
-        .add => &.{
-            "....##....",
-            "....##....",
-            "....##....",
-            "....##....",
-            "##########",
-            "##########",
-            "....##....",
-            "....##....",
-            "....##....",
-            "....##....",
-        },
-        .copy => &.{
-            "...#######",
-            "...#.....#",
-            "...#.....#",
-            "#######..#",
-            "#.....#..#",
-            "#.....#..#",
-            "#.....####",
-            "#.....#...",
-            "#.....#...",
-            "#######...",
-        },
-        .delete => &.{
-            "...####...",
-            "##########",
-            ".#......#.",
-            ".#.#..#.#.",
-            ".#.#..#.#.",
-            ".#.#..#.#.",
-            ".#.#..#.#.",
-            ".#.#..#.#.",
-            ".#......#.",
-            "..######..",
-        },
-        .reset => &.{
-            "#...####..",
-            "##.#....#.",
-            "###......#",
-            "####.....#",
-            ".........#",
-            "#........#",
-            "#........#",
-            ".#......#.",
-            "..#....#..",
-            "...####...",
-        },
-        .import => &.{
-            "....##....",
-            "....##....",
-            "....##....",
-            "....##....",
-            ".########.",
-            "..######..",
-            "...####...",
-            "....##....",
-            "..........",
-            "##########",
-        },
-        .pencil => &.{
-            "........##.",
-            ".......#..#",
-            "......#..#.",
-            ".....#..#..",
-            "....#..#...",
-            "...#..#....",
-            "..#..#.....",
-            ".#..#......",
-            ".###.......",
-            ".##........",
-        },
-        .refresh => &.{
-            "...####.#..",
-            ".##....###.",
-            ".#....####.",
-            "#..........",
-            "#.........#",
-            "#.........#",
-            "#.........#",
-            ".#.......#.",
-            "..##...##..",
-            "....###....",
-        },
-        .grip => &.{
-            "##.##",
-            "##.##",
-            ".....",
-            "##.##",
-            "##.##",
-            ".....",
-            "##.##",
-            "##.##",
-        },
-        .speech => &.{
-            ".#######.",
-            "#.......#",
-            "#.#.#.#.#",
-            "#.......#",
-            ".#######.",
-            "..##.....",
-            "..#......",
-        },
-        .speaker => &.{
-            "....#....",
-            "...##..#.",
-            "#####...#",
-            "#####.#.#",
-            "#####.#.#",
-            "#####.#.#",
-            "#####...#",
-            "...##..#.",
-            "....#....",
-        },
-        .check => &.{
-            "........#",
-            ".......##",
-            "#.....##.",
-            "##...##..",
-            ".##.##...",
-            "..###....",
-            "...#.....",
-        },
-    };
+/// One square per covered pixel of the `size`-square `coverage`, centred in `box`.
+fn maskCommands(arena: std.mem.Allocator, coverage: []const u8, size: usize, box: f32, snap: [2]f32, color: [4]f32) ![]const DrawCmd {
+    const side: f32 = @floatFromInt(size);
+    const origin = [2]f32{ @floor((box - side) / 2) + snap[0], @floor((box - side) / 2) + snap[1] };
+    var list: std.ArrayList(DrawCmd) = .empty;
+    for (coverage, 0..) |pixel, index| {
+        if (pixel == 0) continue;
+        var pixel_color = color;
+        pixel_color[3] *= @as(f32, @floatFromInt(pixel)) / 255;
+        try list.append(arena, .{ .fill_rect = .{
+            .x = origin[0] + @as(f32, @floatFromInt(index % size)),
+            .y = origin[1] + @as(f32, @floatFromInt(index / size)),
+            .w = 1,
+            .h = 1,
+            .color = pixel_color,
+        } });
+    }
+    return list.items;
 }

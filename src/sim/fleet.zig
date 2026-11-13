@@ -338,7 +338,7 @@ pub const Fleet = struct {
         self.setSystem(client, destination);
     }
 
-    pub fn writeActivity(self: *Fleet, index: usize, activity: Activity) void {
+    fn writeActivity(self: *Fleet, index: usize, activity: Activity) void {
         const client = &self.clients.items[index];
         if (!self.isWritable(client)) return;
         var text: std.Io.Writer.Allocating = .init(self.allocator);

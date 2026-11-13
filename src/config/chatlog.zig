@@ -26,7 +26,7 @@ pub const ChatlogConfig = struct {
         ranges_mod.clamp(ChatlogConfig, self);
     }
 
-    /// Run once a profile is loaded.
+    /// From GlobalConfig.finishLoading.
     pub fn warnUnreachableDirs(self: *const ChatlogConfig, io: std.Io) void {
         if (!self.enabled) return;
         if (self.chatlogDir.len == 0) {

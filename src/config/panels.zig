@@ -1,6 +1,7 @@
 //! Client List, History Panel, Map Panel and Intel Panel settings, each its own profile section.
 const std = @import("std");
 const types = @import("types.zig");
+const activity = @import("activity.zig");
 const wire = @import("wire.zig");
 const ranges_mod = @import("ranges.zig");
 
@@ -11,37 +12,45 @@ const HIDE_DEBOUNCE_MS = .{ 0, 5000 };
 /// The client list's position is display.startX and startY.
 pub const ListViewConfig = struct {
     order: types.ListViewOrder = .ConfiguredCharacters,
+    /// Folded to its header by the header's chevron.
+    collapsed: bool = false,
+    /// Rows under a heading per system, from the panel's menu.
+    groupBySystem: bool = false,
+    /// Its header no longer drags it.
+    lockPosition: bool = false,
     rememberPosition: bool = true,
     alwaysOnTop: bool = true,
     opacity: u8 = 255,
     columns: u32 = 1,
     columnWidth: i32 = 230,
-    fontName: []const u8 = "Segoe UI",
-    fontSize: i32 = 13,
+    fontName: []const u8 = types.DEFAULT_FONT,
+    fontSize: i32 = types.DEFAULT_FONT_SIZE,
     fontWeight: types.FontWeight = .Regular,
     indicatorStyle: types.ListIndicatorStyle = .Dot,
     showSystemName: bool = true,
+    /// Beside each system's name, in EVE's security colours.
+    showSystemSecurity: bool = false,
     systemNameColor: u32 = 0xFF8B8F96,
     useUniqueSystemColors: bool = false,
     useUniqueCharacterNameColors: bool = false,
-    /// The active client's dot, row tint and name.
-    activeColor: u32 = 0xFFD9A441,
+    /// The active client's dot, row tint and name; null follows accentColor, see Config.listActiveColor.
+    activeColor: ?u32 = null,
     useUniqueActiveColors: bool = false,
     showNotifications: bool = true,
     /// A notification type without a text colour of its own uses this.
     notificationColor: u32 = 0xFFFFFFFF,
     showIncomingDps: bool = true,
     showIncomingPrefix: bool = true,
-    incomingDpsColor: u32 = 0xFFFF4444,
+    incomingDpsColor: u32 = activity.INCOMING_COLOR,
     showOutgoingDps: bool = true,
     showOutgoingPrefix: bool = true,
-    outgoingDpsColor: u32 = 0xFF44FF44,
+    outgoingDpsColor: u32 = activity.OUTGOING_COLOR,
     showMiningRate: bool = true,
     showMiningPrefix: bool = true,
-    miningRateColor: u32 = 0xFF44AAFF,
+    miningRateColor: u32 = activity.MINING_COLOR,
     showBountyRate: bool = true,
     showBountyPrefix: bool = true,
-    bountyRateColor: u32 = 0xFFFFD700,
+    bountyRateColor: u32 = activity.BOUNTY_COLOR,
     hideWhenNoEveFocus: bool = false,
     hideDebounceMs: u32 = 500,
 
@@ -67,6 +76,10 @@ pub const HistoryPanelConfig = struct {
     y: i32 = 250,
     width: i32 = 300,
     height: i32 = 400,
+    /// Folded to its header by the header's chevron.
+    collapsed: bool = false,
+    /// Its header no longer drags it.
+    lockPosition: bool = false,
     rememberPosition: bool = true,
     alwaysOnTop: bool = true,
     hideWhenNoCharacters: bool = true,
@@ -74,8 +87,8 @@ pub const HistoryPanelConfig = struct {
     hideDebounceMs: u32 = 500,
     opacity: u8 = 255,
     /// Also the detached Intel Panel's, so the panels match.
-    fontName: []const u8 = "Segoe UI",
-    fontSize: i32 = 13,
+    fontName: []const u8 = types.DEFAULT_FONT,
+    fontSize: i32 = types.DEFAULT_FONT_SIZE,
     fontWeight: types.FontWeight = .Regular,
     maxRows: i32 = 15,
     showTimestamp: bool = false,
@@ -118,14 +131,16 @@ pub const MapPanelConfig = struct {
     height: i32 = 600,
     /// Keeps the map's window above others, game clients included.
     alwaysOnTop: bool = true,
+    /// Its title bar no longer drags it.
+    lockPosition: bool = false,
     rememberPosition: bool = true,
     hideWhenNoCharacters: bool = false,
     hideWhenNoEveFocus: bool = false,
     hideDebounceMs: u32 = 500,
     opacity: u8 = 255,
     /// For the names on the map; its cards, buttons and tooltips use the configuration window's font.
-    fontName: []const u8 = "Segoe UI",
-    fontSize: i32 = 12,
+    fontName: []const u8 = types.DEFAULT_FONT,
+    fontSize: i32 = types.DEFAULT_FONT_SIZE,
     fontWeight: types.FontWeight = .Regular,
     /// The first region shown, by CCP's ID, which outlasts a map update; The Forge by default.
     regionId: u32 = 10000002,
@@ -219,6 +234,10 @@ pub const IntelPanelConfig = struct {
     width: i32 = 340,
     /// While detached.
     height: i32 = 400,
+    /// Folded to its header by the header's chevron, while detached.
+    collapsed: bool = false,
+    /// Its header no longer drags it, while detached.
+    lockPosition: bool = false,
     rememberPosition: bool = true,
     /// While detached; inside the map it follows mapPanel.alwaysOnTop.
     alwaysOnTop: bool = true,
@@ -228,6 +247,10 @@ pub const IntelPanelConfig = struct {
     opacity: u8 = 255,
     /// Draws each row's system in its name colour, whatever the chat rule's color_system_name says.
     colorSystemNames: bool = true,
+    /// Set by the range filter over the rows.
+    range: types.IntelRange = .All,
+    /// Silences intel alerts' sounds and speech, from the header's speaker.
+    muteSounds: bool = false,
 
     pub const ranges = .{
         .x = SCREEN_X,

@@ -77,7 +77,7 @@ pub const CHIPS = [_]Chip{
         } ++ STYLE_ROWS),
     },
     .{
-        .label = "Notification",
+        .label = "Alert",
         .sample = "Fleet Invite",
         .section = .notifications,
         .fields = .snakeCase("", true),
@@ -85,7 +85,7 @@ pub const CHIPS = [_]Chip{
         .needs_show_text = true,
         .chatlog_notice = ALERTS_NEED_LOGS,
         .popover = &([_]PopoverField{
-            .{ .toggle = .{ .field = "enabled", .label = "Show Notifications", .hint = "Shows alert text, like Fleet Invite, on the thumbnail." } },
+            .{ .toggle = .{ .field = "enabled", .label = "Show Alerts", .hint = "Shows alert text, like Fleet Invite, on the thumbnail." } },
         } ++ STYLE_ROWS),
     },
     .{
@@ -139,6 +139,8 @@ pub const CHIPS = [_]Chip{
         .popover = &([_]PopoverField{
             .{ .toggle = .{ .field = "enabled", .label = "Show Mining Rate", .hint = "How much the character mines per minute." } },
             .{ .toggle = .{ .field = "show_prefix", .label = "Show M: Prefix", .hint = "Puts M: before the rate so it's easy to tell apart." } },
+            RATE_WINDOW,
+            UPDATE_INTERVAL,
         } ++ STYLE_ROWS),
     },
     .{
@@ -294,7 +296,7 @@ pub fn showSettings(context: *ui.Frame, comptime chip: Chip, comptime index: usi
     const close_clicked = try widgets.popoverTitle(context, .str("knots.chip.title:" ++ chip.label), chip.label);
 
     if (chip.chatlog_notice) |notice| {
-        if (!session.profile().ptr.chatlog.enabled) try widgets.notice(context, .str("knots.chip.chatlog:" ++ chip.label), notice);
+        if (!session.global().ptr.chatlog.enabled) try widgets.notice(context, .str("knots.chip.chatlog:" ++ chip.label), notice);
     }
 
     const font_before = ref.get(fields.font_name);

@@ -42,11 +42,13 @@ pub const MapPan = struct {
     has_moved: bool = false,
 };
 
-/// A system found through the search, rippled once so it's easy to spot.
+/// A system picked from the search or a card's row, rippled once so it's easy to spot.
 pub const Ping = struct {
     system: SystemIndex,
     /// In ms since boot.
     started_ms: u64,
+    /// Checked once against the cards, so panning by hand during the ripple isn't undone.
+    is_revealed: bool = false,
 };
 
 /// Labels in the label font, in pixels, by place in the layout's `nodes` and `exits`.
@@ -98,7 +100,6 @@ pub const MapState = struct {
     intel_row_count: usize = 0,
     /// What the Kills tab lists, newest first, copied so a click finds the kill it showed.
     kill_rows: [look.MAX_INTEL_ROWS]zkill.Kill = undefined,
-    kill_row_count: usize = 0,
     /// The side card's tab while both can show.
     card_tab: look.CardTab = .intel,
     /// Where the last render drew the Thera and Turnur card; null while it isn't shown.

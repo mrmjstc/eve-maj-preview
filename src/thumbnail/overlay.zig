@@ -295,7 +295,7 @@ pub fn createRenderSettings(config: *const config_mod.Config, thumbnail: *const 
         .is_shown = thumbnail.isShown(),
         .is_focused = thumbnail.isFocused(active_source_hwnd),
         .is_excluded_from_cycle = thumbnail.is_excluded_from_cycle,
-        .is_hidden_for_character = thumbnail.cached_hide_thumbnail,
+        .is_hidden_for_character = thumbnail.cached_is_thumbnail_hidden,
         .display_name = thumbnail.cached_display_name,
         .system_name = thumbnail.system_name,
         .group_badge_label = thumbnail.cached_group_badge_label,

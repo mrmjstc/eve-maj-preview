@@ -19,7 +19,10 @@ pub const Text = draft_mod.Text;
 const UTF8_BOM = "\xEF\xBB\xBF";
 
 pub const Built = struct {
+    /// On the profile.
     ops: []const patch.Op,
+    /// On the global settings: Log Monitoring, which every profile shares.
+    global_ops: []const patch.Op,
     notes: []const Text,
     /// See Draft.skipped.
     skipped: []const []const u8,
@@ -82,7 +85,13 @@ pub fn build(arena: std.mem.Allocator, text: []const u8, source_profile: ?[]cons
     }
     // Imported positions come from a different setup, so ghost outlines of them would only clutter drags.
     if (chosen.len > 0) try draft.setBool("snapping.showGhostPositionBorders", false);
-    return .{ .ops = try draft_mod.toOps(arena, &draft, doc), .notes = draft.notes.items, .skipped = draft.skipped.items };
+    const chatlog = draft.root.fetchOrderedRemove("chatlog");
+    return .{
+        .ops = try draft_mod.toOps(arena, &draft, doc),
+        .global_ops = if (chatlog) |entry| try draft_mod.sectionOps(arena, config.GlobalConfig, entry.key, entry.value) else &.{},
+        .notes = draft.notes.items,
+        .skipped = draft.skipped.items,
+    };
 }
 
 fn detect(arena: std.mem.Allocator, raw_text: []const u8) !?Source {

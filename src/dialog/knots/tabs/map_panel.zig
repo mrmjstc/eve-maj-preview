@@ -1,4 +1,4 @@
-//! The configuration window's Map tab: its size, look, when it shows, its live figures, Eve Stars and the Intel Panel; main thread only.
+//! The configuration window's Map & Intel tab: its size, look, when it shows, its live figures, Eve Stars and the Intel Panel; main thread only.
 const ui = @import("ui");
 const config = @import("../../../config.zig");
 const session = @import("../session.zig");
@@ -21,7 +21,7 @@ pub fn show(context: *ui.Frame) !void {
 
     const is_shown = ref.get("show");
     try layout(context, ref, is_shown);
-    try panel_settings.visibility(context, ref, .map, is_shown);
+    try panel_settings.visibility(context, ref, .map, .{ .is_shown = is_shown });
     try behavior(context, ref, is_shown);
     try eveStars(context, ref, is_shown);
     try intelPanel(context, session.profile().child("intelPanel"));
@@ -32,6 +32,7 @@ fn eveStars(context: *ui.Frame, ref: MapRef, is_shown: bool) !void {
     const global = session.global();
     const enable = try widgets.openGroup(context, .src(@src()), is_shown);
     try bind.toggle(context, global, "evestarsEnabled", "Enable Eve Stars");
+    try widgets.hintText(context, .src(@src()), "Applies to every profile.");
     try enable.close(context);
     const options = try widgets.openGroup(context, .src(@src()), is_shown and global.get("evestarsEnabled"));
     try bind.text(context, global, "evestarsToken", "API Token", "evestars_...");
@@ -52,8 +53,6 @@ fn eveStars(context: *ui.Frame, ref: MapRef, is_shown: bool) !void {
     try bind.toggle(context, ref, "routeAvoidZone5", "Avoid Zone 5 (over 20 ly)");
     try widgets.hintText(context, .src(@src()), "Stops routes taking gates that land this far from their alliance's capital.");
     try zones.close(context);
-    try bind.toggle(context, ref, "showAnsiblex", "Show Ansiblex Gates");
-    try widgets.hintText(context, .src(@src()), "Draws the gates your Eve Stars characters can jump, as dashed arcs. A read-only token is enough.");
     try avoidedSystems(context);
     try options.close(context);
     try section.close(context);
@@ -85,12 +84,7 @@ fn intelPanel(context: *ui.Frame, ref: IntelRef) !void {
     const size = try widgets.openBinding(context, .src(@src()), "Size");
     try bind.sizeBoxes(context, ref, "width", "height");
     try size.close(context);
-    try bind.slider(context, ref, "opacity", "Opacity", .{ .display = .percent_of_255 });
-    try widgets.hintText(context, .src(@src()), "Lower lets you see through the panel.");
-    try bind.toggle(context, ref, "rememberPosition", "Remember Position");
-    try widgets.hintText(context, .src(@src()), "Opens the panel where you last left it.");
-    try panel_settings.alwaysOnTop(context, ref, .intel);
-    try panel_settings.autoHide(context, ref, .intel);
+    try panel_settings.visibilityRows(context, ref, .intel, true);
     try detached.close(context);
     try options.close(context);
     try section.close(context);
@@ -130,8 +124,13 @@ fn behavior(context: *ui.Frame, ref: MapRef, is_shown: bool) !void {
     try bind.toggle(context, ref, "showWormholes", "Show Thera and Turnur");
     try widgets.hintText(context, .src(@src()), "Marks each system with a wormhole to Thera or Turnur, from EVE-Scout's player reports. Hover the mark for its signatures.");
     try live_stats.close(context);
+    // Beside the other layers, though only Eve Stars knows the gates.
+    const ansiblex = try widgets.openGroup(context, .src(@src()), session.global().get("evestarsEnabled"));
+    try bind.toggle(context, ref, "showAnsiblex", "Show Ansiblex Gates");
+    try widgets.hintText(context, .src(@src()), "Draws the gates your Eve Stars characters can jump, as dashed arcs. A read-only token is enough.");
+    try ansiblex.close(context);
     try bind.toggle(context, ref, "showKills", "Show zKillboard Kills");
-    try widgets.hintText(context, .src(@src()), "Follows zKillboard's live feed while the map shows: each kill ripples out and leaves a fading mark, and the Intel card's Kills tab lists those on the map.");
+    try widgets.hintText(context, .src(@src()), "Follows zKillboard's live feed while the map shows: each kill ripples out and leaves a fading mark, and the Intel card's zKillboard tab lists those on the map.");
     const kills = try widgets.openGroup(context, .src(@src()), ref.get("showKills"));
     try bind.number(context, ref, "killLifetimeMin", "Kill Lifetime", .{ .unit = "min" });
     try widgets.hintText(context, .src(@src()), "How long a kill stays on the map and in the list.");

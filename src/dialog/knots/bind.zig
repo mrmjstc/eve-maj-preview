@@ -1,6 +1,7 @@
 //! Form controls bound to one setting each, whose `ref` is always a session.Ref: they read it every frame and write it through `Ref.set`; main thread only.
 const std = @import("std");
 const ui = @import("ui");
+const fonts = @import("../../platform/fonts.zig");
 const style = @import("style.zig");
 const widgets = @import("widgets.zig");
 const color_convert = @import("color_convert.zig");
@@ -14,10 +15,30 @@ const ColorPicker = ui.component.ColorPicker;
 const SelectInput = ui.component.SelectInput;
 const slog = log.Scoped("dialog_knots");
 
-/// The font dropdowns offer these; a font set by hand in the profile is offered too.
+/// The font dropdowns offer these: the bundled faces, then distinct ones every Windows 10 and 11 ships; a font set by hand in the profile is offered too.
 const FONT_OPTIONS = [_][]const u8{
-    "Cascadia Code", "Cascadia Mono", "Consolas", "Courier New", "Lucida Console", "Monaco",          "Menlo",  "Arial",         "Verdana",
-    "Tahoma",        "Trebuchet MS",  "Segoe UI", "Calibri",     "Georgia",        "Times New Roman", "Impact", "Comic Sans MS",
+    fonts.UI_FACE,
+    "Cascadia Code",
+    "Cascadia Mono",
+    "Segoe UI",
+    "Arial",
+    "Verdana",
+    "Tahoma",
+    "Trebuchet MS",
+    "Calibri",
+    "Candara",
+    "Bahnschrift",
+    "Franklin Gothic Medium",
+    "Georgia",
+    "Times New Roman",
+    "Cambria",
+    "Constantia",
+    "Palatino Linotype",
+    "Consolas",
+    "Courier New",
+    "Lucida Console",
+    "Impact",
+    "Comic Sans MS",
 };
 /// sizeBoxes keys its × as the width field's key indexed by this, clear of the boxes' own parts.
 const SIZE_TIMES_INDEX = 7;
@@ -133,11 +154,6 @@ pub fn number(context: *ui.Frame, ref: anytype, comptime field: []const u8, labe
         try numberBox(context, ref, field, options);
     }
     try row.close(context);
-}
-
-/// Just the box, for a row holding several (e.g. width × height); clearing it unsets an optional setting.
-pub fn numberBox(context: *ui.Frame, ref: anytype, comptime field: []const u8, options: NumberOptions) !void {
-    try styledNumberBox(context, ref, field, options, &style.number_input);
 }
 
 /// Just the box, with `unit` inside it, e.g. a border's width in "px"; a word unit like "rows" is translated.
@@ -289,7 +305,14 @@ pub fn colorBox(context: *ui.Frame, ref: anytype, comptime field: []const u8) !v
 
 /// An optional colour setting, shown as `fallback` while unset; resetting it clears it.
 pub fn optionalColor(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8, fallback: u32) !void {
-    const change = try widgets.optionalColor(context, fieldKey(ref, field), label, ref.get(field), fallback) orelse return;
+    const row = try widgets.openBinding(context, fieldKey(ref, field), label);
+    try optionalColorBox(context, ref, field, fallback);
+    try row.close(context);
+}
+
+/// Just optionalColor's picker, for a row with more in it.
+pub fn optionalColorBox(context: *ui.Frame, ref: anytype, comptime field: []const u8, fallback: u32) !void {
+    const change = try widgets.optionalColorBox(context, fieldKey(ref, field), ref.get(field), fallback) orelse return;
     ref.set(field, switch (change) {
         .cleared => null,
         .set => |argb| argb,
@@ -333,38 +356,6 @@ pub fn percentSlider(context: *ui.Frame, key: ui.Key, value: u8, min: f32, max: 
     return percentSliderSized(context, key, value, min, max, null);
 }
 
-/// FONT_OPTIONS, plus the current font if set by hand; size and weight sit beside it.
-pub fn fontBox(context: *ui.Frame, ref: anytype, comptime field: []const u8) !void {
-    const current: []const u8 = ref.get(field);
-    const arena = context.arena();
-    const is_listed = for (FONT_OPTIONS) |name| {
-        if (std.mem.eql(u8, name, current)) break true;
-    } else false;
-    const names: []const []const u8 = if (is_listed) &FONT_OPTIONS else try std.mem.concat(arena, []const u8, &.{ &.{current}, &FONT_OPTIONS });
-    const values = try arena.alloc(u32, names.len);
-    var selected_index: u32 = 0;
-    for (names, values, 0..) |name, *value, index| {
-        value.* = @intCast(index);
-        if (std.mem.eql(u8, name, current)) selected_index = @intCast(index);
-    }
-    const box_key = fieldKey(ref, field).indexed(2);
-    claimRowClickForSelect(context, box_key);
-    if (context.ui().state.get(.select_input, box_key.hash())) |state| {
-        if (!state.open) state.selected = selected_index;
-    }
-    const response = try context.interact(SelectInput(u32){
-        .key = box_key,
-        .labels = names,
-        .values = values,
-        .initial_selected = selected_index,
-        .style = try widgets.fittedSelect(context, names),
-        .parts = .{ .popup = &style.select_popup },
-    });
-    if (response.selected) |selected| {
-        if (selected.value != selected_index) ref.set(field, names[selected.value]);
-    }
-}
-
 /// An enum setting, offered by its tags spelled as words ("TopLeft" reads "Top Left").
 pub fn choice(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8) !void {
     const row = try widgets.openBinding(context, fieldKey(ref, field), label);
@@ -404,6 +395,43 @@ pub fn rangeOf(comptime T: type, comptime field: []const u8) ?[2]f32 {
     if (!@hasDecl(T, "ranges") or !@hasField(@TypeOf(T.ranges), field)) return null;
     const bounds = @field(T.ranges, field);
     return .{ @as(f32, bounds[0]), @as(f32, bounds[1]) };
+}
+
+/// Just the box, for a row holding several (e.g. width × height); clearing it unsets an optional setting.
+fn numberBox(context: *ui.Frame, ref: anytype, comptime field: []const u8, options: NumberOptions) !void {
+    try styledNumberBox(context, ref, field, options, &style.number_input);
+}
+
+/// FONT_OPTIONS, plus the current font if set by hand; size and weight sit beside it.
+fn fontBox(context: *ui.Frame, ref: anytype, comptime field: []const u8) !void {
+    const current: []const u8 = ref.get(field);
+    const arena = context.arena();
+    const is_listed = for (FONT_OPTIONS) |name| {
+        if (std.mem.eql(u8, name, current)) break true;
+    } else false;
+    const names: []const []const u8 = if (is_listed) &FONT_OPTIONS else try std.mem.concat(arena, []const u8, &.{ &.{current}, &FONT_OPTIONS });
+    const values = try arena.alloc(u32, names.len);
+    var selected_index: u32 = 0;
+    for (names, values, 0..) |name, *value, index| {
+        value.* = @intCast(index);
+        if (std.mem.eql(u8, name, current)) selected_index = @intCast(index);
+    }
+    const box_key = fieldKey(ref, field).indexed(2);
+    claimRowClickForSelect(context, box_key);
+    if (context.ui().state.get(.select_input, box_key.hash())) |state| {
+        if (!state.open) state.selected = selected_index;
+    }
+    const response = try context.interact(SelectInput(u32){
+        .key = box_key,
+        .labels = names,
+        .values = values,
+        .initial_selected = selected_index,
+        .style = try widgets.fittedSelect(context, names),
+        .parts = .{ .popup = &style.select_popup },
+    });
+    if (response.selected) |selected| {
+        if (selected.value != selected_index) ref.set(field, names[selected.value]);
+    }
 }
 
 /// For an optional number that isn't one setting, e.g. half a size override; empty is unset.

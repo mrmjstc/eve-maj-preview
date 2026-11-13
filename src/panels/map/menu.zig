@@ -32,7 +32,7 @@ const ROWS = [_]Row{ .heading, .set_destination, .open_site, .jump_range, .avoid
 /// With Eve Stars off or no token, nothing can be sent.
 const ROWS_WITHOUT_EVE_STARS = [_]Row{ .heading, .open_site, .jump_range, .copy_name };
 
-pub const Row = enum { heading, set_destination, open_site, jump_range, avoid_system, copy_name };
+const Row = enum { heading, set_destination, open_site, jump_range, avoid_system, copy_name };
 
 /// A menu row's submenu.
 pub const Branch = enum { destination, sites, jump_range };
@@ -200,7 +200,7 @@ pub const RegionMenu = struct {
     anchor: win32.POINT,
 
     /// The heading, then a row a site.
-    pub const ROW_COUNT = 1 + system_links.SITES.len;
+    const ROW_COUNT = 1 + system_links.SITES.len;
 
     /// Null for the heading, or a row past the list.
     pub fn siteAt(_: *const RegionMenu, row_index: usize) ?system_links.Site {
@@ -241,7 +241,7 @@ pub const LayersMenu = struct {
     /// `shown` is by LAYER_ORDER; `buffer` holds what's returned.
     pub fn fill(_: *const LayersMenu, shown: [look.LAYER_ORDER.len]bool, buffer: *[MAX_ROWS]PopupRow) []const PopupRow {
         for (buffer[0..look.LAYER_ORDER.len], look.LAYER_ORDER, shown) |*row, layer, is_shown| {
-            row.* = .{ .text = .print("{s}", .{text.layerLabel(layer)}), .is_checked = is_shown, .color = if (is_shown) list_look.NAME else list_look.MUTED };
+            row.* = .{ .text = .print("{s}", .{text.layerLabel(layer)}), .is_checked = is_shown };
         }
         return buffer[0..look.LAYER_ORDER.len];
     }

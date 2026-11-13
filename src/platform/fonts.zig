@@ -39,6 +39,14 @@ pub const FontWeight = enum {
     pub fn isItalic(self: FontWeight) bool {
         return self == .Italic or self == .BoldItalic;
     }
+
+    /// The same, in bold.
+    pub fn bolded(self: FontWeight) FontWeight {
+        return switch (self) {
+            .Regular, .Bold => .Bold,
+            .Italic, .BoldItalic => .BoldItalic,
+        };
+    }
 };
 
 /// `height_px` is the character height, leaving out internal leading, as a font setting's size means; `weight` is a Win32 FW_ value; smoothed in greyscale like the dialog's text, as ClearType fringes light text on dark or see-through pixels.

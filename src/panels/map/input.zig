@@ -336,30 +336,24 @@ fn pressToggle(window: *MapPanelWindow, toggle: look.Toggle) void {
 fn openIntelRow(window: *MapPanelWindow, row_index: usize) void {
     const intel_history = window.intel_history orelse return;
     const entry = intel_history.entryFromNewest(window.state.intel_rows[row_index].first_index) orelse return;
-    if (entry.system) |system| window.selectSystem(system);
-}
-
-/// Opens `system`'s region unless it's shown, selects it and ripples it once.
-fn pingSystem(window: *MapPanelWindow, system: SystemIndex) void {
-    window.selectSystem(system);
-    window.state.ping = .{ .system = system, .started_ms = win32.Ticks.now().ms };
+    if (entry.system) |system| window.pingSystem(system);
 }
 
 fn openWormholeRow(window: *MapPanelWindow, row_index: usize) void {
     const entry = window.state.wormholeEntryAt(row_index) orelse return;
-    pingSystem(window, entry.system);
+    window.pingSystem(entry.system);
 }
 
 fn openTimerRow(window: *MapPanelWindow, row_index: usize) void {
     const entry = window.state.timerEntryAt(row_index) orelse return;
-    pingSystem(window, entry.system);
+    window.pingSystem(entry.system);
 }
 
 /// Pings the kill's system, or with Ctrl opens the kill on zKillboard.
 fn openKillRow(window: *MapPanelWindow, context: Context, row_index: usize) void {
     const kill = window.state.kill_rows[row_index];
     if (!win32.isCtrlPressed()) {
-        pingSystem(window, kill.system);
+        window.pingSystem(kill.system);
         return;
     }
     const url: evestars.Text = .print(zkill.KILL_URL_FORMAT, .{kill.id});
@@ -569,7 +563,7 @@ fn pickHit(window: *MapPanelWindow, context: Context, index: usize) void {
     const hit = open.hitAt(index) orelse return;
     closePopup(window, context);
     switch (hit) {
-        .system => |system| pingSystem(window, system),
+        .system => |system| window.pingSystem(system),
         .region => |region| window.chooseRegion(region),
     }
 }

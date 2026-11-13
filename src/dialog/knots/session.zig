@@ -318,6 +318,16 @@ pub fn applyOps(arena: std.mem.Allocator, ops: []const patch.Op) !void {
     for (ops) |op| _ = try patch.apply(config.Config, target, op, patch_context);
 }
 
+/// Patch ops on the global settings' draft, e.g. an import's Log Monitoring.
+pub fn applyGlobalOps(arena: std.mem.Allocator, ops: []const patch.Op) !void {
+    if (ops.len == 0) return;
+    const target = global().ptr;
+    const patch_context: patch.Context = .{ .arena = arena, .allocator = target.allocator };
+    // Even after a failed op, since those before it were applied.
+    defer edited(.global, .none, .none);
+    for (ops) |op| _ = try patch.apply(GlobalConfig, target, op, patch_context);
+}
+
 /// Whether anything was edited since the last call, so the frame should be drawn again.
 pub fn takeEdited() bool {
     defer g_edited_this_frame = false;

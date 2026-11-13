@@ -23,8 +23,8 @@ pub fn show(context: *ui.Frame) !void {
     const profile = session.profile();
     const is_enabled = profile.ptr.thumbnail.notifications.enabled;
     if (!is_enabled) {
-        try widgets.noticeWithButton(context, .src(@src()), "Chat Events requires Notification System switched on in the Notifications tab.", "Go to Notifications", .notifications);
-    } else if (!profile.ptr.chatlog.enabled) {
+        try widgets.noticeWithButton(context, .src(@src()), "Chat Events requires alerts switched on in the Alert Options tab.", "Go to Alert Options", .notifications);
+    } else if (!session.global().ptr.chatlog.enabled) {
         try widgets.noticeWithButton(context, .src(@src()), "Chat Events reads EVE's chat logs, so it needs Log Monitoring.", "Go to Log Monitoring", .log_monitoring);
     }
     const section = try widgets.openSection(context, "Chat Events", "Alert on messages in the chat channels you choose.", &style.fill_section);

@@ -1,4 +1,4 @@
-//! The configuration window's Game Events tab: a list of notification types beside the selected type's settings; main thread only.
+//! The configuration window's Game Events tab: a list of game events beside the selected one's settings, including what triggers it; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const config = @import("../../../config.zig");
@@ -64,8 +64,8 @@ pub fn typeRef(index: usize) TypeRef {
 pub fn show(context: *ui.Frame) !void {
     const is_enabled = session.profile().ptr.thumbnail.notifications.enabled;
     if (!is_enabled) {
-        try widgets.noticeWithButton(context, .src(@src()), "Game Events requires Notification System switched on in the Notifications tab.", "Go to Notifications", .notifications);
-    } else if (!session.profile().ptr.chatlog.enabled) {
+        try widgets.noticeWithButton(context, .src(@src()), "Game Events requires alerts switched on in the Alert Options tab.", "Go to Alert Options", .notifications);
+    } else if (!session.global().ptr.chatlog.enabled) {
         try widgets.noticeWithButton(context, .src(@src()), "Without Log Monitoring, only alerts for your own actions, like Profile Switch, are shown.", "Go to Log Monitoring", .log_monitoring);
     }
     const section = try widgets.openSection(context, "Game Events", "How each game event alerts you. Pick an event on the left to edit it.", &style.fill_section);
@@ -92,7 +92,7 @@ pub fn alertSettings(context: *ui.Frame, ref: TypeRef, notification_type: Notifi
     try bind.toggle(context, ref, "show_hidden_thumbnail", "Show Thumbnail Even If Hidden");
     try widgets.hintText(context, .src(@src()), "Only for as long as the alert lasts.");
     try bind.toggle(context, ref, "tts_enabled", "Speak Aloud (TTS)");
-    try widgets.hintText(context, .src(@src()), "Reads the alert out loud. Voice settings are on the Notifications tab.");
+    try widgets.hintText(context, .src(@src()), "Reads the alert out loud. Voice settings are on the Alert Options tab.");
     try behavior.close(context);
     try widgets.separator(context, .str("knots.events.separator.behavior"));
 
@@ -116,12 +116,12 @@ pub fn alertSettings(context: *ui.Frame, ref: TypeRef, notification_type: Notifi
 /// Fires an alert on every thumbnail with the settings the window has for it, saved or not.
 pub fn testAlert(notification_type: NotificationType, alert: config.NotificationTypeConfig) void {
     const thumbnail_set = session.runningApp().thumbnail_set orelse {
-        slog.warn("Failed to test notification: the thumbnail set isn't ready", .{});
+        slog.warn("Failed to test alert: the thumbnail set isn't ready", .{});
         return;
     };
     thumbnail_set.showTestNotification(notification_type, alert) catch |err| {
-        slog.err("Failed to test notification: {}", .{err});
-        status.show(.failure, "Failed to test notification: {err}", .{ .err = err });
+        slog.err("Failed to test alert: {}", .{err});
+        status.show(.failure, "Failed to test alert: {err}", .{ .err = err });
     };
 }
 
@@ -174,10 +174,79 @@ fn typeDetail(context: *ui.Frame, notification_type: NotificationType) !void {
     try widgets.hintText(context, .src(@src()), "Ignores repeats within this time.");
     try timing.close(context);
     try widgets.separator(context, .str("knots.events.separator.timing"));
+    try trigger(context, notification_type);
 
     try alertSettings(context, ref, notification_type, .sound_file, ref.index);
     try rest.close(context);
     try stack.close(context);
+}
+
+/// What makes the few events with settings of their own fire, under their Timing.
+fn trigger(context: *ui.Frame, notification_type: NotificationType) !void {
+    if (notification_type == .TravelLeftBehind) {
+        try travelTrigger(context);
+    } else if (notification_type == .MiningIdle) {
+        try miningIdleTrigger(context);
+    } else if (notification_type == .MiningStopped) {
+        try miningStoppedTrigger(context);
+    }
+}
+
+fn travelTrigger(context: *ui.Frame) !void {
+    const ref = session.profile().child("travel");
+    const group = try widgets.openFieldGroup(context, .str("knots.events.travel"), "Travel Mode");
+    try bind.toggle(context, ref, "enabled", "Enable Travel Mode");
+    try widgets.hintText(context, .src(@src()), "Watches for characters left behind on a jump. Also on a hotkey and in the tray menu.");
+    const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
+    try bind.number(context, ref, "window_seconds", "Catch-Up Window", .{ .unit = "s" });
+    try widgets.hintText(context, .src(@src()), "How long a character can fall behind before the alert.");
+    try bind.segmented(context, ref, "threshold_mode", "Group Size Threshold", &.{ "Percentage", "Count" });
+    try widgets.hintText(context, .src(@src()), "How big the group must be before anyone counts as left behind.");
+    switch (ref.get("threshold_mode")) {
+        .percent => {
+            try bind.number(context, ref, "threshold_percent", "Minimum Percentage", .{ .unit = "%" });
+            try widgets.hintText(context, .src(@src()), "How much of the group must jump together.");
+        },
+        .count => {
+            try bind.number(context, ref, "threshold_count", "Minimum Count", .{ .unit = "characters", .singular_unit = "character" });
+            try widgets.hintText(context, .src(@src()), "How many characters must jump together.");
+        },
+    }
+    try options.close(context);
+    try group.close(context);
+    try widgets.separator(context, .str("knots.events.separator.travel"));
+}
+
+fn miningIdleTrigger(context: *ui.Frame) !void {
+    const ref = session.profile().child("mining");
+    try miningNotice(context, ref);
+    const group = try widgets.openFieldGroup(context, .str("knots.events.mining_idle"), "Detection");
+    const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
+    try bind.number(context, ref, "idle_alert_window_seconds", "Detection Window", .{ .unit = "s" });
+    try widgets.hintText(context, .src(@src()), "The time mining cycles are counted over.");
+    try bind.number(context, ref, "idle_alert_threshold", "Minimum Cycles", .{ .unit = "cycles", .singular_unit = "cycle" });
+    try widgets.hintText(context, .src(@src()), "Fewer mining cycles than this in the window counts as slow.");
+    try options.close(context);
+    try group.close(context);
+    try widgets.separator(context, .str("knots.events.separator.mining_idle"));
+}
+
+fn miningStoppedTrigger(context: *ui.Frame) !void {
+    const ref = session.profile().child("mining");
+    try miningNotice(context, ref);
+    const group = try widgets.openFieldGroup(context, .str("knots.events.mining_stopped"), "Detection");
+    const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
+    try bind.number(context, ref, "stopped_alert_window_seconds", "Silence Window", .{ .unit = "s" });
+    try widgets.hintText(context, .src(@src()), "How long without mining before the alert.");
+    try options.close(context);
+    try group.close(context);
+    try widgets.separator(context, .str("knots.events.separator.mining_stopped"));
+}
+
+/// The mining alerts are worked out from the mining rate, so they need it on.
+fn miningNotice(context: *ui.Frame, ref: session.Ref(config.MiningConfig)) !void {
+    if (ref.get("enabled")) return;
+    try widgets.notice(context, .src(@src()), "Needs the mining rate switched on, from its text on the thumbnail or client list preview.");
 }
 
 fn typeLabel(notification_type: NotificationType) []const u8 {
@@ -353,7 +422,7 @@ fn customText(context: *ui.Frame, ref: TypeRef, notification_type: NotificationT
     const alt_state = notification.altState(notification_type);
     const group = try widgets.openFieldGroup(context, .str("knots.events.text"), "Custom Text");
     try bind.toggle(context, ref, "show_text", "Show Text");
-    try widgets.hintText(context, .src(@src()), "Off hides the text on thumbnails and the client list. Borders, sound, speech and Notification History still work.");
+    try widgets.hintText(context, .src(@src()), "Off hides the text on thumbnails and the client list. Borders, sound, speech and Alert History still work.");
     try textBox(context, ref, notification_type, .custom_text, primary_sample, alt_state != null);
     if (alt_state) |state| {
         var alt_sample = primary_sample;
@@ -371,7 +440,7 @@ fn customText(context: *ui.Frame, ref: TypeRef, notification_type: NotificationT
     }
     const shown_text = try widgets.openGroup(context, .src(@src()), ref.get("show_text"));
     try bind.optionalColor(context, ref, "text_color", "Text Color", session.profile().ptr.thumbnail.notifications.color);
-    try widgets.hintText(context, .src(@src()), "Reset uses the Notification text's color on the Appearance tab.");
+    try widgets.hintText(context, .src(@src()), "Reset uses the Alert text's color on the Appearance tab.");
     if (notification_type == .ChatIntel) {
         try bind.toggle(context, ref, "color_system_name", "Color System Name");
         try widgets.hintText(context, .src(@src()), "Uses the same color as the system's name on thumbnails, when the text starts with the system.");

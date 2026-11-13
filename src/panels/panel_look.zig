@@ -1,20 +1,11 @@
-//! What the History, Map and Intel panels share so they match: sizes, footer buttons, ages and when they show; no I/O.
+//! What the History, Map and Intel panels share so they match: ages and when they show; no I/O.
 const std = @import("std");
 const panels = @import("../config/panels.zig");
-const list_look = @import("list_look.zig");
 
 const HistoryPanelConfig = panels.HistoryPanelConfig;
 
-/// Between the footer's buttons, and round them inside it.
-pub const BUTTON_GAP: i32 = 4;
-pub const BUTTON_RADIUS: usize = 3;
-/// A lit footer button's background.
-pub const BUTTON_ON: u32 = 0xFF2E3036;
 /// Fits relativeTime's longest result.
 pub const TIME_TEXT_MAX = 24;
-
-/// A footer button's left and right edges, from the panel's outer left edge.
-pub const Span = struct { left: i32, right: i32 };
 
 /// What a panel's auto-hide watches, read once a tick.
 pub const Presence = struct {
@@ -83,46 +74,6 @@ pub const Visibility = struct {
     }
 };
 
-/// Set by the History Panel's font, which every panel draws its header and buttons in.
-pub fn headerHeight(history_settings: *const HistoryPanelConfig) i32 {
-    return list_look.headerHeight(history_settings.fontSize);
-}
-
-/// A footer button is as tall as the header.
-pub fn footerHeight(header_height: i32) i32 {
-    return header_height + 2 * BUTTON_GAP;
-}
-
-/// Where the footer starts; a large font can leave no room below the header.
-pub fn footerTop(panel_height: i32, header_height: i32, footer_height: i32) i32 {
-    return @max(header_height, panel_height - footer_height);
-}
-
-/// The `index`th of `button_count` equal buttons across a panel `width` wide, with BUTTON_GAP around each.
-pub fn buttonSpan(width: i32, button_count: usize, index: usize) Span {
-    const signed_count: i32 = @intCast(button_count);
-    const signed_index: i32 = @intCast(index);
-    const room = @max(0, width - BUTTON_GAP * (signed_count + 1));
-    const left = BUTTON_GAP * (signed_index + 1);
-    return .{ .left = left + @divTrunc(room * signed_index, signed_count), .right = left + @divTrunc(room * (signed_index + 1), signed_count) };
-}
-
-/// The button under `x`; null in a gap between them.
-pub fn buttonIndexAt(width: i32, button_count: usize, x: i32) ?usize {
-    for (0..button_count) |index| {
-        const span = buttonSpan(width, button_count, index);
-        if (x >= span.left and x < span.right) return index;
-    }
-    return null;
-}
-
-/// The row under `y`; null over the header or past the last of `row_count`.
-pub fn rowAt(y: i32, header_height: i32, row_height: i32, row_count: usize) ?usize {
-    if (y < header_height or row_height <= 0) return null;
-    const row_index: usize = @intCast(@divTrunc(y - header_height, row_height));
-    return if (row_index < row_count) row_index else null;
-}
-
 /// How long ago, e.g. "just now", "5m ago" or "2h ago".
 pub fn relativeTime(buffer: *[TIME_TEXT_MAX]u8, elapsed_ms: u64) []const u8 {
     const elapsed_seconds = elapsed_ms / std.time.ms_per_s;
@@ -139,40 +90,6 @@ fn focusHideAt(now_ms: u64) Visibility.Conditions {
     var conditions = FOCUS_HIDE;
     conditions.now_ms = now_ms;
     return conditions;
-}
-
-test "buttonSpan fills the width between gaps without overlapping" {
-    const width = 300;
-    const button_count = 6;
-    try testing.expectEqual(BUTTON_GAP, buttonSpan(width, button_count, 0).left);
-    try testing.expectEqual(width - BUTTON_GAP, buttonSpan(width, button_count, button_count - 1).right);
-    for (1..button_count) |index| {
-        try testing.expectEqual(buttonSpan(width, button_count, index - 1).right + BUTTON_GAP, buttonSpan(width, button_count, index).left);
-    }
-}
-
-test "buttonIndexAt finds the button under the cursor and misses the gaps" {
-    try testing.expectEqual(@as(?usize, 0), buttonIndexAt(300, 6, BUTTON_GAP));
-    try testing.expectEqual(@as(?usize, 5), buttonIndexAt(300, 6, 300 - BUTTON_GAP - 1));
-    try testing.expectEqual(@as(?usize, null), buttonIndexAt(300, 6, 0));
-}
-
-test "rowAt finds the row under the cursor and none over the header or past the last" {
-    try testing.expectEqual(@as(?usize, null), rowAt(19, 20, 10, 3));
-    try testing.expectEqual(@as(?usize, 0), rowAt(20, 20, 10, 3));
-    try testing.expectEqual(@as(?usize, 2), rowAt(49, 20, 10, 3));
-    try testing.expectEqual(@as(?usize, null), rowAt(50, 20, 10, 3));
-}
-
-test "footerTop stays below the header when the font leaves no room" {
-    try testing.expectEqual(@as(i32, 570), footerTop(600, 20, 30));
-    try testing.expectEqual(@as(i32, 50), footerTop(60, 50, 30));
-}
-
-test "headerHeight follows the History Panel's font, so the panels match" {
-    const small: HistoryPanelConfig = .{ .fontSize = 13 };
-    const large: HistoryPanelConfig = .{ .fontSize = 24 };
-    try testing.expect(headerHeight(&large) > headerHeight(&small));
 }
 
 test "a hidden panel shows while a character is logged in or the tray forces it" {

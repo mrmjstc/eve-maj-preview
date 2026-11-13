@@ -5,6 +5,8 @@ const panels = @import("../../config/panels.zig");
 const list_look = @import("../list_look.zig");
 const palette = @import("../palette.zig");
 const popup_look = @import("../popup_look.zig");
+const segmented = @import("../segmented.zig");
+const glyphs = @import("../glyphs.zig");
 const universe = @import("../../map/universe.zig");
 const storms = @import("../../map/storms.zig");
 const layout = @import("../../map/layout.zig");
@@ -29,31 +31,28 @@ pub const SEARCH_WIDTH: i32 = SIDE_COLUMN_WIDTH;
 pub const SEARCH_RESULTS_GAP: i32 = 4;
 /// From the search box's left edge to its text, past the magnifier.
 pub const SEARCH_TEXT_INSET: i32 = 30;
+/// From the search box's left edge to its magnifier's middle, halfway to its text.
+const SEARCH_GLYPH_X: i32 = SEARCH_TEXT_INSET / 2;
 pub const TITLE_FONT_SIZE: i32 = 16;
 /// Between the window's edges and the cards floating over the map.
 pub const CARD_MARGIN: i32 = 12;
 /// Between two cards side by side, and below a stack.
 pub const CARD_GAP: i32 = 6;
 const CARD_BORDER_WIDTH: i32 = 1;
-/// From a bar's outer edge to its buttons, its border included, as in the dialog's segmented controls.
-const BAR_INSET: i32 = 2;
-const SEGMENT_GAP: i32 = 2;
 const TOGGLE_GAP: i32 = 2;
-/// The bar's radius less its inset, so the corners nest.
-const SEGMENT_RADIUS: usize = palette.RADIUS - BAR_INSET;
-pub const SEGMENT_PADDING_X: i32 = 10;
 pub const TOGGLE_PADDING_X: i32 = 10;
 /// Room for a toggle's dot or icon, and the gap before its name.
 pub const TOGGLE_MARK_ROOM: i32 = 13 + 7;
 /// The divider before Follow, with a margin either side.
 const TOGGLE_DIVIDER_ROOM: i32 = 5;
+/// From a toggle's padding to its mark's middle, about half the mark's 13 px.
+const TOGGLE_MARK_X: i32 = 6;
+/// How much shorter the divider before Follow is than the bar's inside, at each end.
+const TOGGLE_DIVIDER_INSET: i32 = 4;
 pub const TITLE_PADDING_X: i32 = 12;
 const TITLE_PADDING_TOP: i32 = 7;
 const TITLE_PADDING_BOTTOM: i32 = 8;
 pub const TITLE_LINE_GAP: i32 = 2;
-/// A detailed tooltip's, like the title card's; a plain one keeps the popups' own.
-pub const TOOLTIP_PADDING_X: i32 = 12;
-pub const TOOLTIP_PADDING_Y: i32 = 8;
 /// Above and below the rule under a detailed tooltip's title.
 pub const TOOLTIP_HEADER_GAP: i32 = 6;
 pub const TOOLTIP_ROW_GAP: i32 = 3;
@@ -87,7 +86,7 @@ const LIST_ROW_PADDING_Y: i32 = 4;
 const MIN_INTEL_ROWS = 2;
 /// Taller than a bar, as it heads a card.
 const INTEL_HEADER_EXTRA: i32 = 4;
-pub const INTEL_PADDING_X: i32 = 12;
+pub const INTEL_PADDING_X: i32 = palette.PADDING_X;
 pub const INTEL_PADDING_Y: i32 = 8;
 const NODE_RADIUS: f32 = 3.5;
 /// The dark edge that lifts a marker off the gates running into it.
@@ -112,7 +111,6 @@ const AREA_RIM_THICKNESS = 2;
 /// How much of a storm's colour its periphery's gates keep, over a plain gate's.
 const STORM_PERIPHERY_PERCENT = 45;
 const GRID_SPACING: i32 = 36;
-const MAP_GLYPH_SIZE: i32 = 5;
 /// From this zoom there's room to show a system's security beside its name.
 const SECURITY_LABEL_ZOOM: f32 = 1.5;
 /// Before what follows a system's name.
@@ -120,7 +118,7 @@ pub const LABEL_SUFFIX_GAP: i32 = 4;
 pub const LEGEND_RAMP_WIDTH: i32 = 120;
 const LEGEND_RAMP_HEIGHT: i32 = 6;
 pub const LEGEND_SWATCH_SIZE: i32 = 10;
-const LEGEND_SWATCH_RADIUS: usize = 2;
+const LEGEND_SWATCH_RADIUS: usize = palette.SMALL_RADIUS;
 /// How much of an area swatch's colour tints its fill inside the rim.
 const LEGEND_AREA_TINT_PERCENT = 25;
 /// The least from a marker's centre to its client tag.
@@ -136,7 +134,7 @@ const HEAT_RADIUS_GROWTH: f32 = 1.5;
 const INTEL_HALO_RADIUS: f32 = 11;
 /// Before the marker scale.
 const INTEL_HALO_PEAK_RADIUS: f32 = 20;
-/// How long a new pin's or a search ping's one ring takes to spread and fade.
+/// How long a ripple's one ring takes to spread and fade, for a new pin, a kill or a ping.
 const RIPPLE_MS: u64 = 600;
 /// Before the marker scale; the ring starts inside the new halo and ends well past it.
 const RIPPLE_START_RADIUS: f32 = 10;
@@ -166,17 +164,18 @@ const AVOID_MARK_SIZE: i32 = 5;
 /// Lifts -1.0 from 1.7:1 to 4.3:1 against a popup's fill.
 const SECURITY_TEXT_LIGHTEN_PERCENT = 40;
 
-// The colours below are 0xAARRGGBB, not premultiplied.
+// The colours below are 0xAARRGGBB, not premultiplied; the greys come from the palette, so the map stays as warm as the cards over it.
 pub const BACKGROUND: u32 = palette.BG;
-const GRID_DOT: u32 = 0xFF1D1F24;
+const GRID_DOT: u32 = palette.PANEL;
 /// Each region's name beside its part of a map showing several, muted so it reads as a heading rather than a system.
-pub const REGION_NAME: u32 = 0xFF6A7080;
+pub const REGION_NAME: u32 = palette.BORDER_STRONG;
 /// A name with nothing happening at it, a step below the bright NAME those with something do.
-pub const LABEL: u32 = 0xFFA9ACB3;
-pub const EDGE_LOCAL: u32 = 0xFF5B5F69;
+pub const LABEL: u32 = palette.HINT_TEXT;
+pub const EDGE_LOCAL: u32 = color.mix(palette.BORDER_STRONG, palette.BORDER, 60);
 const EDGE_CROSS: u32 = 0xFF6E5A7A;
-pub const EDGE_HOVER: u32 = 0xFFD5D7DC;
-pub const EXIT: u32 = 0xFFC7A95C;
+pub const EDGE_HOVER: u32 = color.mix(palette.TEXT, palette.TEXT_SECONDARY, 50);
+/// Pale sand, kept off the accent's amber.
+pub const EXIT: u32 = 0xFFD3C49C;
 pub const INTEL: u32 = 0xFFFF4B3E;
 const INTEL_CLEAR: u32 = 0xFFFFD23F;
 /// Reads through every marker colour, and is apart from intel's red and yellow.
@@ -184,26 +183,26 @@ const AVOID: u32 = 0xFFFFFFFF;
 pub const PING: u32 = 0xFFFFFFFF;
 pub const FOCUS: u32 = palette.TEXT;
 /// Fills the selected system's disc.
-pub const FOCUS_MARK: u32 = 0xFF3A3D45;
+const FOCUS_MARK: u32 = color.mix(palette.BORDER, palette.CARD_BORDER, 50);
 pub const FOCUS_NAME: u32 = 0xFFFFFFFF;
 /// Behind the search's selected text.
 pub const SEARCH_SELECTION: u32 = 0xFF34507A;
 /// Everything over the map, cards included, like the dialog's controls.
-const CONTROL_FILL: u32 = palette.SURFACE;
-const CONTROL_BORDER: u32 = palette.BORDER_STRONG;
+const CONTROL_FILL: u32 = segmented.BAR_FILL;
+const CONTROL_BORDER: u32 = segmented.BAR_BORDER;
 const CONTROL_HOVER: u32 = palette.SURFACE_ALT;
 /// Between the zoom controls and the intel card's rows, before Follow, and under a tooltip's title.
 const CONTROL_DIVIDER: u32 = palette.BORDER;
-/// Behind a hovered segment or intel report; SURFACE_ALT sits too close to the fill to show.
-pub const SEGMENT_HOVER: u32 = palette.BORDER;
-/// A segment that isn't picked, and the map controls' glyphs.
-pub const SEGMENT_TEXT: u32 = palette.TEXT_SECONDARY;
+/// Behind a hovered intel report, as behind a hovered segment.
+const SEGMENT_HOVER: u32 = segmented.HOVER;
+/// The map controls' glyphs, as a segment's label.
+const SEGMENT_TEXT: u32 = segmented.TEXT;
 /// A toggle that's off, the placeholder, and the cards' icons.
 pub const CARD_MUTED: u32 = palette.MUTED;
 /// Magenta, which no security, heat or intel colour comes near.
 pub const RANGE: u32 = 0xFFFF4FD8;
 /// Dims what a jump range doesn't reach, a step below HEAT_NONE's quiet system.
-pub const OUT_OF_RANGE: u32 = 0xFF26282D;
+pub const OUT_OF_RANGE: u32 = palette.ROW_HOVER;
 const STORM_ELECTRIC: u32 = 0xFF3FE0E0;
 const STORM_EXOTIC: u32 = 0xFFB58CFF;
 const STORM_GAMMA: u32 = 0xFF66E07F;
@@ -212,7 +211,7 @@ const STORM_PLASMA: u32 = 0xFFFF9D45;
 pub const INCURSION: u32 = 0xFFB5F23A;
 /// Sky blue, clear of the storms' cyan and intel's red and yellow; its square shape does the rest.
 pub const SOV_TIMER: u32 = 0xFF5CB8FF;
-/// Periwinkle, for Thera's and Turnur's stubs; dashed, so it reads apart from an exit's gold.
+/// Periwinkle, for Thera's and Turnur's stubs; dashed, so it reads apart from an exit's sand.
 pub const WORMHOLE: u32 = 0xFF9AA4FF;
 /// Deep orange, between intel's red and the plasma storm's orange; its triangle sets it apart from both.
 pub const KILL: u32 = 0xFFFF6E40;
@@ -226,8 +225,8 @@ const BRIDGE_GAP_LENGTH: f32 = 6;
 /// Finer than the gates' curves, as each dash takes the slope of the piece it's on.
 const BRIDGE_SAMPLES = 64;
 /// Brighter than the gates so a quiet system's dot shows, but below LABEL.
-pub const HEAT_NONE: u32 = 0xFF7C818C;
-const HEAT_LOW: u32 = 0xFFD9A441;
+pub const HEAT_NONE: u32 = color.mix(palette.MUTED, palette.BORDER_STRONG, 50);
+const HEAT_LOW: u32 = palette.CAUTION;
 const HEAT_HIGH: u32 = 0xFFFF3B30;
 /// EVE's own colours, by shown security in tenths from 0 up.
 const SECURITY_COLORS = [_]u32{ 0xFFF00000, 0xFFD73000, 0xFFF04800, 0xFFF06000, 0xFFD77700, 0xFFEFEF00, 0xFF8FEF2F, 0xFF00F000, 0xFF00EF47, 0xFF48F0C0, 0xFF2FEFEF };
@@ -265,7 +264,7 @@ pub const Layer = enum { storms, incursions, sov_timers, wormholes, ansiblex, ki
 
 /// What the side card lists: the Intel Panel's reports, or zKillboard's kills.
 pub const CardTab = enum { intel, kills };
-/// A new pin's or a search ping's ring at one moment.
+/// A ripple's ring at one moment.
 pub const Ripple = struct {
     /// Before the marker scale.
     radius: f32,
@@ -445,7 +444,7 @@ pub const ListCard = struct {
 pub const ChromeText = struct {
     title_width: i32,
     title_height: i32,
-    /// Each segment's widest label.
+    /// Each segment's shown label.
     metric_widths: [SEGMENT_ORDER.len]i32,
     toggle_widths: [TOGGLE_ORDER.len]i32,
     /// The legends' card, which a centred toggle bar keeps clear of; 0 without one.
@@ -471,11 +470,11 @@ pub const Chrome = struct {
         chrome.title = .{ .left = left, .top = top, .right = @max(left, title_right), .bottom = top + TITLE_PADDING_TOP + text.title_height + TITLE_PADDING_BOTTOM };
 
         var metric_widths: [SEGMENT_ORDER.len]i32 = undefined;
-        for (&metric_widths, text.metric_widths) |*width, text_width| width.* = text_width + 2 * SEGMENT_PADDING_X;
-        const metric_width = barWidth(&metric_widths, SEGMENT_GAP, 0);
+        for (&metric_widths, text.metric_widths) |*width, text_width| width.* = segmented.buttonWidth(text_width);
+        const metric_width = segmented.barWidth(&metric_widths, segmented.GAP, 0);
         var toggle_widths: [TOGGLE_ORDER.len]i32 = undefined;
         for (&toggle_widths, text.toggle_widths) |*width, text_width| width.* = text_width + TOGGLE_MARK_ROOM + 2 * TOGGLE_PADDING_X;
-        const toggle_width = barWidth(&toggle_widths, TOGGLE_GAP, TOGGLE_DIVIDER_ROOM);
+        const toggle_width = segmented.barWidth(&toggle_widths, TOGGLE_GAP, TOGGLE_DIVIDER_ROOM);
 
         const metric_centred = body.left + @divTrunc(body.right - body.left - metric_width, 2);
         const toggle_centred = body.left + @divTrunc(body.right - body.left - toggle_width, 2);
@@ -488,10 +487,10 @@ pub const Chrome = struct {
 
         const metric_bottom = body.bottom - CARD_MARGIN;
         chrome.metric_bar = .{ .left = metric_left, .top = metric_bottom - areas.card_height, .right = metric_left + metric_width, .bottom = metric_bottom };
-        placeSegments(chrome.metric_bar, &metric_widths, SEGMENT_GAP, null, &chrome.metrics);
+        segmented.placeButtons(chrome.metric_bar, &metric_widths, segmented.GAP, null, 0, &chrome.metrics);
         const toggle_bottom = chrome.metric_bar.top - CARD_GAP;
         chrome.toggle_bar = .{ .left = toggle_left, .top = toggle_bottom - areas.card_height, .right = toggle_left + toggle_width, .bottom = toggle_bottom };
-        placeSegments(chrome.toggle_bar, &toggle_widths, TOGGLE_GAP, @backingInt(Toggle.follow), &chrome.toggles);
+        segmented.placeButtons(chrome.toggle_bar, &toggle_widths, TOGGLE_GAP, @backingInt(Toggle.follow), TOGGLE_DIVIDER_ROOM, &chrome.toggles);
         return chrome;
     }
 
@@ -638,9 +637,9 @@ pub fn drawIntelCard(canvas: pixel_buffer.Canvas, card: *const IntelCard, hovere
     drawCard(canvas, card.box);
     const inner_left = card.box.left + ROW_INSET;
     const inner_right = card.box.right - ROW_INSET;
-    if (is_header_hovered) fillBox(canvas, rowHighlight(card.header, inner_left, inner_right), SEGMENT_RADIUS, SEGMENT_HOVER);
+    if (is_header_hovered) fillBox(canvas, rowHighlight(card.header, inner_left, inner_right), segmented.RADIUS, SEGMENT_HOVER);
     if (hovered_row) |index| {
-        if (index < card.row_count) fillBox(canvas, rowHighlight(card.rows[index], inner_left, inner_right), SEGMENT_RADIUS, SEGMENT_HOVER);
+        if (index < card.row_count) fillBox(canvas, rowHighlight(card.rows[index], inner_left, inner_right), segmented.RADIUS, SEGMENT_HOVER);
     }
     if (!card.is_collapsed) drawDivider(canvas, inner_left, inner_right, card.header.bottom - 1);
     for (card.rows[0..card.row_count -| 1]) |row| drawDivider(canvas, inner_left, inner_right, row.bottom - 1);
@@ -656,9 +655,9 @@ pub fn drawListCard(canvas: pixel_buffer.Canvas, card: *const ListCard, hovered_
     drawCard(canvas, card.box);
     const inner_left = card.box.left + ROW_INSET;
     const inner_right = card.box.right - ROW_INSET;
-    if (is_header_hovered) fillBox(canvas, rowHighlight(card.header, inner_left, inner_right), SEGMENT_RADIUS, SEGMENT_HOVER);
+    if (is_header_hovered) fillBox(canvas, rowHighlight(card.header, inner_left, inner_right), segmented.RADIUS, SEGMENT_HOVER);
     if (hovered_row) |index| {
-        if (index < card.row_count) fillBox(canvas, rowHighlight(card.rows[index], inner_left, inner_right), SEGMENT_RADIUS, SEGMENT_HOVER);
+        if (index < card.row_count) fillBox(canvas, rowHighlight(card.rows[index], inner_left, inner_right), segmented.RADIUS, SEGMENT_HOVER);
     }
     if (!card.is_collapsed) drawDivider(canvas, inner_left, inner_right, card.header.bottom - 1);
     drawChevron(canvas, card.header.right - INTEL_PADDING_X - CHEVRON_SIZE, @divTrunc(card.header.top + card.header.bottom, 2), !card.is_collapsed);
@@ -691,16 +690,9 @@ pub fn stormEdgeColor(mark: storms.EdgeMark) u32 {
     return if (mark.is_core) shade else color.mix(shade, EDGE_LOCAL, STORM_PERIPHERY_PERCENT);
 }
 
-/// What a segment shows, the one a first click picks first.
-pub fn segmentMetrics(segment: MetricSegment) []const MapMetric {
-    return switch (segment) {
-        .security => &.{.Security},
-        .kills => &.{ .ShipKills, .PodKills },
-        .npc => &.{ .NpcKills, .NpcDelta },
-        .jumps => &.{.Jumps},
-        .sovereignty => &.{.Sovereignty},
-        .faction_warfare => &.{.FactionWarfare},
-    };
+/// What `segment` shows while `current` is the map's metric: that, if it's the segment's, else the segment's first.
+pub fn shownMetric(segment: MetricSegment, current: MapMetric) MapMetric {
+    return if (segmentOf(current) == segment) current else segmentMetrics(segment)[0];
 }
 
 pub fn segmentOf(metric: MapMetric) MetricSegment {
@@ -846,7 +838,7 @@ pub fn drawFocusMark(canvas: pixel_buffer.Canvas, x: i32, y: i32, radius: f32) v
     pixel_buffer.fillCircle(canvas, x, y, radius, FOCUS_MARK);
 }
 
-/// A card holding text, the Intel card, a legend or a tooltip, drawn like the bars so everything over the map matches.
+/// A card holding text, the Intel card or a legend, drawn like the bars so the map's controls match.
 pub fn drawCard(canvas: pixel_buffer.Canvas, box: Box) void {
     drawControl(canvas, box, CONTROL_FILL, null);
 }
@@ -854,10 +846,6 @@ pub fn drawCard(canvas: pixel_buffer.Canvas, box: Box) void {
 /// A one-pixel line across a card at `y`, between its rows or under a heading.
 pub fn drawDivider(canvas: pixel_buffer.Canvas, left: i32, right: i32, y: i32) void {
     fillBox(canvas, .{ .left = left, .top = y, .right = right, .bottom = y + 1 }, 0, CONTROL_DIVIDER);
-}
-
-pub fn drawBar(canvas: pixel_buffer.Canvas, box: Box) void {
-    drawControl(canvas, box, CONTROL_FILL, null);
 }
 
 /// The title, like the dialog's profile menu button; `accent` is set while it's hovered or its list is open.
@@ -869,7 +857,7 @@ pub fn drawTitleCard(canvas: pixel_buffer.Canvas, box: Box, accent: ?u32) void {
 pub fn drawSearchCard(canvas: pixel_buffer.Canvas, box: Box, is_open: bool, accent: ?u32) void {
     drawControl(canvas, box, CONTROL_FILL, accent);
     const y = @divTrunc(box.top + box.bottom, 2);
-    drawMagnifier(canvas, box.left + 15, y, if (is_open) SEGMENT_TEXT else CARD_MUTED);
+    drawGlyphAt(canvas, .search, box.left + SEARCH_GLYPH_X, y, if (is_open) SEGMENT_TEXT else CARD_MUTED);
 }
 
 /// The always on top pin, like the dialog's icon buttons; `hover_accent` is set while it's hovered.
@@ -878,53 +866,25 @@ pub fn drawPinButton(canvas: pixel_buffer.Canvas, box: Box, is_always_on_top: bo
     drawMapControlGlyph(canvas, box, .always_on_top, is_always_on_top);
 }
 
-/// Behind a picked, lit or hovered button in a bar.
-pub fn fillSegment(canvas: pixel_buffer.Canvas, box: Box, fill: u32) void {
-    fillBox(canvas, box, SEGMENT_RADIUS, fill);
-}
-
 /// Layers gets two stacked sheets, lit while its menu is open; Follow a crosshair in the active client's colour, grey while it's off.
 pub fn drawToggleMark(canvas: pixel_buffer.Canvas, box: Box, toggle: Toggle, is_on: bool, active_color: u32) void {
-    const x = box.left + TOGGLE_PADDING_X + 6;
+    const x = box.left + TOGGLE_PADDING_X + TOGGLE_MARK_X;
     const y = @divTrunc(box.top + box.bottom, 2);
     switch (toggle) {
-        .follow => {
-            const icon_color = if (is_on) active_color else CARD_MUTED;
-            pixel_buffer.drawRing(canvas, x, y, 4, 1.3, icon_color);
-            pixel_buffer.fillCircle(canvas, x, y, 1.3, icon_color);
-            pixel_buffer.drawLine(canvas, x, y - 6, x, y - 5, icon_color);
-            pixel_buffer.drawLine(canvas, x, y + 5, x, y + 6, icon_color);
-            pixel_buffer.drawLine(canvas, x - 6, y, x - 5, y, icon_color);
-            pixel_buffer.drawLine(canvas, x + 5, y, x + 6, y, icon_color);
-        },
-        // Two sheets, one above the other, as the menu stacks what it shows.
-        .layers => {
-            const icon_color = if (is_on) list_look.NAME else CARD_MUTED;
-            for ([_]i32{ -2, 2 }) |offset| {
-                pixel_buffer.drawLine(canvas, x - 5, y + offset, x, y + offset - 3, icon_color);
-                pixel_buffer.drawLine(canvas, x, y + offset - 3, x + 5, y + offset, icon_color);
-                pixel_buffer.drawLine(canvas, x + 5, y + offset, x, y + offset + 3, icon_color);
-                pixel_buffer.drawLine(canvas, x, y + offset + 3, x - 5, y + offset, icon_color);
-            }
-        },
+        .follow => drawGlyphAt(canvas, .crosshair, x, y, if (is_on) active_color else CARD_MUTED),
+        .layers => drawGlyphAt(canvas, .layers, x, y, if (is_on) list_look.NAME else CARD_MUTED),
     }
 }
 
 /// Between Follow and the toggles before it.
 pub fn drawToggleDivider(canvas: pixel_buffer.Canvas, bar: Box, x: i32) void {
-    const inset = BAR_INSET + 4;
+    const inset = segmented.BAR_INSET + TOGGLE_DIVIDER_INSET;
     fillBox(canvas, .{ .left = x, .top = bar.top + inset, .right = x + 1, .bottom = bar.bottom - inset }, 0, CONTROL_DIVIDER);
 }
 
-/// Points down to say the title opens a list, or up while it's open.
+/// Points down while what it heads is closed, or up while it's open.
 pub fn drawChevron(canvas: pixel_buffer.Canvas, x: i32, y: i32, is_open: bool) void {
-    const half = @divTrunc(CHEVRON_SIZE, 2);
-    const tip = if (is_open) y - half else y + half;
-    const ends = if (is_open) y + half else y - half;
-    for ([_]i32{ 0, 1 }) |offset| {
-        pixel_buffer.drawLine(canvas, x - CHEVRON_SIZE, ends + offset, x, tip + offset, CARD_MUTED);
-        pixel_buffer.drawLine(canvas, x, tip + offset, x + CHEVRON_SIZE, ends + offset, CARD_MUTED);
-    }
+    drawGlyphAt(canvas, if (is_open) .chevron_up else .chevron_down, x, y, CARD_MUTED);
 }
 
 /// The zoom controls as one control, with dividers between them and the hovered one lit like a bar's segment.
@@ -933,33 +893,9 @@ pub fn drawZoomStack(canvas: pixel_buffer.Canvas, areas: Areas, hovered: ?MapCon
     for ([_]MapControl{ .zoom_in, .zoom_out, .fit }) |control| {
         const box = areas.mapControlBox(control);
         const inner = insetBox(box, CARD_BORDER_WIDTH);
-        if (hovered == control) fillSegment(canvas, insetBox(box, BAR_INSET), SEGMENT_HOVER);
+        if (hovered == control) segmented.fillButton(canvas, insetBox(box, segmented.BAR_INSET), SEGMENT_HOVER);
         if (control != .fit) drawDivider(canvas, inner.left, inner.right, box.bottom - 1);
         drawMapControlGlyph(canvas, box, control, false);
-    }
-}
-
-pub fn drawMapControlGlyph(canvas: pixel_buffer.Canvas, box: Box, control: MapControl, is_always_on_top: bool) void {
-    const x = @divTrunc(box.left + box.right, 2);
-    const y = @divTrunc(box.top + box.bottom, 2);
-    const glyph_color = SEGMENT_TEXT;
-    const reach = MAP_GLYPH_SIZE;
-    switch (control) {
-        .zoom_in => {
-            pixel_buffer.drawLine(canvas, x - reach, y, x + reach, y, glyph_color);
-            pixel_buffer.drawLine(canvas, x, y - reach, x, y + reach, glyph_color);
-        },
-        .zoom_out => pixel_buffer.drawLine(canvas, x - reach, y, x + reach, y, glyph_color),
-        // Four corners, as a frame the map is fitted back into.
-        .fit => for ([_]i32{ -1, 1 }) |side_x| {
-            for ([_]i32{ -1, 1 }) |side_y| {
-                const corner_x = x + side_x * reach;
-                const corner_y = y + side_y * reach;
-                pixel_buffer.drawLine(canvas, corner_x, corner_y, corner_x - side_x * 3, corner_y, glyph_color);
-                pixel_buffer.drawLine(canvas, corner_x, corner_y, corner_x, corner_y - side_y * 3, glyph_color);
-            }
-        },
-        .always_on_top => drawPin(canvas, x, y, is_always_on_top, if (is_always_on_top) SEGMENT_TEXT else CARD_MUTED),
     }
 }
 
@@ -1009,7 +945,7 @@ pub fn drawClientLead(canvas: pixel_buffer.Canvas, x: i32, y: i32, reach: f32, b
     pixel_buffer.drawLine(canvas, from_x, from_y, to_x, to_y, tag_color);
 }
 
-/// `offset` from the marker at `x`,`y`, stepped up then down, further each time, until it's clear of `taken`, as names mostly sit below; null when no step inside `area` is.
+/// `offset` from the marker at `x`,`y`, stepped up then down, further each time, until its chip is clear of `taken`, as names mostly sit below; null when no step inside `area` is.
 pub fn clientTagBox(area: Box, x: i32, y: i32, offset: i32, width: i32, height: i32, taken: []const Box) ?Box {
     const right_left = x + offset;
     const left = if (right_left + width <= area.right) right_left else x - offset - width;
@@ -1020,9 +956,7 @@ pub fn clientTagBox(area: Box, x: i32, y: i32, offset: i32, width: i32, height: 
         const top = if (attempt % 2 == 1) centred_top - distance * step else centred_top + distance * step;
         const box: Box = .{ .left = left, .top = top, .right = left + width, .bottom = top + height };
         if (!area.contains(box)) continue;
-        for (taken) |other| {
-            if (box.overlaps(other)) break;
-        } else return box;
+        if (!layout.chipBox(box).overlapsAny(taken)) return box;
     }
     return null;
 }
@@ -1063,6 +997,17 @@ pub fn rippleAt(age_ms: u64) ?Ripple {
         .radius = RIPPLE_START_RADIUS + (RIPPLE_END_RADIUS - RIPPLE_START_RADIUS) * eased,
         .alpha = @intFromFloat(255 * (1 - progress)),
     };
+}
+
+/// The view that pans a ping at `x`,`y` to the middle of the map left of the cards, when its ring would spread under `covered` or past the panel; null when it shows whole already.
+pub fn revealedView(view: layout.View, areas: Areas, covered: []const Box, x: i32, y: i32) ?layout.View {
+    const reach: i32 = @intFromFloat(@ceil(RIPPLE_END_RADIUS * markerScale(view.zoom)));
+    const ring: Box = .{ .left = x - reach, .top = y - reach, .right = x + reach, .bottom = y + reach };
+    if (!ring.overlapsAny(covered) and areas.body.contains(ring)) return null;
+    const free_right = if (areas.intel_width > 0) @max(areas.map.left, areas.search_box.left - CARD_GAP) else areas.map.right;
+    const target_x = @divTrunc(areas.map.left + free_right, 2);
+    const target_y = @divTrunc(areas.map.top + areas.map.bottom, 2);
+    return view.panned(areas.map, @floatFromInt(target_x - x), @floatFromInt(target_y - y));
 }
 
 pub fn drawRipple(canvas: pixel_buffer.Canvas, x: i32, y: i32, ripple: Ripple, scale: f32, ring_color: u32) void {
@@ -1158,6 +1103,29 @@ pub fn regionRangeColor(systems_in_range: u16) u32 {
     return if (systems_in_range > 0) RANGE else OUT_OF_RANGE;
 }
 
+/// What a segment shows, the one a first click picks first.
+fn segmentMetrics(segment: MetricSegment) []const MapMetric {
+    return switch (segment) {
+        .security => &.{.Security},
+        .kills => &.{ .ShipKills, .PodKills },
+        .npc => &.{ .NpcKills, .NpcDelta },
+        .jumps => &.{.Jumps},
+        .sovereignty => &.{.Sovereignty},
+        .faction_warfare => &.{.FactionWarfare},
+    };
+}
+
+fn drawMapControlGlyph(canvas: pixel_buffer.Canvas, box: Box, control: MapControl, is_always_on_top: bool) void {
+    const x = @divTrunc(box.left + box.right, 2);
+    const y = @divTrunc(box.top + box.bottom, 2);
+    switch (control) {
+        .zoom_in => drawGlyphAt(canvas, .add, x, y, SEGMENT_TEXT),
+        .zoom_out => drawGlyphAt(canvas, .minus, x, y, SEGMENT_TEXT),
+        .fit => drawGlyphAt(canvas, .fit, x, y, SEGMENT_TEXT),
+        .always_on_top => drawGlyphAt(canvas, .pin, x, y, if (is_always_on_top) SEGMENT_TEXT else CARD_MUTED),
+    }
+}
+
 /// Dashes carry on across the corners between `points`.
 fn drawDashed(canvas: pixel_buffer.Canvas, points: []const [2]f32, line_color: u32) void {
     if (points.len < 2) return;
@@ -1194,23 +1162,6 @@ fn searchBox(body: Box, card_height: i32) Box {
     return .{ .left = right - width, .top = top, .right = right, .bottom = top + card_height };
 }
 
-/// `widths` are the buttons'; `divider_room` goes before Follow's.
-fn barWidth(widths: []const i32, gap: i32, divider_room: i32) i32 {
-    var total: i32 = 2 * BAR_INSET + divider_room;
-    for (widths) |width| total += width;
-    return total + gap * @as(i32, @intCast(widths.len - 1));
-}
-
-/// Lays `widths` out left to right inside `bar`, leaving the divider's room before `divider_before`.
-fn placeSegments(bar: Box, widths: []const i32, gap: i32, divider_before: ?usize, boxes: []Box) void {
-    var x = bar.left + BAR_INSET;
-    for (widths, boxes, 0..) |width, *box, index| {
-        if (divider_before == index) x += TOGGLE_DIVIDER_ROOM;
-        box.* = .{ .left = x, .top = bar.top + BAR_INSET, .right = x + width, .bottom = bar.bottom - BAR_INSET };
-        x += width + gap;
-    }
-}
-
 /// A lit row's fill: between `left` and `right`, and clear of the dividers above and below.
 fn rowHighlight(row: Box, left: i32, right: i32) Box {
     return .{ .left = left, .top = row.top + 2, .right = right, .bottom = row.bottom - 3 };
@@ -1231,25 +1182,9 @@ fn fillBox(canvas: pixel_buffer.Canvas, box: Box, radius: usize, fill: u32) void
     pixel_buffer.fillRoundedRect(canvas, @intCast(box.left), @intCast(box.top), @intCast(box.right - box.left), @intCast(box.bottom - box.top), radius, fill);
 }
 
-/// A lens and its handle around `x`,`y`.
-fn drawMagnifier(canvas: pixel_buffer.Canvas, x: i32, y: i32, icon_color: u32) void {
-    pixel_buffer.drawRing(canvas, x - 1, y - 1, 4.2, 1.4, icon_color);
-    for ([_]i32{ 0, 1 }) |offset| pixel_buffer.drawLine(canvas, x + 2 + offset, y + 2, x + 5, y + 5 - offset, icon_color);
-}
-
-/// A pushpin around `x`,`y`.
-fn drawPin(canvas: pixel_buffer.Canvas, x: i32, y: i32, is_solid: bool, pin_color: u32) void {
-    const top = y - MAP_GLYPH_SIZE;
-    const collar = y - 1;
-    pixel_buffer.drawLine(canvas, x - 3, top, x + 3, top, pin_color);
-    if (is_solid) {
-        pixel_buffer.fillRect(canvas, @intCast(x - 2), @intCast(top), 5, @intCast(collar - top), pin_color);
-    } else {
-        pixel_buffer.drawLine(canvas, x - 2, top, x - 2, collar, pin_color);
-        pixel_buffer.drawLine(canvas, x + 2, top, x + 2, collar, pin_color);
-    }
-    pixel_buffer.drawLine(canvas, x - 4, collar, x + 4, collar, pin_color);
-    pixel_buffer.drawLine(canvas, x, collar, x, y + MAP_GLYPH_SIZE, pin_color);
+/// Centred on `x`,`y`.
+fn drawGlyphAt(canvas: pixel_buffer.Canvas, glyph: glyphs.Glyph, x: i32, y: i32, glyph_color: u32) void {
+    glyphs.draw(canvas, glyph, x - @divTrunc(glyphs.SIZE, 2), y - @divTrunc(glyphs.SIZE, 2), glyph_color);
 }
 
 /// A pin's halo fill, fainter as it ages; kept faint so lines and names read through it.
@@ -1327,6 +1262,12 @@ test "every metric sits in its own segment's list" {
     for (std.enums.values(MapMetric)) |metric| {
         try testing.expect(std.mem.indexOfScalar(MapMetric, segmentMetrics(segmentOf(metric)), metric) != null);
     }
+}
+
+test "a segment shows the map's metric while it's that segment's, and its first otherwise" {
+    try testing.expectEqual(MapMetric.NpcDelta, shownMetric(.npc, .NpcDelta));
+    try testing.expectEqual(MapMetric.NpcKills, shownMetric(.npc, .Jumps));
+    try testing.expectEqual(MapMetric.Security, shownMetric(.security, .Security));
 }
 
 test "a second click on a segment flips to its other metric, and another segment starts at its first" {
@@ -1621,6 +1562,13 @@ test "a client tag blocked beside its marker tries above before below" {
     try testing.expect(below.top > TEST_AREA.top + 4);
 }
 
+test "a client tag keeps its chip's padding from a name, not just its text" {
+    const beside = clientTagBox(TEST_AREA, 100, 100, CLIENT_TAG_OFFSET, 60, 14, &.{}).?;
+    const name: Box = .{ .left = beside.left, .top = beside.bottom + 1, .right = beside.right, .bottom = beside.bottom + 15 };
+    const moved = clientTagBox(TEST_AREA, 100, 100, CLIENT_TAG_OFFSET, 60, 14, &.{name}).?;
+    try testing.expect(!std.meta.eql(moved, beside));
+}
+
 test "a client tag steps out past wide rings, and never closer than usual" {
     try testing.expectEqual(CLIENT_TAG_OFFSET, clientTagOffset(2));
     try testing.expectEqual(@as(i32, 16 + CLIENT_TAG_LEAD), clientTagOffset(15.5));
@@ -1651,6 +1599,16 @@ test "a new pin's ripple spreads and fades once, then is gone" {
     try testing.expect(later.radius > start.radius and later.radius < RIPPLE_END_RADIUS);
     try testing.expect(later.alpha < start.alpha);
     try testing.expectEqual(@as(?Ripple, null), rippleAt(RIPPLE_MS));
+}
+
+test "a ping under the side cards pans left of them, and one in the clear stays put" {
+    const areas: Areas = .init(800, 600, 30, true);
+    const card: Box = .{ .left = areas.search_box.left, .top = areas.intelTop(), .right = areas.body.right - CARD_MARGIN, .bottom = 400 };
+    const covered = [_]Box{card};
+    try testing.expectEqual(@as(?layout.View, null), revealedView(.{}, areas, &covered, 200, 300));
+    const moved = revealedView(.{}, areas, &covered, card.left + 20, 300).?;
+    const moved_x = card.left + 20 + @as(i32, @intFromFloat(moved.pan_x));
+    try testing.expect(moved_x < card.left - CARD_GAP);
 }
 
 test "a storm's periphery gates are fainter than its core's" {

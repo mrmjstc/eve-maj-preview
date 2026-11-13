@@ -1,4 +1,4 @@
-//! The configuration window's Notifications tab: the notification system, speech and travel mode; main thread only.
+//! The configuration window's Alert Options tab: the switch for every alert, and spoken alerts; main thread only.
 const ui = @import("ui");
 const config = @import("../../../config.zig");
 const session = @import("../session.zig");
@@ -23,19 +23,17 @@ const SPEED_LABELS = blk: {
 const Speed = struct { label: []const u8, rate: i8 };
 
 pub fn show(context: *ui.Frame) !void {
-    const profile = session.profile();
-    if (!profile.ptr.chatlog.enabled) {
+    if (!session.global().ptr.chatlog.enabled) {
         try widgets.noticeWithButton(context, .src(@src()), "Without Log Monitoring, only alerts for your own actions, like Profile Switch, are shown.", "Go to Log Monitoring", .log_monitoring);
     }
     try system(context);
     try speech(context);
-    try travel(context);
 }
 
 fn system(context: *ui.Frame) !void {
     const ref = session.profile().child("thumbnail").child("notifications");
-    const section = try widgets.openSection(context, "Notification System", "Alerts for game events like fleet invites. Set each one up on Game Events.", &style.section);
-    try bind.toggle(context, ref, "enabled", "Enable Notification System");
+    const section = try widgets.openSection(context, "Alerts", "Alerts for game events like fleet invites. Set each one up on Game Events.", &style.section);
+    try bind.toggle(context, ref, "enabled", "Enable Alerts");
     // Its placement and font are edited from its text on the Appearance tab's thumbnail preview.
     const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
     try bind.number(context, ref, "suppress_click_duration_ms", "Quiet After Click", .{ .shows_seconds = true, .unit = "s" });
@@ -49,7 +47,7 @@ fn system(context: *ui.Frame) !void {
 fn speech(context: *ui.Frame) !void {
     const section = try widgets.openSection(context, "Text-to-Speech", "Reads alerts aloud. Turn it on per event with Speak Aloud on Game Events.", &style.section);
     const ref = session.profile().child("thumbnail").child("notifications");
-    // Speech only means something while notifications fire, so the section dims with them.
+    // Speech only means something while alerts fire, so the section dims with them.
     const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
     try bind.toggle(context, ref, "tts_speak_character_name", "Prefix Spoken Alerts with the Character Name");
     try widgets.hintText(context, .src(@src()), "So you know which character an alert is about.");
@@ -77,31 +75,4 @@ fn speed(context: *ui.Frame, ref: NotificationRef) !void {
     }
     if (try widgets.segmented(context, .str("knots.notifications.tts_speed.steps"), &SPEED_LABELS, nearest)) |picked| ref.set("tts_rate", SPEEDS[picked].rate);
     try row.close(context);
-}
-
-fn travel(context: *ui.Frame) !void {
-    const ref = session.profile().child("travel");
-    // Its only output is a notification.
-    const are_notifications_enabled = session.profile().ptr.thumbnail.notifications.enabled;
-    const section = try widgets.openSection(context, "Travel Mode", "Alerts when a character misses its group's jump (Left Behind on Game Events).", &style.section);
-    const notifications = try widgets.openGroup(context, .src(@src()), are_notifications_enabled);
-    try bind.toggle(context, ref, "enabled", "Enable Travel Mode");
-    const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
-    try bind.number(context, ref, "window_seconds", "Catch-Up Window", .{ .unit = "s" });
-    try widgets.hintText(context, .src(@src()), "How long a character can fall behind before the alert.");
-    try bind.segmented(context, ref, "threshold_mode", "Group Size Threshold", &.{ "Percentage", "Count" });
-    try widgets.hintText(context, .src(@src()), "How big the group must be before anyone counts as left behind.");
-    switch (ref.get("threshold_mode")) {
-        .percent => {
-            try bind.number(context, ref, "threshold_percent", "Minimum Percentage", .{ .unit = "%" });
-            try widgets.hintText(context, .src(@src()), "How much of the group must jump together.");
-        },
-        .count => {
-            try bind.number(context, ref, "threshold_count", "Minimum Count", .{ .unit = "characters", .singular_unit = "character" });
-            try widgets.hintText(context, .src(@src()), "How many characters must jump together.");
-        },
-    }
-    try options.close(context);
-    try notifications.close(context);
-    try section.close(context);
 }

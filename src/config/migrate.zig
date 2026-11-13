@@ -1,16 +1,27 @@
-//! Upgrades an older profile's JSON before it's parsed, so the profile loader and the profile importer both see the current schema; no I/O.
+//! Upgrades older settings JSON before it's parsed, so the loaders and the profile importer see the current schema; no I/O.
 const std = @import("std");
 const values = @import("import/values.zig");
 const spaces_mod = @import("spaces.zig");
+const wire = @import("wire.zig");
 
 const Value = std.json.Value;
 
 /// Profiles from before this saved positions in DPI-unaware pixels.
 pub const DPI_AWARE_VERSION = 2;
 /// Profiles from before thumbnailSpaces kept one fit region and a not-logged-in space as display settings.
-pub const SPACES_VERSION = 3;
+const SPACES_VERSION = 3;
 /// Profiles from before this kept the client list's and panels' settings in display, each name prefixed.
-pub const PANELS_VERSION = 4;
+const PANELS_VERSION = 4;
+/// Profiles from before this saved the old default amber as the list's active colour and focused border, rather than following the accent.
+pub const FOLLOWS_ACCENT_VERSION = 5;
+
+/// The amber both colours defaulted to before FOLLOWS_ACCENT_VERSION.
+const OLD_ACCENT_DEFAULT: u32 = 0xFFD9A441;
+/// Section and key of each colour that follows the accent when unset.
+const ACCENT_FOLLOWERS = [_]struct { section: []const u8, key: []const u8 }{
+    .{ .section = "listView", .key = "activeColor" },
+    .{ .section = "thumbnail", .key = "borderColor" },
+};
 
 /// A display setting that moved into its own section under a new name.
 const Move = struct { old: []const u8, section: []const u8, new: []const u8 };
@@ -128,6 +139,33 @@ pub fn profile(arena: std.mem.Allocator, root: *Value) !void {
     try spacesFromDisplay(arena, root);
     try placementModeFromSpaces(arena, root);
     try panelsFromDisplay(arena, root);
+    followAccentFromOldDefault(root);
+}
+
+/// A profile's own chatlog section, from before Log Monitoring was shared by every profile; null when it has none.
+pub fn profileChatlog(root: Value) ?Value {
+    if (root != .object) return null;
+    const section = root.object.get("chatlog") orelse return null;
+    return if (section == .object) section else null;
+}
+
+/// The global settings already hold the shared chatlog section, so no profile's is taken.
+pub fn hasSharedChatlog(global_root: Value) bool {
+    return global_root == .object and global_root.object.contains("chatlog");
+}
+
+/// Unsets a colour still at the old default, so it follows the accent; one set by hand to anything else stays.
+fn followAccentFromOldDefault(root: *Value) void {
+    if (root.* != .object) return;
+    const version = values.integerAt(root.*, "formatVersion") orelse 1;
+    if (version >= FOLLOWS_ACCENT_VERSION) return;
+    for (ACCENT_FOLLOWERS) |follower| {
+        const section = root.object.getPtr(follower.section) orelse continue;
+        if (section.* != .object) continue;
+        const text = values.stringAt(section.*, follower.key) orelse continue;
+        const color = wire.parseHexColor(text) catch continue;
+        if (color == OLD_ACCENT_DEFAULT) _ = section.object.orderedRemove(follower.key);
+    }
 }
 
 /// Moves the old fit region and not-logged-in space into thumbnailSpaces.
@@ -327,6 +365,25 @@ test "the client list's and panels' display settings move into their own section
     try testing.expectEqual(@as(i64, 5), values.integerAt(root.object.get("display").?, "startX").?);
 }
 
+test "the old default amber is unset so it follows the accent, and a picked colour stays" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const root = try migrated(arena.allocator(),
+        \\{"formatVersion":4,"listView":{"activeColor":"0xFFD9A441"},"thumbnail":{"borderColor":"0xFF112233"}}
+    );
+    try testing.expect(values.get(root.object.get("listView").?, "activeColor") == null);
+    try testing.expectEqualStrings("0xFF112233", values.stringAt(root.object.get("thumbnail").?, "borderColor").?);
+}
+
+test "a current profile's amber is a picked colour and stays" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const root = try migrated(arena.allocator(),
+        \\{"formatVersion":5,"listView":{"activeColor":"0xFFD9A441"}}
+    );
+    try testing.expectEqualStrings("0xFFD9A441", values.stringAt(root.object.get("listView").?, "activeColor").?);
+}
+
 test "a panel setting already in its section wins, and a current profile's display is left alone" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
@@ -338,4 +395,22 @@ test "a panel setting already in its section wins, and a current profile's displ
         \\{"formatVersion":4,"display":{"listViewColumns":3}}
     );
     try testing.expect(current.object.get("listView") == null);
+}
+
+test "a profile's chatlog section is found, and nothing else passes for one" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const with = try std.json.parseFromSliceLeaky(Value, arena.allocator(), "{\"chatlog\":{\"enabled\":true}}", .{});
+    try testing.expect(values.boolAt(profileChatlog(with).?, "enabled").?);
+    const without = try std.json.parseFromSliceLeaky(Value, arena.allocator(), "{\"chatlog\":true}", .{});
+    try testing.expect(profileChatlog(without) == null);
+}
+
+test "global settings saved before Log Monitoring was shared have no chatlog section" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const older = try std.json.parseFromSliceLeaky(Value, arena.allocator(), "{\"lastUsedProfile\":\"default.json\"}", .{});
+    try testing.expect(!hasSharedChatlog(older));
+    const newer = try std.json.parseFromSliceLeaky(Value, arena.allocator(), "{\"chatlog\":{}}", .{});
+    try testing.expect(hasSharedChatlog(newer));
 }

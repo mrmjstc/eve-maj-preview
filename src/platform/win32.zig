@@ -52,6 +52,8 @@ pub const WM_CLOSE = 0x0010;
 pub const WM_ENDSESSION = 0x0016;
 pub const WM_ERASEBKGND = 0x0014;
 pub const WM_NCHITTEST = 0x0084;
+/// wParam is the WM_NCHITTEST result under the cursor; sent without CS_DBLCLKS.
+pub const WM_NCLBUTTONDBLCLK = 0x00A3;
 pub const WM_TIMER = 0x0113;
 pub const WM_KEYDOWN = 0x0100;
 pub const WM_KEYUP = 0x0101;
@@ -78,6 +80,9 @@ pub const HTCLIENT: LRESULT = 1;
 pub const HTCAPTION: LRESULT = 2;
 pub const WM_ENTERSIZEMOVE = 0x0231;
 pub const WM_EXITSIZEMOVE = 0x0232;
+pub const WM_SYSCOMMAND = 0x0112;
+/// WM_SYSCOMMAND's move, in wParam's top bits; the low four carry how it was asked for.
+pub const SC_MOVE = 0xF010;
 pub const WM_SETICON = 0x0080;
 pub const ICON_SMALL = 0;
 pub const ICON_BIG = 1;
@@ -698,11 +703,6 @@ pub const SM_YVIRTUALSCREEN = 77;
 pub const SM_CXVIRTUALSCREEN = 78;
 pub const SM_CYVIRTUALSCREEN = 79;
 
-pub const MOD_ALT = 0x0001;
-pub const MOD_CONTROL = 0x0002;
-pub const MOD_SHIFT = 0x0004;
-pub const MOD_WIN = 0x0008;
-
 pub const NIM_ADD = 0x00000000;
 pub const NIM_MODIFY = 0x00000001;
 pub const NIM_DELETE = 0x00000002;
@@ -741,6 +741,8 @@ pub const IDM_MINIMIZE_GROUP_BASE = 4000;
 pub const IDI_APPLICATION: LPCSTR = @ptrFromInt(32512);
 pub const IMAGE_ICON = 1;
 
+pub const VK_LBUTTON = 0x01;
+pub const VK_RBUTTON = 0x02;
 pub const VK_SHIFT = 0x10;
 pub const VK_CONTROL = 0x11;
 // Alt
@@ -1157,9 +1159,18 @@ pub fn dpiForPoint(point: POINT) u32 {
 
 /// Taskbar included; null if the lookup fails.
 pub fn monitorRect(monitor: HMONITOR) ?RECT {
+    return (monitorInfo(monitor) orelse return null).rcMonitor;
+}
+
+/// Without the taskbar; null if the lookup fails.
+pub fn monitorWorkRect(monitor: HMONITOR) ?RECT {
+    return (monitorInfo(monitor) orelse return null).rcWork;
+}
+
+fn monitorInfo(monitor: HMONITOR) ?MONITORINFO {
     var info: MONITORINFO = .{ .cbSize = @sizeOf(MONITORINFO), .rcMonitor = undefined, .rcWork = undefined, .dwFlags = 0 };
     if (GetMonitorInfoA(monitor, &info) == FALSE) return null;
-    return info.rcMonitor;
+    return info;
 }
 
 pub const MONITORENUMPROC = *const fn (
@@ -1745,22 +1756,26 @@ pub inline fn lparamToPtr(comptime T: type, lParam: LPARAM) *T {
 
 const VK_DOWN_FLAG: c_short = @bitCast(@as(c_ushort, 0x8000));
 
+/// Whether `virtual_key`, a key or mouse button, is held now.
+pub inline fn isKeyDown(virtual_key: c_int) bool {
+    return (GetAsyncKeyState(virtual_key) & VK_DOWN_FLAG) != 0;
+}
+
 pub inline fn isCtrlPressed() bool {
-    return (GetAsyncKeyState(VK_CONTROL) & VK_DOWN_FLAG) != 0;
+    return isKeyDown(VK_CONTROL);
 }
 
 pub inline fn isAltPressed() bool {
-    return (GetAsyncKeyState(VK_MENU) & VK_DOWN_FLAG) != 0;
+    return isKeyDown(VK_MENU);
 }
 
 pub inline fn isShiftPressed() bool {
-    return (GetAsyncKeyState(VK_SHIFT) & VK_DOWN_FLAG) != 0;
+    return isKeyDown(VK_SHIFT);
 }
 
 // No one VK code covers both Win keys.
 pub inline fn isWinPressed() bool {
-    return (GetAsyncKeyState(VK_LWIN) & VK_DOWN_FLAG) != 0 or
-        (GetAsyncKeyState(VK_RWIN) & VK_DOWN_FLAG) != 0;
+    return isKeyDown(VK_LWIN) or isKeyDown(VK_RWIN);
 }
 
 pub inline fn getXButton(mouse_data: DWORD) WORD {

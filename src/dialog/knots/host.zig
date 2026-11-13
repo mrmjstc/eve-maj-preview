@@ -10,6 +10,7 @@ const types = @import("../../config/types.zig");
 const monitors = @import("../../layout/monitors.zig");
 const update = @import("../../update.zig");
 const detached = @import("../../util/detached.zig");
+const panel_host = @import("../../panels/panel_host.zig");
 const session = @import("session.zig");
 const bind = @import("bind.zig");
 const form = @import("form.zig");
@@ -23,7 +24,7 @@ const widgets = @import("widgets.zig");
 const color_convert = @import("color_convert.zig");
 const region = @import("region.zig");
 const hotkey = @import("hotkey.zig");
-const general = @import("tabs/general.zig");
+const window_filters = @import("tabs/window_filters.zig");
 const backups = @import("tabs/backups.zig");
 const hotkeys = @import("tabs/hotkeys.zig");
 const hotkey_groups = @import("tabs/hotkey_groups.zig");
@@ -36,12 +37,14 @@ const update_notice = @import("update_notice.zig");
 const mining = @import("tabs/mining.zig");
 const portraits = @import("portraits.zig");
 const prices = @import("prices.zig");
-const behavior = @import("tabs/behavior.zig");
+const client_windows = @import("tabs/client_windows.zig");
 const client_list = @import("tabs/client_list.zig");
+const notification_history = @import("tabs/notification_history.zig");
 const log = @import("../../log.zig");
 
 const GlobalConfig = config.GlobalConfig;
 const Language = types.Language;
+const SettingsPage = panel_host.SettingsPage;
 const slog = log.Scoped("dialog_knots");
 
 const WINDOW_TITLE = "EVE-Maj Preview Configuration";
@@ -92,6 +95,7 @@ var g_should_force_close: bool = false;
 var g_is_present_mode_chosen: bool = false;
 /// Where placeWindowHook puts the window knots creates, while App.init runs.
 var g_spawn_position: ?win32.POINT = null;
+var g_requested_page: ?SettingsPage = null;
 var g_spawn_hook: ?win32.HHOOK = null;
 /// The running window, for retitling it; null while it's closed.
 var g_app: ?*knots.App = null;
@@ -105,7 +109,7 @@ pub fn init(app: *app_mod.App) void {
     g_allocator = app.allocator;
     g_io = app.io;
     session.init(app);
-    app.dialog = .{ .redraw = redraw, .is_open = isOpen, .close_for_exit = closeForExit, .live_global = session.liveGlobal };
+    app.dialog = .{ .redraw = redraw, .is_open = isOpen, .close_for_exit = closeForExit, .live_global = session.liveGlobal, .open_at = openAt };
     pickers.init(g_allocator);
     prices.init(g_allocator);
     portraits.setAllocator(g_allocator);
@@ -118,6 +122,12 @@ pub fn deinit() void {
 
 pub fn isOpen() bool {
     return g_state == .open;
+}
+
+/// The page openAt asked for since the last call, for form to show.
+pub fn takeRequestedPage() ?SettingsPage {
+    defer g_requested_page = null;
+    return g_requested_page;
 }
 
 pub fn open() void {
@@ -137,14 +147,6 @@ pub fn requestClose() void {
     if (!win32.toBool(win32.PostMessageA(window, win32.WM_CLOSE, 0, 0))) {
         slog.warn("Failed to close the knots configuration window: error {d}", .{win32.GetLastError()});
     }
-}
-
-/// Returns whether the exit waits for the window to close, which then posts the quit itself.
-pub fn closeForExit() bool {
-    if (g_state != .open) return false;
-    g_should_quit_after_close = true;
-    closeWithoutAsking();
-    return true;
 }
 
 pub fn postCommand(command: Command) void {
@@ -263,6 +265,20 @@ pub fn discardChanges() !void {
     setAlwaysOnTop(session.runningApp().global_settings.alwaysOnTop);
 }
 
+/// Opens the window, or brings it forward, on `page`'s tab.
+fn openAt(page: SettingsPage) void {
+    g_requested_page = page;
+    open();
+}
+
+/// Returns whether the exit waits for the window to close, which then posts the quit itself.
+fn closeForExit() bool {
+    if (g_state != .open) return false;
+    g_should_quit_after_close = true;
+    closeWithoutAsking();
+    return true;
+}
+
 /// Pumps every message on the main thread until the window closes, so the tick, hooks and tray keep running.
 fn run() void {
     switch (g_state) {
@@ -332,17 +348,18 @@ fn runWindow(is_reopened: bool) !void {
     defer import_dialog.reset();
     update_notice.init(g_allocator);
     defer update_notice.reset();
-    general.init(g_allocator);
-    defer general.reset();
+    window_filters.init(g_allocator);
+    defer window_filters.reset();
     backups.init(g_allocator);
     defer backups.reset();
     hotkeys.init(g_allocator);
     defer hotkeys.reset();
     hotkey_groups.init(g_allocator);
     defer hotkey_groups.reset();
-    behavior.init(g_allocator);
-    defer behavior.reset();
+    client_windows.init(g_allocator);
+    defer client_windows.reset();
     defer client_list.reset();
+    defer notification_history.reset();
     images.init(g_allocator);
     defer images.deinit();
     header.init(g_allocator);
@@ -530,7 +547,7 @@ fn applyPicked(lParam: win32.LPARAM) void {
     defer picked.deinit();
     // The window may have closed while the picker was open.
     if (g_state != .open) return;
-    const chatlog = session.profile().child("chatlog");
+    const chatlog = session.global().child("chatlog");
     switch (picked.target) {
         .chatlog_dir => chatlog.set("chatlogDir", picked.path),
         .gamelog_dir => chatlog.set("gamelogDir", picked.path),

@@ -63,6 +63,7 @@ pub fn notify(context: Context, thumbnail: *ThumbnailWindow, notification: notif
     };
     if (!queued or is_repeat) return;
     context.records.shown_alert_group.* = notification.alert_group;
+    if (notification.notification_type == .ChatIntel and context.config.intelPanel.muteSounds) return;
 
     const spoken_name: ?[]const u8 = if (settings.tts_speak_character_name and thumbnail.character_name.len > 0)
         (if (settings.tts_use_display_name) thumbnail.cached_display_name else thumbnail.character_name)
@@ -72,7 +73,7 @@ pub fn notify(context: Context, thumbnail: *ThumbnailWindow, notification: notif
 }
 
 /// Lists an intel report for the Intel Panel, shown or not, so it's all there when the panel opens; measured from the client nearest it, and dropped with no client running.
-pub fn listIntel(context: Context, thumbnails: []const ThumbnailWindow, system: universe.SystemIndex, message: []const u8) void {
+pub fn listIntel(context: Context, thumbnails: []const ThumbnailWindow, system: universe.SystemIndex, message: []const u8, is_clear: bool) void {
     var distances: universe.Distances = undefined;
     universe.measureDistances(system, universe.UNREACHED - 1, &distances);
     const nearest = nearestClient(thumbnails, &distances) orelse return;
@@ -83,7 +84,7 @@ pub fn listIntel(context: Context, thumbnails: []const ThumbnailWindow, system: 
     const notification: notification_mod.Notification = .{ .notification_type = .ChatIntel, .target = universe.systemName(system), .message = message, .jumps = jumps };
     var text_buf: [notification_mod.TEXT_MAX]u8 = undefined;
     const text = notification_mod.defaultText(notification, &text_buf);
-    context.records.intel_history.push(nearest.thumbnail.source_hwnd, nearest.thumbnail.character_name, text, .ChatIntel, nearest.thumbnail.cached_character_color, null, systemLead(context, notification, text, .known_only), system);
+    context.records.intel_history.push(nearest.thumbnail.source_hwnd, nearest.thumbnail.character_name, text, .ChatIntel, nearest.thumbnail.cached_character_color, null, systemLead(context, notification, text, .known_only), system, .{ .jumps = nearest.jumps, .is_clear = is_clear });
 }
 
 /// Shows `notification` on every EVE client's thumbnail for a global user action; kept out of history, and sound/speech play once rather than per thumbnail.
@@ -224,7 +225,7 @@ fn queue(context: Context, thumbnail: *ThumbnailWindow, text: []const u8, notifi
     if (!notification_mod.isUserAction(notification_type)) context.records.notified_queue.track(context.allocator, thumbnail.character_name);
     // Intel belongs to the Intel Panel and the map, which list every report through listIntel.
     if (history_record) |record| {
-        if (notification_type != .ChatIntel) context.records.history.push(thumbnail.source_hwnd, thumbnail.character_name, text, notification_type, thumbnail.cached_character_color, record.text_color, lead, null);
+        if (notification_type != .ChatIntel) context.records.history.push(thumbnail.source_hwnd, thumbnail.character_name, text, notification_type, thumbnail.cached_character_color, record.text_color, lead, null, null);
     }
 
     slog.debug("Queued notification for {s}: [{s}] {s} (border_color_override: {?})", .{ thumbnail.character_name, @tagName(notification_type), text, type_config.border_color });

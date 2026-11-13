@@ -119,7 +119,9 @@ fn mainImpl(init: std.process.Init) !void {
     defer waitForBackgroundThreads(&app, init.io);
 
     // Not profile_name: loadProfile() may have fallen back to default, and this heals global settings to match.
-    try app.global_settings.updateLastUsed(init.io, app.store.live.profile_name);
+    app.global_settings.updateLastUsed(init.io, app.store.live.profile_name) catch |err| {
+        slog.warn("Failed to record '{s}' as the last used profile: {}", .{ app.store.live.profile_name, err });
+    };
 
     app.store.live.logSettings();
 
@@ -137,7 +139,7 @@ fn mainImpl(init: std.process.Init) !void {
 
     const thumbnail_set = try app.createThumbnailSet();
 
-    if (app.store.live.chatlog.enabled) {
+    if (app.global_settings.chatlog.enabled) {
         app.chatlog_monitor = try app.createChatlogMonitor();
     } else {
         slog.info("Chatlog monitoring disabled", .{});
@@ -183,14 +185,16 @@ fn mainImpl(init: std.process.Init) !void {
     }
 }
 
-/// Each after what it needs: the log level before the profile's load logs, the last used profile before the profile; `profile_arg` is --profile's.
+/// Each after what it needs: the log level before anything else logs, the last used profile before the profile; `profile_arg` is --profile's.
 fn loadFromDisk(allocator: std.mem.Allocator, io: std.Io, profile_arg: ?[]const u8) !app_mod.Loaded {
     var global_settings: config.GlobalConfig = try .load(allocator, io);
     errdefer global_settings.deinit();
+    log.setLevel(global_settings.logLevel);
+    // Before the dump, so it shows any Log Monitoring a profile brings along.
+    global_settings.finishLoading(io);
+    global_settings.logSettings();
     var character_ids: CharacterIds = .load(allocator, io);
     errdefer character_ids.deinit();
-    log.setLevel(global_settings.logLevel);
-    global_settings.logSettings();
     // Every launch, since the Run value can be lost or point at a moved exe while the setting stays on.
     if (global_settings.runOnStartup) run_on_startup.apply(true);
 

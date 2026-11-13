@@ -346,19 +346,17 @@ fn copyToBackup(allocator: std.mem.Allocator, io: std.Io, profile_path: []const 
 }
 
 fn loadFile(allocator: std.mem.Allocator, io: std.Io, profile_path: []const u8, name: []const u8) !Config {
-    const content = std.Io.Dir.cwd().readFileAlloc(io, profile_path, allocator, .limited(files.MAX_CONFIG_FILE_SIZE)) catch |err| {
+    const content = files.readSettingsFile(allocator, io, profile_path) catch |err| {
         if (err != error.FileNotFound) slog.err("Failed to read config file '{s}': {}", .{ profile_path, err });
         return err;
     };
     defer allocator.free(content);
 
-    const config = Config.buildConfigFromJson(allocator, content, name) catch |err| {
+    return Config.buildConfigFromJson(allocator, content, name) catch |err| {
         slog.err("Failed to parse config file '{s}', falling back to defaults: {}", .{ profile_path, err });
         backUpUnreadable(allocator, io, profile_path, name);
         return Config.getDefaultsWithProfile(allocator, name);
     };
-    config.chatlog.warnUnreachableDirs(io);
-    return config;
 }
 
 fn readAccentFrom(allocator: std.mem.Allocator, io: std.Io, file_path: []const u8) !?u32 {

@@ -18,7 +18,7 @@ It's **never** going to let you input broadcast, display cropped portions of you
 - **Configuration Editor**: A settings window for editing profiles without touching files directly
 - **Compact List View**: Single-panel alternative to thumbnails, one row per client with state, name, and system/notification text
 - **Multi-Application Support**: Configurable window filters to track any Windows app
-- **Notification System**: Per-type event alerts with suppression, border color/flash, and text-to-speech options
+- **Alerts**: Per-type game event alerts with suppression, border color/flash, and text-to-speech options
 - **Text-to-Speech Alerts**: Speaks notifications via Windows SAPI, with per-type opt-in and adjustable volume/rate
 - **Profile System**: Multiple configs with hotkey-based cycling
 - **Hotkey Groups**: Cycle or switch clients via keyboard shortcuts

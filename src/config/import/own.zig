@@ -8,6 +8,7 @@ const config_mod = @import("../../config.zig");
 
 const Value = std.json.Value;
 const Config = config_mod.Config;
+const ChatlogConfig = config_mod.ChatlogConfig;
 const Draft = draft_mod.Draft;
 const Section = draft_mod.Section;
 
@@ -22,7 +23,7 @@ const SECTIONS = std.StaticStringMap(SectionWords).initComptime(.{
     .{ "combat", SectionWords{ .title = "Combat Tracker", .hint = "Combat log parsing" } },
     .{ "display", SectionWords{ .title = "Display", .hint = "Thumbnail Placement" } },
     .{ "listView", SectionWords{ .title = "Client List", .hint = "List view appearance" } },
-    .{ "historyPanel", SectionWords{ .title = "History Panel", .hint = "Notification History" } },
+    .{ "historyPanel", SectionWords{ .title = "Alert History", .hint = "Panel of recent alerts" } },
     .{ "mapPanel", SectionWords{ .title = "Map", .hint = "Region map, live stats and routes" } },
     .{ "intelPanel", SectionWords{ .title = "Intel Panel", .hint = "Intel reports from chat" } },
     .{ "hotkeyGroups", SectionWords{ .title = "Hotkey Groups", .hint = "Character cycling groups ({n})" } },
@@ -35,7 +36,7 @@ const SECTIONS = std.StaticStringMap(SectionWords).initComptime(.{
     .{ "panelSnapping", SectionWords{ .title = "Panel Snapping", .hint = "Panel snapping" } },
     .{ "systemColors", SectionWords{ .title = "System Colors", .hint = "Per-system name colors ({n})" } },
     .{ "avoidedSystems", SectionWords{ .title = "Avoided Systems", .hint = "Systems the map's routes keep out of ({n})" } },
-    .{ "thumbnail", SectionWords{ .title = "Thumbnail Appearance & Notifications", .hint = "Border/text styling, per-state visuals, alert notifications" } },
+    .{ "thumbnail", SectionWords{ .title = "Thumbnail Appearance & Alerts", .hint = "Border/text styling, per-state visuals, game event alerts" } },
     .{ "thumbnailSpaces", SectionWords{ .title = "Thumbnail Spaces", .hint = "Screen regions hotkey groups fill ({n})" } },
     .{ "timer", SectionWords{ .title = "Scan Timer", .hint = "Window scan interval" } },
     .{ "windowFilters", SectionWords{ .title = "Window Filters", .hint = "Window matching rules for other apps ({n})" } },
@@ -69,6 +70,11 @@ pub fn sections(draft: *Draft, root: Value) ![]const Section {
             try out.append(draft.arena, .{ .id = f.name, .title = words.title, .hint = .{ .key = words.hint }, .available = is_in_file });
         }
     }
+    // Log Monitoring moved into the global settings, but a profile saved before then still holds it.
+    if (config_mod.migrateProfileChatlog(migrated)) |_| {
+        const words = comptime sectionWords("chatlog");
+        try out.append(draft.arena, .{ .id = "chatlog", .title = words.title, .hint = .{ .key = words.hint }, .available = true });
+    }
     return out.items;
 }
 
@@ -85,11 +91,21 @@ pub fn build(draft: *Draft, text: []const u8, root: Value, chosen: []const []con
         if (comptime isStamp(f.name)) continue;
         if (draft_mod.isChosen(chosen, f.name)) try importSection(draft, &config, readable_root, f.name);
     }
+    if (draft_mod.isChosen(chosen, "chatlog")) try importChatlog(draft, readable_root);
     for (skipped.items) |path| {
         const section_end = std.mem.findScalar(u8, path, '.') orelse path.len;
         if (!draft_mod.isChosen(chosen, path[0..section_end])) continue;
         try draft.skipped.append(draft.arena, path);
     }
+}
+
+/// Read as loading reads it, expanding its folders, since the global settings take it as it comes.
+fn importChatlog(draft: *Draft, root: Value) !void {
+    var section = config_mod.migrateProfileChatlog(root) orelse return;
+    if (!readable.dropUnreadable(ChatlogConfig.Wire, draft.arena, &section, null)) return;
+    const saved = try std.json.parseFromValueLeaky(ChatlogConfig.Wire, draft.arena, section, readable.PARSE_OPTIONS);
+    const chatlog = try ChatlogConfig.fromWire(saved, draft.arena);
+    try draft.root.put(draft.arena, "chatlog", try draft_mod.toValue(draft.arena, ChatlogConfig, &chatlog, &.{}));
 }
 
 fn sectionWords(comptime name: []const u8) SectionWords {

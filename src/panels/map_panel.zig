@@ -41,7 +41,7 @@ const PUMP_INTERVAL_MS: win32.UINT = 100;
 /// Re-armed by each frame a moving map skips, so where it stopped is still drawn.
 const FRAME_TIMER_ID: usize = 2;
 const FRAME_CATCH_UP_MS: win32.UINT = 50;
-/// While a new pin's ripple plays; about the shortest a timer goes.
+/// While a pin's, kill's or ping's ripple plays; about the shortest a timer goes.
 const RIPPLE_TIMER_ID: usize = 3;
 const RIPPLE_FRAME_MS: win32.UINT = 16;
 /// Shown instead of the real pins while mapPanel.showIntel is off.
@@ -102,10 +102,10 @@ pub const MapPanel = struct {
         return self.window != null and self.visibility.allowsFor(&config.mapPanel, any_character_logged_in, win32.Ticks.now().ms);
     }
 
-    /// Selects `system`, opening its region unless that's shown, for an Intel Panel row.
+    /// Selects and ripples `system`, opening its region unless that's shown, for an Intel Panel row.
     pub fn showSystem(self: *MapPanel, system: SystemIndex, thumbnail_set: ?*const ThumbnailSet) void {
         const window = if (self.window) |*w| w else return;
-        window.selectSystem(system);
+        window.pingSystem(system);
         self.redraw(thumbnail_set);
     }
 
@@ -261,7 +261,7 @@ fn setPumping(window: *MapPanelWindow, is_wanted: bool) void {
 }
 
 fn setRippling(window: *MapPanelWindow, is_wanted: bool) void {
-    if (!setTimerRunning(window.panel.hwnd, &window.is_rippling, RIPPLE_TIMER_ID, RIPPLE_FRAME_MS, is_wanted)) slog.warn("Failed to start the Map Panel's ripple timer, so new intel shows without its ripple", .{});
+    if (!setTimerRunning(window.panel.hwnd, &window.is_rippling, RIPPLE_TIMER_ID, RIPPLE_FRAME_MS, is_wanted)) slog.warn("Failed to start the Map Panel's ripple timer, so ripples play only on the tick", .{});
 }
 
 /// Starts or stops timer `id`, with `is_running` tracking it; false only when it was wanted and wouldn't start.
@@ -297,6 +297,11 @@ fn mapPanelWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, l
     const window = if (map_panel.window) |*open| open else return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
     switch (msg) {
         win32.WM_EXITSIZEMOVE => window.afterSizeMove(),
+        win32.WM_SYSCOMMAND => {
+            // A title bar drag asks to move by this, so a locked map stays put; sizing still works.
+            if (wParam & 0xFFF0 == win32.SC_MOVE and window.config.mapPanel.lockPosition) return 0;
+            return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
+        },
         win32.WM_PAINT => window.panel.paint(),
         win32.WM_SIZE => {
             if (wParam == win32.SIZE_MINIMIZED) return 0;

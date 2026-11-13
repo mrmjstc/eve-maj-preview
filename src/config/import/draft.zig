@@ -1,4 +1,4 @@
-//! What an import brings in: a partial profile in its saved shape, and notes for the user; `toOps` turns it into edit ops (see config/patch.zig) against the profile being edited.
+//! What an import brings in: settings in their saved shape, and notes for the user; `toOps` turns them into edit ops (see config/patch.zig) against the profile being edited, `sectionOps` against another document.
 const std = @import("std");
 const config = @import("../../config.zig");
 const patch = @import("../patch.zig");
@@ -181,9 +181,16 @@ pub fn toOps(arena: std.mem.Allocator, draft: *const Draft, doc: *const Config) 
                 try ops.append(arena, try setOp(arena, &.{key}, try mergedList(arena, merged.key_field, existing.array.items, value.array.items)));
             }
         } else {
-            try fieldOps(arena, &ops, &.{key}, value);
+            try fieldOps(arena, Config, &ops, &.{key}, value);
         }
     }
+    return ops.items;
+}
+
+/// The ops that bring `value` into a `Doc`'s section `name`, field by field.
+pub fn sectionOps(arena: std.mem.Allocator, comptime Doc: type, name: []const u8, value: Value) ![]const patch.Op {
+    var ops: std.ArrayList(patch.Op) = .empty;
+    try fieldOps(arena, Doc, &ops, &.{name}, value);
     return ops.items;
 }
 
@@ -207,14 +214,14 @@ fn findMergedList(name: []const u8) ?MergedList {
 }
 
 /// Sections are set field by field; anything else, even a small struct, whole.
-fn fieldOps(arena: std.mem.Allocator, ops: *std.ArrayList(patch.Op), path: []const []const u8, value: Value) !void {
-    if (value != .object or !patch.isSection(Config, path)) return ops.append(arena, try setOp(arena, path, value));
+fn fieldOps(arena: std.mem.Allocator, comptime Doc: type, ops: *std.ArrayList(patch.Op), path: []const []const u8, value: Value) !void {
+    if (value != .object or !patch.isSection(Doc, path)) return ops.append(arena, try setOp(arena, path, value));
     var it = value.object.iterator();
     while (it.next()) |entry| {
         const child = try arena.alloc([]const u8, path.len + 1);
         @memcpy(child[0..path.len], path);
         child[path.len] = entry.key_ptr.*;
-        try fieldOps(arena, ops, child, entry.value_ptr.*);
+        try fieldOps(arena, Doc, ops, child, entry.value_ptr.*);
     }
 }
 

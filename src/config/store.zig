@@ -36,6 +36,11 @@ pub const ProfileStore = struct {
         self.persist();
     }
 
+    /// Live only and unsaved, for a drag whose last step is an update; `patch` is as update's.
+    pub fn preview(self: *ProfileStore, patch: anytype) void {
+        assign(Config, &self.live, patch);
+    }
+
     pub const CharacterPosition = struct { name: []const u8, position: config_mod.Position };
 
     /// Saved once for the whole batch, so a group drag writes the profile once rather than per thumbnail.
