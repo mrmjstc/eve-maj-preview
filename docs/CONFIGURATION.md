@@ -324,6 +324,7 @@ The Client List (`viewMode: ClientList` or `ThumbnailsAndList`): one row per cli
 | `outgoingDpsColor` | colour | `0xFF68CA6B` | | |
 | `miningRateColor` | colour | `0xFF7E98E7` | | |
 | `bountyRateColor` | colour | `0xFFE1C747` | | |
+| `showTotals` | bool | `false` | | A line under the rows adding up their shown rates; `~` marks a total missing clients still being measured. |
 | `hideWhenNoEveFocus` | bool | `false` | | |
 | `hideDebounceMs` | int | `500` | 0–5000 | |
 
@@ -573,6 +574,7 @@ m³/min and ISK rate from gamelog `(mining)` lines (normal and critical yields; 
 | `position` | enum | `BottomRight` | position | |
 | `offset_x`, `offset_y` | int | `0` | offset | |
 | `show_prefix` | bool | `true` | | `M:` |
+| `m3_rate_unit` | enum | `hour` | `hour` `minute` | The m3 rate's period, on thumbnails and the Client List. |
 | `show_isk_rate` | bool | `true` | | Second line, priced from the [ore table](#global-settings). |
 | `isk_rate_unit` | enum | `hour` | `hour` `minute` | |
 | `idle_alert_window_seconds` | int | `30` | 30–600 | **0 = default.** `MiningIdle` fires once when events in this window ≤ `idle_alert_threshold`, after mining for a full window; rearms above it. |

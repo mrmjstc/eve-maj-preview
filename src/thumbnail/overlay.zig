@@ -194,8 +194,6 @@ const Fonts = struct {
     }
 };
 
-const IskPeriod = struct { seconds: f32, suffix: []const u8 };
-
 pub fn renderThumbnailOverlay(font_cache: *FontCache, thumbnail: *ThumbnailWindow, settings: RenderSettings, config: *const config_mod.Config) !void {
     try renderOverlay(font_cache, &thumbnail.render_cache, thumbnail.text_hwnd, thumbnail, settings, config);
 }
@@ -370,20 +368,14 @@ fn addMining(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, st
 
     var texts: [2][]const u8 = undefined;
     var text_count: usize = 1;
+    const unit = mining.m3_rate_unit;
     texts[0] = if (stats.mining_rate) |rate| blk: {
-        // Per minute rather than per second, so low-yield ore doesn't round to "0".
-        const rate_per_minute = rate * 60.0;
-        var raw_buf: [16]u8 = undefined;
-        const raw = if (rate_per_minute < 10.0)
-            std.mem.print(&raw_buf, "{d:.1}", .{rate_per_minute}) catch "---"
-        else
-            std.mem.print(&raw_buf, "{d:.0}", .{rate_per_minute}) catch "---";
-        var comma_buf: [16]u8 = undefined;
-        break :blk layout.print("{s}{s} m3/min", .{ prefix, format.insertThousandsSeparators(&comma_buf, raw) });
-    } else layout.print("{s}?? m3/min", .{prefix});
+        var volume_buf: [24]u8 = undefined;
+        break :blk layout.print("{s}{s} m3/{s}", .{ prefix, format.formatMinedVolume(&volume_buf, rate * unit.seconds()), unit.suffix() });
+    } else layout.print("{s}?? m3/{s}", .{ prefix, unit.suffix() });
 
     if (mining.show_isk_rate) {
-        texts[1] = iskRateText(layout, "", stats.mining_isk_rate, iskPeriod(mining.isk_rate_unit));
+        texts[1] = iskRateText(layout, "", stats.mining_isk_rate, mining.isk_rate_unit);
         text_count = 2;
     }
     layout.addStack(font, texts[0..text_count], mining.position, mining.offset_x, mining.offset_y, mining.color, settings.mining_bg_color);
@@ -393,22 +385,14 @@ fn addBounty(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, st
     const bounty = &config.bounty;
     if (!bounty.enabled or !stats.showsBounty()) return;
     const font = try fonts.getScaled(.bounty, bounty.font_name, bounty.font_size, bounty.font_weight);
-    const text = iskRateText(layout, if (bounty.show_prefix) "ISK: " else "", stats.bounty_isk_rate, iskPeriod(bounty.isk_rate_unit));
+    const text = iskRateText(layout, if (bounty.show_prefix) "ISK: " else "", stats.bounty_isk_rate, bounty.isk_rate_unit);
     layout.addAt(font, text, layout.measure(font, text), bounty.position, bounty.offset_x, bounty.offset_y, bounty.color, settings.bounty_bg_color);
 }
 
-fn iskPeriod(unit: config_mod.IskRateUnit) IskPeriod {
-    const suffix = switch (unit) {
-        .minute => "min",
-        .hour => "hr",
-    };
-    return .{ .seconds = unit.seconds(), .suffix = suffix };
-}
-
-fn iskRateText(layout: *Layout, prefix: []const u8, isk_per_second: ?f32, period: IskPeriod) []const u8 {
-    const rate = isk_per_second orelse return layout.print("{s}?? ISK/{s}", .{ prefix, period.suffix });
+fn iskRateText(layout: *Layout, prefix: []const u8, isk_per_second: ?f32, unit: config_mod.RateUnit) []const u8 {
+    const rate = isk_per_second orelse return layout.print("{s}?? ISK/{s}", .{ prefix, unit.suffix() });
     var isk_buf: [16]u8 = undefined;
-    return layout.print("{s}{s} ISK/{s}", .{ prefix, format.formatIskAbbreviated(&isk_buf, rate * period.seconds), period.suffix });
+    return layout.print("{s}{s} ISK/{s}", .{ prefix, format.formatIskAbbreviated(&isk_buf, rate * unit.seconds()), unit.suffix() });
 }
 
 fn addResources(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, stats: *const ActivityStats, settings: RenderSettings) !void {

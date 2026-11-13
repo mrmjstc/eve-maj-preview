@@ -25,6 +25,7 @@ const PART_KEY: ui.Key = .str("knots.client_list.part");
 const ROW_KEY: ui.Key = .str("knots.client_list.row");
 const LINE_KEY: ui.Key = .str("knots.client_list.line");
 const STAGE_KEY: ui.Key = .str("knots.client_list.stage");
+const TOTALS_KEY: ui.Key = .str("knots.client_list.totals");
 /// The panel menu's own words, so the two name each order alike.
 const ORDER_LABELS = blk: {
     var labels: [panel_menu_look.ORDER_COUNT][]const u8 = undefined;
@@ -34,7 +35,7 @@ const ORDER_LABELS = blk: {
 /// One line of sample rows, one per column.
 const SAMPLE_LINE: ui.Style = .{ .width = .grow(), .direction = .row };
 
-/// Each rate's sample, in list_look.Stat order: mining in m3 per minute, bounty in ISK per period.
+/// Each rate's sample, in list_look.Stat order: mining in m3 per minute, scaled to its unit, and bounty in ISK per its unit.
 const SAMPLE_VALUES = [list_look.STAT_COUNT]f32{ 412, 980, 21.4, 38_200_000 };
 /// Drawn in Fleet Invite's own colour, or the list's notification colour when it has none.
 const SAMPLE_NOTIFICATION = "Fleet Invite";
@@ -58,6 +59,7 @@ const Part = enum {
     outgoing_dps,
     mining_rate,
     bounty_rate,
+    totals,
 
     fn label(self: Part) []const u8 {
         return switch (self) {
@@ -69,6 +71,7 @@ const Part = enum {
             .outgoing_dps => "Outgoing DPS",
             .mining_rate => "Mining Rate",
             .bounty_rate => "Bounty Rate",
+            .totals => "Totals",
         };
     }
 
@@ -112,6 +115,7 @@ const Look = struct {
     shows_systems: bool,
     shows_security: bool,
     shows_notifications: bool,
+    shows_totals: bool,
     indicator: types.ListIndicatorStyle,
     /// Every rate, in list_look.Stat order.
     stat_labels: [list_look.STAT_COUNT]StatLabel,
@@ -187,9 +191,9 @@ fn layout(context: *ui.Frame, list_view: ListRef) !void {
 fn preview(context: *ui.Frame, list_settings: *const config.ListViewConfig, look: Look) !void {
     const arena = context.arena();
     const column_count = look.column_count;
+    // No bottom padding, as the totals footer is always drawn and pads the bottom itself.
     const panel_style = try panel_preview.frameStyle(arena, look.scale, list_settings.opacity, .{
         .width = .fixed(look.scaled(look.sizes.column_width * @as(i32, @intCast(column_count)))),
-        .padding = .init(0, 0, look.scaled(list_look.BOTTOM_PADDING), 0),
     });
     const panel = Rect{ .key = .src(@src()), .style = panel_style };
     _ = try panel.open(context);
@@ -214,7 +218,33 @@ fn preview(context: *ui.Frame, list_settings: *const config.ListViewConfig, look
         }
         try line.close(context);
     }
+    try totalsFooter(context, look);
     try panel.close(context);
+}
+
+/// A rule over the sample rates added up, as the part that edits the totals line.
+fn totalsFooter(context: *ui.Frame, look: Look) !void {
+    const arena = context.arena();
+    const footer_style = try arena.create(ui.Style);
+    footer_style.* = .{
+        .width = .grow(),
+        .height = .fixed(look.scaled(look.sizes.footer_height)),
+        .direction = .row,
+        .@"align" = .center,
+        .padding = .init(0, look.scaled(list_look.PADDING_X - PART_PADDING), 0, look.scaled(list_look.PADDING_X - PART_PADDING)),
+        .border_width = .edges(1, 0, 0, 0),
+        .border_color = color_convert.solid(list_look.DIVIDER),
+    };
+    const footer = Rect{ .key = TOTALS_KEY, .style = footer_style };
+    _ = try footer.open(context);
+    const part = try openPart(context, look, .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = look.scaled(list_look.STAT_GAP) }, list_look.PANEL, .totals, look.shows_totals);
+    try context.e(Text{ .selectable = false, .key = TOTALS_KEY.indexed(1), .content = list_look.TOTALS_TEXT, .style = try widgets.textStyle(arena, list_look.MUTED, look.small_size, .{ .is_shown = look.shows_totals, .is_bold = true }) });
+    for (look.stat_labels, 2..) |label, index| {
+        if (!label.is_shown) continue;
+        try context.e(Text{ .selectable = false, .key = TOTALS_KEY.indexed(index), .content = label.text, .style = try widgets.textStyle(arena, label.color, look.small_size, .{ .is_shown = look.shows_totals }) });
+    }
+    try part.close(context);
+    try footer.close(context);
 }
 
 /// The active row is one part; so are one row's name and system, and each notification and rate.
@@ -356,9 +386,11 @@ fn lookOf(arena: std.mem.Allocator, profile: *const config.Config, stage: panel_
     const stat_settings: list_look.StatSettings = .{ .list_settings = list_settings, .combat = &profile.combat, .mining = &profile.mining, .bounty = &profile.bounty };
 
     var stat_labels: [list_look.STAT_COUNT]StatLabel = undefined;
-    for (std.enums.values(list_look.Stat), SAMPLE_VALUES, &stat_labels) |stat, value, *label| {
+    for (std.enums.values(list_look.Stat), SAMPLE_VALUES, &stat_labels) |stat, sample, *label| {
+        const unit = list_look.rateUnit(stat_settings, stat);
+        const value = if (stat == .mining_rate) sample * profile.mining.m3_rate_unit.seconds() / std.time.s_per_min else sample;
         var writer: std.Io.Writer = .fixed(try arena.alloc(u8, list_look.STAT_TEXT_MAX));
-        list_look.writeStat(&writer, .{ .stat = stat, .value = value, .has_prefix = list_look.hasPrefix(list_settings, stat) });
+        list_look.writeStat(&writer, .{ .stat = stat, .value = value, .has_prefix = list_look.hasPrefix(list_settings, stat), .unit = unit });
         label.* = .{ .text = writer.buffered(), .color = list_look.statColor(list_settings, stat), .is_shown = list_look.showsStat(stat_settings, stat) };
     }
 
@@ -373,6 +405,7 @@ fn lookOf(arena: std.mem.Allocator, profile: *const config.Config, stage: panel_
         .shows_systems = list_settings.showSystemName,
         .shows_security = list_settings.showSystemSecurity,
         .shows_notifications = list_settings.showNotifications,
+        .shows_totals = list_look.showsTotals(stat_settings),
         .indicator = list_settings.indicatorStyle,
         .stat_labels = stat_labels,
         .sizes = sizes,
@@ -523,7 +556,7 @@ fn settings(context: *ui.Frame, list_view: ListRef, part: Part) !bool {
             .overlay_label = "Enable Mining Overlay",
             .show_field = "showMiningRate",
             .show_label = "Show Mining Rate",
-            .show_hint = "How much the character mines per minute.",
+            .show_hint = "How much the character mines.",
             .prefix_field = "showMiningPrefix",
             .prefix_label = "Show M: Prefix",
             .prefix_hint = "Puts M: before the rate so it's easy to tell apart.",
@@ -539,6 +572,10 @@ fn settings(context: *ui.Frame, list_view: ListRef, part: Part) !bool {
             .prefix_hint = "Puts ISK: before the rate so it's easy to tell apart.",
             .color_field = "bountyRateColor",
         }),
+        .totals => {
+            try bind.toggle(context, list_view, "showTotals", "Show Totals");
+            try widgets.hintText(context, .src(@src()), "Adds up the rates the rows show; ~ means some clients are still being measured.");
+        },
     }
     return is_close_clicked;
 }
@@ -549,9 +586,11 @@ fn requirementNotices(context: *ui.Frame, part: Part) !void {
     const is_monitoring = session.global().ptr.chatlog.enabled;
     const needs_chatlog = switch (part) {
         .active, .names, .notifications => false,
-        .systems, .incoming_dps, .outgoing_dps, .mining_rate, .bounty_rate => true,
+        .systems, .incoming_dps, .outgoing_dps, .mining_rate, .bounty_rate, .totals => true,
     };
     if (needs_chatlog and !is_monitoring) try widgets.notice(context, .src(@src()), "Requires Log Monitoring to be enabled.");
+    const stat_settings: list_look.StatSettings = .{ .list_settings = &profile.listView, .combat = &profile.combat, .mining = &profile.mining, .bounty = &profile.bounty };
+    if (part == .totals and !list_look.showsAnyStat(stat_settings)) try widgets.notice(context, .src(@src()), "Needs at least one rate shown on the rows.");
     if (part == .notifications and !is_monitoring) try widgets.notice(context, .src(@src()), "Without Log Monitoring, only alerts for your own actions, like Profile Switch, are shown.");
     if (part == .notifications and !profile.thumbnail.notifications.enabled) try widgets.notice(context, .src(@src()), "Requires alerts switched on in the Alert Options tab.");
 }

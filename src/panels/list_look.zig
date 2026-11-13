@@ -10,6 +10,7 @@ const panel_header = @import("panel_header.zig");
 
 const ListViewConfig = panels.ListViewConfig;
 const IndicatorStyle = types.ListIndicatorStyle;
+const RateUnit = activity.RateUnit;
 
 pub const BOTTOM_PADDING: i32 = 4;
 pub const PADDING_X: i32 = palette.PADDING_X;
@@ -46,6 +47,8 @@ const ROW_TEXT_PADDING: i32 = 8;
 /// Space around a row's name and stats line together.
 const STATS_ROW_PADDING: i32 = 6;
 pub const HEADER_TEXT = "Clients";
+/// Before the totals footer's readings.
+pub const TOTALS_TEXT = "TOTAL";
 /// Fits countText's longest result.
 pub const COUNT_TEXT_MAX = 24;
 /// Fits writeStat's longest result.
@@ -78,11 +81,15 @@ pub const STAT_COUNT = std.enums.values(Stat).len;
 /// A rate a row can show under its name, in the order it writes them.
 pub const Stat = enum { incoming_dps, outgoing_dps, mining_rate, bounty_rate };
 
-/// Mining in m3 per minute, bounty in ISK per the configured period; null while still being measured.
+/// Mining in m3 and bounty in ISK, per `unit`; null while still being measured.
 pub const StatReading = struct {
     stat: Stat,
     value: ?f32,
     has_prefix: bool,
+    /// Written after the value as " m3/min" or " ISK/hr"; null for DPS.
+    unit: ?RateUnit = null,
+    /// A total leaving out rows whose rate is still being measured.
+    is_partial: bool = false,
 };
 
 /// In pixels.
@@ -92,6 +99,8 @@ pub const Metrics = struct {
     row_height: i32,
     /// Every line of rows while the list shows stats.
     stats_row_height: i32,
+    /// The totals line under the rows.
+    footer_height: i32,
 };
 
 /// The list's own settings and its overlay's, which also runs the tracker.
@@ -101,6 +110,26 @@ pub const StatSettings = struct {
     mining: *const activity.MiningConfig,
     bounty: *const activity.BountyConfig,
 };
+
+/// One stat summed over the rows showing it.
+pub const Total = struct {
+    /// Of the measured rows only.
+    sum: f32 = 0,
+    measured_count: usize = 0,
+    unmeasured_count: usize = 0,
+
+    fn add(self: *Total, value: ?f32) void {
+        if (value) |measured| {
+            self.sum += measured;
+            self.measured_count += 1;
+        } else {
+            self.unmeasured_count += 1;
+        }
+    }
+};
+
+/// In Stat order.
+pub const Totals = [STAT_COUNT]Total;
 
 /// Where a row's name starts, from the panel's outer left edge.
 pub fn textLeft(style: IndicatorStyle) i32 {
@@ -117,6 +146,7 @@ pub fn metrics(list_settings: *const ListViewConfig) Metrics {
         .header_height = panel_header.HEIGHT,
         .row_height = rowHeight(list_settings.fontSize),
         .stats_row_height = statsRowHeight(list_settings.fontSize),
+        .footer_height = rowHeight(smallFontSize(list_settings.fontSize)),
     };
 }
 
@@ -221,6 +251,43 @@ pub fn showsAnyStat(settings: StatSettings) bool {
     return false;
 }
 
+/// The list keeps a totals line under its rows while this holds.
+pub fn showsTotals(settings: StatSettings) bool {
+    return settings.list_settings.showTotals and showsAnyStat(settings);
+}
+
+/// Adds a row's readings to `totals`.
+pub fn addReadings(totals: *Totals, readings: []const StatReading) void {
+    for (readings) |reading| totals[@backingInt(reading.stat)].add(reading.value);
+}
+
+/// Each stat some row reported, in writing order; a value is null until a row's rate is measured.
+pub fn totalReadings(settings: StatSettings, totals: *const Totals, out: *[STAT_COUNT]StatReading) []const StatReading {
+    var reading_count: usize = 0;
+    for (std.enums.values(Stat), totals) |stat, total| {
+        if (total.measured_count + total.unmeasured_count == 0) continue;
+        const is_measured = total.measured_count > 0;
+        out[reading_count] = .{
+            .stat = stat,
+            .value = if (is_measured) total.sum else null,
+            .has_prefix = hasPrefix(settings.list_settings, stat),
+            .unit = rateUnit(settings, stat),
+            .is_partial = is_measured and total.unmeasured_count > 0,
+        };
+        reading_count += 1;
+    }
+    return out[0..reading_count];
+}
+
+/// The overlay's period, which the list follows; null for DPS, always per second.
+pub fn rateUnit(settings: StatSettings, stat: Stat) ?RateUnit {
+    return switch (stat) {
+        .incoming_dps, .outgoing_dps => null,
+        .mining_rate => settings.mining.m3_rate_unit,
+        .bounty_rate => settings.bounty.isk_rate_unit,
+    };
+}
+
 pub fn hasPrefix(list_settings: *const ListViewConfig, stat: Stat) bool {
     return switch (stat) {
         .incoming_dps => list_settings.showIncomingPrefix,
@@ -239,21 +306,21 @@ pub fn statColor(list_settings: *const ListViewConfig, stat: Stat) u32 {
     };
 }
 
-/// E.g. "IN:412"; overflow is ignored, since a truncated result is still drawn.
+/// E.g. "IN:412", "IN:~412" partial or "M:1,284 m3/hr", as the thumbnails write it; overflow is ignored, since a truncated result is still drawn.
 pub fn writeStat(writer: *std.Io.Writer, reading: StatReading) void {
     if (reading.has_prefix) writer.writeAll(prefix(reading.stat)) catch {};
-    const value = reading.value orelse {
+    if (reading.is_partial) writer.writeAll("~") catch {};
+    if (reading.value) |value| {
+        var number_buf: [24]u8 = undefined;
+        switch (reading.stat) {
+            .incoming_dps, .outgoing_dps => writer.print("{d:.0}", .{value}) catch {},
+            .mining_rate => writer.writeAll(format.formatMinedVolume(&number_buf, value)) catch {},
+            .bounty_rate => writer.writeAll(format.formatIskAbbreviated(&number_buf, value)) catch {},
+        }
+    } else {
         writer.writeAll("??") catch {};
-        return;
-    };
-    switch (reading.stat) {
-        .incoming_dps, .outgoing_dps => writer.print("{d:.0}", .{value}) catch {},
-        .mining_rate => if (value < 10.0) writer.print("{d:.1}", .{value}) catch {} else writer.print("{d:.0}", .{value}) catch {},
-        .bounty_rate => {
-            var isk_buf: [16]u8 = undefined;
-            writer.writeAll(format.formatIskAbbreviated(&isk_buf, value)) catch {};
-        },
     }
+    if (reading.unit) |unit| writer.print(" {s}/{s}", .{ quantity(reading.stat), unit.suffix() }) catch {};
 }
 
 /// A name at `font_size` with a stats line under it.
@@ -275,63 +342,118 @@ fn prefix(stat: Stat) []const u8 {
     };
 }
 
+/// What a rate counts, before its period.
+fn quantity(stat: Stat) []const u8 {
+    return switch (stat) {
+        .incoming_dps, .outgoing_dps => "HP",
+        .mining_rate => "m3",
+        .bounty_rate => "ISK",
+    };
+}
+
+const testing = std.testing;
+const TEST_LIST_SETTINGS: ListViewConfig = .{};
+const TEST_COMBAT: activity.CombatConfig = .{};
+const TEST_MINING: activity.MiningConfig = .{};
+const TEST_BOUNTY: activity.BountyConfig = .{};
+const TEST_STAT_SETTINGS: StatSettings = .{ .list_settings = &TEST_LIST_SETTINGS, .combat = &TEST_COMBAT, .mining = &TEST_MINING, .bounty = &TEST_BOUNTY };
+
 test "textLeft starts the name at the padding when there's no indicator" {
-    try std.testing.expectEqual(PADDING_X, textLeft(.None));
-    try std.testing.expect(textLeft(.Dot) > textLeft(.None));
+    try testing.expectEqual(PADDING_X, textLeft(.None));
+    try testing.expect(textLeft(.Dot) > textLeft(.None));
 }
 
 test "effectiveColumns caps at the row count and the maximum" {
-    try std.testing.expectEqual(@as(i32, 3), effectiveColumns(5, 3));
-    try std.testing.expectEqual(MAX_COLUMNS, effectiveColumns(15, 20));
-    try std.testing.expectEqual(@as(i32, 1), effectiveColumns(0, 4));
+    try testing.expectEqual(@as(i32, 3), effectiveColumns(5, 3));
+    try testing.expectEqual(MAX_COLUMNS, effectiveColumns(15, 20));
+    try testing.expectEqual(@as(i32, 1), effectiveColumns(0, 4));
 }
 
 test "metrics keeps the minimum row for the default font and grows rows for a large one" {
     var list_settings: ListViewConfig = .{};
     const default_sizes = metrics(&list_settings);
-    try std.testing.expectEqual(MIN_ROW_HEIGHT, default_sizes.row_height);
-    try std.testing.expectEqual(panel_header.HEIGHT, default_sizes.header_height);
+    try testing.expectEqual(MIN_ROW_HEIGHT, default_sizes.row_height);
+    try testing.expectEqual(panel_header.HEIGHT, default_sizes.header_height);
     list_settings.fontSize = 24;
-    try std.testing.expect(metrics(&list_settings).row_height > MIN_ROW_HEIGHT);
+    try testing.expect(metrics(&list_settings).row_height > MIN_ROW_HEIGHT);
 }
 
 test "a row with stats is taller than one without" {
-    try std.testing.expect(statsRowHeight(13) > rowHeight(13));
-    try std.testing.expect(statsRowHeight(24) > rowHeight(24));
+    try testing.expect(statsRowHeight(13) > rowHeight(13));
+    try testing.expect(statsRowHeight(24) > rowHeight(24));
 }
 
 test "smallFontSize steps down but never below the minimum" {
-    try std.testing.expectEqual(@as(i32, 11), smallFontSize(13));
-    try std.testing.expectEqual(MIN_SMALL_FONT_SIZE, smallFontSize(6));
+    try testing.expectEqual(@as(i32, 11), smallFontSize(13));
+    try testing.expectEqual(MIN_SMALL_FONT_SIZE, smallFontSize(6));
 }
 
 test "countText is the bare number" {
     var buffer: [COUNT_TEXT_MAX]u8 = undefined;
-    try std.testing.expectEqualStrings("12", countText(&buffer, 12));
+    try testing.expectEqualStrings("12", countText(&buffer, 12));
 }
 
 test "writeStat adds the prefix, rounds by stat and marks an unmeasured reading" {
     var buffer: [STAT_TEXT_MAX]u8 = undefined;
     var writer: std.Io.Writer = .fixed(&buffer);
     writeStat(&writer, .{ .stat = .incoming_dps, .value = 412.4, .has_prefix = true });
-    try std.testing.expectEqualStrings("IN:412", writer.buffered());
+    try testing.expectEqualStrings("IN:412", writer.buffered());
 
     writer = .fixed(&buffer);
     writeStat(&writer, .{ .stat = .mining_rate, .value = 4.24, .has_prefix = true });
-    try std.testing.expectEqualStrings("M:4.2", writer.buffered());
+    try testing.expectEqualStrings("M:4.2", writer.buffered());
 
     writer = .fixed(&buffer);
     writeStat(&writer, .{ .stat = .outgoing_dps, .value = null, .has_prefix = false });
-    try std.testing.expectEqualStrings("??", writer.buffered());
+    try testing.expectEqualStrings("??", writer.buffered());
+
+    writer = .fixed(&buffer);
+    writeStat(&writer, .{ .stat = .incoming_dps, .value = 1240, .has_prefix = true, .is_partial = true });
+    try testing.expectEqualStrings("IN:~1240", writer.buffered());
+}
+
+test "writeStat groups mined volume and ends a rate with its period" {
+    var buffer: [STAT_TEXT_MAX]u8 = undefined;
+    var writer: std.Io.Writer = .fixed(&buffer);
+    writeStat(&writer, .{ .stat = .mining_rate, .value = 1284, .has_prefix = true, .unit = .hour });
+    try testing.expectEqualStrings("M:1,284 m3/hr", writer.buffered());
+
+    writer = .fixed(&buffer);
+    writeStat(&writer, .{ .stat = .bounty_rate, .value = null, .has_prefix = false, .unit = .minute });
+    try testing.expectEqualStrings("?? ISK/min", writer.buffered());
+}
+
+test "totalReadings sums measured rows and marks a total missing an unmeasured one" {
+    var totals: Totals = @splat(.{});
+    addReadings(&totals, &.{ .{ .stat = .incoming_dps, .value = 100, .has_prefix = true }, .{ .stat = .outgoing_dps, .value = 40, .has_prefix = true } });
+    addReadings(&totals, &.{ .{ .stat = .incoming_dps, .value = 25, .has_prefix = true }, .{ .stat = .outgoing_dps, .value = null, .has_prefix = true } });
+    var out: [STAT_COUNT]StatReading = undefined;
+    const readings = totalReadings(TEST_STAT_SETTINGS, &totals, &out);
+    try testing.expectEqual(@as(usize, 2), readings.len);
+    try testing.expectEqual(@as(?f32, 125), readings[0].value);
+    try testing.expect(!readings[0].is_partial);
+    try testing.expectEqual(@as(?f32, 40), readings[1].value);
+    try testing.expect(readings[1].is_partial);
+}
+
+test "totalReadings is unmeasured while no row has a rate yet, in the overlay's period" {
+    var totals: Totals = @splat(.{});
+    addReadings(&totals, &.{.{ .stat = .mining_rate, .value = null, .has_prefix = true }});
+    var out: [STAT_COUNT]StatReading = undefined;
+    const readings = totalReadings(TEST_STAT_SETTINGS, &totals, &out);
+    try testing.expectEqual(@as(usize, 1), readings.len);
+    try testing.expectEqual(@as(?f32, null), readings[0].value);
+    try testing.expect(!readings[0].is_partial);
+    try testing.expectEqual(@as(?RateUnit, TEST_MINING.m3_rate_unit), readings[0].unit);
 }
 
 test "systemGroupOrder puts the biggest system first and clients without one last" {
     const names = [_][]const u8{ "Jita", "", "Dodixie", "Dodixie", "Jita", "Dodixie", "Amarr" };
-    const order = try systemGroupOrder(std.testing.allocator, &names);
-    defer std.testing.allocator.free(order);
-    try std.testing.expectEqualSlices(usize, &.{ 2, 3, 5, 0, 4, 6, 1 }, order);
+    const order = try systemGroupOrder(testing.allocator, &names);
+    defer testing.allocator.free(order);
+    try testing.expectEqualSlices(usize, &.{ 2, 3, 5, 0, 4, 6, 1 }, order);
 }
 
 test "activeTint of the panel's own colour is the panel" {
-    try std.testing.expectEqual(PANEL, activeTint(PANEL));
+    try testing.expectEqual(PANEL, activeTint(PANEL));
 }

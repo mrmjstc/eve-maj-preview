@@ -26,16 +26,30 @@ pub fn insertThousandsSeparators(buf: []u8, text: []const u8) []const u8 {
     return buf[0 .. out_length + rest.len];
 }
 
-/// With k/m suffixes (2_450_000 -> "2.5m", 200_000 -> "200k", 850 -> "850"); "?" if `buf` is too small.
+/// With k/m/b suffixes (3_481_800_000 -> "3.48b", 2_450_000 -> "2.5m", 200_000 -> "200k", 850 -> "850"); "?" if `buf` is too small.
 pub fn formatIskAbbreviated(buf: []u8, value: f32) []const u8 {
     const abs_value = @abs(value);
-    if (abs_value >= 999_500.0) {
+    if (abs_value >= 999_950_000.0) {
+        return std.mem.print(buf, "{d:.2}b", .{value / 1_000_000_000.0}) catch "?";
+    } else if (abs_value >= 999_500.0) {
         return std.mem.print(buf, "{d:.1}m", .{value / 1_000_000.0}) catch "?";
     } else if (abs_value >= 999.5) {
         return std.mem.print(buf, "{d:.0}k", .{value / 1_000.0}) catch "?";
     } else {
         return std.mem.print(buf, "{d:.0}", .{value}) catch "?";
     }
+}
+
+/// One decimal under 10, so low-yield ore doesn't read "0", else whole with thousands separators; "?" if `buf` is too small.
+pub fn formatMinedVolume(buf: []u8, value: f32) []const u8 {
+    var raw_buf: [32]u8 = undefined;
+    const raw = (if (value < 10.0) std.mem.print(&raw_buf, "{d:.1}", .{value}) else std.mem.print(&raw_buf, "{d:.0}", .{value})) catch return "?";
+    const grouped = insertThousandsSeparators(buf, raw);
+    if (grouped.ptr == buf.ptr) return grouped;
+    // Ungrouped, it still points into raw_buf.
+    if (raw.len > buf.len) return "?";
+    @memcpy(buf[0..raw.len], raw);
+    return buf[0..raw.len];
 }
 
 /// Whole minutes as "42m", or "3h 07m" from an hour on; "?" if `buf` is too small.
@@ -77,6 +91,27 @@ test "formatIskAbbreviated never shows 1000 before a suffix" {
     try testing.expectEqualStrings("999k", formatIskAbbreviated(&buf, 999_400.0));
     try testing.expectEqualStrings("1.0m", formatIskAbbreviated(&buf, 999_720.0));
     try testing.expectEqualStrings("-1.0m", formatIskAbbreviated(&buf, -999_720.0));
+    try testing.expectEqualStrings("999.9m", formatIskAbbreviated(&buf, 999_900_000.0));
+    try testing.expectEqualStrings("1.00b", formatIskAbbreviated(&buf, 999_960_000.0));
+}
+
+test "formatIskAbbreviated switches to billions with two decimals" {
+    var buf: [32]u8 = undefined;
+    try testing.expectEqualStrings("3.48b", formatIskAbbreviated(&buf, 3_481_800_000.0));
+    try testing.expectEqualStrings("-2.50b", formatIskAbbreviated(&buf, -2_500_000_000.0));
+}
+
+test "formatMinedVolume keeps a decimal under ten and groups thousands" {
+    var buf: [32]u8 = undefined;
+    try testing.expectEqualStrings("4.2", formatMinedVolume(&buf, 4.24));
+    try testing.expectEqualStrings("412", formatMinedVolume(&buf, 412.4));
+    try testing.expectEqualStrings("12,840", formatMinedVolume(&buf, 12_840.0));
+}
+
+test "formatMinedVolume returns a short result in the caller's buffer" {
+    var buf: [32]u8 = undefined;
+    const text = formatMinedVolume(&buf, 21.4);
+    try testing.expectEqual(@as([*]const u8, &buf), text.ptr);
 }
 
 test "formatSessionDuration switches to hours at sixty minutes and pads the minutes" {

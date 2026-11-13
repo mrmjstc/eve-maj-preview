@@ -56,14 +56,22 @@ pub const CombatConfig = struct {
     pub const Wire = wire.Wire(CombatConfig);
 };
 
-pub const IskRateUnit = enum {
+pub const RateUnit = enum {
     minute,
     hour,
 
-    pub fn seconds(self: IskRateUnit) f32 {
+    pub fn seconds(self: RateUnit) f32 {
         return switch (self) {
             .minute => 60.0,
             .hour => 3600.0,
+        };
+    }
+
+    /// After a rate's "/", as in "ISK/hr".
+    pub fn suffix(self: RateUnit) []const u8 {
+        return switch (self) {
+            .minute => "min",
+            .hour => "hr",
         };
     }
 };
@@ -83,8 +91,10 @@ pub const MiningConfig = struct {
     idle_alert_window_seconds: u32 = 30,
     idle_alert_threshold: u32 = 1,
     stopped_alert_window_seconds: u32 = 60,
+    /// The m3 rate's period; isk_rate_unit is the ISK rate's.
+    m3_rate_unit: RateUnit = .hour,
     show_isk_rate: bool = true,
-    isk_rate_unit: IskRateUnit = .hour,
+    isk_rate_unit: RateUnit = .hour,
     show_prefix: bool = true,
 
     pub const ranges = .{
@@ -119,7 +129,7 @@ pub const BountyConfig = struct {
     position: types.TextPosition = .TopRight,
     offset_x: i32 = 0,
     offset_y: i32 = 0,
-    isk_rate_unit: IskRateUnit = .hour,
+    isk_rate_unit: RateUnit = .hour,
     show_prefix: bool = true,
 
     pub const ranges = .{

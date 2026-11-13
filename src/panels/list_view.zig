@@ -340,10 +340,12 @@ pub const ListWindow = struct {
         hasher.update(std.mem.asBytes(&list_settings.showBountyRate));
         hasher.update(std.mem.asBytes(&list_settings.showBountyPrefix));
         hasher.update(std.mem.asBytes(&list_settings.bountyRateColor));
+        hasher.update(std.mem.asBytes(&list_settings.showTotals));
         hasher.update(std.mem.asBytes(&self.config.combat.enabled));
         hasher.update(std.mem.asBytes(&self.config.mining.enabled));
         hasher.update(std.mem.asBytes(&self.config.bounty.enabled));
         hasher.update(std.mem.asBytes(&self.config.bounty.isk_rate_unit));
+        hasher.update(std.mem.asBytes(&self.config.mining.m3_rate_unit));
         const hovered_address: usize = if (self.hovered_source_hwnd) |hovered| @intFromPtr(hovered) else 0;
         hasher.update(std.mem.asBytes(&hovered_address));
         // Rows are hashed before they're sorted, so the configured order has to be hashed itself.
@@ -394,17 +396,19 @@ pub const ListWindow = struct {
         const config = self.config;
         const settings = self.statSettings();
         const stats = &thumbnail.stats;
-        const bounty_period_seconds = config.bounty.isk_rate_unit.seconds();
         var reading_count: usize = 0;
         for (std.enums.values(list_look.Stat)) |stat| {
             if (!list_look.showsStat(settings, stat)) continue;
-            const value: ?f32 = switch (stat) {
+            const unit = list_look.rateUnit(settings, stat);
+            const period_seconds: f32 = if (unit) |known| known.seconds() else 1.0;
+            const per_second: ?f32 = switch (stat) {
                 .incoming_dps => if (stats.showsIncoming()) stats.incoming_dps else continue,
                 .outgoing_dps => if (stats.showsOutgoing()) stats.outgoing_dps else continue,
-                .mining_rate => if (stats.showsMining()) (if (stats.mining_rate) |rate| rate * 60.0 else null) else continue,
-                .bounty_rate => if (stats.showsBounty()) (if (stats.bounty_isk_rate) |rate| rate * bounty_period_seconds else null) else continue,
+                .mining_rate => if (stats.showsMining()) stats.mining_rate else continue,
+                .bounty_rate => if (stats.showsBounty()) stats.bounty_isk_rate else continue,
             };
-            out[reading_count] = .{ .stat = stat, .value = value, .has_prefix = list_look.hasPrefix(&config.listView, stat) };
+            const value: ?f32 = if (per_second) |rate| rate * period_seconds else null;
+            out[reading_count] = .{ .stat = stat, .value = value, .has_prefix = list_look.hasPrefix(&config.listView, stat), .unit = unit };
             reading_count += 1;
         }
         return out[0..reading_count];
@@ -446,7 +450,10 @@ pub const ListWindow = struct {
         try self.header_fonts.ensure(self.panel.allocator);
 
         const is_collapsed = list_settings.collapsed;
-        const panel_height = panel_header.panelHeight(is_collapsed, lines_bottom + list_look.BOTTOM_PADDING);
+        // Kept while every rate is zero, so the list doesn't grow when combat starts; it pads the bottom itself.
+        const shows_totals = list_look.showsTotals(self.statSettings());
+        const content_bottom = if (shows_totals) lines_bottom + sizes.footer_height else lines_bottom + list_look.BOTTOM_PADDING;
+        const panel_height = panel_header.panelHeight(is_collapsed, content_bottom);
         const bitmap = try self.panel.beginFrame(panel_width, panel_height);
         const dc = bitmap.mem_dc;
         const canvas = bitmap.canvas();
@@ -477,6 +484,9 @@ pub const ListWindow = struct {
                     continue;
                 }
                 for (0..line.row_count) |column| self.drawRow(bitmap, &thumbnails[self.rows.items[line.first_row + column]], line, column, sizes.column_width, row_text, active_source_hwnd);
+            }
+            if (shows_totals) {
+                if (row_text) |text| self.drawTotals(canvas, dc, thumbnails, text, lines_bottom, sizes.footer_height, panel_width);
             }
         }
 
@@ -580,6 +590,24 @@ pub const ListWindow = struct {
         }
         const rule_left = x + list_look.GROUP_HEADING_GAP;
         if (rule_left < text_right) pixel_buffer.fillRect(canvas, @intCast(rule_left), @intCast(line.top + @divTrunc(line.bottom - line.top, 2)), @intCast(text_right - rule_left), 1, list_look.DIVIDER);
+    }
+
+    /// A rule, then each rate the rows show added up.
+    fn drawTotals(self: *const ListWindow, canvas: pixel_buffer.Canvas, dc: win32.HDC, thumbnails: []const ThumbnailWindow, text: RowText, top: i32, height: i32, panel_width: i32) void {
+        var totals: list_look.Totals = @splat(.{});
+        for (self.rows.items) |thumbnail_index| {
+            var readings_buffer: [list_look.STAT_COUNT]list_look.StatReading = undefined;
+            list_look.addReadings(&totals, self.statReadings(&thumbnails[thumbnail_index], &readings_buffer));
+        }
+        pixel_buffer.fillRect(canvas, 0, @intCast(top), @intCast(panel_width), 1, list_look.DIVIDER);
+        const y = top + @divTrunc(height - text.small_height, 2);
+        const left = list_look.PADDING_X;
+        const right = panel_width - list_look.PADDING_X;
+        _ = win32.SelectObject(dc, text.slot_font);
+        const label_width = panel_chrome.drawFitted(dc, list_look.TOTALS_TEXT, left, y, list_look.MUTED, right - left);
+        _ = win32.SelectObject(dc, text.small_font);
+        var readings_buffer: [list_look.STAT_COUNT]list_look.StatReading = undefined;
+        drawStats(dc, &self.config.listView, list_look.totalReadings(self.statSettings(), &totals, &readings_buffer), left + label_width + list_look.STAT_GAP, y, right);
     }
 
     /// `column` is within `line`.

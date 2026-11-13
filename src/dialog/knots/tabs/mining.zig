@@ -1,4 +1,4 @@
-//! The configuration window's Mining tab: the mining overlay's switch, its ISK rate and the ore prices; main thread only.
+//! The configuration window's Mining tab: the mining overlay's switch, its rate units, its ISK rate and the ore prices; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const config = @import("../../../config.zig");
@@ -24,10 +24,12 @@ var g_is_table_shown = false;
 pub fn show(context: *ui.Frame) !void {
     try chatlogNotice(context);
     const ref = session.profile().child("mining");
-    const section = try widgets.openSection(context, "Mining Overlay", "Displays m3 mined per minute on each thumbnail, calculated from EVE gamelogs.", &style.section);
+    const section = try widgets.openSection(context, "Mining Overlay", "Displays m3 mined on each thumbnail, calculated from EVE gamelogs.", &style.section);
     try bind.toggle(context, ref, "enabled", "Enable Mining Overlay");
     try widgets.hintText(context, .src(@src()), "Its averaging, update speed and look are set from Mining Rate on the thumbnail preview.");
     const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
+    try bind.segmented(context, ref, "m3_rate_unit", "Mining Rate Unit", &.{ "Per Minute", "Per Hour" });
+    try widgets.hintText(context, .src(@src()), "Shows m3 mined per minute or per hour.");
     try bind.toggle(context, ref, "show_isk_rate", "Show ISK Rate");
     try widgets.hintText(context, .src(@src()), "Uses the prices below; fetch or enter them first.");
     const isk_rate = try widgets.openGroup(context, .src(@src()), ref.get("show_isk_rate"));

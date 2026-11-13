@@ -51,6 +51,8 @@ pub const ListViewConfig = struct {
     showBountyRate: bool = true,
     showBountyPrefix: bool = true,
     bountyRateColor: u32 = activity.BOUNTY_COLOR,
+    /// A line under the rows adding up their shown rates.
+    showTotals: bool = false,
     hideWhenNoEveFocus: bool = false,
     hideDebounceMs: u32 = 500,
 
