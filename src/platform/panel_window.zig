@@ -122,6 +122,12 @@ pub const PanelWindow = struct {
         _ = win32.SetWindowPos(self.hwnd, if (is_topmost) win32.HWND_TOPMOST else win32.HWND_NOTOPMOST, 0, 0, 0, 0, win32.SWP_NOMOVE | win32.SWP_NOSIZE | win32.SWP_NOACTIVATE);
     }
 
+    /// Back above the other topmost windows, such as a panel that raised itself over this popup.
+    pub fn raiseTopmost(self: *const PanelWindow) void {
+        if (!self.is_topmost) return;
+        _ = win32.SetWindowPos(self.hwnd, win32.HWND_TOPMOST, 0, 0, 0, 0, win32.SWP_NOMOVE | win32.SWP_NOSIZE | win32.SWP_NOACTIVATE);
+    }
+
     pub fn deinit(self: *PanelWindow) void {
         if (self.bitmap) |bitmap| bitmap.deinit();
         self.font.deinit(self.allocator);

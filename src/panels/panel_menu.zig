@@ -99,7 +99,9 @@ pub const PanelMenu = struct {
 
     /// Draws it again if it's open, e.g. after its panel's settings changed.
     pub fn refresh(self: *PanelMenu) void {
-        if (!self.isOpen()) return;
+        const window = if (self.window) |*shown| shown else return;
+        // Turning on Keep on Top raises the panel over its own menu.
+        window.raiseTopmost();
         self.render() catch |err| {
             slog.err("Failed to draw a panel menu: {}", .{err});
         };
