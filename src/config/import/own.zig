@@ -35,7 +35,6 @@ const SECTIONS = std.StaticStringMap(SectionWords).initComptime(.{
     .{ "snapping", SectionWords{ .title = "Snapping", .hint = "Thumbnail snapping" } },
     .{ "panelSnapping", SectionWords{ .title = "Panel Snapping", .hint = "Panel snapping" } },
     .{ "systemColors", SectionWords{ .title = "System Colors", .hint = "Per-system name colors ({n})" } },
-    .{ "avoidedSystems", SectionWords{ .title = "Avoided Systems", .hint = "Systems the map's routes keep out of ({n})" } },
     .{ "thumbnail", SectionWords{ .title = "Thumbnail Appearance & Alerts", .hint = "Border/text styling, per-state visuals, game event alerts" } },
     .{ "thumbnailSpaces", SectionWords{ .title = "Thumbnail Spaces", .hint = "Screen regions hotkey groups fill ({n})" } },
     .{ "timer", SectionWords{ .title = "Scan Timer", .hint = "Window scan interval" } },

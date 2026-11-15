@@ -8,9 +8,6 @@ pub const DEFAULT_FONT = fonts.UI_FACE;
 /// Every font setting's default size, the dialog's body text's.
 pub const DEFAULT_FONT_SIZE: i32 = 12;
 
-/// Past this, a sent route's address grows long; only the map adds to the list, and it refuses more.
-pub const MAX_AVOIDED_SYSTEMS = 64;
-
 pub const BorderStyle = enum {
     Solid,
     Dashed,
@@ -70,6 +67,8 @@ pub const MapMetric = enum { Security, ShipKills, PodKills, NpcKills, NpcDelta, 
 pub const IntelRange = enum { OneJump, FiveJumps, TenJumps, All };
 /// How routes sent from the Map Panel are planned, as the game's autopilot words it; saved into profiles by name.
 pub const RoutePreference = enum { Shorter, Safer, LessSecure };
+/// How far back the map's kills and jumps reach, past Hour with an Eve Stars token; saved into profiles by name.
+pub const TrafficSpan = enum { Hour, Day, Week };
 
 /// In the order the Display tab offers them.
 pub const ViewMode = enum {

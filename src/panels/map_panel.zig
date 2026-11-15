@@ -6,6 +6,7 @@ const panel_window = @import("../platform/panel_window.zig");
 const config_mod = @import("../config.zig");
 const history = @import("../notifications/history.zig");
 const destinations_mod = @import("map/destinations.zig");
+const traffic_mod = @import("map/traffic.zig");
 const input = @import("map/input.zig");
 const paint = @import("map/paint.zig");
 const window_mod = @import("map/window.zig");
@@ -70,6 +71,7 @@ pub const MapPanel = struct {
     /// Holds the Eve Stars token; borrowed, outlives the panel.
     global: ?*const GlobalConfig = null,
     destinations: Destinations = .{},
+    traffic: traffic_mod.Traffic = .{},
     kill_feed: zkill_feed.ZkillFeed = .{},
     /// zKillboard's kills within their lifetime.
     kills: zkill.Kills = .{},
@@ -91,6 +93,7 @@ pub const MapPanel = struct {
         self.kill_feed.deinit(allocator);
         self.kill_names.deinit(allocator);
         self.destinations.deinit();
+        self.traffic.deinit();
         if (self.stats) |snapshot| stats_feed.destroySnapshot(snapshot);
         self.stats = null;
         if (self.logo_colors) |colors| allocator.destroy(colors);
@@ -163,7 +166,16 @@ pub const MapPanel = struct {
         if (self.stats) |snapshot| {
             if (config.mapPanel.liveStats and config.mapPanel.showSovTimers and window.listsRunningTimer(&snapshot.campaigns, win32.unixSecondsNow())) self.campaign_feed.poll(allocator, win32.Ticks.now().ms);
         }
-        if (config.mapPanel.showAnsiblex and window.hasEveStars()) self.destinations.refreshBridges(allocator, window.evestarsToken(), win32.Ticks.now().ms);
+        if (window.hasEveStars()) {
+            const now_ms = win32.Ticks.now().ms;
+            if (config.mapPanel.showAnsiblex) self.destinations.refreshBridges(allocator, window.evestarsToken(), now_ms);
+            self.destinations.refreshAvoid(allocator, window.evestarsToken(), destinations_mod.AVOID_STALE_MS, now_ms);
+            const span = config.mapPanel.trafficSpan;
+            if (window.showsSpans() and span != .Hour) self.traffic.refreshTotals(allocator, window.evestarsToken(), span, now_ms);
+            if (config.mapPanel.liveStats and config.mapPanel.metric == .NpcDelta) {
+                if (self.stats) |snapshot| self.traffic.refreshNpcHours(allocator, window.evestarsToken(), snapshot, now_ms);
+            }
+        }
         self.redraw(thumbnail_set);
     }
 
@@ -201,6 +213,7 @@ pub const MapPanel = struct {
     fn pump(self: *MapPanel, allocator: std.mem.Allocator) void {
         const now_ms = win32.Ticks.now().ms;
         self.destinations.poll(now_ms);
+        self.traffic.poll(self.stats);
         const window = if (self.window) |*w| w else return;
         input.finishChoosingRegions(window);
         if (window.state.menu != null and window.hasEveStars()) self.destinations.refreshTargets(allocator, window.evestarsToken(), now_ms);
@@ -209,8 +222,8 @@ pub const MapPanel = struct {
     /// Also from the window's own input, since the tick can be a second apart with no clients running.
     fn redraw(self: *MapPanel, thumbnail_set: ?*const ThumbnailSet) void {
         const window = if (self.window) |*w| w else return;
-        setPumping(window, window.state.isPopupOpen() or self.destinations.isWaiting() or window.state.is_choosing_regions);
-        var scene: Scene = .{ .stats = self.stats, .logo_colors = self.logo_colors, .logo_revision = self.logo_revision, .pins = if (window.config.mapPanel.showIntel) &self.pins else &NO_PINS, .destinations = &self.destinations, .now_seconds = win32.unixSecondsNow() };
+        setPumping(window, window.state.isPopupOpen() or self.destinations.isWaiting() or self.traffic.isWaiting() or window.state.is_choosing_regions);
+        var scene: Scene = .{ .stats = self.stats, .logo_colors = self.logo_colors, .logo_revision = self.logo_revision, .pins = if (window.config.mapPanel.showIntel) &self.pins else &NO_PINS, .destinations = &self.destinations, .traffic = &self.traffic, .now_seconds = win32.unixSecondsNow() };
         if (window.config.mapPanel.showKills) {
             scene.kills = &self.kills;
             scene.kill_names = &self.kill_names;

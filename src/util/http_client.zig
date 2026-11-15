@@ -23,11 +23,15 @@ pub const Header = struct {
     value: []const u8,
 };
 
+pub const Verb = enum { get, post, put };
+
 pub const FetchOptions = struct {
     /// Borrows from the caller.
     content_type: ?[]const u8 = null,
-    /// Sent as a POST body, or a GET without one; borrows from the caller.
+    /// Sent as the body; borrows from the caller.
     payload: ?[]const u8 = null,
+    /// Null for POST with a payload, else GET.
+    verb: ?Verb = null,
     /// Borrows from the caller.
     extra_headers: []const Header = &.{},
     /// How long the response may take, for a server that works before it answers; null for TIMEOUT_MS.
@@ -132,7 +136,11 @@ pub const Session = struct {
         const connection = win32.WinHttpConnect(self.handle, host, parts.nPort, 0) orelse return winHttpFailure(win32_error, error.ConnectFailed);
         defer _ = win32.WinHttpCloseHandle(connection);
 
-        const verb: [*:0]const WCHAR = if (options.payload != null) std.unicode.utf8ToUtf16LeStringLiteral("POST") else std.unicode.utf8ToUtf16LeStringLiteral("GET");
+        const verb: [*:0]const WCHAR = switch (options.verb orelse if (options.payload != null) Verb.post else Verb.get) {
+            .get => std.unicode.utf8ToUtf16LeStringLiteral("GET"),
+            .post => std.unicode.utf8ToUtf16LeStringLiteral("POST"),
+            .put => std.unicode.utf8ToUtf16LeStringLiteral("PUT"),
+        };
         const flags: DWORD = if (parts.nScheme == win32.INTERNET_SCHEME_HTTPS) win32.WINHTTP_FLAG_SECURE else 0;
         const request = win32.WinHttpOpenRequest(connection, verb, object, null, null, null, flags) orelse return winHttpFailure(win32_error, error.OpenRequestFailed);
         defer _ = win32.WinHttpCloseHandle(request);
@@ -204,9 +212,9 @@ fn readBody(allocator: std.mem.Allocator, request: HINTERNET, win32_error: *DWOR
 
 /// Caller frees.
 fn finalUrl(allocator: std.mem.Allocator, request: HINTERNET, win32_error: *DWORD) ![:0]u8 {
-    var buf: [MAX_URL_LENGTH]WCHAR = undefined;
-    var size_bytes: DWORD = @sizeOf(@TypeOf(buf));
-    if (!win32.toBool(win32.WinHttpQueryOption(request, win32.WINHTTP_OPTION_URL, &buf, &size_bytes))) return winHttpFailure(win32_error, error.QueryUrlFailed);
-    const wide_url = std.mem.sliceTo(buf[0 .. size_bytes / @sizeOf(WCHAR)], 0);
+    var buffer: [MAX_URL_LENGTH]WCHAR = undefined;
+    var size_bytes: DWORD = @sizeOf(@TypeOf(buffer));
+    if (!win32.toBool(win32.WinHttpQueryOption(request, win32.WINHTTP_OPTION_URL, &buffer, &size_bytes))) return winHttpFailure(win32_error, error.QueryUrlFailed);
+    const wide_url = std.mem.sliceTo(buffer[0 .. size_bytes / @sizeOf(WCHAR)], 0);
     return std.unicode.utf16LeToUtf8AllocZ(allocator, wide_url);
 }

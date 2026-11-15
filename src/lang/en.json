@@ -1097,7 +1097,7 @@
   "Show Character Names": "Show Character Names",
   "Tags each system with a client in it. More than one in a system shows as a count.": "Tags each system with a client in it. More than one in a system shows as a count.",
   "Live Stats": "Live Stats",
-  "Fetches kills, jumps and sovereignty from CCP while the panel shows. They cover the last hour.": "Fetches kills, jumps and sovereignty from CCP while the panel shows. They cover the last hour.",
+  "Fetches kills, jumps and sovereignty from CCP while the panel shows. They cover the last hour; with an Eve Stars token, the span bar beside the metrics sums the last 24 hours or 7 days instead.": "Fetches kills, jumps and sovereignty from CCP while the panel shows. They cover the last hour; with an Eve Stars token, the span bar beside the metrics sums the last 24 hours or 7 days instead.",
   "Show Storms": "Show Storms",
   "Marks metaliminal storms and how far they spread. Positions come from EVE-Scout's player reports, so they can lag.": "Marks metaliminal storms and how far they spread. Positions come from EVE-Scout's player reports, so they can lag.",
   "Show Incursions": "Show Incursions",
@@ -1115,7 +1115,7 @@
   "Shows as a card over the map, below its search, with as many reports as fit. Off gives it a window of its own.": "Shows as a card over the map, below its search, with as many reports as fit. Off gives it a window of its own.",
   "Eve Stars": "Eve Stars",
   "Enable Eve Stars": "Enable Eve Stars",
-  "Sets destinations in your game clients through evestars.net.": "Sets destinations in your game clients through evestars.net.",
+  "Plans routes and sets destinations in your game clients through evestars.net.": "Plans routes and sets destinations in your game clients through evestars.net.",
   "API Token": "API Token",
   "Make one on the Eve Stars site, under Pilot then API. It's kept on this PC, outside your profiles.": "Make one on the Eve Stars site, under Pilot then API. It's kept on this PC, outside your profiles.",
   "Right-click a system on the map to set it as a group's or character's destination.": "Right-click a system on the map to set it as a group's or character's destination.",
@@ -1135,10 +1135,6 @@
   "Avoid Zone 4 (15 to 20 ly)": "Avoid Zone 4 (15 to 20 ly)",
   "Avoid Zone 5 (over 20 ly)": "Avoid Zone 5 (over 20 ly)",
   "Stops routes taking gates that land this far from their alliance's capital.": "Stops routes taking gates that land this far from their alliance's capital.",
-  "Unknown System": "Unknown System",
-  "Avoided Systems": "Avoided Systems",
-  "Systems the map's routes keep out of ({n})": "Systems the map's routes keep out of ({n})",
-  "Right-click a system on the map and pick Avoid System to keep routes out of it.": "Right-click a system on the map and pick Avoid System to keep routes out of it.",
   "Intel Shrink Time": "Intel Shrink Time",
   "New intel shows as a large circle, which shrinks over this time and then leaves the map.": "New intel shows as a large circle, which shrinks over this time and then leaves the map.",
   "Mark Cleared Systems": "Mark Cleared Systems",
@@ -1199,5 +1195,6 @@
   "Stays off while Click Through is on in the Mouse tab.": "Stays off while Click Through is on in the Mouse tab.",
   "The client list is hidden while Show Clients As is Thumbnails or None.": "The client list is hidden while Show Clients As is Thumbnails or None.",
   "Uses the excluded characters from the Mouse tab.": "Uses the excluded characters from the Mouse tab.",
-  "Watches for characters left behind on a jump. Also on a hotkey and in the tray menu.": "Watches for characters left behind on a jump. Also on a hotkey and in the tray menu."
+  "Watches for characters left behind on a jump. Also on a hotkey and in the tray menu.": "Watches for characters left behind on a jump. Also on a hotkey and in the tray menu.",
+  "Routes avoid your Eve Stars account's saved list. Right-click a system on the map and pick Avoid System to add or remove it, or edit the list in Eve Stars' Settings.": "Routes avoid your Eve Stars account's saved list. Right-click a system on the map and pick Avoid System to add or remove it, or edit the list in Eve Stars' Settings."
 }

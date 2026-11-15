@@ -1097,7 +1097,7 @@
   "Show Character Names": "Charakternamen anzeigen",
   "Tags each system with a client in it. More than one in a system shows as a count.": "Markiert jedes System mit einem Client. Mehrere in einem System erscheinen als Anzahl.",
   "Live Stats": "Live-Statistiken",
-  "Fetches kills, jumps and sovereignty from CCP while the panel shows. They cover the last hour.": "Ruft Abschüsse, Sprünge und Souveränität von CCP ab, solange das Panel sichtbar ist. Sie decken die letzte Stunde ab.",
+  "Fetches kills, jumps and sovereignty from CCP while the panel shows. They cover the last hour; with an Eve Stars token, the span bar beside the metrics sums the last 24 hours or 7 days instead.": "Ruft Kills, Sprünge und Souveränität von CCP ab, solange das Panel angezeigt wird. Sie decken die letzte Stunde ab; mit einem Eve-Stars-Token summiert die Zeitraumleiste neben den Metriken stattdessen die letzten 24 Stunden oder 7 Tage.",
   "Show Storms": "Stürme anzeigen",
   "Marks metaliminal storms and how far they spread. Positions come from EVE-Scout's player reports, so they can lag.": "Markiert metaliminale Stürme und ihre Ausbreitung. Die Positionen stammen aus Spielerberichten von EVE-Scout und können daher verzögert sein.",
   "Show Incursions": "Invasionen anzeigen",
@@ -1115,7 +1115,7 @@
   "Shows as a card over the map, below its search, with as many reports as fit. Off gives it a window of its own.": "Erscheint als Kachel über der Karte, unter ihrer Suche, mit so vielen Meldungen, wie hineinpassen. Aus gibt ihm ein eigenes Fenster.",
   "Eve Stars": "Eve Stars",
   "Enable Eve Stars": "Eve Stars aktivieren",
-  "Sets destinations in your game clients through evestars.net.": "Setzt Ziele in deinen Spielclients über evestars.net.",
+  "Plans routes and sets destinations in your game clients through evestars.net.": "Plant Routen und setzt Ziele in deinen Spielclients über evestars.net.",
   "API Token": "API-Token",
   "Make one on the Eve Stars site, under Pilot then API. It's kept on this PC, outside your profiles.": "Erstelle einen auf der Eve-Stars-Seite unter Pilot und dann API. Er bleibt auf diesem PC, außerhalb deiner Profile.",
   "Right-click a system on the map to set it as a group's or character's destination.": "Rechtsklicke ein System auf der Karte, um es als Ziel einer Gruppe oder eines Charakters zu setzen.",
@@ -1135,10 +1135,6 @@
   "Avoid Zone 4 (15 to 20 ly)": "Zone 4 meiden (15 bis 20 Lj)",
   "Avoid Zone 5 (over 20 ly)": "Zone 5 meiden (über 20 Lj)",
   "Stops routes taking gates that land this far from their alliance's capital.": "Verhindert Routen über Tore, die so weit von der Hauptstadt ihrer Allianz entfernt landen.",
-  "Unknown System": "Unbekanntes System",
-  "Avoided Systems": "Gemiedene Systeme",
-  "Systems the map's routes keep out of ({n})": "Systeme, die Routen der Karte meiden ({n})",
-  "Right-click a system on the map and pick Avoid System to keep routes out of it.": "Rechtsklicke ein System auf der Karte und wähle Avoid System, um Routen davon fernzuhalten.",
   "Intel Shrink Time": "Intel-Schrumpfzeit",
   "New intel shows as a large circle, which shrinks over this time and then leaves the map.": "Neues Intel erscheint als großer Kreis, der in dieser Zeit schrumpft und dann von der Karte verschwindet.",
   "Mark Cleared Systems": "Geräumte Systeme markieren",
@@ -1199,5 +1195,6 @@
   "Stays off while Click Through is on in the Mouse tab.": "Bleibt aus, solange 'Durchklicken' im Maus-Tab aktiv ist.",
   "The client list is hidden while Show Clients As is Thumbnails or None.": "Die Client-Liste ist ausgeblendet, solange 'Clients anzeigen als' auf Thumbnails oder Keine steht.",
   "Uses the excluded characters from the Mouse tab.": "Nutzt die ausgeschlossenen Charaktere aus dem Maus-Tab.",
-  "Watches for characters left behind on a jump. Also on a hotkey and in the tray menu.": "Achtet auf Charaktere, die bei einem Sprung zurückbleiben. Auch per Hotkey und im Tray-Menü."
+  "Watches for characters left behind on a jump. Also on a hotkey and in the tray menu.": "Achtet auf Charaktere, die bei einem Sprung zurückbleiben. Auch per Hotkey und im Tray-Menü.",
+  "Routes avoid your Eve Stars account's saved list. Right-click a system on the map and pick Avoid System to add or remove it, or edit the list in Eve Stars' Settings.": "Routen meiden die gespeicherte Liste deines Eve-Stars-Kontos. Rechtsklicke ein System auf der Karte und wähle 'System meiden', um es hinzuzufügen oder zu entfernen, oder bearbeite die Liste in den Einstellungen von Eve Stars."
 }

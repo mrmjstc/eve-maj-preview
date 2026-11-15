@@ -14,14 +14,14 @@ const slog = log.Scoped("map");
 /// In SystemStats.holder: nobody holds it.
 pub const NO_HOLDER = std.math.maxInt(u16);
 
-/// Each count covers ESI's last hour.
+/// Each count covers ESI's last hour, or the span Eve Stars summed.
 pub const SystemStats = struct {
-    ship_kills: u16 = 0,
-    pod_kills: u16 = 0,
-    npc_kills: u16 = 0,
-    /// npc_kills less the hour before's; 0 until Snapshot.has_npc_delta.
+    ship_kills: u32 = 0,
+    pod_kills: u32 = 0,
+    npc_kills: u32 = 0,
+    /// npc_kills less the hour before's; 0 until Snapshot.has_npc_delta, and always from ESI.
     npc_delta: i32 = 0,
-    jumps: u16 = 0,
+    jumps: u32 = 0,
     /// Into Snapshot.holder_ids.
     holder: u16 = NO_HOLDER,
 };
@@ -138,9 +138,9 @@ pub const Snapshot = struct {
         const rows = try parseRows(KillRow, arena.allocator(), body);
         for (rows) |row| {
             const stats = self.statsOf(row.system_id) orelse continue;
-            stats.ship_kills = capped(row.ship_kills);
-            stats.pod_kills = capped(row.pod_kills);
-            stats.npc_kills = capped(row.npc_kills);
+            stats.ship_kills = row.ship_kills;
+            stats.pod_kills = row.pod_kills;
+            stats.npc_kills = row.npc_kills;
         }
         self.has_kills = true;
     }
@@ -159,8 +159,19 @@ pub const Snapshot = struct {
             self.has_npc_delta = older.has_npc_delta;
             return;
         }
-        for (self.systems, older.systems) |*stats, old| stats.npc_delta = @as(i32, stats.npc_kills) - old.npc_kills;
+        for (self.systems, older.systems) |*stats, old| stats.npc_delta = std.math.lossyCast(i32, @as(i64, stats.npc_kills) - old.npc_kills);
         self.has_npc_delta = true;
+    }
+
+    /// Eve Stars' last hour and the one before, by SystemIndex, for NPC delta before a second snapshot; only when its last hour is this snapshot's, which every system's NPC kills matching shows; whether it applied.
+    pub fn applyHourBefore(self: *Snapshot, last_hour: []const u32, hour_before: []const u32) bool {
+        if (!self.has_kills or self.has_npc_delta) return false;
+        for (self.systems, last_hour) |stats, kills| {
+            if (stats.npc_kills != kills) return false;
+        }
+        for (self.systems, hour_before) |*stats, before| stats.npc_delta = std.math.lossyCast(i32, @as(i64, stats.npc_kills) - before);
+        self.has_npc_delta = true;
+        return true;
     }
 
     /// `body` is /universe/system_jumps/'s reply.
@@ -170,7 +181,7 @@ pub const Snapshot = struct {
         const rows = try parseRows(JumpRow, arena.allocator(), body);
         for (rows) |row| {
             const stats = self.statsOf(row.system_id) orelse continue;
-            stats.jumps = capped(row.ship_jumps);
+            stats.jumps = row.ship_jumps;
         }
         self.has_jumps = true;
     }
@@ -246,10 +257,6 @@ fn parseRows(comptime Row: type, arena: std.mem.Allocator, body: []const u8) ![]
     };
 }
 
-fn capped(count: u32) u16 {
-    return @intCast(@min(count, std.math.maxInt(u16)));
-}
-
 /// Field by field, as the padding between them is undefined.
 fn sameCampaigns(first: *const campaigns_mod.Campaigns, second: *const campaigns_mod.Campaigns) bool {
     if (first.count != second.count) return false;
@@ -271,11 +278,11 @@ test "applyKills and applyJumps fill the systems they name and skip wormholes" {
     try snapshot.applyJumps("[{\"ship_jumps\":5000,\"system_id\":30000142}]");
 
     const jita = snapshot.systems[universe.findSystemById(JITA_ID).?];
-    try testing.expectEqual(@as(u16, 7), jita.ship_kills);
-    try testing.expectEqual(@as(u16, 2), jita.pod_kills);
-    try testing.expectEqual(@as(u16, 41), jita.npc_kills);
-    try testing.expectEqual(@as(u16, 5000), jita.jumps);
-    try testing.expectEqual(@as(u16, 0), snapshot.systems[universe.findSystemById(AMARR_ID).?].ship_kills);
+    try testing.expectEqual(@as(u32, 7), jita.ship_kills);
+    try testing.expectEqual(@as(u32, 2), jita.pod_kills);
+    try testing.expectEqual(@as(u32, 41), jita.npc_kills);
+    try testing.expectEqual(@as(u32, 5000), jita.jumps);
+    try testing.expectEqual(@as(u32, 0), snapshot.systems[universe.findSystemById(AMARR_ID).?].ship_kills);
     try testing.expect(snapshot.has_kills and snapshot.has_jumps and !snapshot.has_sovereignty);
 }
 
@@ -304,11 +311,30 @@ test "carryNpcDelta measures a new hour against the last, and keeps it within an
     try testing.expectEqual(@as(i32, -15), fourth.systems[jita].npc_delta);
 }
 
-test "a count past u16 saturates" {
+test "applyHourBefore gives the delta at once, but only for the hour this snapshot holds" {
+    var snapshot: Snapshot = try .init(testing.allocator);
+    defer snapshot.deinit();
+    try snapshot.applyKills("[{\"npc_kills\":40,\"system_id\":30000142}]");
+    const jita = universe.findSystemById(JITA_ID).?;
+    var last_hour: [universe.SYSTEM_COUNT]u32 = @splat(0);
+    var hour_before: [universe.SYSTEM_COUNT]u32 = @splat(0);
+    last_hour[jita] = 39;
+    hour_before[jita] = 25;
+    try testing.expect(!snapshot.applyHourBefore(&last_hour, &hour_before));
+    try testing.expect(!snapshot.has_npc_delta);
+
+    last_hour[jita] = 40;
+    try testing.expect(snapshot.applyHourBefore(&last_hour, &hour_before));
+    try testing.expect(snapshot.has_npc_delta);
+    try testing.expectEqual(@as(i32, 15), snapshot.systems[jita].npc_delta);
+    try testing.expect(!snapshot.applyHourBefore(&last_hour, &hour_before));
+}
+
+test "a count past u16 is kept whole" {
     var snapshot: Snapshot = try .init(testing.allocator);
     defer snapshot.deinit();
     try snapshot.applyJumps("[{\"ship_jumps\":70000,\"system_id\":30000142}]");
-    try testing.expectEqual(@as(u16, 65535), snapshot.systems[universe.findSystemById(JITA_ID).?].jumps);
+    try testing.expectEqual(@as(u32, 70000), snapshot.systems[universe.findSystemById(JITA_ID).?].jumps);
 }
 
 test "applySovereignty shares a holder between its systems and prefers the alliance" {

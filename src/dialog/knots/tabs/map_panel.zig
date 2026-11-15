@@ -6,7 +6,6 @@ const bind = @import("../bind.zig");
 const style = @import("../style.zig");
 const widgets = @import("../widgets.zig");
 const panel_settings = @import("panel_settings.zig");
-const universe = @import("../../../map/universe.zig");
 
 const IntelRef = session.Ref(config.IntelPanelConfig);
 const MapRef = session.Ref(config.MapPanelConfig);
@@ -28,7 +27,7 @@ pub fn show(context: *ui.Frame) !void {
 }
 
 fn eveStars(context: *ui.Frame, ref: MapRef, is_shown: bool) !void {
-    const section = try widgets.openSection(context, "Eve Stars", "Sets destinations in your game clients through evestars.net.", &style.section);
+    const section = try widgets.openSection(context, "Eve Stars", "Plans routes and sets destinations in your game clients through evestars.net.", &style.section);
     const global = session.global();
     const enable = try widgets.openGroup(context, .src(@src()), is_shown);
     try bind.toggle(context, global, "evestarsEnabled", "Enable Eve Stars");
@@ -53,22 +52,9 @@ fn eveStars(context: *ui.Frame, ref: MapRef, is_shown: bool) !void {
     try bind.toggle(context, ref, "routeAvoidZone5", "Avoid Zone 5 (over 20 ly)");
     try widgets.hintText(context, .src(@src()), "Stops routes taking gates that land this far from their alliance's capital.");
     try zones.close(context);
-    try avoidedSystems(context);
+    try widgets.hintText(context, .src(@src()), "Routes avoid your Eve Stars account's saved list. Right-click a system on the map and pick Avoid System to add or remove it, or edit the list in Eve Stars' Settings.");
     try options.close(context);
     try section.close(context);
-}
-
-fn avoidedSystems(context: *ui.Frame) !void {
-    const profile = session.profile();
-    var removed: ?usize = null;
-    for (profile.ptr.avoidedSystems.items, 0..) |avoided, index| {
-        const system = universe.findSystemById(avoided.systemId);
-        const row = try widgets.openBinding(context, ui.Key.str("knots.avoided_system").indexed(index), if (system) |known| universe.systemName(known) else "Unknown System");
-        if (try widgets.removeButton(context, ui.Key.str("knots.avoided_system.remove").indexed(index))) removed = index;
-        try row.close(context);
-    }
-    if (removed) |index| profile.remove("avoidedSystems", index);
-    try widgets.hintText(context, .src(@src()), "Right-click a system on the map and pick Avoid System to keep routes out of it.");
 }
 
 fn intelPanel(context: *ui.Frame, ref: IntelRef) !void {
@@ -113,7 +99,7 @@ fn behavior(context: *ui.Frame, ref: MapRef, is_shown: bool) !void {
     try bind.toggle(context, ref, "showCharacterNames", "Show Character Names");
     try widgets.hintText(context, .src(@src()), "Tags each system with a client in it. More than one in a system shows as a count.");
     try bind.toggle(context, ref, "liveStats", "Live Stats");
-    try widgets.hintText(context, .src(@src()), "Fetches kills, jumps and sovereignty from CCP while the panel shows. They cover the last hour.");
+    try widgets.hintText(context, .src(@src()), "Fetches kills, jumps and sovereignty from CCP while the panel shows. They cover the last hour; with an Eve Stars token, the span bar beside the metrics sums the last 24 hours or 7 days instead.");
     const live_stats = try widgets.openGroup(context, .src(@src()), ref.get("liveStats"));
     try bind.toggle(context, ref, "showStorms", "Show Storms");
     try widgets.hintText(context, .src(@src()), "Marks metaliminal storms and how far they spread. Positions come from EVE-Scout's player reports, so they can lag.");

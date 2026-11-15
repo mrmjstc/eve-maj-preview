@@ -235,6 +235,7 @@ fn handleClick(window: *MapPanelWindow, context: Context, x: i32, y: i32) void {
             openNewEden(window);
         },
         .metric => window.store.update(.{ .mapPanel = .{ .metric = look.metricAfterClick(window.config.mapPanel.metric, @fromBackingInt(@intCast(hit.index))) } }),
+        .span => window.store.update(.{ .mapPanel = .{ .trafficSpan = look.SPAN_ORDER[hit.index] } }),
         .toggle => pressToggle(window, @fromBackingInt(@intCast(hit.index))),
         .bar => {},
         .intel_header => window.state.is_intel_collapsed = !window.state.is_intel_collapsed,
@@ -250,6 +251,8 @@ fn handleClick(window: *MapPanelWindow, context: Context, x: i32, y: i32) void {
         .wormhole_row => openWormholeRow(window, hit.index),
         .timer_header => window.state.is_timers_collapsed = !window.state.is_timers_collapsed,
         .timer_row => openTimerRow(window, hit.index),
+        .route_header => context.destinations.clearRoute(),
+        .route_row => sendRouteRow(window, context.destinations, hit.index),
         .wormhole_tab => {
             window.state.wormhole_hub = @fromBackingInt(@intCast(hit.index));
             window.state.wormhole_scroll = 0;
@@ -391,7 +394,10 @@ fn openSystemMenu(window: *MapPanelWindow, context: Context, system: SystemIndex
     window.state.focus_system = system;
     window.state.menu = .{ .system = system, .anchor = anchor };
     window.state.hover = .{};
-    if (window.hasEveStars()) context.destinations.refreshTargets(window.panel.allocator, window.evestarsToken(), win32.Ticks.now().ms);
+    if (!window.hasEveStars()) return;
+    const now_ms = win32.Ticks.now().ms;
+    context.destinations.refreshTargets(window.panel.allocator, window.evestarsToken(), now_ms);
+    context.destinations.refreshAvoid(window.panel.allocator, window.evestarsToken(), destinations_mod.AVOID_MENU_STALE_MS, now_ms);
 }
 
 /// A system's name counts as well as its marker, though only the marker takes a hover.
@@ -469,7 +475,8 @@ fn runMenuAction(window: *MapPanelWindow, context: Context, action: menu_mod.Act
     const now_ms = win32.Ticks.now().ms;
     switch (action) {
         .none => {},
-        .avoid_system => toggleAvoided(window, destinations, menu.system),
+        .show_route => planRoute(window, destinations, menu.system, now_ms),
+        .avoid_system => destinations.toggleAvoid(window.panel.allocator, window.evestarsToken(), menu.system, now_ms),
         .copy_name => copySystemName(destinations, menu.system),
         .open_site => |site| openUrl(destinations, site, system_links.siteUrl(site, menu.system)),
         .show_range => |ship| window.state.reach = if (ship) |shown| .measure(menu.system, shown) else null,
@@ -487,15 +494,25 @@ fn runMenuAction(window: *MapPanelWindow, context: Context, action: menu_mod.Act
     }
 }
 
-fn toggleAvoided(window: *const MapPanelWindow, destinations: *Destinations, system: SystemIndex) void {
-    const name = universe.systemName(system);
-    const now_ms = win32.Ticks.now().ms;
-    const is_avoided = window.store.toggleAvoidedSystem(universe.systemInfo(system).id) catch |err| {
-        slog.warn("Failed to change whether routes avoid '{s}': {}", .{ name, err });
-        destinations.showFailureText(.print("{s}", .{if (err == error.AvoidListFull) "The avoid list is full" else "Couldn't change the avoid list"}), now_ms);
+/// From the active client's system, which is where a route sent to it would start.
+fn planRoute(window: *const MapPanelWindow, destinations: *Destinations, system: SystemIndex, now_ms: u64) void {
+    const active = window.state.marks.active() orelse {
+        destinations.showFailureText(.print("Switch to a client to plan from where it is", .{}), now_ms);
         return;
     };
-    destinations.showInfo(.print("Routes {s} {s}", .{ if (is_avoided) "avoid" else "no longer avoid", name }), now_ms);
+    const options = routeOptions(window.config);
+    destinations.planRoute(window.panel.allocator, window.evestarsToken(), active.system, system, &options, now_ms);
+}
+
+/// Sets the route for the active client's character, who it was planned from.
+fn sendRouteRow(window: *const MapPanelWindow, destinations: *Destinations, row_index: usize) void {
+    const now_ms = win32.Ticks.now().ms;
+    const active = window.state.marks.active() orelse {
+        destinations.showFailureText(.print("Switch to a client to send it the route", .{}), now_ms);
+        return;
+    };
+    const options = routeOptions(window.config);
+    destinations.sendRoute(window.panel.allocator, window.evestarsToken(), row_index, active.character_name, &options, now_ms);
 }
 
 fn copySystemName(destinations: *Destinations, system: SystemIndex) void {
@@ -517,14 +534,12 @@ fn openUrl(destinations: *Destinations, site: system_links.Site, url: evestars.T
 
 fn routeOptions(config: *const config_mod.Config) evestars.RouteOptions {
     const map_settings = &config.mapPanel;
-    var options: evestars.RouteOptions = .{
+    return .{
         .preference = map_settings.routePreference,
         .uses_ansiblex = map_settings.routeAnsiblex,
         .sets_every_waypoint = map_settings.routeEveryWaypoint,
         .avoids_zone = .{ map_settings.routeAvoidZone1, map_settings.routeAvoidZone2, map_settings.routeAvoidZone3, map_settings.routeAvoidZone4, map_settings.routeAvoidZone5 },
     };
-    for (config.avoidedSystems.items) |avoided| options.avoid(avoided.systemId);
-    return options;
 }
 
 /// Asks for the keyboard as well as the click's activation did; the hotkeys let go of it meanwhile.

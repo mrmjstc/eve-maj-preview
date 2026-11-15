@@ -14,10 +14,12 @@ const zkill = @import("../../map/zkill.zig");
 const incursions_mod = @import("../../map/incursions.zig");
 const layout = @import("../../map/layout.zig");
 const stats_mod = @import("../../map/stats.zig");
+const activity_mod = @import("../../map/activity.zig");
 const evestars = @import("../../map/evestars.zig");
 const fixed_text = @import("../../util/fixed_text.zig");
 const utf8 = @import("../../util/utf8.zig");
 
+const Activity = activity_mod.Activity;
 const Campaign = campaigns_mod.Campaign;
 const Campaigns = campaigns_mod.Campaigns;
 const Bridges = evestars.Bridges;
@@ -31,6 +33,7 @@ const RegionIndex = universe.RegionIndex;
 const Snapshot = stats_mod.Snapshot;
 const Storms = storms_mod.Storms;
 const SystemIndex = universe.SystemIndex;
+const TrafficSpan = types.TrafficSpan;
 
 /// The most lines a tooltip holds, for a system with everything to report, two overlapping storms included.
 pub const TOOLTIP_MAX_LINES = 14;
@@ -87,7 +90,10 @@ pub const SystemFacts = struct {
     intel_message: ?[]const u8 = null,
     intel_age_ms: u64 = 0,
     is_intel_clear: bool = false,
-    is_avoided: bool = false,
+    /// Eve Stars' sums for a span past the hour, shown in place of ESI's; borrowed.
+    activity: ?*const Activity = null,
+    /// Null when routes don't avoid it; "" when it's named on the list, else the constellation or region covering it.
+    avoided_area: ?[]const u8 = null,
     /// Null with no jump range showing.
     reach: ?*const jump_range.Reach = null,
     /// Null while they're hidden or unknown.
@@ -194,6 +200,14 @@ pub fn toggleLabel(toggle: look.Toggle) []const u8 {
     };
 }
 
+pub fn spanLabel(span: TrafficSpan) []const u8 {
+    return switch (span) {
+        .Hour => "1h",
+        .Day => "24h",
+        .Week => "7d",
+    };
+}
+
 pub fn layerLabel(layer: look.Layer) []const u8 {
     return switch (layer) {
         .storms => "Storms",
@@ -211,28 +225,25 @@ pub fn systemTooltip(facts: SystemFacts) Tooltip {
     var tooltip: Tooltip = .{};
     const info = universe.systemInfo(facts.system);
     tooltip.add("{s}", .{universe.systemName(facts.system)});
-    var security_buf: [SECURITY_TEXT_MAX]u8 = undefined;
-    tooltip.accent = .print("{s}", .{securityText(&security_buf, info.security_tenths)});
+    var security_buffer: [SECURITY_TEXT_MAX]u8 = undefined;
+    tooltip.accent = .print("{s}", .{securityText(&security_buffer, info.security_tenths)});
     tooltip.accent_color = look.securityTextColor(info.security_tenths);
     tooltip.aside = .print("{s}", .{universe.regionName(info.region)});
     tooltip.addRow("Constellation", "{s}", .{universe.constellationName(info.constellation)});
 
+    if (facts.activity) |activity| {
+        addSpanTraffic(&tooltip, activity, facts.system);
+    } else if (facts.stats) |snapshot| {
+        addHourTraffic(&tooltip, snapshot, facts.system);
+    }
     if (facts.stats) |snapshot| {
-        const stats = snapshot.systems[facts.system];
-        if (snapshot.has_kills) {
-            tooltip.addRow("Ship kills", "{d} ships, {d} pods", .{ stats.ship_kills, stats.pod_kills });
-            if (snapshot.has_npc_delta) {
-                tooltip.addRow("NPC kills", "{d}, {s}{d} on the hour before", .{ stats.npc_kills, if (stats.npc_delta > 0) "+" else "", stats.npc_delta });
-            } else {
-                tooltip.addRow("NPC kills", "{d}", .{stats.npc_kills});
-            }
-        }
-        if (snapshot.has_jumps) tooltip.addRow("Jumps", "{d}", .{stats.jumps});
         if (snapshot.holderName(facts.system)) |holder| tooltip.addRow("Sovereignty", "{s}", .{holder});
         if (snapshot.has_warfare) addWarfare(&tooltip, snapshot.warfare[facts.system]);
     }
     tooltip.addRow("Planets", "{d} planets, {d} stations", .{ info.planet_count, info.station_count });
-    if (facts.is_avoided) tooltip.addRow("Routes", "Avoided", .{});
+    if (facts.avoided_area) |area| {
+        if (area.len > 0) tooltip.addRow("Routes", "Avoided with {s}", .{area}) else tooltip.addRow("Routes", "Avoided", .{});
+    }
     if (facts.reach) |reach| addRange(&tooltip, reach, facts.system);
     if (facts.storms) |storms| addStorms(&tooltip, storms, facts.system);
     if (facts.incursions) |incursions| addIncursion(&tooltip, incursions, facts.system);
@@ -242,8 +253,8 @@ pub fn systemTooltip(facts: SystemFacts) Tooltip {
 
     addCharacters(&tooltip, facts.characters);
     if (facts.intel_message) |message| {
-        var age_buf: [panel_look.TIME_TEXT_MAX]u8 = undefined;
-        tooltip.addColoredRow("Intel", look.intelColor(facts.is_intel_clear), "{s}: {s}", .{ panel_look.relativeTime(&age_buf, facts.intel_age_ms), message });
+        var age_buffer: [panel_look.TIME_TEXT_MAX]u8 = undefined;
+        tooltip.addColoredRow("Intel", look.intelColor(facts.is_intel_clear), "{s}: {s}", .{ panel_look.relativeTime(&age_buffer, facts.intel_age_ms), message });
     }
     return tooltip;
 }
@@ -283,15 +294,17 @@ pub fn securityLegend() Legend {
     return .{ .title = .print("Security", .{}), .ramp = &look.SECURITY_SCALE, .ramp_low = .print("-1.0", .{}), .ramp_high = .print("1.0", .{}) };
 }
 
-pub fn heatLegend(metric: MapMetric, peak: u32, has_stats: bool) Legend {
-    var legend: Legend = .{ .title = .print("{s}", .{switch (metric) {
+/// `span` is what Eve Stars summed the figures over; null for ESI's last hour.
+pub fn heatLegend(metric: MapMetric, peak: u32, has_stats: bool, span: ?TrafficSpan) Legend {
+    const name = switch (metric) {
         .Security, .Sovereignty, .FactionWarfare => "",
         .ShipKills => "Ship kills",
         .PodKills => "Pod kills",
         .NpcKills => "NPC kills",
         .NpcDelta => "NPC delta",
         .Jumps => "Jumps",
-    }}) };
+    };
+    var legend: Legend = .{ .title = if (span) |summed| .print("{s}, {s}", .{ name, spanLabel(summed) }) else .print("{s}", .{name}) };
     if (!has_stats) {
         legend.add(.{ .swatch = look.HEAT_NONE, .text = .print("Waiting for figures", .{}) });
     } else if (peak == 0) {
@@ -529,6 +542,27 @@ pub fn killAge(buffer: *[panel_look.TIME_TEXT_MAX]u8, kill: *const Kill, now_sec
     return panel_look.relativeTime(buffer, @as(u64, @intCast(@max(0, now_seconds - kill.time_seconds))) * std.time.ms_per_s);
 }
 
+/// What a span sums, with how many hours each figure covers, which is fewer than the span's while Eve Stars' record is young.
+fn addSpanTraffic(tooltip: *Tooltip, activity: *const Activity, system: SystemIndex) void {
+    const stats = activity.systems[system];
+    tooltip.addRow("Ship kills", "{d} ships, {d} pods in {d}h", .{ stats.ship_kills, stats.pod_kills, activity.kill_hours });
+    tooltip.addRow("NPC kills", "{d} in {d}h", .{ stats.npc_kills, activity.kill_hours });
+    if (activity.jump_hours > 0) tooltip.addRow("Jumps", "{d} in {d}h", .{ stats.jumps, activity.jump_hours });
+}
+
+fn addHourTraffic(tooltip: *Tooltip, snapshot: *const Snapshot, system: SystemIndex) void {
+    const stats = snapshot.systems[system];
+    if (snapshot.has_kills) {
+        tooltip.addRow("Ship kills", "{d} ships, {d} pods", .{ stats.ship_kills, stats.pod_kills });
+        if (snapshot.has_npc_delta) {
+            tooltip.addRow("NPC kills", "{d}, {s}{d} on the hour before", .{ stats.npc_kills, if (stats.npc_delta > 0) "+" else "", stats.npc_delta });
+        } else {
+            tooltip.addRow("NPC kills", "{d}", .{stats.npc_kills});
+        }
+    }
+    if (snapshot.has_jumps) tooltip.addRow("Jumps", "{d}", .{stats.jumps});
+}
+
 fn campaignKindName(kind: campaigns_mod.Kind) []const u8 {
     return switch (kind) {
         .ihub_defense => "Sov hub defense",
@@ -681,8 +715,8 @@ fn addCharacters(tooltip: *Tooltip, characters: []const []const u8) void {
         tooltip.addRow("Here", "{d} characters", .{characters.len});
         return;
     }
-    var names_buf: [TOOLTIP_LINE_MAX]u8 = undefined;
-    var writer: std.Io.Writer = .fixed(&names_buf);
+    var names_buffer: [TOOLTIP_LINE_MAX]u8 = undefined;
+    var writer: std.Io.Writer = .fixed(&names_buffer);
     for (characters, 0..) |name, index| {
         writer.print("{s}{s}", .{ if (index == 0) "" else ", ", name }) catch {};
     }
@@ -736,9 +770,10 @@ test "the delta legend waits for a second hour, then spans the largest change" {
 }
 
 test "a heat legend says why it has no scale" {
-    try testing.expectEqualStrings("Waiting for figures", heatLegend(.ShipKills, 0, false).rows[0].text.slice());
-    try testing.expectEqualStrings("None on the map", heatLegend(.ShipKills, 0, true).rows[0].text.slice());
-    const legend = heatLegend(.Jumps, 40, true);
+    try testing.expectEqualStrings("Waiting for figures", heatLegend(.ShipKills, 0, false, null).rows[0].text.slice());
+    try testing.expectEqualStrings("None on the map", heatLegend(.ShipKills, 0, true, null).rows[0].text.slice());
+    try testing.expectEqualStrings("Ship kills, 7d", heatLegend(.ShipKills, 5, true, .Week).title.slice());
+    const legend = heatLegend(.Jumps, 40, true, null);
     try testing.expectEqualStrings("Jumps", legend.title.slice());
     try testing.expectEqualStrings("40", legend.ramp_high.slice());
 }
@@ -786,9 +821,23 @@ test "a tooltip without stats leaves those lines out" {
     try testing.expectEqual(@as(usize, 3), tooltip.line_count);
 }
 
+test "a span's tooltip gives Eve Stars' sums and the hours they cover" {
+    const jita = universe.findSystem("Jita").?;
+    var systems: [universe.SYSTEM_COUNT]stats_mod.SystemStats = @splat(.{});
+    systems[jita] = .{ .ship_kills = 103, .pod_kills = 40, .npc_kills = 188, .jumps = 2703 };
+    const activity: Activity = .{ .allocator = testing.allocator, .systems = &systems, .span = .Week, .kill_hours = 3, .jump_hours = 0 };
+    const tooltip = systemTooltip(.{ .system = jita, .activity = &activity });
+    try testing.expectEqualStrings("103 ships, 40 pods in 3h", tooltip.line(2));
+    try testing.expectEqualStrings("188 in 3h", tooltip.line(3));
+    // Past the week Eve Stars keeps jumps for, there's no jumps line.
+    try testing.expectEqualStrings("Planets", tooltip.label(4));
+}
+
 test "a system's tooltip says when routes avoid it" {
-    const tooltip = systemTooltip(.{ .system = universe.findSystem("Jita").?, .is_avoided = true });
+    const tooltip = systemTooltip(.{ .system = universe.findSystem("Jita").?, .avoided_area = "" });
     try testing.expectEqualStrings("Avoided", tooltip.line(tooltip.line_count - 1));
+    const in_area = systemTooltip(.{ .system = universe.findSystem("Jita").?, .avoided_area = "The Forge" });
+    try testing.expectEqualStrings("Avoided with The Forge", in_area.line(in_area.line_count - 1));
 }
 
 test "many characters are counted rather than named" {

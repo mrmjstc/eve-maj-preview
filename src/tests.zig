@@ -50,6 +50,7 @@ test {
     _ = @import("layout/region_grid.zig");
     _ = @import("layout/spaces.zig");
     _ = @import("layout/zoom.zig");
+    _ = @import("map/activity.zig");
     _ = @import("map/campaigns.zig");
     _ = @import("map/connections.zig");
     _ = @import("map/evestars.zig");

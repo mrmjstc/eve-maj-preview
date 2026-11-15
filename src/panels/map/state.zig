@@ -23,11 +23,11 @@ const SystemIndex = universe.SystemIndex;
 
 pub const Hover = struct {
     kind: Kind = .none,
-    /// A `nodes`, `exits` or `portals` place, a RegionIndex, a MetricSegment's, Toggle's, MapControl's or card tab's value, a card's row, or a popup, submenu or nested row, by kind.
+    /// A `nodes`, `exits` or `portals` place, a RegionIndex, a MetricSegment's, TrafficSpan's, Toggle's, MapControl's or card tab's value, a card's row, or a popup, submenu or nested row, by kind.
     index: u16 = 0,
 
     /// `bar` is a card's part that does nothing, such as a bar's padding, which keeps a click off the map.
-    pub const Kind = enum { none, node, exit, portal, region, title, metric, toggle, bar, intel_header, card_tab, intel_row, kill_row, wormhole_header, wormhole_tab, wormhole_row, timer_header, timer_row, popup_row, submenu_row, nested_row, search_box, map_control };
+    pub const Kind = enum { none, node, exit, portal, region, title, metric, span, toggle, bar, intel_header, card_tab, intel_row, kill_row, wormhole_header, wormhole_tab, wormhole_row, timer_header, timer_row, route_header, route_row, popup_row, submenu_row, nested_row, search_box, map_control };
 
     pub fn eql(self: Hover, other: Hover) bool {
         return self.kind == other.kind and self.index == other.index;
@@ -113,6 +113,10 @@ pub const MapState = struct {
     wormhole_scroll: usize = 0,
     /// Collapsed until opened, as the list is long.
     is_wormholes_collapsed: bool = true,
+    /// Where the last render drew the route card; null while no route is shown.
+    route_card: ?look.ListCard = null,
+    /// How many routes that card lists; set each render before the areas are measured, as the column shows with it.
+    route_count: usize = 0,
     /// Where the last render drew the sov timer card; null while no region shown has a timer.
     timer_card: ?look.ListCard = null,
     /// What that card lists, soonest first; rebuilt each render.
@@ -179,9 +183,15 @@ pub const MapState = struct {
         if (self.isPopupOpen()) return .{};
         if (self.chrome.title.containsPoint(x, y)) return .{ .kind = .title };
         if (self.chrome.segmentAt(x, y)) |segment| return .{ .kind = .metric, .index = @backingInt(segment) };
+        if (self.chrome.spanAt(x, y)) |span| return .{ .kind = .span, .index = @backingInt(span) };
         if (self.chrome.toggleAt(x, y)) |toggle| return .{ .kind = .toggle, .index = @backingInt(toggle) };
         if (self.chrome.hasBarAt(x, y)) return .{ .kind = .bar };
         if (areas.mapControlAt(x, y)) |control| return .{ .kind = .map_control, .index = @backingInt(control) };
+        if (self.route_card) |*card| {
+            if (card.header.containsPoint(x, y)) return .{ .kind = .route_header };
+            if (card.rowAt(x, y)) |row_index| return .{ .kind = .route_row, .index = @intCast(row_index) };
+            if (card.box.containsPoint(x, y)) return .{ .kind = .bar };
+        }
         if (self.intel_card) |*card| {
             if (card.tabAt(x, y)) |tab| return .{ .kind = .card_tab, .index = @backingInt(tab) };
             if (card.header.containsPoint(x, y)) return .{ .kind = .intel_header };
@@ -347,6 +357,16 @@ test "the side card's tabs take the hover before its header, and the Kills tab's
     state.intel_card = card;
     try testing.expect(state.hitTest(areas, card.header.left + 61, card.header.top).eql(.{ .kind = .card_tab, .index = @backingInt(look.CardTab.kills) }));
     try testing.expect(state.hitTest(areas, card.rows[0].left, card.rows[0].top).eql(.{ .kind = .kill_row, .index = 0 }));
+}
+
+test "the route card's header and rows take the hover, before the Intel card under it" {
+    var state = forgeState();
+    const areas: look.Areas = .init(800, 600, 30, true);
+    const card: look.ListCard = .init(areas, areas.intelTop(), areas.sideBottom(), look.intelHeaderHeight(areas.card_height), 20, 2, false);
+    state.route_card = card;
+    state.intel_card = .init(areas, areas.intelTop(), look.intelHeaderHeight(areas.card_height), 40, 2, false);
+    try testing.expectEqual(Hover.Kind.route_header, state.hitTest(areas, card.header.left, card.header.top).kind);
+    try testing.expect(state.hitTest(areas, card.rows[1].left, card.rows[1].top).eql(.{ .kind = .route_row, .index = 1 }));
 }
 
 test "picking a region hits its bubble rather than the map behind" {

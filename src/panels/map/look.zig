@@ -23,6 +23,7 @@ const MapMetric = types.MapMetric;
 const SystemIndex = universe.SystemIndex;
 const SystemStats = stats_mod.SystemStats;
 const Snapshot = stats_mod.Snapshot;
+const TrafficSpan = types.TrafficSpan;
 
 /// The search box and pin side by side, and the cards under them.
 const SIDE_COLUMN_WIDTH: i32 = 210;
@@ -87,6 +88,8 @@ const MIN_INTEL_ROWS = 2;
 /// Taller than a bar, as it heads a card.
 const INTEL_HEADER_EXTRA: i32 = 4;
 pub const INTEL_PADDING_X: i32 = palette.PADDING_X;
+/// What a card header's chevron or cross takes from its right, which its title keeps clear of.
+pub const HEADER_GLYPH_ROOM: i32 = CHEVRON_SIZE + @divTrunc(glyphs.SIZE, 2) + INTEL_PADDING_X;
 pub const INTEL_PADDING_Y: i32 = 8;
 const NODE_RADIUS: f32 = 3.5;
 /// The dark edge that lifts a marker off the gates running into it.
@@ -108,6 +111,11 @@ const AREA_ALPHA: u8 = 30;
 const AREA_CORE_ALPHA: u8 = 46;
 const AREA_RIM_ALPHA: u8 = 170;
 const AREA_RIM_THICKNESS = 2;
+/// How far a planned route's band spreads either side of its gates, before the marker scale.
+const ROUTE_RADIUS: f32 = 5;
+const ROUTE_ALPHA: u8 = 55;
+/// The route hovered in the card, or else the fastest, over the others.
+const ROUTE_LIT_ALPHA: u8 = 150;
 /// How much of a storm's colour its periphery's gates keep, over a plain gate's.
 const STORM_PERIPHERY_PERCENT = 45;
 const GRID_SPACING: i32 = 36;
@@ -215,6 +223,8 @@ pub const SOV_TIMER: u32 = 0xFF5CB8FF;
 pub const WORMHOLE: u32 = 0xFF9AA4FF;
 /// Deep orange, between intel's red and the plasma storm's orange; its triangle sets it apart from both.
 pub const KILL: u32 = 0xFFFF6E40;
+/// Amber, laid faintly under the gates like a highlighter's stroke.
+pub const ROUTE: u32 = 0xFFFFC857;
 /// Mint, for Ansiblex gates; dashed and arched, so they read apart from the storms' green areas.
 pub const ANSIBLEX: u32 = 0xFF4ED8A8;
 /// An Ansiblex arc's bend against its length.
@@ -254,6 +264,9 @@ const NO_BOX: Box = .{ .left = 0, .top = 0, .right = 0, .bottom = 0 };
 pub const TOGGLE_ORDER = std.enums.values(Toggle);
 
 pub const LAYER_ORDER = std.enums.values(Layer);
+
+/// Beside the metric bar, left to right.
+pub const SPAN_ORDER = std.enums.values(TrafficSpan);
 
 /// A button in the bar along the map's bottom; one with a second metric flips to it when clicked again.
 pub const MetricSegment = enum { security, kills, npc, jumps, sovereignty, faction_warfare };
@@ -394,10 +407,10 @@ pub const IntelCard = struct {
     }
 };
 
-/// A collapsible list in the right column, below the Intel card and clear of the map controls: Thera and Turnur, which scrolls past what fits, or the sov timers.
+/// A list in the right column, clear of the map controls: Thera and Turnur, which scrolls past what fits, the sov timers, or a planned route.
 pub const ListCard = struct {
     box: Box,
-    /// Pressing it collapses the card to just this, or opens it again.
+    /// Pressing it collapses the card to just this, or opens it again; on the route card it closes the card.
     header: Box,
     /// The rows showing, from the list's scroll on; only the first row_count are set.
     rows: [MAX_LIST_ROWS]Box = @splat(NO_BOX),
@@ -447,6 +460,9 @@ pub const ChromeText = struct {
     /// Each segment's shown label.
     metric_widths: [SEGMENT_ORDER.len]i32,
     toggle_widths: [TOGGLE_ORDER.len]i32,
+    /// Each span's label; null while no metric could take the span bar, so the bars keep its room as the metric changes.
+    span_widths: ?[SPAN_ORDER.len]i32 = null,
+    shows_spans: bool = false,
     /// The legends' card, which a centred toggle bar keeps clear of; 0 without one.
     legend_width: i32 = 0,
 };
@@ -458,6 +474,9 @@ pub const Chrome = struct {
     metrics: [SEGMENT_ORDER.len]Box = @splat(NO_BOX),
     toggle_bar: Box = NO_BOX,
     toggles: [TOGGLE_ORDER.len]Box = @splat(NO_BOX),
+    /// Right of the metric bar; empty while hidden.
+    span_bar: Box = NO_BOX,
+    spans: [SPAN_ORDER.len]Box = @splat(NO_BOX),
 
     /// The title in the top left, clear of the search; along the bottom, the toggle bar on the metric bar, each centred, or both kept to the left where centring either would meet the legends or crowd the zoom controls.
     pub fn init(areas: Areas, text: ChromeText) Chrome {
@@ -471,23 +490,34 @@ pub const Chrome = struct {
 
         var metric_widths: [SEGMENT_ORDER.len]i32 = undefined;
         for (&metric_widths, text.metric_widths) |*width, text_width| width.* = segmented.buttonWidth(text_width);
+        var span_widths: [SPAN_ORDER.len]i32 = @splat(0);
+        if (text.span_widths) |widths| {
+            for (&span_widths, widths) |*width, text_width| width.* = segmented.buttonWidth(text_width);
+        }
+        const span_room = if (text.span_widths != null) CARD_GAP + segmented.barWidth(&span_widths, segmented.GAP, 0) else 0;
         const metric_width = segmented.barWidth(&metric_widths, segmented.GAP, 0);
         var toggle_widths: [TOGGLE_ORDER.len]i32 = undefined;
         for (&toggle_widths, text.toggle_widths) |*width, text_width| width.* = text_width + TOGGLE_MARK_ROOM + 2 * TOGGLE_PADDING_X;
         const toggle_width = segmented.barWidth(&toggle_widths, TOGGLE_GAP, TOGGLE_DIVIDER_ROOM);
 
+        // Centred alone, the span bar hanging off its right, so showing it moves neither bar.
         const metric_centred = body.left + @divTrunc(body.right - body.left - metric_width, 2);
         const toggle_centred = body.left + @divTrunc(body.right - body.left - toggle_width, 2);
         const legend_right = if (text.legend_width > 0) left + text.legend_width + CARD_GAP else left;
         // Kept left rather than pushing the legends up a row; a control's width to spare before the zoom controls, as crowding them reads as misplaced.
         const right_limit = areas.zoomStack().left - CARD_GAP - areas.card_height;
-        const is_centred = @min(metric_centred, toggle_centred) >= legend_right and @max(metric_centred + metric_width, toggle_centred + toggle_width) <= right_limit;
+        const is_centred = @min(metric_centred, toggle_centred) >= legend_right and @max(metric_centred + metric_width + span_room, toggle_centred + toggle_width) <= right_limit;
         const metric_left = if (is_centred) metric_centred else left;
         const toggle_left = if (is_centred) toggle_centred else left;
 
         const metric_bottom = body.bottom - CARD_MARGIN;
         chrome.metric_bar = .{ .left = metric_left, .top = metric_bottom - areas.card_height, .right = metric_left + metric_width, .bottom = metric_bottom };
         segmented.placeButtons(chrome.metric_bar, &metric_widths, segmented.GAP, null, 0, &chrome.metrics);
+        if (span_room > 0 and text.shows_spans) {
+            const span_left = chrome.metric_bar.right + CARD_GAP;
+            chrome.span_bar = .{ .left = span_left, .top = chrome.metric_bar.top, .right = chrome.metric_bar.right + span_room, .bottom = metric_bottom };
+            segmented.placeButtons(chrome.span_bar, &span_widths, segmented.GAP, null, 0, &chrome.spans);
+        }
         const toggle_bottom = chrome.metric_bar.top - CARD_GAP;
         chrome.toggle_bar = .{ .left = toggle_left, .top = toggle_bottom - areas.card_height, .right = toggle_left + toggle_width, .bottom = toggle_bottom };
         segmented.placeButtons(chrome.toggle_bar, &toggle_widths, TOGGLE_GAP, @backingInt(Toggle.follow), TOGGLE_DIVIDER_ROOM, &chrome.toggles);
@@ -499,9 +529,16 @@ pub const Chrome = struct {
         return .{
             .left = @min(self.metric_bar.left, self.toggle_bar.left),
             .top = self.toggle_bar.top,
-            .right = @max(self.metric_bar.right, self.toggle_bar.right),
+            .right = @max(@max(self.metric_bar.right, self.span_bar.right), self.toggle_bar.right),
             .bottom = self.metric_bar.bottom,
         };
+    }
+
+    pub fn spanAt(self: *const Chrome, x: i32, y: i32) ?TrafficSpan {
+        for (SPAN_ORDER, self.spans) |span, box| {
+            if (box.containsPoint(x, y)) return span;
+        }
+        return null;
     }
 
     pub fn segmentAt(self: *const Chrome, x: i32, y: i32) ?MetricSegment {
@@ -520,7 +557,7 @@ pub const Chrome = struct {
 
     /// Over a bar's padding, which takes clicks so they don't fall through to the map.
     pub fn hasBarAt(self: *const Chrome, x: i32, y: i32) bool {
-        return self.metric_bar.containsPoint(x, y) or self.toggle_bar.containsPoint(x, y);
+        return self.metric_bar.containsPoint(x, y) or self.span_bar.containsPoint(x, y) or self.toggle_bar.containsPoint(x, y);
     }
 
     /// Halfway between Follow and the toggle before it.
@@ -652,15 +689,14 @@ pub fn listRowHeight(line_height: i32) i32 {
 
 /// The card, its header's chevron and the divider under the header; a hovered row or header lit.
 pub fn drawListCard(canvas: pixel_buffer.Canvas, card: *const ListCard, hovered_row: ?usize, is_header_hovered: bool) void {
-    drawCard(canvas, card.box);
-    const inner_left = card.box.left + ROW_INSET;
-    const inner_right = card.box.right - ROW_INSET;
-    if (is_header_hovered) fillBox(canvas, rowHighlight(card.header, inner_left, inner_right), segmented.RADIUS, SEGMENT_HOVER);
-    if (hovered_row) |index| {
-        if (index < card.row_count) fillBox(canvas, rowHighlight(card.rows[index], inner_left, inner_right), segmented.RADIUS, SEGMENT_HOVER);
-    }
-    if (!card.is_collapsed) drawDivider(canvas, inner_left, inner_right, card.header.bottom - 1);
+    drawListFrame(canvas, card, hovered_row, is_header_hovered);
     drawChevron(canvas, card.header.right - INTEL_PADDING_X - CHEVRON_SIZE, @divTrunc(card.header.top + card.header.bottom, 2), !card.is_collapsed);
+}
+
+/// A list card whose header closes it, with a cross where the others have their chevron.
+pub fn drawClosableCard(canvas: pixel_buffer.Canvas, card: *const ListCard, hovered_row: ?usize, is_header_hovered: bool) void {
+    drawListFrame(canvas, card, hovered_row, is_header_hovered);
+    drawGlyphAt(canvas, .off, card.header.right - INTEL_PADDING_X - CHEVRON_SIZE, @divTrunc(card.header.top + card.header.bottom, 2), if (is_header_hovered) SEGMENT_TEXT else CARD_MUTED);
 }
 
 pub fn isLayerShown(map_settings: *const panels.MapPanelConfig, layer: Layer) bool {
@@ -711,6 +747,14 @@ pub fn metricAfterClick(current: MapMetric, segment: MetricSegment) MapMetric {
     const metrics = segmentMetrics(segment);
     const index = std.mem.indexOfScalar(MapMetric, metrics, current) orelse return metrics[0];
     return metrics[(index + 1) % metrics.len];
+}
+
+/// Those the span bar sums over a longer span; NPC delta is ESI's change on the hour, so it isn't one.
+pub fn isSpannedMetric(metric: MapMetric) bool {
+    return switch (metric) {
+        .ShipKills, .PodKills, .NpcKills, .Jumps => true,
+        .Security, .NpcDelta, .Sovereignty, .FactionWarfare => false,
+    };
 }
 
 /// Zero for what colours by the system rather than its traffic.
@@ -808,6 +852,14 @@ pub fn drawRangeMark(canvas: pixel_buffer.Canvas, x: i32, y: i32, scale: f32) vo
 
 pub fn areaRadius(scale: f32) f32 {
     return AREA_RADIUS * scale;
+}
+
+pub fn routeRadius(scale: f32) f32 {
+    return ROUTE_RADIUS * scale;
+}
+
+pub fn drawRoute(canvas: pixel_buffer.Canvas, mask: *const pixel_buffer.Mask, is_lit: bool) void {
+    pixel_buffer.fillMask(canvas, mask, color.withAlpha(ROUTE, if (is_lit) ROUTE_LIT_ALPHA else ROUTE_ALPHA));
 }
 
 /// A flat tint with a hard rim, so a storm or incursion reads as one front rather than as Sov's soft patches.
@@ -1103,6 +1155,17 @@ pub fn regionRangeColor(systems_in_range: u16) u32 {
     return if (systems_in_range > 0) RANGE else OUT_OF_RANGE;
 }
 
+fn drawListFrame(canvas: pixel_buffer.Canvas, card: *const ListCard, hovered_row: ?usize, is_header_hovered: bool) void {
+    drawCard(canvas, card.box);
+    const inner_left = card.box.left + ROW_INSET;
+    const inner_right = card.box.right - ROW_INSET;
+    if (is_header_hovered) fillBox(canvas, rowHighlight(card.header, inner_left, inner_right), segmented.RADIUS, SEGMENT_HOVER);
+    if (hovered_row) |index| {
+        if (index < card.row_count) fillBox(canvas, rowHighlight(card.rows[index], inner_left, inner_right), segmented.RADIUS, SEGMENT_HOVER);
+    }
+    if (!card.is_collapsed) drawDivider(canvas, inner_left, inner_right, card.header.bottom - 1);
+}
+
 /// What a segment shows, the one a first click picks first.
 fn segmentMetrics(segment: MetricSegment) []const MapMetric {
     return switch (segment) {
@@ -1378,6 +1441,32 @@ test "the metric bar is centred along the bottom, and each segment finds its met
     }
     try testing.expectEqual(@as(?MetricSegment, null), chrome.segmentAt(chrome.metric_bar.left, chrome.metric_bar.top));
     try testing.expect(chrome.hasBarAt(chrome.metric_bar.left, chrome.metric_bar.top));
+}
+
+test "the span bar hangs off the centred metric bar's right, and showing it moves neither bar" {
+    const areas: Areas = .init(1000, 700, 22, false);
+    var text = testChromeText(80);
+    text.span_widths = @splat(24);
+    text.shows_spans = true;
+    const chrome: Chrome = .init(areas, text);
+    try testing.expectEqual(chrome.metric_bar.right + CARD_GAP, chrome.span_bar.left);
+    try testing.expectEqual(chrome.metric_bar.top, chrome.span_bar.top);
+    try testing.expectApproxEqAbs(@as(f32, 500), @as(f32, @floatFromInt(chrome.metric_bar.left + chrome.metric_bar.right)) / 2, 1);
+    for (SPAN_ORDER, chrome.spans) |span, box| try testing.expectEqual(@as(?TrafficSpan, span), chrome.spanAt(box.left, box.top));
+    try testing.expect(chrome.hasBarAt(chrome.span_bar.left, chrome.span_bar.top));
+
+    text.shows_spans = false;
+    const hidden: Chrome = .init(areas, text);
+    try testing.expectEqual(@as(?TrafficSpan, null), hidden.spanAt(chrome.spans[0].left, chrome.spans[0].top));
+    try testing.expectEqual(chrome.metric_bar, hidden.metric_bar);
+    try testing.expectEqual(chrome.toggle_bar, hidden.toggle_bar);
+}
+
+test "only the traffic metrics a span sums take the span bar" {
+    try testing.expect(isSpannedMetric(.ShipKills));
+    try testing.expect(isSpannedMetric(.Jumps));
+    try testing.expect(!isSpannedMetric(.NpcDelta));
+    try testing.expect(!isSpannedMetric(.Security));
 }
 
 test "the title card stops short of the search box" {

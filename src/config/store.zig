@@ -2,7 +2,6 @@
 const std = @import("std");
 const config_mod = @import("../config.zig");
 const profiles = @import("profiles.zig");
-const types = @import("types.zig");
 const wire = @import("wire.zig");
 const patch_mod = @import("patch.zig");
 const strings = @import("../util/strings.zig");
@@ -60,13 +59,6 @@ pub const ProfileStore = struct {
         const toggle = try toggleGroupMemberInBoth(&self.live, &self.saved, group_index, character_name);
         if (toggle.should_save) self.persist();
         return toggle.is_member;
-    }
-
-    /// Returns whether `system_id` is now avoided, going by what the app shows; error.AvoidListFull past types.MAX_AVOIDED_SYSTEMS.
-    pub fn toggleAvoidedSystem(self: *ProfileStore, system_id: u32) !bool {
-        const is_avoided = try toggleAvoidedSystemInBoth(&self.live, &self.saved, system_id);
-        self.persist();
-        return is_avoided;
     }
 
     pub fn commit(self: *ProfileStore) !void {
@@ -194,24 +186,6 @@ fn setMembership(config: *Config, group: *config_mod.HotkeyGroupConfig, characte
     }
 }
 
-fn toggleAvoidedSystemInBoth(live: *Config, saved: *Config, system_id: u32) !bool {
-    const is_avoided = live.avoidedSystemIndex(system_id) == null;
-    try setAvoided(live, system_id, is_avoided);
-    try setAvoided(saved, system_id, is_avoided);
-    return is_avoided;
-}
-
-/// Idempotent, as unsaved dialog edits can leave the two copies disagreeing.
-fn setAvoided(config: *Config, system_id: u32, is_avoided: bool) !void {
-    const index = config.avoidedSystemIndex(system_id);
-    if (is_avoided and index == null) {
-        if (config.avoidedSystems.items.len >= types.MAX_AVOIDED_SYSTEMS) return error.AvoidListFull;
-        try config.avoidedSystems.append(config.allocator, .{ .systemId = system_id });
-    } else if (!is_avoided) {
-        if (index) |i| _ = config.avoidedSystems.orderedRemove(i);
-    }
-}
-
 /// Leaves must hold no pointers, since both copies would then share one allocation.
 fn assign(comptime T: type, target: *T, patch: anytype) void {
     inline for (@typeInfo(@TypeOf(patch)).@"struct".field_names) |name| {
@@ -296,32 +270,6 @@ test "a group index past the saved groups is an error" {
     defer store.deinit();
 
     try testing.expectError(error.InvalidGroupIndex, toggleGroupMemberInBoth(&store.live, &store.saved, 0, "Alpha"));
-}
-
-test "an avoided-system toggle follows the live copy and leaves both agreeing" {
-    var store = try testStore(
-        \\{"avoidedSystems": [{"systemId": 30000142}]}
-    );
-    defer store.deinit();
-    _ = store.live.avoidedSystems.orderedRemove(0);
-
-    try testing.expect(try toggleAvoidedSystemInBoth(&store.live, &store.saved, 30000142));
-    try testing.expectEqual(@as(usize, 1), store.live.avoidedSystems.items.len);
-    try testing.expectEqual(@as(usize, 1), store.saved.avoidedSystems.items.len);
-}
-
-test "avoiding a system past the limit fails and changes neither copy" {
-    var store = try testStore("{}");
-    defer store.deinit();
-    for (0..types.MAX_AVOIDED_SYSTEMS) |index| {
-        const system_id: u32 = @intCast(index + 1);
-        try store.live.avoidedSystems.append(store.live.allocator, .{ .systemId = system_id });
-        try store.saved.avoidedSystems.append(store.saved.allocator, .{ .systemId = system_id });
-    }
-
-    try testing.expectError(error.AvoidListFull, toggleAvoidedSystemInBoth(&store.live, &store.saved, 30000142));
-    try testing.expectEqual(@as(usize, types.MAX_AVOIDED_SYSTEMS), store.live.avoidedSystems.items.len);
-    try testing.expectEqual(@as(usize, types.MAX_AVOIDED_SYSTEMS), store.saved.avoidedSystems.items.len);
 }
 
 test "clearing a missing character's window position adds no character" {

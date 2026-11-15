@@ -28,11 +28,11 @@ const WAYPOINTS_ROW = 3;
 const SEND_HEADING_ROW = 4;
 const ALL_ROW = 5;
 pub const MAX_ROWS = ALL_ROW + 1 + evestars.MAX_TARGETS;
-const ROWS = [_]Row{ .heading, .set_destination, .open_site, .jump_range, .avoid_system, .copy_name };
+const ROWS = [_]Row{ .heading, .set_destination, .show_route, .open_site, .jump_range, .avoid_system, .copy_name };
 /// With Eve Stars off or no token, nothing can be sent.
 const ROWS_WITHOUT_EVE_STARS = [_]Row{ .heading, .open_site, .jump_range, .copy_name };
 
-const Row = enum { heading, set_destination, open_site, jump_range, avoid_system, copy_name };
+const Row = enum { heading, set_destination, show_route, open_site, jump_range, avoid_system, copy_name };
 
 /// A menu row's submenu.
 pub const Branch = enum { destination, sites, jump_range };
@@ -49,8 +49,10 @@ pub const Context = struct {
     is_loading: bool = false,
     /// A jump range is showing, which adds "Off" to its submenu.
     has_reach: bool = false,
-    /// Routes avoid the menu's system.
-    is_avoided: bool = false,
+    /// How the menu's system stands on the account's avoid list.
+    avoidance: evestars.Avoidance = .none,
+    /// The constellation or region on the list that covers the menu's system; empty unless `avoidance` is .in_area.
+    avoided_area: []const u8 = "",
     preference: RoutePreference = .Shorter,
     uses_ansiblex: bool = false,
     sets_every_waypoint: bool = false,
@@ -59,6 +61,7 @@ pub const Context = struct {
 /// What pressing a row asks for.
 pub const Action = union(enum) {
     none,
+    show_route,
     avoid_system,
     copy_name,
     open_site: system_links.Site,
@@ -75,7 +78,7 @@ pub const Action = union(enum) {
     pub fn closesMenu(self: Action) bool {
         return switch (self) {
             .none, .cycle_preference, .toggle_ansiblex, .toggle_waypoints => false,
-            .avoid_system, .copy_name, .open_site, .show_range, .send_to_all, .send => true,
+            .show_route, .avoid_system, .copy_name, .open_site, .show_range, .send_to_all, .send => true,
         };
     }
 };
@@ -104,7 +107,7 @@ pub const Menu = struct {
                 self.branch = .jump_range;
                 self.shows_characters = false;
             },
-            .avoid_system, .copy_name => {
+            .show_route, .avoid_system, .copy_name => {
                 self.branch = null;
                 self.shows_characters = false;
             },
@@ -124,6 +127,7 @@ pub const Menu = struct {
         if (row_index >= rows.len) return .none;
         return switch (rows[row_index]) {
             .heading, .set_destination, .open_site, .jump_range => .none,
+            .show_route => .show_route,
             .avoid_system => .avoid_system,
             .copy_name => .copy_name,
         };
@@ -186,9 +190,10 @@ pub const Menu = struct {
         return switch (shownRows(context.has_eve_stars)[index]) {
             .heading => headingRow(self.system),
             .set_destination => .{ .text = .print("Set Destination", .{}), .glyph = .set_destination, .has_submenu = true },
+            .show_route => .{ .text = .print("Show Route", .{}), .glyph = .route },
             .open_site => .{ .text = .print("Open", .{}), .glyph = .open_window, .has_submenu = true },
             .jump_range => .{ .text = .print("Jump Range", .{}), .glyph = .jump_range, .has_submenu = true },
-            .avoid_system => .{ .text = avoidLabel(context.is_avoided), .glyph = .avoid },
+            .avoid_system => .{ .text = avoidLabel(context.avoidance, context.avoided_area), .glyph = .avoid },
             .copy_name => .{ .text = .print("Copy Name", .{}), .glyph = .copy },
         };
     }
@@ -426,8 +431,12 @@ fn preferenceName(preference: RoutePreference) []const u8 {
     };
 }
 
-fn avoidLabel(is_avoided: bool) FixedText {
-    return .print("{s}", .{if (is_avoided) "Stop Avoiding" else "Avoid System"});
+fn avoidLabel(avoidance: evestars.Avoidance, area: []const u8) FixedText {
+    return switch (avoidance) {
+        .none => .print("Avoid System", .{}),
+        .listed => .print("Stop Avoiding", .{}),
+        .in_area => .print("Avoided in {s}", .{area}),
+    };
 }
 
 const testing = std.testing;
@@ -453,7 +462,7 @@ test "without Eve Stars the menu drops its destination and avoid rows, and the s
     try testing.expectEqual(@as(usize, 2), branchRowIndex(false, .jump_range));
     try testing.expectEqual(@as(usize, 0), branchRowIndex(false, .destination));
     try testing.expectEqual(@as(usize, 1), branchRowIndex(true, .destination));
-    try testing.expectEqual(@as(usize, 3), branchRowIndex(true, .jump_range));
+    try testing.expectEqual(@as(usize, 4), branchRowIndex(true, .jump_range));
 }
 
 test "hovering a row opens its submenu, and the heading leaves what's open alone" {
@@ -466,11 +475,13 @@ test "hovering a row opens its submenu, and the heading leaves what's open alone
     try testing.expectEqual(@as(?Branch, null), menu.branch);
 }
 
-test "pressing Avoid or Copy Name asks for it, while a row with a submenu only opens it" {
+test "pressing Show Route, Avoid or Copy Name asks for it, while a row with a submenu only opens it" {
     var menu = testMenu();
     try testing.expectEqual(Action.none, menu.pressRow(true, 1));
     try testing.expectEqual(@as(?Branch, .destination), menu.branch);
-    try testing.expectEqual(Action.avoid_system, menu.pressRow(true, 4));
+    try testing.expectEqual(Action.show_route, menu.pressRow(true, 2));
+    try testing.expectEqual(@as(?Branch, null), menu.branch);
+    try testing.expectEqual(Action.avoid_system, menu.pressRow(true, 5));
     try testing.expectEqual(Action.copy_name, menu.pressRow(false, 3));
     try testing.expectEqual(Action.none, menu.pressRow(true, 99));
 }
@@ -552,8 +563,8 @@ test "an open submenu's row stays lit, and an open Individual stays lit among it
     const targets = testTargets(1, 2);
     var menu = testMenu();
     try testing.expectEqual(@as(?usize, null), menu.litRow(true, 0));
-    menu.followRow(true, 2);
-    try testing.expectEqual(@as(?usize, 2), menu.litRow(true, null));
+    menu.followRow(true, 3);
+    try testing.expectEqual(@as(?usize, 3), menu.litRow(true, null));
     try testing.expectEqual(@as(?usize, 4), menu.litRow(true, 4));
     menu.followRow(true, 1);
     menu.followSubmenuRow(&targets, ALL_ROW + 2);
@@ -583,6 +594,12 @@ test "a ship's menu row gives its range as the value" {
     const row = shipRow(.black_ops);
     try testing.expectEqualStrings("Black Ops", row.text.slice());
     try testing.expectEqualStrings("8.0 ly", row.value.slice());
+}
+
+test "the avoid row tells a system named on the list from one inside an avoided area" {
+    try testing.expectEqualStrings("Avoid System", avoidLabel(.none, "").slice());
+    try testing.expectEqualStrings("Stop Avoiding", avoidLabel(.listed, "").slice());
+    try testing.expectEqualStrings("Avoided in The Forge", avoidLabel(.in_area, "The Forge").slice());
 }
 
 test "the region menu's rows past its heading open each site" {

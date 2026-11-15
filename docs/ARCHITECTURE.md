@@ -124,7 +124,8 @@ Throttled work uses `util/schedule.zig`: intervals measure from the tick's start
 | Clipboard upload | `hotkeys/paste_upload.zig`, one per press, at most 4 at once | None; slots claimed through atomics |
 | Dialog helpers | `pickers.zig`, `prices.zig`, `portraits.zig`, one-shot | `WM_KNOTS_COMMAND` |
 | Map stats | `map/stats_feed.zig`, one-shot every 15 minutes while the Map Panel shows; after the figures, it fetches logos of alliances it hasn't seen | Atomic snapshot and logo colour swaps, taken on the tick |
-| Eve Stars calls | `map/evestars_feed.zig`, one-shot per character list, send or Ansiblex list, one at a time for each | Atomic reply swap, taken on the tick or the panel's 100ms timer |
+| Eve Stars calls | `map/evestars_feed.zig`, one-shot per character list, send, route plan, Ansiblex list, and avoid list read or change, one at a time for each | Atomic reply swap, taken on the tick or the panel's 100ms timer |
+| Eve Stars activity | `map/activity_feed.zig`, one-shot for the span's kill and jump sums every 10 minutes while a span past the hour shows, and for the last two hours' NPC kills every 2 minutes while NPC delta waits for its hour before | Atomic pointer swaps, taken on the tick or the panel's 100ms timer |
 | Live sov campaigns | `map/campaigns_feed.zig`, one-shot every 10 s while a running sov timer is listed for the regions shown | Atomic campaigns swap, taken on the tick and laid over the snapshot's |
 | zKillboard feed | `map/zkill_feed.zig`, one-shot runs while the Map Panel shows kills: each reads zKillboard's R2Z2 files from where the last stopped, up to 50, then names new ships and victims through ESI; the next starts once its batch is taken, at once while behind, 6 s at the newest file | Atomic batch swap, taken on the tick; the read position and asked-for ids belong to whichever run is going, or main between runs |
 
@@ -197,7 +198,7 @@ Layout (`layout/`, mostly pure):
 
 ## Map Panel
 
-`panels/map_panel.zig` holds `MapPanel`: the feeds, stats, pins, zKillboard's kills and their names, and Eve Stars destinations and Ansiblex gates, the window's lifecycle, its window procedure and when it redraws. App owns the panel, so it survives thumbnail set rebuilds.
+`panels/map_panel.zig` holds `MapPanel`: the feeds, stats, pins, zKillboard's kills and their names, and Eve Stars destinations, routes, avoid list, Ansiblex gates and activity, the window's lifecycle, its window procedure and when it redraws. App owns the panel, so it survives thumbnail set rebuilds.
 
 The panel's own files in `panels/map/`:
 
@@ -212,7 +213,8 @@ The panel's own files in `panels/map/`:
 - `text.zig`: tooltips, legends and titles.
 - `wormhole_list.zig` (pure, tested): the Thera and Turnur card's list, one hub a tab, sorted by region, and its scrolling.
 - `timer_list.zig` (pure, tested): the sov timer card's list, the shown regions' campaigns, soonest first.
-- `destinations.zig`: who can be sent an Eve Stars destination, the account's Ansiblex gates, and how each call turned out.
+- `destinations.zig`: who can be sent an Eve Stars destination, the account's Ansiblex gates and saved avoid list (the only one; profiles keep none), a planned route, and how each call turned out.
+- `traffic.zig`: Eve Stars' kill and jump sums for the picked span, and the NPC kills' hour before, which it hands the snapshot once its last hour matches.
 
 What it draws from, in `map/`:
 
@@ -225,7 +227,8 @@ What it draws from, in `map/`:
 - `zkill.zig` + `zkill_feed.zig`: zKillboard's live kills, and the names of their ships and victims.
 - `holder_colors.zig`: sovereignty colours; NPC factions' are fixed, alliances' picked from their logos.
 - `intel_pins.zig`: systems named in intel channels.
-- `evestars.zig` + `evestars_feed.zig`: the Eve Stars route API, and its Ansiblex list.
+- `evestars.zig` + `evestars_feed.zig`: the Eve Stars route API: sends, route plans, the Ansiblex list and the saved avoid list.
+- `activity.zig` + `activity_feed.zig`: Eve Stars' kills and jumps summed over a span, and its NPC kills an hour at a time.
 - `system_links.zig`: a system's pages on the web.
 
 Drawing and input:

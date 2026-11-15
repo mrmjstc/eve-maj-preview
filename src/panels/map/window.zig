@@ -54,6 +54,10 @@ const ChromeShown = struct {
     /// Borrowed for the render.
     title: []const u8,
     metric: types.MapMetric,
+    /// Room for the span bar beside the metric bar, kept while any metric could show it.
+    has_span_room: bool,
+    /// The span bar itself, for Eve Stars' longer sums.
+    shows_spans: bool,
     /// The legends' card's, so the toggle bar can keep clear of it.
     legend_width: i32,
 };
@@ -259,7 +263,7 @@ pub const MapPanelWindow = struct {
         if (!self.hasSideCard()) return null;
         const header_height = look.intelHeaderHeight(areas.card_height);
         const row_height = look.intelRowHeight(fonts.chrome.name_height);
-        const top = areas.intelTop();
+        const top = self.columnTop(areas);
         const column_bottom = self.timerColumnBottom(areas, fonts);
         // Half the column while the wormhole card shares it.
         const bottom = if (self.showsWormholeCard()) top + @divTrunc(column_bottom - top, 2) else column_bottom;
@@ -292,7 +296,7 @@ pub const MapPanelWindow = struct {
         if (!self.showsWormholeCard()) return null;
         const hub = self.state.wormhole_hub;
         self.state.wormhole_entry_count = if (paint.shownWormholes(self.config, scene)) |connections| wormhole_list.build(connections, hub, &self.state.wormhole_entries).len else 0;
-        const top = if (self.state.intel_card) |*intel| intel.box.bottom + look.CARD_GAP else areas.intelTop();
+        const top = if (self.state.intel_card) |*intel| intel.box.bottom + look.CARD_GAP else self.columnTop(areas);
         const row_height = look.listRowHeight(fonts.chrome.name_height);
         const bottom = self.timerColumnBottom(areas, fonts);
         const probe: look.ListCard = .init(areas, top, bottom, look.intelHeaderHeight(areas.card_height), row_height, 0, true);
@@ -343,16 +347,28 @@ pub const MapPanelWindow = struct {
         if (!self.showsTimerCard()) return areas.sideBottom();
         const header_height = look.intelHeaderHeight(areas.card_height);
         const row_height = look.listRowHeight(fonts.chrome.name_height);
-        const half_rows: usize = @intCast(@max(1, @divTrunc(@divTrunc(areas.sideBottom() - areas.intelTop(), 2) - header_height, row_height)));
+        const half_rows: usize = @intCast(@max(1, @divTrunc(@divTrunc(areas.sideBottom() - self.columnTop(areas), 2) - header_height, row_height)));
         const row_count: i32 = if (self.state.is_timers_collapsed) 0 else @intCast(@min(self.state.timer_entry_count, half_rows));
         return areas.sideBottom() - header_height - row_count * row_height - look.CARD_GAP;
+    }
+
+    /// At the head of the right column, as what was asked for last; it stays until its header closes it.
+    fn placeRouteCard(self: *const MapPanelWindow, areas: look.Areas, fonts: MapFonts) ?look.ListCard {
+        if (self.state.route_count == 0) return null;
+        return .init(areas, areas.intelTop(), areas.sideBottom(), look.intelHeaderHeight(areas.card_height), look.listRowHeight(fonts.chrome.name_height), self.state.route_count, false);
+    }
+
+    /// Where the right column's other cards start: under the route card, or at its top.
+    fn columnTop(self: *const MapPanelWindow, areas: look.Areas) i32 {
+        const card = if (self.state.route_card) |*shown| shown else return areas.intelTop();
+        return card.box.bottom + look.CARD_GAP;
     }
 
     /// At the foot of the right column, under the other cards.
     fn placeTimerCard(self: *const MapPanelWindow, areas: look.Areas, fonts: MapFonts) ?look.ListCard {
         if (!self.showsTimerCard()) return null;
         const above = if (self.state.wormhole_card) |*card| card.box else if (self.state.intel_card) |*card| card.box else null;
-        const top = if (above) |box| box.bottom + look.CARD_GAP else areas.intelTop();
+        const top = if (above) |box| box.bottom + look.CARD_GAP else self.columnTop(areas);
         return .init(areas, top, areas.sideBottom(), look.intelHeaderHeight(areas.card_height), look.listRowHeight(fonts.chrome.name_height), self.state.timer_entry_count, self.state.is_timers_collapsed);
     }
 
@@ -371,7 +387,7 @@ pub const MapPanelWindow = struct {
     }
 
     pub fn currentAreas(self: *const MapPanelWindow) look.Areas {
-        return .init(self.panel.width, self.panel.height, palette.CONTROL_HEIGHT, self.hasSideCard() or self.showsWormholeCard() or self.showsTimerCard());
+        return .init(self.panel.width, self.panel.height, palette.CONTROL_HEIGHT, self.hasSideCard() or self.showsWormholeCard() or self.showsTimerCard() or self.state.route_count > 0);
     }
 
     /// A new pin's or kill's ripple is playing in a shown region, or a ping's, which wants frames faster than the tick.
@@ -393,6 +409,12 @@ pub const MapPanelWindow = struct {
         return false;
     }
 
+    /// Eve Stars sums the picked metric over longer spans than ESI's hour.
+    pub fn showsSpans(self: *const MapPanelWindow) bool {
+        const map_settings = &self.config.mapPanel;
+        return self.hasEveStars() and map_settings.liveStats and look.isSpannedMetric(map_settings.metric);
+    }
+
     pub fn hasEveStars(self: *const MapPanelWindow) bool {
         const settings = self.global orelse return false;
         return settings.evestarsEnabled and settings.evestarsToken.len > 0;
@@ -406,20 +428,18 @@ pub const MapPanelWindow = struct {
 
     pub fn menuContext(self: *const MapPanelWindow, destinations: *const Destinations, system: SystemIndex) menu_mod.Context {
         const map_settings = &self.config.mapPanel;
+        const avoidance = destinations.avoid.avoidanceOf(system);
         return .{
             .has_eve_stars = self.hasEveStars(),
             .targets = &destinations.targets,
             .is_loading = destinations.feed.characters.isBusy(),
             .has_reach = self.state.reach != null,
-            .is_avoided = self.isAvoided(system),
+            .avoidance = avoidance,
+            .avoided_area = if (avoidance == .in_area) destinations.avoid.areaName(system) orelse "" else "",
             .preference = map_settings.routePreference,
             .uses_ansiblex = map_settings.routeAnsiblex,
             .sets_every_waypoint = map_settings.routeEveryWaypoint,
         };
-    }
-
-    fn isAvoided(self: *const MapPanelWindow, system: SystemIndex) bool {
-        return self.config.avoidedSystemIndex(universe.systemInfo(system).id) != null;
     }
 
     fn updateMarks(self: *MapPanelWindow, scene: Scene) void {
@@ -453,6 +473,7 @@ pub const MapPanelWindow = struct {
         hasher.update(std.mem.asBytes(&self.layoutSignature()));
         hasher.update(std.mem.asBytes(&map_settings.opacity));
         hasher.update(std.mem.asBytes(&map_settings.metric));
+        hasher.update(std.mem.asBytes(&map_settings.trafficSpan));
         hasher.update(std.mem.asBytes(&map_settings.followActive));
         for (look.LAYER_ORDER) |layer| hasher.update(std.mem.asBytes(&look.isLayerShown(map_settings, layer)));
         // An empty Intel card changes nothing else, so it would wait for the age bucket.
@@ -468,7 +489,7 @@ pub const MapPanelWindow = struct {
         self.state.hash(&hasher);
         hasher.update(std.mem.asBytes(&self.hasEveStars()));
         hasher.update(std.mem.asBytes(&scene.destinations.revision));
-        hasher.update(std.mem.sliceAsBytes(self.config.avoidedSystems.items));
+        hasher.update(std.mem.asBytes(&scene.traffic.revision));
         if (scene.stats) |stats| {
             hasher.update(std.mem.asBytes(&stats.fetched_ms));
             hasher.update(std.mem.asBytes(&stats.campaigns_revision));
@@ -646,11 +667,15 @@ pub const MapPanelWindow = struct {
     fn coveredBoxes(self: *const MapPanelWindow, painter: *const paint.Painter, dc: win32.HDC, scene: Scene, fonts: ?MapFonts, buffer: *[layout.MAX_COVERED]Box) []const Box {
         const chrome = &self.state.chrome;
         const areas = painter.areas;
-        const fixed = [_]Box{ chrome.title, chrome.metric_bar, chrome.toggle_bar, areas.search_box, areas.mapControlBox(.always_on_top), areas.zoomStack() };
-        // The Intel card, the wormhole card, the sov timer card and the legends' card come after these.
-        comptime std.debug.assert(fixed.len + 4 <= layout.MAX_COVERED);
+        const fixed = [_]Box{ chrome.title, chrome.metric_bar, chrome.span_bar, chrome.toggle_bar, areas.search_box, areas.mapControlBox(.always_on_top), areas.zoomStack() };
+        // The route card, the Intel card, the wormhole card, the sov timer card and the legends' card come after these.
+        comptime std.debug.assert(fixed.len + 5 <= layout.MAX_COVERED);
         @memcpy(buffer[0..fixed.len], &fixed);
         var count: usize = fixed.len;
+        if (self.state.route_card) |*card| {
+            buffer[count] = card.box;
+            count += 1;
+        }
         if (self.state.intel_card) |*card| {
             buffer[count] = card.box;
             count += 1;
@@ -719,9 +744,10 @@ pub const MapPanelWindow = struct {
         self.updateMarks(scene);
         self.followActive();
         self.listTimers(scene);
+        self.state.route_count = if (scene.destinations.routes) |*routes| routes.count else 0;
         const now_ms = win32.Ticks.now().ms;
-        var entry_buf: [history.CAPACITY]history.Entry = undefined;
-        const intel_entries = self.intelEntries(&entry_buf);
+        var entry_buffer: [history.CAPACITY]history.Entry = undefined;
+        const intel_entries = self.intelEntries(&entry_buffer);
         const signature = self.computeRenderSignature(scene, now_ms, intel_entries);
         if (self.panel.isUnchanged(signature)) return;
 
@@ -748,7 +774,8 @@ pub const MapPanelWindow = struct {
             .allocator = self.panel.allocator,
         };
         const title = paint.titleText(&self.state);
-        if (fonts) |loaded| self.state.chrome = measureChrome(dc, loaded, areas, .{ .title = title.slice(), .metric = map_settings.metric, .legend_width = painter.legendCardWidth(dc, scene, loaded.chrome) });
+        if (fonts) |loaded| self.state.chrome = measureChrome(dc, loaded, areas, .{ .title = title.slice(), .metric = map_settings.metric, .has_span_room = self.hasEveStars() and map_settings.liveStats, .shows_spans = self.showsSpans(), .legend_width = painter.legendCardWidth(dc, scene, loaded.chrome) });
+        self.state.route_card = if (fonts) |loaded| self.placeRouteCard(areas, loaded) else null;
         self.state.intel_card = if (fonts) |loaded| self.placeIntelCard(dc, areas, loaded, intel_entries, scene) else null;
         self.state.wormhole_card = if (fonts) |loaded| self.placeWormholeCard(dc, areas, loaded, scene) else null;
         self.state.timer_card = if (fonts) |loaded| self.placeTimerCard(areas, loaded) else null;
@@ -777,17 +804,17 @@ pub const MapPanelWindow = struct {
     }
 
     fn updateTitle(self: *MapPanelWindow, scene: Scene, now_ms: u64) void {
-        var age_buf: [panel_look.TIME_TEXT_MAX]u8 = undefined;
+        var age_buffer: [panel_look.TIME_TEXT_MAX]u8 = undefined;
         const regions = text_mod.regionsTitle(self.state.regions.slice());
         const system_count = self.state.layout.node_count;
         const text: FixedText = if (scene.stats) |stats|
-            .print("{s} - {d} systems - Stats {s}", .{ regions.slice(), system_count, panel_look.relativeTime(&age_buf, now_ms -| stats.fetched_ms) })
+            .print("{s} - {d} systems - Stats {s}", .{ regions.slice(), system_count, panel_look.relativeTime(&age_buffer, now_ms -| stats.fetched_ms) })
         else
             .print("{s} - {d} systems", .{ regions.slice(), system_count });
-        var title_buf: [panel_chrome.MAX_TEXT_LENGTH:0]u8 = undefined;
-        @memcpy(title_buf[0..text.length], text.slice());
-        title_buf[text.length] = 0;
-        const title = title_buf[0..text.length :0];
+        var title_buffer: [panel_chrome.MAX_TEXT_LENGTH:0]u8 = undefined;
+        @memcpy(title_buffer[0..text.length], text.slice());
+        title_buffer[text.length] = 0;
+        const title = title_buffer[0..text.length :0];
         const title_hash = std.hash.Wyhash.hash(0, title);
         if (title_hash == self.title_hash) return;
         self.title_hash = title_hash;
@@ -812,6 +839,13 @@ fn measureChrome(dc: win32.HDC, fonts: MapFonts, areas: look.Areas, shown: Chrom
     // Semibold, the picked segment's font and the wider of the two, so picking a segment doesn't resize the bar.
     _ = win32.SelectObject(dc, fonts.semibold_font);
     for (look.SEGMENT_ORDER, &text.metric_widths) |segment, *width| width.* = panel_chrome.textWidth(dc, text_mod.metricLabel(look.shownMetric(segment, shown.metric)));
+    text.span_widths = null;
+    text.shows_spans = shown.shows_spans;
+    if (shown.has_span_room) {
+        var span_widths: [look.SPAN_ORDER.len]i32 = undefined;
+        for (look.SPAN_ORDER, &span_widths) |span, *width| width.* = panel_chrome.textWidth(dc, text_mod.spanLabel(span));
+        text.span_widths = span_widths;
+    }
     _ = win32.SelectObject(dc, fonts.chrome.name_font);
     for (look.TOGGLE_ORDER, &text.toggle_widths) |toggle, *width| width.* = panel_chrome.textWidth(dc, text_mod.toggleLabel(toggle));
     return .init(areas, text);

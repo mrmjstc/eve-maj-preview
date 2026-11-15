@@ -155,9 +155,11 @@ pub const MapPanelConfig = struct {
     /// Opens the active client's region whenever it leaves those shown.
     followActive: bool = true,
     metric: types.MapMetric = .Security,
+    /// Eve Stars sums the longer spans; without a token the map shows ESI's last hour whatever this holds.
+    trafficSpan: types.TrafficSpan = .Hour,
     /// Names the characters in a system beside it, as well as ringing it.
     showCharacterNames: bool = true,
-    /// Asks ESI and EVE-Scout for the map's figures while the panel shows.
+    /// Asks ESI and EVE-Scout, and with a token Eve Stars, for the map's figures while the panel shows.
     liveStats: bool = true,
     /// Off only hides them; liveStats is what fetches them.
     showStorms: bool = true,

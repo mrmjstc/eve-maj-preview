@@ -1097,7 +1097,7 @@
   "Show Character Names": "Pokazuj nazwy postaci",
   "Tags each system with a client in it. More than one in a system shows as a count.": "Oznacza każdy system z klientem. Kilku w jednym systemie pokazuje się jako liczba.",
   "Live Stats": "Statystyki na żywo",
-  "Fetches kills, jumps and sovereignty from CCP while the panel shows. They cover the last hour.": "Pobiera zestrzelenia, skoki i suwerenność od CCP, gdy panel jest widoczny. Obejmują ostatnią godzinę.",
+  "Fetches kills, jumps and sovereignty from CCP while the panel shows. They cover the last hour; with an Eve Stars token, the span bar beside the metrics sums the last 24 hours or 7 days instead.": "Pobiera zestrzelenia, skoki i suwerenność od CCP, gdy panel jest widoczny. Obejmują ostatnią godzinę; z tokenem Eve Stars pasek okresu obok metryk sumuje zamiast tego ostatnie 24 godziny lub 7 dni.",
   "Show Storms": "Pokazuj burze",
   "Marks metaliminal storms and how far they spread. Positions come from EVE-Scout's player reports, so they can lag.": "Oznacza burze metaliminalne i ich zasięg. Pozycje pochodzą z raportów graczy EVE-Scout, więc mogą być opóźnione.",
   "Show Incursions": "Pokazuj inwazje",
@@ -1115,7 +1115,7 @@
   "Shows as a card over the map, below its search, with as many reports as fit. Off gives it a window of its own.": "Wyświetla się jako karta na mapie, pod jej wyszukiwarką, z tyloma zgłoszeniami, ile się zmieści. Wyłączone daje mu osobne okno.",
   "Eve Stars": "Eve Stars",
   "Enable Eve Stars": "Włącz Eve Stars",
-  "Sets destinations in your game clients through evestars.net.": "Ustawia cele w klientach gry przez evestars.net.",
+  "Plans routes and sets destinations in your game clients through evestars.net.": "Planuje trasy i ustawia cele w klientach gry przez evestars.net.",
   "API Token": "Token API",
   "Make one on the Eve Stars site, under Pilot then API. It's kept on this PC, outside your profiles.": "Utwórz go na stronie Eve Stars, w sekcji Pilot, a następnie API. Jest przechowywany na tym komputerze, poza profilami.",
   "Right-click a system on the map to set it as a group's or character's destination.": "Kliknij prawym przyciskiem system na mapie, aby ustawić go jako cel grupy lub postaci.",
@@ -1135,10 +1135,6 @@
   "Avoid Zone 4 (15 to 20 ly)": "Unikaj strefy 4 (15 do 20 ly)",
   "Avoid Zone 5 (over 20 ly)": "Unikaj strefy 5 (ponad 20 ly)",
   "Stops routes taking gates that land this far from their alliance's capital.": "Pomija bramy lądujące w takiej odległości od stolicy ich sojuszu.",
-  "Unknown System": "Nieznany system",
-  "Avoided Systems": "Unikane systemy",
-  "Systems the map's routes keep out of ({n})": "Systemy omijane przez trasy z mapy ({n})",
-  "Right-click a system on the map and pick Avoid System to keep routes out of it.": "Kliknij prawym przyciskiem system na mapie i wybierz Avoid System, aby trasy go omijały.",
   "Intel Shrink Time": "Czas zmniejszania intelu",
   "New intel shows as a large circle, which shrinks over this time and then leaves the map.": "Nowy intel pojawia się jako duże koło, które w tym czasie się zmniejsza, a potem znika z mapy.",
   "Mark Cleared Systems": "Oznaczaj czyste systemy",
@@ -1199,5 +1195,6 @@
   "Stays off while Click Through is on in the Mouse tab.": "Pozostaje wyłączone, gdy w zakładce Mysz włączone jest 'Przeklikiwanie'.",
   "The client list is hidden while Show Clients As is Thumbnails or None.": "Lista klientów jest ukryta, gdy „Pokaż klienty jako” to Miniatury lub Brak.",
   "Uses the excluded characters from the Mouse tab.": "Używa wykluczonych postaci z zakładki Mysz.",
-  "Watches for characters left behind on a jump. Also on a hotkey and in the tray menu.": "Pilnuje postaci, które zostały w tyle przy skoku. Także pod skrótem i w menu zasobnika."
+  "Watches for characters left behind on a jump. Also on a hotkey and in the tray menu.": "Pilnuje postaci, które zostały w tyle przy skoku. Także pod skrótem i w menu zasobnika.",
+  "Routes avoid your Eve Stars account's saved list. Right-click a system on the map and pick Avoid System to add or remove it, or edit the list in Eve Stars' Settings.": "Trasy omijają zapisaną listę twojego konta Eve Stars. Kliknij prawym przyciskiem system na mapie i wybierz Omijaj system, aby go dodać lub usunąć, albo edytuj listę w ustawieniach Eve Stars."
 }

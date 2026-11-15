@@ -8,6 +8,7 @@ const history = @import("../../notifications/history.zig");
 const history_rows = @import("../history_rows.zig");
 const list_look = @import("../list_look.zig");
 const destinations_mod = @import("destinations.zig");
+const traffic_mod = @import("traffic.zig");
 const look = @import("look.zig");
 const marks = @import("marks.zig");
 const menu_mod = @import("menu.zig");
@@ -22,6 +23,7 @@ const popup_menu = @import("../popup_menu.zig");
 const universe = @import("../../map/universe.zig");
 const layout_mod = @import("../../map/layout.zig");
 const stats_mod = @import("../../map/stats.zig");
+const activity_mod = @import("../../map/activity.zig");
 const holder_colors = @import("../../map/holder_colors.zig");
 const storms_mod = @import("../../map/storms.zig");
 const incursions_mod = @import("../../map/incursions.zig");
@@ -36,8 +38,10 @@ const fixed_text = @import("../../util/fixed_text.zig");
 const pixel_buffer = @import("../../util/pixel_buffer.zig");
 const log = @import("../../log.zig");
 
+const Activity = activity_mod.Activity;
 const Box = layout_mod.Box;
 const Campaigns = campaigns_mod.Campaigns;
+const AvoidList = evestars.AvoidList;
 const Bridges = evestars.Bridges;
 const KillNames = zkill.Names;
 const Kills = zkill.Kills;
@@ -54,13 +58,18 @@ const RegionIndex = universe.RegionIndex;
 const Snapshot = stats_mod.Snapshot;
 const Storms = storms_mod.Storms;
 const SystemIndex = universe.SystemIndex;
+const SystemStats = stats_mod.SystemStats;
 const ThumbnailWindow = window.ThumbnailWindow;
+const Traffic = traffic_mod.Traffic;
+const TrafficSpan = types.TrafficSpan;
 const slog = log.Scoped("map_panel");
 
 /// The metric's or the jump range's, the storms' and the incursions'.
 const MAX_LEGENDS = 3;
 /// Fits a wormhole row's longest ship size, its gap and a u16 of hours.
 const DETAIL_TEXT_MAX = 16;
+/// Fits a route row's jumps and kills, each a u32.
+const ROUTE_DETAIL_MAX = 32;
 
 /// What the panel shows besides its own settings.
 pub const Scene = struct {
@@ -77,6 +86,8 @@ pub const Scene = struct {
     pins: *const intel_pins.IntelPins,
     /// Borrowed for one render.
     destinations: *const Destinations,
+    /// Borrowed for one render.
+    traffic: *const Traffic,
     /// Seconds since 1970, UTC, for the sov timers' countdowns and the kills' ages.
     now_seconds: i64 = 0,
     /// Borrowed for one render; null while kills are hidden.
@@ -129,6 +140,10 @@ pub const Measured = struct {
 /// What's measured once a frame for colouring the map.
 const MapPaint = struct {
     metric: MapMetric,
+    /// By SystemIndex, what `metric` reads; null while none have come.
+    traffic: ?[]const SystemStats,
+    /// What Eve Stars summed `traffic` over; null for ESI's last hour.
+    span: ?TrafficSpan,
     /// The busiest system shown by `metric`, which heat is measured against.
     peak: u32,
     holders: look.HolderRanks,
@@ -158,7 +173,7 @@ pub const Painter = struct {
     has_eve_stars: bool,
     /// Null while the menu's closed.
     menu: ?OpenMenu,
-    /// For the storm and incursion areas' mask, freed before draw returns.
+    /// For the areas' and routes' masks, each freed before draw returns.
     allocator: std.mem.Allocator,
 
     /// With `bitmap` begun and the panel's font selected.
@@ -181,12 +196,13 @@ pub const Painter = struct {
         } else {
             self.drawRegionLabels(dc, loaded.title_font);
             self.drawLabels(dc, scene, loaded.label_font, now_ms);
-            self.drawClientTags(bitmap, loaded.chrome, scene, &paint);
+            self.drawClientTags(bitmap, loaded.chrome, &paint);
         }
         self.drawChrome(bitmap, loaded);
         if (self.state.intel_card) |*card| self.drawIntelCard(bitmap, loaded, card, intel_entries, scene);
         if (self.state.wormhole_card) |*card| self.drawWormholeCard(bitmap, loaded, card, scene);
         if (self.state.timer_card) |*card| self.drawTimerCard(bitmap, loaded, card, scene);
+        if (self.state.route_card) |*card| self.drawRouteCard(bitmap, loaded, card, scene);
         if (!self.state.is_picking_region) {
             var legend_buffer: [MAX_LEGENDS]text_mod.Legend = undefined;
             drawLegends(bitmap, self.legends(scene, &paint, &legend_buffer), areas, loaded.chrome, self.state.chrome.bottomBars());
@@ -262,11 +278,36 @@ pub const Painter = struct {
     fn mapPaint(self: *const Painter, scene: Scene) MapPaint {
         const metric = self.config.mapPanel.metric;
         const nodes = self.state.layout.nodes[0..self.state.layout.node_count];
+        const traffic = self.shownTraffic(scene, metric);
         return .{
             .metric = metric,
-            .peak = peakValue(&self.state.layout, scene, metric),
+            .traffic = traffic,
+            .span = self.pickedSpan(metric),
+            .peak = peakValue(&self.state.layout, traffic, metric),
             .holders = if (scene.stats) |stats| .fromNodes(stats, nodes, scene.logo_colors) else .{},
         };
+    }
+
+    /// The span Eve Stars sums `metric` over; null for the last hour, which ESI gives.
+    fn pickedSpan(self: *const Painter, metric: MapMetric) ?TrafficSpan {
+        const map_settings = &self.config.mapPanel;
+        if (!look.isSpannedMetric(metric) or !self.has_eve_stars or !map_settings.liveStats or map_settings.trafficSpan == .Hour) return null;
+        return map_settings.trafficSpan;
+    }
+
+    /// Eve Stars' sums for the picked span, once they've come.
+    fn spannedActivity(self: *const Painter, scene: Scene, metric: MapMetric) ?*const Activity {
+        return scene.traffic.activityFor(self.pickedSpan(metric) orelse return null);
+    }
+
+    /// What `metric` reads, by SystemIndex: Eve Stars' sums where it sums that metric, null while they load, else ESI's last hour.
+    fn shownTraffic(self: *const Painter, scene: Scene, metric: MapMetric) ?[]const SystemStats {
+        if (self.pickedSpan(metric) != null) {
+            const activity = self.spannedActivity(scene, metric) orelse return null;
+            return activity.systems;
+        }
+        const stats = scene.stats orelse return null;
+        return stats.systems;
     }
 
     /// The newest reports or kills that fit, two lines each, under its tabs; filled after the labels it covers, so GDI has to finish them first.
@@ -468,8 +509,8 @@ pub const Painter = struct {
 
         var totals: [universe.REGION_COUNT]u32 = @splat(0);
         var peak: u32 = 0;
-        if (scene.stats) |stats| {
-            for (stats.systems, 0..) |system_stats, index| {
+        if (self.shownTraffic(scene, metric)) |traffic| {
+            for (traffic, 0..) |system_stats, index| {
                 totals[universe.systemInfo(@intCast(index)).region] += look.metricValue(metric, system_stats);
             }
             peak = std.mem.max(u32, &totals);
@@ -532,7 +573,7 @@ pub const Painter = struct {
         }
     }
 
-    /// The cards over the map: its title, the metric and toggle bars, and the map controls; filled after the labels they cover, so GDI has to finish them first.
+    /// The cards over the map: its title, the metric, span and toggle bars, and the map controls; filled after the labels they cover, so GDI has to finish them first.
     fn drawChrome(self: *const Painter, bitmap: *const gdi_overlay.OverlayBitmap, fonts: MapFonts) void {
         const dc = bitmap.mem_dc;
         const chrome = &self.state.chrome;
@@ -559,6 +600,12 @@ pub const Painter = struct {
         for (look.SEGMENT_ORDER, chrome.metrics) |segment, box| {
             if (segmented.buttonFill(self.segmentState(segment, picked_segment), accent)) |fill| segmented.fillButton(canvas, box, fill);
         }
+        if (chrome.span_bar.right > chrome.span_bar.left) {
+            segmented.drawBar(canvas, chrome.span_bar);
+            for (look.SPAN_ORDER, chrome.spans) |span, box| {
+                if (segmented.buttonFill(self.spanState(span), accent)) |fill| segmented.fillButton(canvas, box, fill);
+            }
+        }
         segmented.drawBar(canvas, chrome.toggle_bar);
         for (look.TOGGLE_ORDER, chrome.toggles) |toggle, box| {
             if (self.isHovered(.toggle, @backingInt(toggle))) segmented.fillButton(canvas, box, segmented.HOVER);
@@ -582,6 +629,15 @@ pub const Painter = struct {
             const label_x = box.left + @divTrunc(box.right - box.left - panel_chrome.textWidth(dc, label), 2);
             panel_chrome.drawLine(dc, label, label_x, centredTop(box, name_height), label_color);
         }
+        if (chrome.span_bar.right > chrome.span_bar.left) {
+            for (look.SPAN_ORDER, chrome.spans) |span, box| {
+                const state = self.spanState(span);
+                _ = win32.SelectObject(dc, if (state == .picked) fonts.semibold_font else fonts.chrome.name_font);
+                const label = text_mod.spanLabel(span);
+                const label_x = box.left + @divTrunc(box.right - box.left - panel_chrome.textWidth(dc, label), 2);
+                panel_chrome.drawLine(dc, label, label_x, centredTop(box, name_height), segmented.labelColor(state, accent));
+            }
+        }
         _ = win32.SelectObject(dc, fonts.chrome.name_font);
         for (look.TOGGLE_ORDER, chrome.toggles) |toggle, box| {
             const is_lit = self.isToggleOn(toggle) or self.isHovered(.toggle, @backingInt(toggle));
@@ -592,6 +648,11 @@ pub const Painter = struct {
     fn segmentState(self: *const Painter, segment: look.MetricSegment, picked: look.MetricSegment) segmented.State {
         if (segment == picked) return .picked;
         return if (self.isHovered(.metric, @backingInt(segment))) .hovered else .idle;
+    }
+
+    fn spanState(self: *const Painter, span: TrafficSpan) segmented.State {
+        if (span == self.config.mapPanel.trafficSpan) return .picked;
+        return if (self.isHovered(.span, @backingInt(span))) .hovered else .idle;
     }
 
     fn isHovered(self: *const Painter, kind: state_mod.Hover.Kind, index: usize) bool {
@@ -608,7 +669,7 @@ pub const Painter = struct {
     }
 
     /// One tag a system, naming the active client if it's there, as a stack of rings can't say who's where.
-    fn drawClientTags(self: *const Painter, bitmap: *const gdi_overlay.OverlayBitmap, text: panel_chrome.Text, scene: Scene, paint: *const MapPaint) void {
+    fn drawClientTags(self: *const Painter, bitmap: *const gdi_overlay.OverlayBitmap, text: panel_chrome.Text, paint: *const MapPaint) void {
         if (!self.config.mapPanel.showCharacterNames) return;
         const dc = bitmap.mem_dc;
         _ = win32.SelectObject(dc, text.small_font);
@@ -638,7 +699,7 @@ pub const Painter = struct {
             const node = layout.nodes[node_index];
             const label = text_mod.clientTagText(mark.character_name, self.state.marks.countAt(mark.system) - 1);
             const box_width = panel_chrome.wideTextWidth(dc, label.slice());
-            const reach = self.markReach(scene, paint, mark.system);
+            const reach = self.markReach(paint, mark.system);
             const offset = look.clientTagOffset(reach);
             // Dropped where the names leave no room, as the marker's ring still shows the client.
             const box = look.clientTagBox(area, node.x, node.y, offset, box_width, text.small_height, taken[0..taken_count]) orelse continue;
@@ -651,14 +712,14 @@ pub const Painter = struct {
     }
 
     /// The selected system's disc, out past its ring.
-    fn focusRadius(self: *const Painter, scene: Scene, paint: *const MapPaint, system: SystemIndex) f32 {
-        const value = if (scene.stats) |stats| look.metricValue(paint.metric, stats.systems[system]) else 0;
+    fn focusRadius(self: *const Painter, paint: *const MapPaint, system: SystemIndex) f32 {
+        const value = if (paint.traffic) |traffic| look.metricValue(paint.metric, traffic[system]) else 0;
         return look.markerRadius(value, paint.peak) * look.markerScale(self.state.layout.view.zoom) + look.RING_GAP + look.FOCUS_OUTLINE_THICKNESS;
     }
 
     /// How far the rings around a client's marker go: the selected system's disc, else the client's ring.
-    fn markReach(self: *const Painter, scene: Scene, paint: *const MapPaint, system: SystemIndex) f32 {
-        if (self.state.focus_system == system) return self.focusRadius(scene, paint, system);
+    fn markReach(self: *const Painter, paint: *const MapPaint, system: SystemIndex) f32 {
+        if (self.state.focus_system == system) return self.focusRadius(paint, system);
         return self.markRingRadius() + look.RING_THICKNESS;
     }
 
@@ -704,6 +765,7 @@ pub const Painter = struct {
         const storms = self.shownStorms(scene);
         const incursions = self.shownIncursions(scene);
         self.drawAreas(canvas, scene, scale);
+        self.drawRoutes(canvas, scene, scale);
         const focus_node_index: ?u16 = if (self.state.focus_system) |system| layout.nodeOf(system) else null;
         for (layout.edges[0..layout.edge_count]) |edge| {
             const first = layout.nodes[edge.first_index];
@@ -729,11 +791,11 @@ pub const Painter = struct {
         for (layout.portals[0..layout.portal_count], 0..) |portal, index| {
             look.drawPortal(canvas, layout.nodes[portal.from_index], portal, if (self.isHovered(.portal, index)) look.EDGE_HOVER else portalColor(portal.target));
         }
-        if (self.state.focusNode()) |node| look.drawFocusMark(canvas, node.x, node.y, self.focusRadius(scene, paint, node.system));
+        if (self.state.focusNode()) |node| look.drawFocusMark(canvas, node.x, node.y, self.focusRadius(paint, node.system));
 
         const focus_ring_color = self.focusRingColor();
         for (layout.nodes[0..layout.node_count], 0..) |node, index| {
-            const value = if (scene.stats) |stats| look.metricValue(paint.metric, stats.systems[node.system]) else 0;
+            const value = if (paint.traffic) |traffic| look.metricValue(paint.metric, traffic[node.system]) else 0;
             const radius = look.markerRadius(value, paint.peak) * scale;
             const ring_radius = radius + look.RING_GAP;
             const is_focus = self.state.focus_system == node.system;
@@ -774,7 +836,7 @@ pub const Painter = struct {
             }
         }
         if (scene.kills) |kills| self.drawKills(canvas, kills, scene.now_seconds, now_ms, scale);
-        if (self.has_eve_stars) self.drawAvoidMarks(canvas);
+        if (self.has_eve_stars) self.drawAvoidMarks(canvas, &scene.destinations.avoid);
     }
 
     /// A ripple for each new kill, and one mark a system for its newest, fading over the kills' lifetime.
@@ -825,6 +887,72 @@ pub const Painter = struct {
         }
     }
 
+    /// Each planned route as a band along its gates here, the others faint under the one hovered in the card, or else the fastest.
+    fn drawRoutes(self: *const Painter, canvas: pixel_buffer.Canvas, scene: Scene, scale: f32) void {
+        const routes = if (scene.destinations.routes) |*shown| shown else return;
+        var mask = pixel_buffer.Mask.init(self.allocator, canvas.width, canvas.height) catch |err| {
+            slog.warn("Failed to draw the planned routes: {}", .{err});
+            return;
+        };
+        defer mask.deinit();
+        const radius = look.routeRadius(scale);
+        const lit = self.state.hoveredIndex(.route_row) orelse 0;
+        for (routes.slice(), 0..) |*route, index| {
+            if (index == lit) continue;
+            self.fillRouteMask(&mask, route, radius);
+            look.drawRoute(canvas, &mask, false);
+        }
+        if (lit >= routes.count) return;
+        self.fillRouteMask(&mask, &routes.slice()[lit], radius);
+        look.drawRoute(canvas, &mask, true);
+    }
+
+    /// Replaces what `mask` held with the route's jumps between systems here, along a gate's curve where there's one, else straight.
+    fn fillRouteMask(self: *const Painter, mask: *pixel_buffer.Mask, route: *const evestars.Route, radius: f32) void {
+        const layout = &self.state.layout;
+        mask.clear();
+        const systems = route.slice();
+        if (systems.len < 2) return;
+        for (systems[0 .. systems.len - 1], systems[1..]) |from, to| {
+            const first = layout.nodeOf(from) orelse continue;
+            const second = layout.nodeOf(to) orelse continue;
+            if (edgeBetween(layout, first, second)) |edge| {
+                var point_buffer: [layout_mod.CURVE_SEGMENTS + 1]layout_mod.PixelPoint = undefined;
+                const points = layout.edgePoints(edge, &point_buffer);
+                for (points[0 .. points.len - 1], points[1..]) |start, end| mask.addBand(start.x, start.y, end.x, end.y, radius);
+            } else {
+                mask.addBand(layout.nodes[first].x, layout.nodes[first].y, layout.nodes[second].x, layout.nodes[second].y, radius);
+            }
+        }
+    }
+
+    /// The route's systems, its jumps and its kills; filled after the labels it covers, so GDI has to finish them first.
+    fn drawRouteCard(self: *const Painter, bitmap: *const gdi_overlay.OverlayBitmap, fonts: MapFonts, card: *const look.ListCard, scene: Scene) void {
+        const routes = if (scene.destinations.routes) |*shown| shown else return;
+        _ = win32.GdiFlush();
+        look.drawClosableCard(bitmap.canvas(), card, self.state.hoveredIndex(.route_row), self.state.hover.kind == .route_header);
+
+        const dc = bitmap.mem_dc;
+        const text = fonts.chrome;
+        const left = card.box.left + look.INTEL_PADDING_X;
+        const right = card.box.right - look.INTEL_PADDING_X;
+        var title_buffer: [panel_chrome.MAX_TEXT_LENGTH]u8 = undefined;
+        const title = std.fmt.bufPrint(&title_buffer, "Route to {s}", .{universe.systemName(routes.to)}) catch unreachable;
+        _ = win32.SelectObject(dc, fonts.semibold_font);
+        _ = panel_chrome.drawFitted(dc, title, left, centredTop(card.header, text.name_height), list_look.NAME, right - look.HEADER_GLYPH_ROOM - left);
+        _ = win32.SelectObject(dc, text.name_font);
+        for (card.rows[0..card.row_count], routes.slice()[0..card.row_count]) |box, *route| {
+            const top = centredTop(box, text.name_height);
+            var detail_buffer: [ROUTE_DETAIL_MAX]u8 = undefined;
+            const detail = std.fmt.bufPrint(&detail_buffer, "{d} jumps, {d} kills", .{ route.jumps, route.kills_last_hour }) catch unreachable;
+            const detail_width = panel_chrome.textWidth(dc, detail);
+            panel_chrome.drawLine(dc, detail, right - detail_width, top, list_look.MUTED);
+            var name_buffer: [panel_chrome.MAX_TEXT_LENGTH]u8 = undefined;
+            const name = if (route.via) |via| std.fmt.bufPrint(&name_buffer, "Via {s}", .{universe.systemName(via)}) catch unreachable else "Fastest";
+            _ = panel_chrome.drawFitted(dc, name, left, top, list_look.NAME, right - detail_width - look.LEGEND_VALUE_GAP - left);
+        }
+    }
+
     /// Replaces what `mask` held with `systems` here and the gates among them.
     fn fillMaskWith(self: *const Painter, mask: *pixel_buffer.Mask, systems: *const universe.SystemSet, radius: f32) void {
         const layout = &self.state.layout;
@@ -847,13 +975,11 @@ pub const Painter = struct {
         }
     }
 
-    /// Only with a token, as nothing else reads the list.
-    fn drawAvoidMarks(self: *const Painter, canvas: pixel_buffer.Canvas) void {
-        for (self.config.avoidedSystems.items) |avoided| {
-            const system = universe.findSystemById(avoided.systemId) orelse continue;
-            const index = self.state.layout.nodeOf(system) orelse continue;
-            const node = self.state.layout.nodes[index];
-            look.drawAvoidMark(canvas, node.x, node.y);
+    /// Only with a token, as nothing else reads the list; marks those inside an avoided area too.
+    fn drawAvoidMarks(self: *const Painter, canvas: pixel_buffer.Canvas, avoid: *const AvoidList) void {
+        const layout = &self.state.layout;
+        for (layout.nodes[0..layout.node_count]) |node| {
+            if (avoid.isAvoided(node.system)) look.drawAvoidMark(canvas, node.x, node.y);
         }
     }
 
@@ -898,7 +1024,7 @@ pub const Painter = struct {
 
     fn tooltipFor(self: *const Painter, scene: Scene, now_ms: u64) ?text_mod.Tooltip {
         const system: SystemIndex = switch (self.state.hover.kind) {
-            .none, .title, .toggle, .bar, .metric, .intel_header, .card_tab, .intel_row, .kill_row, .wormhole_header, .wormhole_tab, .wormhole_row, .timer_header, .timer_row, .popup_row, .submenu_row, .nested_row, .search_box => return null,
+            .none, .title, .toggle, .bar, .metric, .span, .intel_header, .card_tab, .intel_row, .kill_row, .wormhole_header, .wormhole_tab, .wormhole_row, .timer_header, .timer_row, .route_header, .route_row, .popup_row, .submenu_row, .nested_row, .search_box => return null,
             .map_control => return text_mod.mapControlTooltip(@fromBackingInt(@intCast(self.state.hover.index)), self.config.mapPanel.alwaysOnTop),
             .region => {
                 const region: RegionIndex = @intCast(self.state.hover.index);
@@ -918,7 +1044,7 @@ pub const Painter = struct {
             },
             .node => self.state.layout.nodes[self.state.hover.index].system,
         };
-        var facts: text_mod.SystemFacts = .{ .system = system, .stats = scene.stats, .is_avoided = self.has_eve_stars and self.config.avoidedSystemIndex(universe.systemInfo(system).id) != null, .reach = if (self.state.reach) |*reach| reach else null, .storms = self.shownStorms(scene), .incursions = self.shownIncursions(scene), .campaigns = shownCampaigns(self.config, scene), .wormholes = shownWormholes(self.config, scene), .bridges = shownBridges(self.config, self.has_eve_stars, scene), .now_seconds = scene.now_seconds };
+        var facts: text_mod.SystemFacts = .{ .system = system, .stats = scene.stats, .activity = self.spannedActivity(scene, self.config.mapPanel.metric), .avoided_area = if (self.has_eve_stars) avoidedArea(&scene.destinations.avoid, system) else null, .reach = if (self.state.reach) |*reach| reach else null, .storms = self.shownStorms(scene), .incursions = self.shownIncursions(scene), .campaigns = shownCampaigns(self.config, scene), .wormholes = shownWormholes(self.config, scene), .bridges = shownBridges(self.config, self.has_eve_stars, scene), .now_seconds = scene.now_seconds };
         var names: [marks.MAX_MARKS][]const u8 = undefined;
         facts.characters = self.state.marks.namesAt(system, &names);
         if (scene.pins.find(system, self.config.mapPanel.intelShrinkMs(), now_ms)) |pin| {
@@ -1011,7 +1137,7 @@ pub const Painter = struct {
                 // Up by the gap the grid leaves, so the tooltip sits level with the control.
                 break :blk .{ .x = box.left, .y = box.top - popup_look.TOOLTIP_PADDING };
             },
-            .none, .title, .toggle, .bar, .metric, .intel_header, .card_tab, .intel_row, .kill_row, .wormhole_header, .wormhole_tab, .wormhole_row, .timer_header, .timer_row, .popup_row, .submenu_row, .nested_row, .search_box => .{ .x = 0, .y = 0 },
+            .none, .title, .toggle, .bar, .metric, .span, .intel_header, .card_tab, .intel_row, .kill_row, .wormhole_header, .wormhole_tab, .wormhole_row, .timer_header, .timer_row, .route_header, .route_row, .popup_row, .submenu_row, .nested_row, .search_box => .{ .x = 0, .y = 0 },
         };
     }
 };
@@ -1051,6 +1177,23 @@ pub fn titleText(state: *const MapState) FixedText {
 /// `scale` is the zoom's marker scale.
 pub fn intelHaloRadius(map_settings: *const config_mod.MapPanelConfig, pin: *const intel_pins.Pin, scale: f32, now_ms: u64) f32 {
     return look.intelHaloRadius(now_ms -| pin.seen_ms, map_settings.intelShrinkMs()) * scale;
+}
+
+/// Searched linearly, as a route asks this once a jump.
+fn edgeBetween(layout: *const Layout, first: u16, second: u16) ?layout_mod.Edge {
+    for (layout.edges[0..layout.edge_count]) |edge| {
+        if ((edge.first_index == first and edge.second_index == second) or (edge.first_index == second and edge.second_index == first)) return edge;
+    }
+    return null;
+}
+
+/// Empty when named on the list, else the area covering it; null when not avoided.
+fn avoidedArea(avoid: *const AvoidList, system: SystemIndex) ?[]const u8 {
+    return switch (avoid.avoidanceOf(system)) {
+        .none => null,
+        .listed => "",
+        .in_area => avoid.areaName(system) orelse "",
+    };
 }
 
 fn portalColor(target: layout_mod.PortalTarget) u32 {
@@ -1293,7 +1436,7 @@ fn drawHaloWideText(dc: win32.HDC, text: []const u8, x: i32, y: i32, text_color:
 fn legendFor(scene: Scene, paint: *const MapPaint, nodes: []const layout_mod.Node) text_mod.Legend {
     return switch (paint.metric) {
         .Security => text_mod.securityLegend(),
-        .ShipKills, .PodKills, .NpcKills, .Jumps => text_mod.heatLegend(paint.metric, paint.peak, scene.stats != null),
+        .ShipKills, .PodKills, .NpcKills, .Jumps => text_mod.heatLegend(paint.metric, paint.peak, paint.traffic != null, paint.span),
         .NpcDelta => text_mod.deltaLegend(paint.peak, if (scene.stats) |stats| stats.has_npc_delta else false),
         .Sovereignty => text_mod.sovereigntyLegend(&paint.holders, scene.stats),
         .FactionWarfare => text_mod.warfareLegend(scene.stats, nodes),
@@ -1351,9 +1494,9 @@ fn markerColor(scene: Scene, paint: *const MapPaint, system: SystemIndex, value:
 }
 
 /// The busiest system shown by `metric`, which heat is measured against.
-fn peakValue(layout: *const Layout, scene: Scene, metric: MapMetric) u32 {
-    const stats = scene.stats orelse return 0;
+fn peakValue(layout: *const Layout, traffic: ?[]const SystemStats, metric: MapMetric) u32 {
+    const systems = traffic orelse return 0;
     var peak: u32 = 0;
-    for (layout.nodes[0..layout.node_count]) |node| peak = @max(peak, look.metricValue(metric, stats.systems[node.system]));
+    for (layout.nodes[0..layout.node_count]) |node| peak = @max(peak, look.metricValue(metric, systems[node.system]));
     return peak;
 }

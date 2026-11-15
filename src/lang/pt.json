@@ -1097,7 +1097,7 @@
   "Show Character Names": "Mostrar nomes dos personagens",
   "Tags each system with a client in it. More than one in a system shows as a count.": "Marca cada sistema com um cliente. Vários num sistema aparecem como um número.",
   "Live Stats": "Estatísticas ao vivo",
-  "Fetches kills, jumps and sovereignty from CCP while the panel shows. They cover the last hour.": "Busca abates, saltos e soberania da CCP enquanto o painel estiver visível. Cobrem a última hora.",
+  "Fetches kills, jumps and sovereignty from CCP while the panel shows. They cover the last hour; with an Eve Stars token, the span bar beside the metrics sums the last 24 hours or 7 days instead.": "Obtém abates, saltos e soberania da CCP enquanto o painel está visível. Cobrem a última hora; com um token Eve Stars, a barra de período junto às métricas soma antes as últimas 24 horas ou 7 dias.",
   "Show Storms": "Mostrar tempestades",
   "Marks metaliminal storms and how far they spread. Positions come from EVE-Scout's player reports, so they can lag.": "Marca as tempestades metaliminais e o seu alcance. As posições vêm de relatórios de jogadores do EVE-Scout, por isso podem atrasar.",
   "Show Incursions": "Mostrar incursões",
@@ -1115,7 +1115,7 @@
   "Shows as a card over the map, below its search, with as many reports as fit. Off gives it a window of its own.": "Aparece como um cartão sobre o mapa, por baixo da pesquisa, com tantos relatórios quantos couberem. Desligado, tem a sua própria janela.",
   "Eve Stars": "Eve Stars",
   "Enable Eve Stars": "Ativar Eve Stars",
-  "Sets destinations in your game clients through evestars.net.": "Define destinos nos seus clientes de jogo através de evestars.net.",
+  "Plans routes and sets destinations in your game clients through evestars.net.": "Planeia rotas e define destinos nos seus clientes de jogo através de evestars.net.",
   "API Token": "Token de API",
   "Make one on the Eve Stars site, under Pilot then API. It's kept on this PC, outside your profiles.": "Crie um no site da Eve Stars, em Pilot e depois API. Fica guardado neste PC, fora dos seus perfis.",
   "Right-click a system on the map to set it as a group's or character's destination.": "Clique com o botão direito num sistema do mapa para o definir como destino de um grupo ou personagem.",
@@ -1135,10 +1135,6 @@
   "Avoid Zone 4 (15 to 20 ly)": "Evitar zona 4 (15 a 20 al)",
   "Avoid Zone 5 (over 20 ly)": "Evitar zona 5 (mais de 20 al)",
   "Stops routes taking gates that land this far from their alliance's capital.": "Impede o uso de portais que chegam a esta distância da capital da sua aliança.",
-  "Unknown System": "Sistema desconhecido",
-  "Avoided Systems": "Sistemas evitados",
-  "Systems the map's routes keep out of ({n})": "Sistemas evitados pelas rotas do mapa ({n})",
-  "Right-click a system on the map and pick Avoid System to keep routes out of it.": "Clique com o botão direito num sistema do mapa e escolha Avoid System para manter as rotas fora dele.",
   "Intel Shrink Time": "Tempo de redução do intel",
   "New intel shows as a large circle, which shrinks over this time and then leaves the map.": "Um novo intel aparece como um círculo grande, que encolhe neste tempo e depois sai do mapa.",
   "Mark Cleared Systems": "Marcar sistemas limpos",
@@ -1199,5 +1195,6 @@
   "Stays off while Click Through is on in the Mouse tab.": "Permanece desligado enquanto 'Clicar Através' estiver ativo na aba Mouse.",
   "The client list is hidden while Show Clients As is Thumbnails or None.": "A lista de clientes fica oculta enquanto Mostrar Clientes Como estiver em Miniaturas ou Nenhum.",
   "Uses the excluded characters from the Mouse tab.": "Usa os personagens excluídos da aba Mouse.",
-  "Watches for characters left behind on a jump. Also on a hotkey and in the tray menu.": "Observa personagens que ficam para trás num salto. Também por atalho e no menu da bandeja."
+  "Watches for characters left behind on a jump. Also on a hotkey and in the tray menu.": "Observa personagens que ficam para trás num salto. Também por atalho e no menu da bandeja.",
+  "Routes avoid your Eve Stars account's saved list. Right-click a system on the map and pick Avoid System to add or remove it, or edit the list in Eve Stars' Settings.": "As rotas evitam a lista guardada da tua conta Eve Stars. Clica com o botão direito num sistema do mapa e escolhe Evitar sistema para o adicionar ou remover, ou edita a lista nas definições do Eve Stars."
 }

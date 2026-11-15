@@ -7,7 +7,7 @@ Every setting EVE-Maj Preview reads, by file and JSON key. The config dialog wri
 - [Files](#files)
 - [Loading rules](#loading-rules)
 - [Value formats](#value-formats)
-- [Profile](#profile): [top level](#top-level) · [thumbnail](#thumbnail) · [thumbnail.notifications](#thumbnailnotifications) · [timer](#timer) · [display](#display) · [listView](#listview) · [historyPanel](#historypanel) · [mapPanel](#mappanel) · [intelPanel](#intelpanel) · [thumbnailSpaces](#thumbnailspaces) · [snapping](#snapping) · [panelSnapping](#panelsnapping) · [interaction](#interaction) · [exclusion](#exclusion) · [autoMinimize](#autominimize) · [autoMovePosition](#automoveposition) · [closeAll](#closeall) · [combat](#combat) · [mining](#mining) · [bounty](#bounty) · [resources](#resources) · [ping](#ping) · [travel](#travel) · [hotkeys](#hotkeys) · [hotkeyGroups](#hotkeygroups) · [characters](#characters) · [systemColors](#systemcolors) · [avoidedSystems](#avoidedsystems) · [chatAlerts](#chatalerts) · [windowFilters](#windowfilters)
+- [Profile](#profile): [top level](#top-level) · [thumbnail](#thumbnail) · [thumbnail.notifications](#thumbnailnotifications) · [timer](#timer) · [display](#display) · [listView](#listview) · [historyPanel](#historypanel) · [mapPanel](#mappanel) · [intelPanel](#intelpanel) · [thumbnailSpaces](#thumbnailspaces) · [snapping](#snapping) · [panelSnapping](#panelsnapping) · [interaction](#interaction) · [exclusion](#exclusion) · [autoMinimize](#autominimize) · [autoMovePosition](#automoveposition) · [closeAll](#closeall) · [combat](#combat) · [mining](#mining) · [bounty](#bounty) · [resources](#resources) · [ping](#ping) · [travel](#travel) · [hotkeys](#hotkeys) · [hotkeyGroups](#hotkeygroups) · [characters](#characters) · [systemColors](#systemcolors) · [chatAlerts](#chatalerts) · [windowFilters](#windowfilters)
 - [Global settings](#global-settings): [chatlog](#chatlog)
 - [Command line and protocol](#command-line-and-protocol)
 
@@ -71,7 +71,7 @@ Profile file names: `<name>.json` with no path separators or `:*?"<>|`, not star
 | `formatVersion` | int | `5` | Read only to migrate; rewritten on save. |
 | `accentColor` | colour | `0xFFD9A441` | This profile's accent: the config dialog, the panels, and the unset `listView.activeColor` and `thumbnail.borderColor`. |
 
-Sections: `thumbnail`, `timer`, `display`, `listView`, `historyPanel`, `mapPanel`, `intelPanel`, `snapping`, `panelSnapping`, `interaction`, `autoMinimize`, `autoMovePosition`, `exclusion`, `closeAll`, `combat`, `mining`, `bounty`, `resources`, `ping`, `travel`, `hotkeys` (objects); `windowFilters`, `characters`, `systemColors`, `avoidedSystems`, `chatAlerts`, `hotkeyGroups`, `thumbnailSpaces` (arrays).
+Sections: `thumbnail`, `timer`, `display`, `listView`, `historyPanel`, `mapPanel`, `intelPanel`, `snapping`, `panelSnapping`, `interaction`, `autoMinimize`, `autoMovePosition`, `exclusion`, `closeAll`, `combat`, `mining`, `bounty`, `resources`, `ping`, `travel`, `hotkeys` (objects); `windowFilters`, `characters`, `systemColors`, `chatAlerts`, `hotkeyGroups`, `thumbnailSpaces` (arrays).
 
 ### thumbnail
 
@@ -379,7 +379,8 @@ The Map: a schematic of one region, or up to four side by side (Ctrl+click a reg
 | `regionId` | int | `10000002` | | The first region shown, by CCP's ID; The Forge by default. Set by picking a region. |
 | `extraRegionId1` … `3` | int | `0` | | Further regions shown beside it, by CCP's ID; `0` for none. Set by Ctrl+clicking a region or an exit. |
 | `followActive` | bool | `true` | | Open the active client's region when it leaves those shown. Needs log monitoring. |
-| `metric` | enum | `Security` | `Security`, `ShipKills`, `PodKills`, `NpcKills`, `NpcDelta`, `Jumps`, `Sovereignty`, `FactionWarfare` | What the markers show. `ShipKills` counts ships only. `NpcDelta` is the change in NPC kills from the hour before, known once the panel has seen two hourly figures. `FactionWarfare` colours warzone systems by occupier, stronger the further each is contested. |
+| `metric` | enum | `Security` | `Security`, `ShipKills`, `PodKills`, `NpcKills`, `NpcDelta`, `Jumps`, `Sovereignty`, `FactionWarfare` | What the markers show. `ShipKills` counts ships only. `NpcDelta` is the change in NPC kills from the hour before, known once the panel has seen two hourly figures, or at once from Eve Stars with `evestarsToken`. `FactionWarfare` colours warzone systems by occupier, stronger the further each is contested. |
+| `trafficSpan` | enum | `Hour` | `Hour`, `Day`, `Week` | How far back ship, pod and NPC kills and jumps reach, from the span bar beside the metric bar. Past `Hour` the figures are Eve Stars' sums, so they need `evestarsToken` and `liveStats`; Eve Stars keeps kills 30 days and jumps 7, and only from 14 November 2026. `NpcDelta` always uses the last hour. |
 | `showCharacterNames` | bool | `true` | | Tag each system with a client in it; more than one shows as a count. |
 | `liveStats` | bool | `true` | | Fetch kills, jumps, sovereignty, faction warfare, sov campaigns and incursions from ESI, and storms and Thera's and Turnur's connections from EVE-Scout, every 15 minutes while the panel shows; also each sov-holding alliance's logo, once, for its colour. |
 | `showStorms` | bool | `true` | | Mark metaliminal storms and the gates they cover. Needs `liveStats`. Off only hides them. |
@@ -727,14 +728,6 @@ Matched by exact `name`. Positions are saved automatically on drag.
 
 An exact name beats a pattern regardless of order; otherwise the first match wins. The key is `systemName`; an entry using `name` never matches.
 
-### avoidedSystems
-
-Systems that routes sent from the map keep out of. The map adds and removes them from its right-click menu, up to 64; entries past that are ignored. A destination in the list is left out of its own send.
-
-| Key | Type | Default | Notes |
-|---|---|---|---|
-| `systemId` | int | `0` | CCP's system ID. |
-
 ### chatAlerts
 
 Rules for chat messages that raise an alert. Needs [chatlog](#chatlog). Rules are checked intel first, then keyword, each in list order; a message alerts once, for the first rule it matches. Your own characters' messages never alert, and a line logged by several clients alerts once.
@@ -804,7 +797,7 @@ A window must pass both lists; a filter with both empty matches nothing. Non-EVE
 | `oreTable` | `[{name, price}]` | `[]` | ISK/unit overrides, 0–1e12. A name also covers its grade variants (`Veldspar` → `Veldspar II-Grade`). Others use built-in Jita prices. |
 | `orePricesFetchedAtSeconds` | int | `0` | Unix time of the last Fetch Prices. |
 | `evestarsEnabled` | bool | `true` | Off, the map drops its right-click destinations and Avoid System, whatever `evestarsToken` holds. |
-| `evestarsToken` | string | `""` | Eve Stars API token. Set, it adds the map's right-click destinations, Avoid System and Ansiblex gates. Plain text in this file, left out of the log. |
+| `evestarsToken` | string | `""` | Eve Stars API token. Set, it adds the map's right-click destinations, Show Route, Avoid System and Ansiblex gates. Routes avoid the account's saved avoid list, which Avoid System changes; a read-only token can't. Plain text in this file, left out of the log. |
 
 ### chatlog
 

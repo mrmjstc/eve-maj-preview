@@ -50,7 +50,7 @@ const CHIP_PADDING_Y = 2;
 /// How close the cursor must come to a system or an exit, in pixels.
 const HIT_RADIUS = 9;
 /// The most boxes floating over the map that names keep clear of: its cards, bars and controls.
-pub const MAX_COVERED = 10;
+pub const MAX_COVERED = 12;
 const TAKEN_CAPACITY = MAX_COVERED + MAX_NODES * 2 + (MAX_EXITS + MAX_PORTALS) * 2;
 /// What covering a system, a name or a card costs a region's name, against one for each gate it crosses, so it crosses any number of gates first.
 const COVERING_COST = 1000;

@@ -5,7 +5,9 @@ const universe = @import("universe.zig");
 const fixed_text = @import("../util/fixed_text.zig");
 const log = @import("../log.zig");
 
+const RegionIndex = universe.RegionIndex;
 const SystemIndex = universe.SystemIndex;
+const SystemSet = universe.SystemSet;
 const slog = log.Scoped("map");
 pub const Text = fixed_text.FixedText;
 
@@ -19,6 +21,14 @@ pub const ANSIBLEX_ZONE_COUNT = 5;
 
 pub const CHARACTERS_URL = BASE_URL ++ "/characters";
 pub const ANSIBLEX_URL = BASE_URL ++ "/ansiblex";
+pub const AVOID_URL = BASE_URL ++ "/avoid";
+pub const ACTIVITY_URL = BASE_URL ++ "/activity";
+/// Eve Stars keeps no more than this.
+pub const MAX_AVOIDED_PLACES = 1000;
+/// The fastest and two others, as many as fit the map's card.
+pub const MAX_ROUTES = 3;
+/// Past the longest gate route New Eden has; a longer one is cut short on the map.
+pub const MAX_ROUTE_SYSTEMS = 256;
 /// Past the few hundred one-way gates the biggest coalition's network has; any beyond it go unshown.
 pub const MAX_BRIDGES = 1024;
 
@@ -52,18 +62,134 @@ pub const RouteOptions = struct {
     sets_every_waypoint: bool = false,
     /// Ansiblex landing zones refused, zone 1 first.
     avoids_zone: [ANSIBLEX_ZONE_COUNT]bool = @splat(false),
-    avoid_ids: [types.MAX_AVOIDED_SYSTEMS]u32 = undefined,
-    avoid_count: usize = 0,
+    /// CCP's id of a system a sent route must pass through, as an alternative is pinned; null for the fastest.
+    via_id: ?u32 = null,
+};
 
-    fn avoidIds(self: *const RouteOptions) []const u32 {
-        return self.avoid_ids[0..self.avoid_count];
+/// One way from the start to the destination.
+pub const Route = struct {
+    /// Start first, destination last.
+    systems: [MAX_ROUTE_SYSTEMS]SystemIndex = undefined,
+    system_count: usize = 0,
+    jumps: u32 = 0,
+    /// Ships and capsules lost in the last hour in the systems it enters.
+    kills_last_hour: u32 = 0,
+    /// The system an alternative is pinned through, which sending it passes on; null for the fastest.
+    via: ?SystemIndex = null,
+
+    pub fn slice(self: *const Route) []const SystemIndex {
+        return self.systems[0..self.system_count];
     }
 
-    /// Ignores what's past the list's size, which only a hand-edited profile can reach.
-    pub fn avoid(self: *RouteOptions, system_id: u32) void {
-        if (self.avoid_count == self.avoid_ids.len) return;
-        self.avoid_ids[self.avoid_count] = system_id;
-        self.avoid_count += 1;
+    fn add(self: *Route, system: SystemIndex) void {
+        if (self.system_count == MAX_ROUTE_SYSTEMS) return;
+        self.systems[self.system_count] = system;
+        self.system_count += 1;
+    }
+};
+
+/// The ways GET /route offers, the fastest first.
+pub const Routes = struct {
+    from: SystemIndex,
+    to: SystemIndex,
+    routes: [MAX_ROUTES]Route = undefined,
+    count: usize = 0,
+    /// Eve Stars hadn't loaded the Ansiblex gates yet, so the routes went without them.
+    is_missing_ansiblex: bool = false,
+
+    pub fn slice(self: *const Routes) []const Route {
+        return self.routes[0..self.count];
+    }
+};
+
+/// A place the account's routes keep out of.
+pub const AvoidedPlace = struct {
+    /// CCP's id, which PUT /avoid takes whatever the kind.
+    id: u32,
+    kind: Kind,
+    /// Which one, for a constellation the map knows.
+    constellation: ?u16 = null,
+    /// Which one, for a region the map knows.
+    region: ?RegionIndex = null,
+
+    /// `other` for a kind Eve Stars has added since, which is kept so a change doesn't drop it.
+    pub const Kind = enum { system, constellation, region, other };
+};
+
+/// How a system stands on the avoid list.
+pub const Avoidance = enum {
+    none,
+    /// Named on the list, so it can be taken off.
+    listed,
+    /// Only inside a constellation or region on the list.
+    in_area,
+};
+
+/// The account's saved avoid list, which every sent route keeps out of.
+pub const AvoidList = struct {
+    places: [MAX_AVOIDED_PLACES]AvoidedPlace = undefined,
+    count: usize = 0,
+    /// By SystemIndex, those named on the list.
+    listed: SystemSet = .empty,
+    /// By SystemIndex, those inside a constellation or region on the list.
+    in_area: SystemSet = .empty,
+
+    pub fn slice(self: *const AvoidList) []const AvoidedPlace {
+        return self.places[0..self.count];
+    }
+
+    pub fn avoidanceOf(self: *const AvoidList, system: SystemIndex) Avoidance {
+        if (self.listed.isSet(system)) return .listed;
+        return if (self.in_area.isSet(system)) .in_area else .none;
+    }
+
+    pub fn isAvoided(self: *const AvoidList, system: SystemIndex) bool {
+        return self.avoidanceOf(system) != .none;
+    }
+
+    /// The constellation or region on the list that covers `system`; null when none does.
+    pub fn areaName(self: *const AvoidList, system: SystemIndex) ?[]const u8 {
+        const info = universe.systemInfo(system);
+        for (self.slice()) |place| {
+            if (place.region) |region| {
+                if (region == info.region) return universe.regionName(region);
+            }
+            if (place.constellation) |constellation| {
+                if (constellation == info.constellation) return universe.constellationName(constellation);
+            }
+        }
+        return null;
+    }
+
+    /// With `system` named on it, or taken off; error.AvoidListFull past Eve Stars' limit.
+    pub fn toggled(self: *const AvoidList, system: SystemIndex) !AvoidList {
+        var changed = self.*;
+        const system_id = universe.systemInfo(system).id;
+        if (self.listed.isSet(system)) {
+            changed.count = 0;
+            for (self.slice()) |place| {
+                if (place.kind == .system and place.id == system_id) continue;
+                changed.places[changed.count] = place;
+                changed.count += 1;
+            }
+            changed.listed.unset(system);
+            return changed;
+        }
+        if (self.count == MAX_AVOIDED_PLACES) return error.AvoidListFull;
+        changed.places[changed.count] = .{ .id = system_id, .kind = .system };
+        changed.count += 1;
+        changed.listed.set(system);
+        return changed;
+    }
+
+    /// Places past Eve Stars' own limit, which it shouldn't send, go unkept.
+    fn add(self: *AvoidList, place: AvoidedPlace) void {
+        if (self.count == MAX_AVOIDED_PLACES) {
+            slog.warn("Failed to keep every avoided place: more than {d}", .{MAX_AVOIDED_PLACES});
+            return;
+        }
+        self.places[self.count] = place;
+        self.count += 1;
     }
 };
 
@@ -144,9 +270,15 @@ const CharactersAnswer = struct { characters: []const CharacterRow = &.{}, group
 const SentRow = struct { character: Place = .{}, set: bool = false, said: []const u8 = "", code: []const u8 = "" };
 const AnsiblexRow = struct { ready: bool = true };
 const SendAnswer = struct { to: Place = .{}, sent: []const SentRow = &.{}, ansiblex: ?AnsiblexRow = null };
-const BridgeEnd = struct { id: u32 = 0 };
-const BridgeRow = struct { from: BridgeEnd = .{}, to: BridgeEnd = .{} };
+/// A gate's or a leg's end, by CCP's system id.
+const EndRow = struct { id: u32 = 0 };
+const BridgeRow = struct { from: EndRow = .{}, to: EndRow = .{} };
 const BridgesAnswer = struct { ready: bool = false, ansiblex: []const BridgeRow = &.{} };
+const LegRow = struct { from: EndRow = .{}, to: EndRow = .{} };
+const RouteRow = struct { jumps: u32 = 0, killsLastHour: u32 = 0, via: ?Place = null, legs: []const LegRow = &.{} };
+const RouteAnswer = struct { from: Place = .{}, to: Place = .{}, ansiblex: ?AnsiblexRow = null, routes: []const RouteRow = &.{} };
+const AvoidRow = struct { id: u32 = 0, name: []const u8 = "", kind: []const u8 = "" };
+const AvoidAnswer = struct { avoid: []const AvoidRow = &.{} };
 const ErrorAnswer = struct { @"error": []const u8 = "", code: []const u8 = "" };
 
 /// One way through an Ansiblex gate.
@@ -183,14 +315,69 @@ pub fn sendUrl(allocator: std.mem.Allocator, system_id: u32, target_ids: []const
     for (target_ids, 0..) |target_id, index| {
         try url.writer.print("{s}{d}", .{ if (index == 0) "" else ",", target_id });
     }
-    try url.writer.print("&security={s}&bridges={s}", .{
-        securityParameter(options.preference),
-        if (options.uses_ansiblex) "true" else "false",
-    });
+    try writeRouteOptions(&url.writer, options);
     if (options.sets_every_waypoint) try url.writer.writeAll("&waypoints=every");
-    try writeAvoid(&url.writer, options, system_id);
-    if (options.uses_ansiblex) try writeAvoidZones(&url.writer, options);
+    if (options.via_id) |via_id| try url.writer.print("&via={d}", .{via_id});
     return allocator.dupe(u8, url.written());
+}
+
+/// Plans from `from_id` to `to_id` with the fastest's MAX_ROUTES - 1 others, and sets nothing; caller frees.
+pub fn routeUrl(allocator: std.mem.Allocator, from_id: u32, to_id: u32, options: *const RouteOptions) ![]u8 {
+    var url: std.Io.Writer.Allocating = .init(allocator);
+    defer url.deinit();
+    try url.writer.print(BASE_URL ++ "/route?from={d}&to={d}&others={d}", .{ from_id, to_id, MAX_ROUTES - 1 });
+    try writeRouteOptions(&url.writer, options);
+    return allocator.dupe(u8, url.written());
+}
+
+/// `body` is GET /route's answer; a system the map doesn't have is left out of its route; `arena` is scratch.
+pub fn parseRoutes(arena: std.mem.Allocator, body: []const u8) !Routes {
+    const answer = try parseAnswer(RouteAnswer, arena, body);
+    const from = systemOf(answer.from) orelse return error.InvalidSystem;
+    const to = systemOf(answer.to) orelse return error.InvalidSystem;
+    var routes: Routes = .{ .from = from, .to = to, .is_missing_ansiblex = if (answer.ansiblex) |ansiblex| !ansiblex.ready else false };
+    for (answer.routes) |row| {
+        if (routes.count == MAX_ROUTES) break;
+        var route: Route = .{ .jumps = row.jumps, .kills_last_hour = row.killsLastHour };
+        if (row.via) |via| route.via = systemOf(via);
+        route.add(from);
+        for (row.legs) |leg| {
+            if (universe.findSystemById(leg.to.id)) |system| route.add(system);
+        }
+        routes.routes[routes.count] = route;
+        routes.count += 1;
+    }
+    return routes;
+}
+
+/// PUT /avoid's body, naming every place by id; caller frees.
+pub fn avoidBody(allocator: std.mem.Allocator, list: *const AvoidList) ![]u8 {
+    var body: std.Io.Writer.Allocating = .init(allocator);
+    defer body.deinit();
+    try body.writer.writeAll("{\"avoid\":[");
+    for (list.slice(), 0..) |place, index| {
+        try body.writer.print("{s}{d}", .{ if (index == 0) "" else ",", place.id });
+    }
+    try body.writer.writeAll("]}");
+    return allocator.dupe(u8, body.written());
+}
+
+/// `body` is GET or PUT /avoid's answer; a place the map doesn't have is kept, but marks no system; `arena` is scratch.
+pub fn parseAvoid(arena: std.mem.Allocator, body: []const u8) !AvoidList {
+    const answer = try parseAnswer(AvoidAnswer, arena, body);
+    var list: AvoidList = .{};
+    for (answer.avoid) |row| {
+        var place: AvoidedPlace = .{ .id = row.id, .kind = std.meta.stringToEnum(AvoidedPlace.Kind, row.kind) orelse .other };
+        switch (place.kind) {
+            .system => if (universe.findSystemById(row.id)) |system| list.listed.set(system),
+            .constellation => place.constellation = findConstellation(row.name),
+            .region => place.region = universe.findRegionById(row.id),
+            .other => {},
+        }
+        list.add(place);
+    }
+    markAreas(&list);
+    return list;
 }
 
 /// The header's value; caller frees.
@@ -288,14 +475,39 @@ fn errorAnswerOf(arena: std.mem.Allocator, body: []const u8) ErrorAnswer {
     };
 }
 
-/// Leaves out the destination, which Eve Stars refuses in `avoid`; choosing it outranks the list.
-fn writeAvoid(writer: *std.Io.Writer, options: *const RouteOptions, destination_id: u32) !void {
-    var separator: []const u8 = "&avoid=";
-    for (options.avoidIds()) |system_id| {
-        if (system_id == destination_id) continue;
-        try writer.print("{s}{d}", .{ separator, system_id });
-        separator = ",";
+/// Eve Stars names constellations, which the map knows only by name; searched linearly, as this runs once per answer.
+fn findConstellation(name: []const u8) ?u16 {
+    for (0..universe.SYSTEM_COUNT) |index| {
+        const constellation = universe.systemInfo(@intCast(index)).constellation;
+        if (std.mem.eql(u8, universe.constellationName(constellation), name)) return constellation;
     }
+    return null;
+}
+
+fn markAreas(list: *AvoidList) void {
+    for (list.slice()) |place| {
+        if (place.constellation == null and place.region == null) continue;
+        for (0..universe.SYSTEM_COUNT) |index| {
+            const info = universe.systemInfo(@intCast(index));
+            const is_inside = if (place.region) |region| region == info.region else if (place.constellation) |constellation| constellation == info.constellation else false;
+            if (is_inside) list.in_area.set(index);
+        }
+    }
+}
+
+/// Null for an id that isn't a system the map has.
+fn systemOf(place: Place) ?SystemIndex {
+    return universe.findSystemById(std.math.cast(u32, place.id) orelse return null);
+}
+
+/// What a plan and a send share: the security, the gates, and the account's saved avoid list, which Eve Stars leaves the route's own ends out of.
+fn writeRouteOptions(writer: *std.Io.Writer, options: *const RouteOptions) !void {
+    try writer.print("&security={s}&bridges={s}", .{
+        securityParameter(options.preference),
+        if (options.uses_ansiblex) "true" else "false",
+    });
+    try writer.writeAll("&avoid=saved");
+    if (options.uses_ansiblex) try writeAvoidZones(writer, options);
 }
 
 fn writeAvoidZones(writer: *std.Io.Writer, options: *const RouteOptions) !void {
@@ -359,53 +571,124 @@ test "parseBridges reads each gate's ends, and whether the list is ready" {
 test "sendUrl leaves out the start, so each character sets off from where it is" {
     const url = try sendUrl(testing.allocator, 30002187, &.{98000001}, &.{ .preference = .Shorter, .uses_ansiblex = false });
     defer testing.allocator.free(url);
-    try testing.expectEqualStrings(BASE_URL ++ "/route?to=30002187&send=98000001&security=shortest&bridges=false", url);
+    try testing.expectEqualStrings(BASE_URL ++ "/route?to=30002187&send=98000001&security=shortest&bridges=false&avoid=saved", url);
 }
 
 test "sendUrl lists every target in the one call" {
     const url = try sendUrl(testing.allocator, 30002187, &.{ 1, 2, 3 }, &.{ .preference = .Shorter, .uses_ansiblex = false });
     defer testing.allocator.free(url);
-    try testing.expectEqualStrings(BASE_URL ++ "/route?to=30002187&send=1,2,3&security=shortest&bridges=false", url);
+    try testing.expectEqualStrings(BASE_URL ++ "/route?to=30002187&send=1,2,3&security=shortest&bridges=false&avoid=saved", url);
 }
 
 test "sendUrl carries the route's options" {
     const url = try sendUrl(testing.allocator, 30002187, &.{98000001}, &.{ .preference = .LessSecure, .uses_ansiblex = true });
     defer testing.allocator.free(url);
-    try testing.expectEqualStrings(BASE_URL ++ "/route?to=30002187&send=98000001&security=unsafest&bridges=true", url);
+    try testing.expectEqualStrings(BASE_URL ++ "/route?to=30002187&send=98000001&security=unsafest&bridges=true&avoid=saved", url);
 }
 
 test "sendUrl asks for every waypoint only when set to" {
     const url = try sendUrl(testing.allocator, 30002187, &.{98000001}, &.{ .preference = .Shorter, .uses_ansiblex = false, .sets_every_waypoint = true });
     defer testing.allocator.free(url);
-    try testing.expectEqualStrings(BASE_URL ++ "/route?to=30002187&send=98000001&security=shortest&bridges=false&waypoints=every", url);
-}
-
-test "sendUrl lists what to avoid, leaving out the destination itself" {
-    var options: RouteOptions = .{ .preference = .Shorter, .uses_ansiblex = false };
-    options.avoid(30002187);
-    options.avoid(30005196);
-    options.avoid(30000142);
-    const url = try sendUrl(testing.allocator, 30002187, &.{98000001}, &options);
-    defer testing.allocator.free(url);
-    try testing.expectEqualStrings(BASE_URL ++ "/route?to=30002187&send=98000001&security=shortest&bridges=false&avoid=30005196,30000142", url);
+    try testing.expectEqualStrings(BASE_URL ++ "/route?to=30002187&send=98000001&security=shortest&bridges=false&avoid=saved&waypoints=every", url);
 }
 
 test "sendUrl sends refused zones only with Ansiblex on" {
     var options: RouteOptions = .{ .preference = .Shorter, .uses_ansiblex = true, .avoids_zone = .{ true, false, false, false, true } };
     const with_gates = try sendUrl(testing.allocator, 1, &.{2}, &options);
     defer testing.allocator.free(with_gates);
-    try testing.expectEqualStrings(BASE_URL ++ "/route?to=1&send=2&security=shortest&bridges=true&avoidZones=1,5", with_gates);
+    try testing.expectEqualStrings(BASE_URL ++ "/route?to=1&send=2&security=shortest&bridges=true&avoid=saved&avoidZones=1,5", with_gates);
 
     options.uses_ansiblex = false;
     const without_gates = try sendUrl(testing.allocator, 1, &.{2}, &options);
     defer testing.allocator.free(without_gates);
-    try testing.expectEqualStrings(BASE_URL ++ "/route?to=1&send=2&security=shortest&bridges=false", without_gates);
+    try testing.expectEqualStrings(BASE_URL ++ "/route?to=1&send=2&security=shortest&bridges=false&avoid=saved", without_gates);
 }
 
-test "a route's avoid list stops at its size" {
-    var options: RouteOptions = .{ .preference = .Shorter, .uses_ansiblex = false };
-    for (0..types.MAX_AVOIDED_SYSTEMS + 1) |index| options.avoid(@intCast(index));
-    try testing.expectEqual(@as(usize, types.MAX_AVOIDED_SYSTEMS), options.avoidIds().len);
+test "sendUrl pins an alternative through its via" {
+    const url = try sendUrl(testing.allocator, 30002187, &.{98000001}, &.{ .preference = .Safer, .uses_ansiblex = false, .via_id = 30004080 });
+    defer testing.allocator.free(url);
+    try testing.expectEqualStrings(BASE_URL ++ "/route?to=30002187&send=98000001&security=safest&bridges=false&avoid=saved&via=30004080", url);
+}
+
+test "routeUrl plans from a start with the others, and sends nothing" {
+    const url = try routeUrl(testing.allocator, 30000142, 30002187, &.{ .preference = .Shorter, .uses_ansiblex = true, .avoids_zone = .{ true, false, false, false, false } });
+    defer testing.allocator.free(url);
+    try testing.expectEqualStrings(BASE_URL ++ "/route?from=30000142&to=30002187&others=2&security=shortest&bridges=true&avoid=saved&avoidZones=1", url);
+}
+
+test "parseRoutes walks each route's legs from the start, and keeps an alternative's pin" {
+    var arena = testArena();
+    defer arena.deinit();
+    const routes = try parseRoutes(arena.allocator(),
+        \\{"from":{"id":30000142,"name":"Jita"},"to":{"id":30000144,"name":"Perimeter"},"ansiblex":{"ready":false,"count":0,"barred":0},
+        \\"routes":[{"rank":1,"extraJumps":0,"jumps":1,"via":null,"killsLastHour":66,
+        \\"legs":[{"from":{"id":30000142},"to":{"id":30000144},"by":"gate"}],"waypoints":[],"link":null},
+        \\{"rank":2,"jumps":2,"killsLastHour":3,"via":{"id":30000139,"name":"Urlen"},
+        \\"legs":[{"from":{"id":30000142},"to":{"id":30000139}},{"from":{"id":30000139},"to":{"id":30000144}}]}]}
+    );
+    try testing.expectEqual(@as(usize, 2), routes.count);
+    try testing.expect(routes.is_missing_ansiblex);
+    const fastest = &routes.slice()[0];
+    try testing.expectEqual(@as(u32, 66), fastest.kills_last_hour);
+    try testing.expectEqual(@as(?SystemIndex, null), fastest.via);
+    try testing.expectEqualSlices(SystemIndex, &.{ universe.findSystem("Jita").?, universe.findSystem("Perimeter").? }, fastest.slice());
+    const other = &routes.slice()[1];
+    try testing.expectEqual(universe.findSystem("Urlen"), other.via);
+    try testing.expectEqual(@as(usize, 3), other.system_count);
+}
+
+test "parseAvoid marks named systems apart from those inside an avoided area, and keeps kinds it doesn't know" {
+    var arena = testArena();
+    defer arena.deinit();
+    const list = try parseAvoid(arena.allocator(),
+        \\{"avoid":[{"id":30002813,"name":"Tama","kind":"system"},{"id":10000002,"name":"The Forge","kind":"region"},
+        \\{"id":1,"name":"Somewhere","kind":"faction"}],"changedAt":"2026-11-02T18:20:00.000Z"}
+    );
+    try testing.expectEqual(@as(usize, 3), list.count);
+    try testing.expectEqual(Avoidance.listed, list.avoidanceOf(universe.findSystem("Tama").?));
+    try testing.expectEqual(Avoidance.in_area, list.avoidanceOf(universe.findSystem("Jita").?));
+    try testing.expectEqual(Avoidance.none, list.avoidanceOf(universe.findSystem("Amarr").?));
+    try testing.expectEqualStrings("The Forge", list.areaName(universe.findSystem("Jita").?).?);
+    try testing.expectEqual(AvoidedPlace.Kind.other, list.slice()[2].kind);
+}
+
+test "parseAvoid finds a constellation by its name" {
+    var arena = testArena();
+    defer arena.deinit();
+    const list = try parseAvoid(arena.allocator(), "{\"avoid\":[{\"id\":20000020,\"name\":\"Kimotoro\",\"kind\":\"constellation\"}]}");
+    try testing.expectEqual(Avoidance.in_area, list.avoidanceOf(universe.findSystem("Jita").?));
+    try testing.expectEqualStrings("Kimotoro", list.areaName(universe.findSystem("Jita").?).?);
+}
+
+test "toggled names a system, then takes it off again, leaving the rest in order" {
+    var arena = testArena();
+    defer arena.deinit();
+    const list = try parseAvoid(arena.allocator(), "{\"avoid\":[{\"id\":30002813,\"kind\":\"system\"},{\"id\":10000002,\"kind\":\"region\"}]}");
+    const amarr = universe.findSystem("Amarr").?;
+    const added = try list.toggled(amarr);
+    try testing.expectEqual(Avoidance.listed, added.avoidanceOf(amarr));
+    const body = try avoidBody(testing.allocator, &added);
+    defer testing.allocator.free(body);
+    try testing.expectEqualStrings("{\"avoid\":[30002813,10000002,30002187]}", body);
+
+    const removed = try added.toggled(universe.findSystem("Tama").?);
+    try testing.expectEqual(Avoidance.none, removed.avoidanceOf(universe.findSystem("Tama").?));
+    try testing.expectEqual(@as(usize, 2), removed.count);
+    try testing.expectEqual(@as(u32, 10000002), removed.slice()[0].id);
+}
+
+test "a system inside an avoided area is listed on its own when toggled" {
+    var arena = testArena();
+    defer arena.deinit();
+    const list = try parseAvoid(arena.allocator(), "{\"avoid\":[{\"id\":10000002,\"kind\":\"region\"}]}");
+    const jita = universe.findSystem("Jita").?;
+    try testing.expectEqual(Avoidance.listed, (try list.toggled(jita)).avoidanceOf(jita));
+}
+
+test "avoidBody of an empty list clears it" {
+    const body = try avoidBody(testing.allocator, &.{});
+    defer testing.allocator.free(body);
+    try testing.expectEqualStrings("{\"avoid\":[]}", body);
 }
 
 test "authorization drops whitespace pasted with the token" {
