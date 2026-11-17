@@ -94,7 +94,7 @@ pub const ClientSystems = struct {
     }
 };
 
-/// Null when the message alerts no one: one of the user's own characters said it, no rule matches, another client's copy already alerted, or the rule's term is cooling down.
+/// Null when it alerts no one: the user's own character said it, no rule matches, another client's copy alerted, or the term is cooling down.
 pub fn route(rules: *const RuleSet, recent_hits: *RecentHits, heard: Heard, clients: []const Client, now_ms: u64, out: *[alert_rules.MAX_CLIENTS][]const u8) ?Alert {
     if (heard.is_own_character) return null;
     const hit = rules.firstHit(heard.channel, heard.message, clients) orelse return null;

@@ -34,7 +34,10 @@ pub const HeaderInput = struct {
     }
 };
 
-/// `Window` is attached as its PanelWindow's owner once stored, and has a `host: panel_host.Host`, a `header_input: HeaderInput`, `headerLayout`, `toggleCollapsed`, `runHeaderAction(action)`, `redraw`, `saveWindowPosition` and `isPositionLocked`, and `onLeftClick(x, y)`, `handleMessage` or both; `handleMessage` returns null for a message left to Windows.
+/// `Window` is attached as its PanelWindow's owner once stored.
+/// `Window` fields: `host: panel_host.Host` and `header_input: HeaderInput`.
+/// `Window` methods: `headerLayout`, `toggleCollapsed`, `runHeaderAction(action)`, `redraw`, `saveWindowPosition` and `isPositionLocked`.
+/// `Window` input: `onLeftClick(x, y)`, `handleMessage` or both; `handleMessage` returns null for a message left to Windows.
 pub fn HeaderPanel(comptime Window: type, comptime class_name: [*:0]const u8) type {
     return struct {
         pub const register = gdi_overlay.WindowClass(class_name, windowProc).register;

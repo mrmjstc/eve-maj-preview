@@ -4,7 +4,11 @@ const log = @import("../log.zig");
 
 const POLL_MS: i64 = 50;
 
-/// `Engine` has `init`, `run` and `deinit`, called on the worker thread; `Command`'s `deinit` frees what it owns once run or dropped, `isAlert` says whether pushAlert may drop it, and `isMinorAlert` that it goes before other alerts; `description` names the feature in logs.
+/// `Engine`: `init`, `run` and `deinit`, all called on the worker thread.
+/// `Command.deinit`: frees what it owns once run or dropped.
+/// `Command.isAlert`: whether pushAlert may drop it.
+/// `Command.isMinorAlert`: whether it's dropped before other alerts.
+/// `description`: names the feature in logs.
 pub fn Worker(comptime Command: type, comptime Engine: type, comptime scope: []const u8, comptime description: []const u8) type {
     const slog = log.Scoped(scope);
 

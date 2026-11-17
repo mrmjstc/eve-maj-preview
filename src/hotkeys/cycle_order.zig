@@ -149,7 +149,8 @@ pub fn chainOf(groups: []const HotkeyGroupConfig, group_indices: []const usize) 
     return .{ .chain = chain };
 }
 
-/// Walks the chain from its cursor to the next running, non-excluded member or not-logged-in client; `clients` has `hwndFor(name) ?win32.HWND` and `isExcluded(name) bool`.
+/// Walks the chain from its cursor to the next running, non-excluded member or not-logged-in client.
+/// `clients`: `hwndFor(name) ?win32.HWND` and `isExcluded(name) bool`.
 pub fn planGroupCycle(cycle: GroupCycle, clients: anytype) GroupStep {
     const member_count = cycle.chain.member_count;
     const total_count = member_count + cycle.not_logged_in_hwnds.len;

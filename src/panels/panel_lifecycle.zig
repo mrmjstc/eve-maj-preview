@@ -6,7 +6,9 @@ const log = @import("../log.zig");
 
 const slog = log.Scoped("panel_lifecycle");
 
-/// Creates or destroys the window to match the settings; `panel` points at a panel with `window` and `visibility` fields and `wantsWindow`, `createWindow` and `destroyWindow` methods.
+/// Creates or destroys the window to match the settings.
+/// `panel` fields: `window` and `visibility`.
+/// `panel` methods: `wantsWindow`, `createWindow` and `destroyWindow`.
 pub fn sync(panel: anytype, context: panel_host.Context) void {
     const is_wanted = panel.wantsWindow(&context.store.live);
     if (is_wanted and panel.window == null) {

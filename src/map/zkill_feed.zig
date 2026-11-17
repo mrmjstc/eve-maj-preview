@@ -90,6 +90,19 @@ pub const ZkillFeed = struct {
         };
     }
 
+    /// While true, the run's thread owns `sequence` and `asked_ids`.
+    pub fn isRunning(self: *const ZkillFeed) bool {
+        return self.job.isBusy();
+    }
+
+    /// Main thread, while not running: only ids `names` holds stay asked, so others are asked again; a failure may leave none.
+    pub fn resetAsked(self: *ZkillFeed, allocator: std.mem.Allocator, names: *const zkill.Names) !void {
+        self.asked_ids.clearAndFree(allocator);
+        try self.asked_ids.ensureTotalCapacity(allocator, @intCast(names.count()));
+        var ids = names.map.keyIterator();
+        while (ids.next()) |id| self.asked_ids.putAssumeCapacity(id.*, {});
+    }
+
     /// The caller owns the result, and frees it with destroy; the next run is due its wait from `now_ms`.
     pub fn takeBatch(self: *ZkillFeed, now_ms: u64) ?*Batch {
         const batch = self.job.take() orelse return null;

@@ -161,7 +161,8 @@ pub fn onWindowMessage(msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPAR
     }
 }
 
-/// Each combo as key caps joined by "or", each removable on its own, then + to add one, plus a typing button in Advanced Mode; `ref` needs session.Ref's get, set and index.
+/// Each combo as key caps joined by "or", each removable on its own, then + to add one, plus a typing button in Advanced Mode.
+/// `ref`: session.Ref's get, set and index.
 pub fn field(context: *ui.Frame, ref: anytype, comptime field_name: []const u8) !void {
     // Typed by the setting's struct, so a character's and a group's hotkey at the same index differ.
     const key = ui.Key.str("knots.hotkey:" ++ @typeName(@TypeOf(ref)) ++ "." ++ field_name).indexed(ref.index);
@@ -603,7 +604,8 @@ fn startManual(id: u64, current: KeyList) !void {
     g_manual = .{ .id = id, .text = text.toArrayList() };
 }
 
-/// Only names the app knows are kept; anything else, or more than a binding holds, leaves the field as it was; `ref` is as in manualBox.
+/// Only names the app knows are kept; anything else, or more than a binding holds, leaves the field as it was.
+/// `ref`: as in manualBox.
 fn commitManual(ref: anytype, comptime field_name: []const u8) void {
     const edit = g_manual orelse return;
     defer endManual();

@@ -9,6 +9,8 @@ const SystemIndex = universe.SystemIndex;
 
 /// Past an hour of New Eden's kills at a busy time; the oldest go first once full, whatever the lifetime.
 pub const MAX_KILLS = 4096;
+/// Past this, the names no kill in the ring uses are dropped; each kill uses at most two.
+pub const MAX_NAMES = 4 * MAX_KILLS;
 pub const KILL_URL_FORMAT = "https://zkillboard.com/kill/{d}/";
 
 pub const Kill = struct {
@@ -95,6 +97,32 @@ pub const Names = struct {
     pub fn get(self: *const Names, id: u32) ?[]const u8 {
         return self.map.get(id);
     }
+
+    pub fn count(self: *const Names) usize {
+        return self.map.count();
+    }
+
+    /// Drops the names no kill in `kills` uses; on failure every name stays.
+    pub fn retainUsed(self: *Names, allocator: std.mem.Allocator, kills: *const Kills) !void {
+        comptime std.debug.assert(MAX_NAMES > 2 * MAX_KILLS);
+        var kept: std.AutoHashMapUnmanaged(u32, []const u8) = .empty;
+        errdefer kept.deinit(allocator);
+        try kept.ensureTotalCapacity(allocator, @intCast(@min(self.map.count(), 2 * kills.count)));
+        for (0..kills.count) |index| {
+            const kill = kills.fromNewest(index);
+            for ([_]u32{ kill.ship_type_id, kill.victim_id }) |id| {
+                if (kept.contains(id)) continue;
+                const name = self.map.get(id) orelse continue;
+                kept.putAssumeCapacity(id, name);
+            }
+        }
+        var entries = self.map.iterator();
+        while (entries.next()) |entry| {
+            if (!kept.contains(entry.key_ptr.*)) allocator.free(entry.value_ptr.*);
+        }
+        self.map.deinit(allocator);
+        self.map = kept;
+    }
 };
 
 /// `body` is sequence.json; the number of the newest file.
@@ -132,6 +160,12 @@ const testing = std.testing;
 const KILL_FILE =
     \\{"killmail_id":139786862,"hash":"98f1","esi":{"attackers":[],"killmail_id":139786862,"killmail_time":"2026-11-09T08:09:50Z","solar_system_id":30000142,"victim":{"alliance_id":1354830081,"character_id":2124818099,"corporation_id":98642382,"damage_taken":496,"items":[],"ship_type_id":11132}},"zkb":{"locationID":50001474,"totalValue":14135.33,"npc":false,"solo":false},"uploaded_at":1794211949,"sequence_id":100463489}
 ;
+
+/// Names ids 1, 2 and 3, and adds one kill using 1 and 2.
+fn nameThreeUseTwo(names: *Names, kills: *Kills) !void {
+    for ([_]u32{ 1, 2, 3 }) |id| try names.put(testing.allocator, id, try testing.allocator.dupe(u8, "Name"));
+    kills.add(.{ .id = 1, .system = 0, .time_seconds = 0, .ship_type_id = 1, .victim_id = 2, .value_isk = 0 });
+}
 
 test "parseKill reads the system, ship, victim and value" {
     var arena: std.heap.ArenaAllocator = .init(testing.allocator);
@@ -175,6 +209,29 @@ test "names keep the first given for an id" {
     try names.put(testing.allocator, 5, try testing.allocator.dupe(u8, "Other"));
     try testing.expectEqualStrings("Rifter", names.get(5).?);
     try testing.expect(names.get(6) == null);
+}
+
+test "retainUsed keeps only the names the ring's kills use" {
+    var names: Names = .{};
+    defer names.deinit(testing.allocator);
+    var kills: Kills = .{};
+    try nameThreeUseTwo(&names, &kills);
+
+    try names.retainUsed(testing.allocator, &kills);
+    try testing.expectEqual(@as(usize, 2), names.count());
+    try testing.expect(names.get(1) != null and names.get(2) != null);
+    try testing.expect(names.get(3) == null);
+}
+
+test "retainUsed keeps every name when it can't allocate" {
+    var names: Names = .{};
+    defer names.deinit(testing.allocator);
+    var kills: Kills = .{};
+    try nameThreeUseTwo(&names, &kills);
+    var failing: testing.FailingAllocator = .init(testing.allocator, .{ .fail_index = 0 });
+
+    try testing.expectError(error.OutOfMemory, names.retainUsed(failing.allocator(), &kills));
+    try testing.expectEqual(@as(usize, 3), names.count());
 }
 
 test "valueText shortens ISK" {

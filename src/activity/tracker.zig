@@ -208,7 +208,8 @@ pub const CombatTracker = Tracker(CombatWindow);
 pub const MiningTracker = Tracker(MiningWindow);
 pub const BountyTracker = Tracker(BountyWindow);
 
-/// One locked Window per character, read by the main thread and fed by the chatlog worker; `Window` needs `init(window_seconds: u32)`, `addEntry` and a `ring` field.
+/// One locked Window per character, read by the main thread and fed by the chatlog worker.
+/// `Window`: `init(window_seconds: u32)`, `addEntry` and a `ring` field.
 fn Tracker(comptime Window: type) type {
     return struct {
         allocator: std.mem.Allocator,

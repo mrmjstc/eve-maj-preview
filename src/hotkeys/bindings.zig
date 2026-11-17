@@ -2,7 +2,7 @@
 const std = @import("std");
 const url = @import("../protocol/url.zig");
 
-// ID bands: 0 group cycle (2 per combo), 1000 global, 2000 character, 3000 profile, 4000 group assign, 5000 app, 6000 URL, 7000 group close, 8000 group minimize.
+// Bands 1000 IDs apart; a group cycle combo takes two.
 pub const HOTKEY_ID_CYCLE_GROUP_BASE: c_int = 0;
 
 /// IDs in the group cycle band, before it runs into the global band.

@@ -203,7 +203,8 @@ fn binding(context: *ui.Frame, ref: anytype, comptime field: []const u8) !void {
     try row.close(context);
 }
 
-/// Backward and forward a row each under the pair's name, like Hotkey Groups' keys, both explained by `hint`; `ref` has session.Ref's get and set for both.
+/// Backward and forward a row each under the pair's name, like Hotkey Groups' keys, both explained by `hint`.
+/// `ref`: session.Ref's get and set for both.
 fn pair(context: *ui.Frame, ref: anytype, comptime previous: []const u8, comptime next: []const u8, comptime hint: []const u8) !void {
     const label = comptime labels.hotkeyLabel(previous);
     comptime std.debug.assert(label.half == .back and labels.hotkeyLabel(next).half == .forward and std.mem.eql(u8, label.text, labels.hotkeyLabel(next).text));

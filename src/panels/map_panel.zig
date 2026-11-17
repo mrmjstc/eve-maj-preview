@@ -153,7 +153,7 @@ pub const MapPanel = struct {
             self.logo_colors = fresh;
             self.logo_revision +%= 1;
         }
-        self.takeKills(config);
+        self.takeKills(allocator, config);
         self.pump(allocator);
 
         const window = if (self.window) |*w| w else return;
@@ -179,8 +179,8 @@ pub const MapPanel = struct {
         self.redraw(thumbnail_set);
     }
 
-    /// Adds the newest run's kills and names, and drops kills past their lifetime.
-    fn takeKills(self: *MapPanel, config: *const config_mod.Config) void {
+    /// Adds the newest run's kills and names, and drops kills past their lifetime and, past MAX_NAMES, the names they used.
+    fn takeKills(self: *MapPanel, allocator: std.mem.Allocator, config: *const config_mod.Config) void {
         const now_ms = win32.Ticks.now().ms;
         if (self.kill_feed.takeBatch(now_ms)) |batch| {
             defer batch.destroy();
@@ -192,6 +192,15 @@ pub const MapPanel = struct {
             }
         }
         self.kills.prune(win32.unixSecondsNow(), config.mapPanel.killLifetimeSeconds());
+        // Only the main thread starts a run, so none can start between this check and the reset.
+        if (self.kill_names.count() <= zkill.MAX_NAMES or self.kill_feed.isRunning()) return;
+        self.kill_names.retainUsed(allocator, &self.kills) catch |err| {
+            slog.warn("Failed to drop the names of past kills: {}", .{err});
+            return;
+        };
+        self.kill_feed.resetAsked(allocator, &self.kill_names) catch |err| {
+            slog.warn("Failed to forget the names asked for past kills, so known ones may be asked for again: {}", .{err});
+        };
     }
 
     /// For panel_lifecycle.

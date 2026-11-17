@@ -310,9 +310,9 @@ pub const Painter = struct {
         return stats.systems;
     }
 
-    /// The newest reports or kills that fit, two lines each, under its tabs; filled after the labels it covers, so GDI has to finish them first.
+    /// The newest reports or kills that fit, two lines each, under its tabs.
     fn drawIntelCard(self: *const Painter, bitmap: *const gdi_overlay.OverlayBitmap, fonts: MapFonts, card: *const look.IntelCard, entries: []const history.Entry, scene: Scene) void {
-        _ = win32.GdiFlush();
+        finishGdiDrawing();
         look.drawIntelCard(bitmap.canvas(), card, self.state.hoveredIndex(.intel_row) orelse self.state.hoveredIndex(.kill_row), self.state.hover.kind == .intel_header);
 
         const dc = bitmap.mem_dc;
@@ -352,9 +352,9 @@ pub const Painter = struct {
         }
     }
 
-    /// Under a tab a hub, a line a connection: its system, region, and the largest ship and hours left; filled after the labels it covers, so GDI has to finish them first.
+    /// Under a tab a hub, a line a connection: its system, region, and the largest ship and hours left.
     fn drawWormholeCard(self: *const Painter, bitmap: *const gdi_overlay.OverlayBitmap, fonts: MapFonts, card: *const look.ListCard, scene: Scene) void {
-        _ = win32.GdiFlush();
+        finishGdiDrawing();
         look.drawListCard(bitmap.canvas(), card, self.state.hoveredIndex(.wormhole_row), self.state.hover.kind == .wormhole_header);
 
         const dc = bitmap.mem_dc;
@@ -395,9 +395,9 @@ pub const Painter = struct {
         }
     }
 
-    /// A line a sov timer: its system, constellation, and its countdown or the defender's score; filled after the labels it covers, so GDI has to finish them first.
+    /// A line a sov timer: its system, constellation, and its countdown or the defender's score.
     fn drawTimerCard(self: *const Painter, bitmap: *const gdi_overlay.OverlayBitmap, fonts: MapFonts, card: *const look.ListCard, scene: Scene) void {
-        _ = win32.GdiFlush();
+        finishGdiDrawing();
         look.drawListCard(bitmap.canvas(), card, self.state.hoveredIndex(.timer_row), self.state.hover.kind == .timer_header);
 
         const dc = bitmap.mem_dc;
@@ -453,10 +453,10 @@ pub const Painter = struct {
         }
     }
 
-    /// Filled after the labels it covers, so GDI has to finish them first; `stops` gets where the query's gaps were drawn.
+    /// `stops` gets where the query's gaps were drawn.
     fn drawSearchBox(self: *const Painter, bitmap: *const gdi_overlay.OverlayBitmap, text: panel_chrome.Text, stops: *search.Stops) void {
         const box = self.areas.search_box;
-        _ = win32.GdiFlush();
+        finishGdiDrawing();
         const is_open = self.state.search != null;
         const is_lit = is_open or self.state.hover.kind == .search_box;
         look.drawSearchCard(bitmap.canvas(), box, is_open, if (is_lit) self.config.accentColor else null);
@@ -573,7 +573,7 @@ pub const Painter = struct {
         }
     }
 
-    /// The cards over the map: its title, the metric, span and toggle bars, and the map controls; filled after the labels they cover, so GDI has to finish them first.
+    /// The cards over the map: its title, the metric, span and toggle bars, and the map controls.
     fn drawChrome(self: *const Painter, bitmap: *const gdi_overlay.OverlayBitmap, fonts: MapFonts) void {
         const dc = bitmap.mem_dc;
         const chrome = &self.state.chrome;
@@ -583,7 +583,7 @@ pub const Painter = struct {
         const title = titleText(self.state);
         _ = win32.SelectObject(dc, fonts.heading_font);
         const title_width = panel_chrome.textWidth(dc, title.slice());
-        _ = win32.GdiFlush();
+        finishGdiDrawing();
 
         const canvas = bitmap.canvas();
         const title_box = chrome.title;
@@ -673,7 +673,7 @@ pub const Painter = struct {
         if (!self.config.mapPanel.showCharacterNames) return;
         const dc = bitmap.mem_dc;
         _ = win32.SelectObject(dc, text.small_font);
-        _ = win32.GdiFlush();
+        finishGdiDrawing();
         const canvas = bitmap.canvas();
         const area = self.areas.body;
         const layout = &self.state.layout;
@@ -917,10 +917,10 @@ pub const Painter = struct {
         }
     }
 
-    /// The route's systems, its jumps and its kills; filled after the labels it covers, so GDI has to finish them first.
+    /// The route's systems, its jumps and its kills.
     fn drawRouteCard(self: *const Painter, bitmap: *const gdi_overlay.OverlayBitmap, fonts: MapFonts, card: *const look.ListCard, scene: Scene) void {
         const routes = if (scene.destinations.routes) |*shown| shown else return;
-        _ = win32.GdiFlush();
+        finishGdiDrawing();
         look.drawClosableCard(bitmap.canvas(), card, self.state.hoveredIndex(.route_row), self.state.hover.kind == .route_header);
 
         const dc = bitmap.mem_dc;
@@ -1054,7 +1054,6 @@ pub const Painter = struct {
         return text_mod.systemTooltip(facts);
     }
 
-    /// Filled after the labels it covers, so GDI has to finish them first.
     fn drawTooltip(self: *const Painter, bitmap: *const gdi_overlay.OverlayBitmap, scene: Scene, fonts: MapFonts, now_ms: u64) void {
         const tooltip = self.tooltipFor(scene, now_ms) orelse return;
         if (tooltip.line_count == 0) return;
@@ -1202,11 +1201,16 @@ fn portalColor(target: layout_mod.PortalTarget) u32 {
     };
 }
 
-/// Each legend as a section of one card, in the map's bottom left and above `avoid` where it would cover it; filled after the labels it covers, so GDI has to finish them first.
+/// Pixels written straight to the canvas skip GDI's batch, so call before writing over anything GDI drew.
+fn finishGdiDrawing() void {
+    _ = win32.GdiFlush();
+}
+
+/// Each legend as a section of one card, in the map's bottom left and above `avoid` where it would cover it.
 fn drawLegends(bitmap: *const gdi_overlay.OverlayBitmap, legends: []const text_mod.Legend, areas: look.Areas, text: panel_chrome.Text, avoid: Box) void {
     const card = legendBox(bitmap.mem_dc, legends, areas, text, avoid) orelse return;
     const row_height = text.name_height + look.LEGEND_ROW_GAP;
-    _ = win32.GdiFlush();
+    finishGdiDrawing();
     look.drawCard(bitmap.canvas(), card);
     var y = card.top;
     for (legends, 0..) |*legend, index| {
@@ -1364,11 +1368,10 @@ fn tooltipShape(dc: win32.HDC, tooltip: *const text_mod.Tooltip, fonts: MapFonts
     };
 }
 
-/// Filled after the labels it covers, so GDI has to finish them first.
 fn drawTextBox(bitmap: *const gdi_overlay.OverlayBitmap, tooltip: *const text_mod.Tooltip, box: Box, fonts: MapFonts, shape: TooltipShape) void {
     const dc = bitmap.mem_dc;
     const text = fonts.chrome;
-    _ = win32.GdiFlush();
+    finishGdiDrawing();
     const canvas = bitmap.canvas();
     popup_look.drawPopupBox(canvas, box);
     const left = box.left + shape.padding.x;
