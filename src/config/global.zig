@@ -160,6 +160,16 @@ pub const UrlHotkeyConfig = struct {
     pub const Wire = wire.Wire(UrlHotkeyConfig);
 };
 
+/// Each off by default, since any web page can open a protocol link.
+pub const ProtocolLinksConfig = struct {
+    allowCloseAll: bool = false,
+    allowCloseActive: bool = false,
+    allowCloseGroup: bool = false,
+    allowExitApp: bool = false,
+
+    pub const Wire = wire.Wire(ProtocolLinksConfig);
+};
+
 const LoadOutcome = enum { loaded, missing, unreadable, malformed };
 
 /// What GlobalConfig.load found, which finishLoading reports once the log level is set.
@@ -203,6 +213,7 @@ pub const GlobalConfig = struct {
     disableUpdateChecks: bool = false,
     runOnStartup: bool = false,
     autoRegisterProtocol: bool = true,
+    protocolLinks: ProtocolLinksConfig = .{},
     alwaysOnTop: bool = true,
     advancedMode: bool = false,
     moveOnProfileSwitch: bool = false,

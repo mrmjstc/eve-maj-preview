@@ -783,6 +783,11 @@ A window must pass both lists; a filter with both empty matches nothing. Non-EVE
 | `dialogX`, `dialogY` | int? | `null` | Dialog position. Set by the app. |
 | `runOnStartup` | bool | `false` | `HKCU\…\Run` entry, re-applied each launch. |
 | `autoRegisterProtocol` | bool | `true` | Register `evemajpreview://` at startup if missing. |
+| `protocolLinks` | object | | Which closing protocol URLs may run; see [Command line and protocol](#command-line-and-protocol). |
+| `protocolLinks.allowCloseAll` | bool | `false` | Let `hotkey/close_all` URLs run. Off, they're refused and logged, since any web page can open a link. |
+| `protocolLinks.allowCloseActive` | bool | `false` | As above, `hotkey/close_active`. |
+| `protocolLinks.allowCloseGroup` | bool | `false` | As above, `group/close/<group>`. |
+| `protocolLinks.allowExitApp` | bool | `false` | As above, `hotkey/exit_app`. |
 | `disableUpdateChecks` | bool | `false` | |
 | `hotkeyNextProfile`, `hotkeyPreviousProfile` | keys | | Cycle profiles in directory order, wrapping. |
 | `profileSwitchHotkeys` | `[{hotkey, targetProfile}]` | `[]` | `targetProfile` is a file name, e.g. `"pvp.json"`. |
@@ -821,7 +826,7 @@ Reads EVE's chat and game logs on a worker thread. Required by system names, not
 | `--config` | Open the config dialog. Any second launch forwards this to the running instance. |
 | `--protocol <url>` | Forward a protocol URL to the running instance and exit. |
 
-`evemajpreview://` URLs are forwarded to the running instance and dropped if none is running. Registered under `HKCU\Software\Classes\evemajpreview` (no admin) with the current executable's path; re-registered at startup if the exe has moved. Names are percent-encoded (`%20` for a space); `+` is kept as written.
+`evemajpreview://` URLs are forwarded to the running instance and dropped if none is running. Registered under `HKCU\Software\Classes\evemajpreview` (no admin) with the current executable's path; re-registered at startup if the exe has moved. Names are percent-encoded (`%20` for a space); `+` is kept as written. URLs that close clients or exit the app run only with their [`protocolLinks`](#global-settings) setting on.
 
 | URL | Effect |
 |---|---|

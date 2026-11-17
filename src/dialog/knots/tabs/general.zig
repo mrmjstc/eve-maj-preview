@@ -1,4 +1,4 @@
-//! The configuration window's General tab: log monitoring, app-wide preferences and startup, then, in Advanced Mode, logging; main thread only.
+//! The configuration window's General tab: log monitoring, app-wide preferences, startup and protocol links, then, in Advanced Mode, logging; main thread only.
 const ui = @import("ui");
 const win32 = @import("../../../platform/win32.zig");
 const session = @import("../session.zig");
@@ -18,6 +18,7 @@ pub fn show(context: *ui.Frame) !void {
     try chatlog.show(context);
     try preferences(context);
     try startup(context);
+    try protocolLinks(context);
     if (session.global().get("advancedMode")) try logging(context);
 }
 
@@ -36,17 +37,32 @@ fn preferences(context: *ui.Frame) !void {
 }
 
 fn startup(context: *ui.Frame) !void {
-    const section = try widgets.openSharedSection(context, "Startup", "Starting with Windows, control from other apps, and update checks.", &style.section);
+    const section = try widgets.openSharedSection(context, "Startup", "Starting with Windows and update checks.", &style.section);
     const global = session.global();
     try bind.toggle(context, global, "runOnStartup", "Run on Startup");
     try widgets.hintText(context, .src(@src()), "Starts EVE-Maj Preview when you sign in to Windows.");
+    try bind.invertedToggle(context, global, "disableUpdateChecks", "Check for Updates");
+    try widgets.hintText(context, .src(@src()), "Looks online for a new version at startup.");
+    try section.close(context);
+}
+
+fn protocolLinks(context: *ui.Frame) !void {
+    const section = try widgets.openSharedSection(context, "Protocol Links", "Links in other apps, like Stream Deck buttons, that control EVE-Maj Preview.", &style.section);
+    const global = session.global();
     var is_registering: bool = global.get("autoRegisterProtocol");
     const clicked = try widgets.switchRowWithLink(context, .src(@src()), "Auto-Register Protocol Handler", "Learn more", &is_registering);
     if (clicked.is_flipped) global.set("autoRegisterProtocol", is_registering);
     if (clicked.is_link_clicked and !win32.shellOpenUrl(PROTOCOL_DOCS_URL)) slog.warn("Failed to open '{s}' in the browser", .{PROTOCOL_DOCS_URL});
     try widgets.hintText(context, .src(@src()), "Lets links in other apps control EVE-Maj Preview.");
-    try bind.invertedToggle(context, global, "disableUpdateChecks", "Check for Updates");
-    try widgets.hintText(context, .src(@src()), "Looks online for a new version at startup.");
+    const links = global.child("protocolLinks");
+    try bind.toggle(context, links, "allowCloseAll", "Allow Links to Close All Clients");
+    try widgets.hintText(context, .src(@src()), "Lets a link close every client; any web page can open one.");
+    try bind.toggle(context, links, "allowCloseActive", "Allow Links to Close the Focused Client");
+    try widgets.hintText(context, .src(@src()), "Lets a link close the client you're in; any web page can open one.");
+    try bind.toggle(context, links, "allowCloseGroup", "Allow Links to Close a Group");
+    try widgets.hintText(context, .src(@src()), "Lets a link close a hotkey group's clients; any web page can open one.");
+    try bind.toggle(context, links, "allowExitApp", "Allow Links to Exit the App");
+    try widgets.hintText(context, .src(@src()), "Lets a link exit EVE-Maj Preview; any web page can open one.");
     try section.close(context);
 }
 

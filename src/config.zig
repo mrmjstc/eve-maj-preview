@@ -59,6 +59,7 @@ pub const parseHexColor = wire.parseHexColor;
 pub const DEFAULT_ORE_TABLE = global.DEFAULT_ORE_TABLE;
 pub const OreEntry = global.OreEntry;
 pub const GlobalConfig = global.GlobalConfig;
+pub const ProtocolLinksConfig = global.ProtocolLinksConfig;
 pub const Position = characters_mod.Position;
 pub const WindowSize = characters_mod.WindowSize;
 pub const CharacterBorderColorsConfig = characters_mod.CharacterBorderColorsConfig;

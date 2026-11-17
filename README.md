@@ -78,7 +78,7 @@ Right-click the system tray icon and choose **Open Configuration** (or double-cl
 
 ### Protocol Handler
 
-EVE-Maj Preview registers a `evemajpreview://` URL protocol for external control - character switching, profile loading, and hotkey actions - useful for Stream Deck buttons, etc. The application must already be running for a protocol URL to have any effect.
+EVE-Maj Preview registers a `evemajpreview://` URL protocol for external control - character switching, profile loading, and hotkey actions - useful for Stream Deck buttons, etc. The application must already be running for a protocol URL to have any effect. URLs that close clients or exit the app are refused unless their own setting is on in General > Protocol Links, since any web page can open a link.
 
 ```
 evemajpreview://switch/Character%20Name
