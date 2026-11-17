@@ -20,7 +20,7 @@ const PATH_FORMAT = files.PORTRAITS_DIR ++ "/{s}.jpg";
 /// 3px at the roster's 16px; knots doesn't round images, so it's baked into the pixels.
 pub const CORNER_RADIUS = 6;
 /// A cached file past this isn't a 32px portrait, so it's fetched again.
-const MAX_FILE_SIZE = 256 * 1024;
+const MAX_FILE_BYTES = 256 * 1024;
 
 /// Sent to the main thread as WM_KNOTS_COMMAND's lParam.
 pub const Loaded = struct {
@@ -122,7 +122,7 @@ pub fn store(loaded: *Loaded) void {
 
 /// Caller owns the result; null when the ID isn't known yet.
 fn lookUp(allocator: std.mem.Allocator, name: []const u8) ?[]const u8 {
-    return session.runningApp().character_ids.get(allocator, name) catch |err| {
+    return session.appContext().character_ids.get(allocator, name) catch |err| {
         slog.warn("Failed to look up the character ID of '{s}': {}", .{ name, err });
         return null;
     };
@@ -153,7 +153,7 @@ fn startLoad(id: []const u8) !void {
     const timer_hwnd = g_timer_hwnd orelse return error.MissingTimerWindow;
     const owned_id = try g_allocator.dupe(u8, id);
     errdefer g_allocator.free(owned_id);
-    try detached.spawn(loadThread, .{ session.runningApp().io, timer_hwnd, g_command, owned_id });
+    try detached.spawn(loadThread, .{ session.appContext().io, timer_hwnd, g_command, owned_id });
 }
 
 /// Takes ownership of `id`; shares only the allocator and the posted message with the main thread.
@@ -199,7 +199,7 @@ fn decode(encoded: []const u8) !wic.Decoded {
 
 /// Null when it isn't cached yet, or can't be read.
 fn readCached(io: std.Io, path: []const u8) ?[]u8 {
-    return std.Io.Dir.cwd().readFileAlloc(io, path, g_allocator, .limited(MAX_FILE_SIZE)) catch |err| {
+    return std.Io.Dir.cwd().readFileAlloc(io, path, g_allocator, .limited(MAX_FILE_BYTES)) catch |err| {
         if (err != error.FileNotFound) slog.warn("Failed to read the cached portrait '{s}', fetching it again: {}", .{ path, err });
         return null;
     };

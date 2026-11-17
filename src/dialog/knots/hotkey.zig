@@ -59,7 +59,7 @@ comptime {
 /// Bindings that may share a combo with their own kind, cycling through each other in order.
 const HolderKind = enum { other, character, group_forward, group_backward };
 
-const Holders = struct { total: usize = 0, kind: HolderKind = .other, is_mixed: bool = false };
+const Holders = struct { binding_count: usize = 0, kind: HolderKind = .other, is_mixed: bool = false };
 
 /// A field waiting for a key; the window's messages feed it until something is captured or it's cancelled.
 const Recording = struct {
@@ -260,7 +260,7 @@ pub fn findConflicts(arena: std.mem.Allocator) ![]const u32 {
     var it = holders.iterator();
     while (it.next()) |entry| {
         const counted = entry.value_ptr.*;
-        if (counted.total > 1 and (counted.is_mixed or counted.kind == .other)) try conflicts.append(arena, entry.key_ptr.*);
+        if (counted.binding_count > 1 and (counted.is_mixed or counted.kind == .other)) try conflicts.append(arena, entry.key_ptr.*);
     }
     return conflicts.items;
 }
@@ -340,7 +340,7 @@ fn collect(arena: std.mem.Allocator, holders: *std.AutoArrayHashMapUnmanaged(u32
             if (std.mem.findScalar(u32, value.slice()[0..index], combo) != null) continue;
             const entry = try holders.getOrPut(arena, combo);
             if (!entry.found_existing) entry.value_ptr.* = .{ .kind = kind };
-            entry.value_ptr.total += 1;
+            entry.value_ptr.binding_count += 1;
             if (entry.value_ptr.kind != kind) entry.value_ptr.is_mixed = true;
         }
         return;
@@ -611,7 +611,7 @@ fn startManual(id: u64, current: KeyList) !void {
     g_manual = .{ .id = id, .text = text.toArrayList() };
 }
 
-/// Only names the app knows are kept; anything else, or more than a binding holds, leaves the field as it was.
+/// Only names the app knows are kept; anything else, or more than a binding holds, leaves the field as it was; `ref` is as in manualBox.
 fn commitManual(ref: anytype, comptime field_name: []const u8) void {
     const edit = g_manual orelse return;
     defer endManual();
@@ -647,7 +647,7 @@ fn startRecording(context: *ui.Frame, id: u64, slot: ?usize) void {
     endManual();
     g_recording = .{ .id = id, .slot = slot };
     // The low-level hooks swallow matched keys system-wide, so the window would never see a bound key otherwise.
-    if (session.runningApp().hotkey_manager) |manager| manager.dialogSuspendHotkeys();
+    session.run(.suspend_hotkeys_for_recording);
     context.requestRedraw();
 }
 
@@ -659,10 +659,7 @@ fn cancelRecording(context: *ui.Frame) void {
 fn stopRecording() void {
     if (g_recording == null) return;
     g_recording = null;
-    const app = session.runningApp();
-    const manager = app.hotkey_manager orelse return;
-    const timer_hwnd = app.timer_hwnd orelse return;
-    manager.dialogResumeHotkeys(timer_hwnd);
+    session.run(.resume_hotkeys_for_recording);
 }
 
 fn capture(virtual_key: u32, modifiers: u32) void {

@@ -1,16 +1,17 @@
 //! What the knots configuration window edits: the running profile's `live` copy and a draft of the global settings, changed only through `Ref`'s setters; main thread only.
 const std = @import("std");
+const win32 = @import("../../platform/win32.zig");
 const config = @import("../../config.zig");
-const registry = @import("../../protocol/registry.zig");
-const app_mod = @import("../../app.zig");
 const patch = @import("../../config/patch.zig");
-const run_on_startup = @import("../run_on_startup.zig");
+const set = @import("../../thumbnail/set.zig");
+const dialog_host = @import("../dialog_host.zig");
 const field_strings = @import("field_strings.zig");
 const log = @import("../../log.zig");
 
-const App = app_mod.App;
 const Config = config.Config;
 const GlobalConfig = config.GlobalConfig;
+const ThumbnailSet = set.ThumbnailSet;
+const LiveLayout = dialog_host.LiveLayout;
 const ListItem = field_strings.ListItem;
 const fieldDefault = field_strings.fieldDefault;
 const slog = log.Scoped("dialog_knots");
@@ -19,8 +20,10 @@ pub const Doc = enum { profile, global };
 
 const Retired = struct { allocator: std.mem.Allocator, bytes: []const u8 };
 
-/// Set once by init; outlives the window.
-var g_app: ?*App = null;
+/// Set once by init; what it borrows outlives the window.
+var g_context: ?dialog_host.Context = null;
+/// Set once by init.
+var g_host: ?dialog_host.Host = null;
 var g_allocator: std.mem.Allocator = undefined;
 /// Set while the window is open, from begin to end.
 var g_global_draft: ?GlobalConfig = null;
@@ -29,6 +32,8 @@ var g_retired: std.ArrayList(Retired) = .empty;
 var g_is_dirty_stale: bool = true;
 var g_is_profile_dirty: bool = false;
 var g_is_global_dirty: bool = false;
+/// Set by a failed Save with global changes and cleared by the next that succeeds, since the running settings may match the draft yet not be on disk.
+var g_is_global_save_pending: bool = false;
 /// Set by any edit, since one made after the widgets showing it were drawn needs another frame to appear.
 var g_edited_this_frame: bool = false;
 
@@ -38,7 +43,7 @@ pub fn Ref(comptime T: type) type {
         doc: Doc,
         ptr: *T,
         /// What the thumbnails need after an edit.
-        layout: app_mod.LiveLayout,
+        layout: LiveLayout,
         /// Which item of a list this is, so its widgets' keys differ from its siblings'.
         index: usize = 0,
 
@@ -74,7 +79,7 @@ pub fn Ref(comptime T: type) type {
 
         /// `set` for several non-string fields, previewed once so thumbnails never lay out a half-applied change; `values` is e.g. `.{ .width = w, .height = h }`.
         pub fn setFields(self: Self, values: anytype) void {
-            var layout: app_mod.LiveLayout = .none;
+            var layout: LiveLayout = .none;
             var is_changed = false;
             inline for (@typeInfo(@TypeOf(values)).@"struct".field_names) |field| {
                 const F = @FieldType(T, field);
@@ -204,20 +209,35 @@ pub fn Ref(comptime T: type) type {
     };
 }
 
-/// At startup, before anything else here; `app` outlives every window.
-pub fn init(app: *App) void {
-    g_app = app;
-    g_allocator = app.allocator;
+/// At startup, before anything else here.
+pub fn init(app_context: dialog_host.Context, app_host: dialog_host.Host) void {
+    g_context = app_context;
+    g_host = app_host;
+    g_allocator = app_context.allocator;
 }
 
 /// What the window edits and previews into; only after init, which host.init runs at startup.
-pub fn runningApp() *App {
-    return g_app orelse unreachable;
+pub fn appContext() dialog_host.Context {
+    return g_context orelse unreachable;
+}
+
+/// Null while a rebuild failed; read each time, as it's rebuilt.
+pub fn thumbnailSet() ?*ThumbnailSet {
+    return appHost().thumbnail_set();
+}
+
+/// The hidden window commands are posted to; null until main.zig creates it.
+pub fn timerWindow() ?win32.HWND {
+    return appHost().timer_window();
+}
+
+pub fn run(request: dialog_host.Request) void {
+    appHost().run(request);
 }
 
 /// Starts over from what's saved; called as the window opens.
 pub fn begin() !void {
-    g_global_draft = try cloneGlobal(g_allocator, &runningApp().global_settings);
+    g_global_draft = try appContext().global_settings.clone(g_allocator);
     g_is_dirty_stale = true;
 }
 
@@ -228,7 +248,7 @@ pub fn end() void {
     g_retired = .empty;
     if (g_global_draft) |*draft| draft.deinit();
     g_global_draft = null;
-    log.setLevel(runningApp().global_settings.logLevel);
+    log.setLevel(appContext().global_settings.logLevel);
     dropProfileEdits();
 }
 
@@ -239,7 +259,7 @@ pub fn beginFrame() void {
 
 /// The running profile, edited and previewed live.
 pub fn profile() Ref(Config) {
-    return .{ .doc = .profile, .ptr = &runningApp().store.live, .layout = .none };
+    return .{ .doc = .profile, .ptr = &appContext().store.live, .layout = .none };
 }
 
 /// Whether the edited profile shows thumbnails, which decides where thumbnail-only settings are offered.
@@ -255,7 +275,7 @@ pub fn profileReplaced() void {
 /// The global settings as the window has them, saved or not; the running ones while it's closed.
 pub fn liveGlobal() *const GlobalConfig {
     if (g_global_draft) |*draft| return draft;
-    return &runningApp().global_settings;
+    return appContext().global_settings;
 }
 
 /// Only while the window is open, between begin and end.
@@ -282,17 +302,15 @@ pub fn isDirty() bool {
 pub fn save() !void {
     refreshDirty();
     slog.info("Saving configuration (profile dirty: {}, global dirty: {})", .{ g_is_profile_dirty, g_is_global_dirty });
-    const global_draft: ?*GlobalConfig = if (!g_is_global_dirty) null else if (g_global_draft) |*draft| draft else null;
-    if (g_is_profile_dirty) try runningApp().store.commit();
-    if (g_is_profile_dirty or global_draft != null) try runningApp().applySavedSettings(global_draft);
+    const global_draft: ?*const GlobalConfig = if (!g_is_global_dirty) null else if (g_global_draft) |*draft| draft else null;
+    errdefer {
+        if (global_draft != null) g_is_global_save_pending = true;
+        g_is_dirty_stale = true;
+    }
+    try appHost().save(.{ .is_profile_dirty = g_is_profile_dirty, .global_draft = global_draft });
     if (global_draft != null) {
         try resetGlobalDraft();
-        const settings = &runningApp().global_settings;
-        try settings.save(runningApp().io);
-        log.setLevel(settings.logLevel);
-        if (settings.logLevel == .debug) log.openDebugConsole() else log.closeDebugConsole();
-        run_on_startup.apply(settings.runOnStartup);
-        if (settings.autoRegisterProtocol) registry.ensureRegistered();
+        g_is_global_save_pending = false;
     }
     g_is_dirty_stale = true;
 }
@@ -301,7 +319,7 @@ pub fn save() !void {
 pub fn discard() !void {
     dropProfileEdits();
     try resetGlobalDraft();
-    log.setLevel(runningApp().global_settings.logLevel);
+    log.setLevel(appContext().global_settings.logLevel);
     g_is_dirty_stale = true;
 }
 
@@ -334,13 +352,13 @@ pub fn takeEdited() bool {
     return g_edited_this_frame;
 }
 
-fn edited(doc: Doc, field_layout: app_mod.LiveLayout, ref_layout: app_mod.LiveLayout) void {
+fn edited(doc: Doc, field_layout: LiveLayout, ref_layout: LiveLayout) void {
     g_is_dirty_stale = true;
     g_edited_this_frame = true;
     switch (doc) {
         .profile => {
-            runningApp().store.live.validate();
-            runningApp().onLiveProfileEdited(wider(field_layout, ref_layout));
+            appContext().store.live.validate();
+            run(.{ .live_profile_edited = wider(field_layout, ref_layout) });
         },
         .global => {
             const draft = if (g_global_draft) |*open| open else {
@@ -354,18 +372,23 @@ fn edited(doc: Doc, field_layout: app_mod.LiveLayout, ref_layout: app_mod.LiveLa
 }
 
 fn dropProfileEdits() void {
-    const store = &runningApp().store;
+    const store = appContext().store;
     if (!store.isDirty()) return;
     slog.info("Dropping unsaved edits to the running profile", .{});
     store.discard() catch |err| {
         slog.err("Failed to drop unsaved edits to the running profile: {}", .{err});
         return;
     };
-    runningApp().onLiveProfileEdited(.all);
+    run(.{ .live_profile_edited = .all });
+}
+
+/// Only after init, which host.init runs at startup.
+fn appHost() dialog_host.Host {
+    return g_host orelse unreachable;
 }
 
 fn resetGlobalDraft() !void {
-    const fresh = try cloneGlobal(g_allocator, &runningApp().global_settings);
+    const fresh = try appContext().global_settings.clone(g_allocator);
     if (g_global_draft) |*draft| draft.deinit();
     g_global_draft = fresh;
 }
@@ -374,39 +397,34 @@ fn resetGlobalDraft() !void {
 fn refreshDirty() void {
     if (!g_is_dirty_stale) return;
     g_is_dirty_stale = false;
-    g_is_profile_dirty = runningApp().store.isDirty();
-    g_is_global_dirty = isGlobalDirty() catch |err| blk: {
+    g_is_profile_dirty = appContext().store.isDirty();
+    const is_draft_changed = isGlobalDirty() catch |err| blk: {
         slog.err("Failed to compare the edited global settings with the saved ones: {}", .{err});
         break :blk true;
     };
+    g_is_global_dirty = g_is_global_save_pending or is_draft_changed;
 }
 
 fn isGlobalDirty() !bool {
     const draft = if (g_global_draft) |*open| open else return false;
-    var arena_state = std.heap.ArenaAllocator.init(g_allocator);
+    var arena_state: std.heap.ArenaAllocator = .init(g_allocator);
     defer arena_state.deinit();
     const arena = arena_state.allocator();
-    return !std.mem.eql(u8, try editableJson(arena, draft), try editableJson(arena, &runningApp().global_settings));
+    return !std.mem.eql(u8, try editableJson(arena, draft), try editableJson(arena, appContext().global_settings));
 }
 
 /// Leaves out GlobalConfig.running_fields, which the app changes and the form never does.
-fn editableJson(arena: std.mem.Allocator, settings: *GlobalConfig) ![]const u8 {
+fn editableJson(arena: std.mem.Allocator, settings: *const GlobalConfig) ![]const u8 {
     var value = try std.json.parseFromSliceLeaky(std.json.Value, arena, try settings.toJsonString(arena), .{});
     if (value != .object) return error.InvalidGlobalSettings;
     inline for (GlobalConfig.running_fields) |name| _ = value.object.orderedRemove(name);
     return std.json.Stringify.valueAlloc(arena, value, .{});
 }
 
-fn cloneGlobal(allocator: std.mem.Allocator, settings: *GlobalConfig) !GlobalConfig {
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
-    return GlobalConfig.fromWire(try settings.toWire(arena.allocator()), allocator);
-}
-
 fn documentAllocator(doc: Doc) std.mem.Allocator {
     return switch (doc) {
         .profile => profile().ptr.allocator,
-        // cloneGlobal builds the draft with it.
+        // begin clones the draft with it.
         .global => g_allocator,
     };
 }
@@ -442,7 +460,7 @@ fn freeRetired() void {
 }
 
 /// What an edit to `field` re-lays out: display and spaces everything; thumbnail size and member lists the spaces.
-fn layoutFor(comptime T: type, comptime field: []const u8, comptime inherited: app_mod.LiveLayout) app_mod.LiveLayout {
+fn layoutFor(comptime T: type, comptime field: []const u8, comptime inherited: LiveLayout) LiveLayout {
     if (T == Config) {
         if (std.mem.eql(u8, field, "display") or std.mem.eql(u8, field, "thumbnailSpaces")) return .all;
         if (std.mem.eql(u8, field, "characters") or std.mem.eql(u8, field, "hotkeyGroups")) return .spaces;
@@ -452,6 +470,6 @@ fn layoutFor(comptime T: type, comptime field: []const u8, comptime inherited: a
 }
 
 /// LiveLayout's tags run from narrowest to widest.
-fn wider(first: app_mod.LiveLayout, second: app_mod.LiveLayout) app_mod.LiveLayout {
+fn wider(first: LiveLayout, second: LiveLayout) LiveLayout {
     return @fromBackingInt(@intCast(@max(@backingInt(first), @backingInt(second))));
 }

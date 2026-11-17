@@ -129,7 +129,7 @@ pub fn openRestorePrompt(backup: []const u8, display_name: []const u8) void {
         clearRestore();
         return;
     };
-    const accent = config.readProfileBackupAccent(g_allocator, session.runningApp().io, backup) catch |err| blk: {
+    const accent = config.readProfileBackupAccent(g_allocator, session.appContext().io, backup) catch |err| blk: {
         slog.warn("Failed to read the colour of backup '{s}': {}", .{ backup, err });
         break :blk null;
     };

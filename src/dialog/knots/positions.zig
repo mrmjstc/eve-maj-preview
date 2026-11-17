@@ -13,7 +13,7 @@ const LiveWindow = struct { position: config.Position, size: config.WindowSize }
 
 /// Logged-in clients' character names, copied into `arena`.
 pub fn openClients(arena: std.mem.Allocator) ![][]const u8 {
-    const scout = &session.runningApp().scout;
+    const scout = session.appContext().scout;
     var names: std.ArrayList([]const u8) = .empty;
     for (scout.getWindows()) |window| {
         if (!window.is_eve_client or scout_mod.isGenericCharacterName(window.character_name)) continue;
@@ -34,13 +34,13 @@ pub fn clientsNotIn(arena: std.mem.Allocator, taken: []const []const u8) ?[]cons
         status.show(.failure, "No open EVE clients found", .{});
         return null;
     }
-    var count: usize = 0;
+    var kept_count: usize = 0;
     for (names) |name| {
-        if (isListed(taken, name) or isListed(names[0..count], name)) continue;
-        names[count] = name;
-        count += 1;
+        if (isListed(taken, name) or isListed(names[0..kept_count], name)) continue;
+        names[kept_count] = name;
+        kept_count += 1;
     }
-    return names[0..count];
+    return names[0..kept_count];
 }
 
 /// Matched ignoring case and spaces at either end, as a client's name is.
@@ -70,7 +70,7 @@ pub fn clear(name: []const u8) !void {
 }
 
 fn liveWindow(character_name: []const u8) !LiveWindow {
-    const scout = &session.runningApp().scout;
+    const scout = session.appContext().scout;
     const hwnd = scout.getHwndByName(character_name) orelse return error.MissingCharacterWindow;
     // A minimized window sits at the off-screen parking spot, not a real position.
     if (win32.isWindowIconic(hwnd)) return error.CharacterWindowIsMinimized;
@@ -82,5 +82,5 @@ fn liveWindow(character_name: []const u8) !LiveWindow {
 fn setWindowPositions(character_name: ?[]const u8, window: ?LiveWindow) !void {
     const position: ?config.Position = if (window) |live| live.position else null;
     const size: ?config.WindowSize = if (window) |live| live.size else null;
-    try session.runningApp().store.setWindowPosition(character_name, position, size);
+    try session.appContext().store.setWindowPosition(character_name, position, size);
 }

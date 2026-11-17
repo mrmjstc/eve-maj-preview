@@ -3,6 +3,7 @@ const std = @import("std");
 const zkill = @import("zkill.zig");
 const http_client = @import("../util/http_client.zig");
 const detached = @import("../util/detached.zig");
+const handoff = @import("../util/handoff.zig");
 const log = @import("../log.zig");
 
 const Kill = zkill.Kill;
@@ -65,10 +66,8 @@ pub const ZkillFeed = struct {
     next_run_ms: u64 = 0,
     /// Main thread only: when the last batch was taken, in ms since boot.
     last_taken_ms: u64 = 0,
-    /// Set while a run's thread runs.
-    is_busy: std.atomic.Value(bool) = .init(false),
-    /// The newest batch not yet taken; ownership passes with the swap.
-    ready: std.atomic.Value(?*Batch) = .init(null),
+    /// Shared with the run's thread.
+    job: handoff.Job(Batch) = .{},
     /// The next file to read, 0 to start at the newest; the run's thread only, or the main thread while none runs.
     sequence: u64 = 0,
     /// Ids whose names were asked for; the run's thread only, or the main thread while none runs.
@@ -76,44 +75,39 @@ pub const ZkillFeed = struct {
 
     /// After the run's thread has finished; `allocator` is the one poll was given.
     pub fn deinit(self: *ZkillFeed, allocator: std.mem.Allocator) void {
-        if (self.take()) |batch| batch.destroy();
+        if (self.job.take()) |batch| batch.destroy();
         self.asked_ids.deinit(allocator);
     }
 
     /// Per tick while kills show: starts a run once one is due and the last batch was taken.
     pub fn poll(self: *ZkillFeed, allocator: std.mem.Allocator, now_ms: u64) void {
-        if (now_ms < self.next_run_ms or self.ready.load(.acquire) != null) return;
-        if (self.is_busy.swap(true, .acq_rel)) return;
+        if (now_ms < self.next_run_ms or self.job.hasResult() or !self.job.claim()) return;
         if (now_ms -| self.last_taken_ms > RESTART_GAP_MS) self.sequence = 0;
         detached.spawn(run, .{ self, allocator }) catch |err| {
             slog.err("Failed to follow zKillboard's kills: {}", .{err});
-            self.is_busy.store(false, .release);
+            self.job.finish();
             self.next_run_ms = now_ms + RETRY_WAIT_MS;
         };
     }
 
     /// The caller owns the result, and frees it with destroy; the next run is due its wait from `now_ms`.
     pub fn takeBatch(self: *ZkillFeed, now_ms: u64) ?*Batch {
-        const batch = self.take() orelse return null;
+        const batch = self.job.take() orelse return null;
         self.next_run_ms = now_ms + batch.wait_ms;
         self.last_taken_ms = now_ms;
         return batch;
     }
-
-    fn take(self: *ZkillFeed) ?*Batch {
-        return self.ready.swap(null, .acq_rel);
-    }
 };
 
-/// The run's thread; touches nothing of the main thread's but the feed's atomics, its run-owned fields and the allocator.
+/// The run's thread; touches nothing of the main thread's but the feed's job, its run-owned fields and the allocator.
 fn run(feed: *ZkillFeed, allocator: std.mem.Allocator) void {
-    defer feed.is_busy.store(false, .release);
+    defer feed.job.finish();
     const batch = allocator.create(Batch) catch |err| {
         slog.err("Failed to follow zKillboard's kills: {}", .{err});
         return;
     };
     batch.* = .{ .allocator = allocator };
-    defer if (feed.ready.swap(batch, .acq_rel)) |unclaimed| unclaimed.destroy();
+    defer if (feed.job.deliver(batch)) |unclaimed| unclaimed.destroy();
 
     // Logs its own failure; the batch still goes, empty, so the main thread waits before trying again.
     var session = http_client.Session.init() catch return;

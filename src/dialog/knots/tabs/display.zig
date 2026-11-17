@@ -127,7 +127,7 @@ fn currentRatio(width: i32, height: i32) usize {
 
 /// The first open, non-minimized client's game-area ratio.
 fn clientRatio() ?f32 {
-    const scout_ptr = &session.runningApp().scout;
+    const scout_ptr = session.appContext().scout;
     for (scout_ptr.getWindows()) |window| {
         // A minimized window's client area reads as 0x0.
         if (!window.is_eve_client or win32.isWindowIconic(window.hwnd)) continue;

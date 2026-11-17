@@ -66,7 +66,7 @@ fn mainImpl(init: std.process.Init) !void {
     sound.setIo(init.io);
     config.setEnvironMap(init.environ_map);
 
-    setCwdToExecutableDir();
+    const is_in_executable_dir = setCwdToExecutableDir();
     config.migrateLegacyLayout(init.io);
 
     // toSlice's result spans several allocations, so it takes an arena.
@@ -92,6 +92,8 @@ fn mainImpl(init: std.process.Init) !void {
     }
 
     slog.info("EVE-Maj Preview v{s}", .{build_options.version});
+    // Elsewhere, the folders it would sweep might not be the app's.
+    if (is_in_executable_dir) config.sweepTempFiles(init.io);
 
     fonts.loadBundled();
 
@@ -110,7 +112,7 @@ fn mainImpl(init: std.process.Init) !void {
     app_mod.g_app = &app;
     defer app_mod.g_app = null;
     defer app.deinit();
-    knots_host.init(&app);
+    app.dialog = knots_host.init(app.dialogContext(), app_mod.DIALOG_HOST);
     defer knots_host.deinit();
     lang.init(allocator, app.global_settings.language);
     defer lang.deinit();
@@ -270,23 +272,25 @@ fn startUpdateCheck(allocator: std.mem.Allocator, io: std.Io) void {
     };
 }
 
-/// Run-key startup entries launch with an arbitrary working directory, not the exe's folder.
-fn setCwdToExecutableDir() void {
+/// Run-key startup entries launch with an arbitrary working directory, not the exe's folder; false if it couldn't be changed.
+fn setCwdToExecutableDir() bool {
     var executable_dir_buf: [std.Io.Dir.max_path_bytes]u8 = undefined;
     const executable_dir = win32.selfExecutableDirPath(&executable_dir_buf) catch |err| {
         slog.warn("Failed to resolve the executable directory: {}", .{err});
-        return;
+        return false;
     };
 
     var terminated_dir_buf: [std.Io.Dir.max_path_bytes + 1]u8 = undefined;
     const terminated_dir = std.mem.printSentinel(&terminated_dir_buf, "{s}", .{executable_dir}, 0) catch |err| {
         slog.warn("Failed to null-terminate the executable directory path: {}", .{err});
-        return;
+        return false;
     };
 
     if (!win32.toBool(win32.SetCurrentDirectoryA(terminated_dir))) {
         slog.warn("Failed to set the working directory to '{s}': error {d}", .{ executable_dir, win32.GetLastError() });
+        return false;
     }
+    return true;
 }
 
 fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {

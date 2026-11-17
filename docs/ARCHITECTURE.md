@@ -26,7 +26,7 @@ All relative to the exe folder (`main.zig` sets the cwd there).
 | `logs/eve-maj.log`, `.old` | Log, rotated at 20 MB | `log.zig` |
 | `logs/eve-maj-crash.dmp` | Minidump of the latest crash | `crash.zig` |
 
-`config/files.zig`'s `migrateLegacyLayout` moves files older versions kept beside the exe into `data/` and `logs/`.
+`config/files.zig`'s `migrateLegacyLayout` moves files older versions kept beside the exe into `data/` and `logs/`. Every save writes `<file>.<hex>.tmp` and renames it over the file; `sweepTempFiles` deletes the ones a killed process left in `profiles/`, `data/` and `data/portraits/`.
 
 ## Startup (`main.zig`)
 
@@ -34,7 +34,7 @@ All relative to the exe folder (`main.zig` sets the cwd there).
 2. Parse arguments (`arguments.zig`: `--profile`/`-p`, `--config`, `--protocol <url>`).
 3. `--protocol`: forward to the running instance over `WM_COPYDATA` and exit. Done before the single-instance check.
 4. Claim the `Global\EVE-Maj-Preview-SingleInstance` mutex. If taken, send `evemajpreview://config` to the running instance and exit.
-5. Load bundled fonts and start the hotkey hook thread, then `GlobalConfig`, `CharacterIds` and the profile into a `ProfileStore`, which `App.init` takes as `App.Loaded`; then set `app.g_app`, start the dialog host and load the language.
+5. Sweep leftover temp files, skipped if the working directory couldn't be set to the exe's folder. Load bundled fonts and start the hotkey hook thread, then `GlobalConfig`, `CharacterIds` and the profile into a `ProfileStore`, which `App.init` takes as `App.Loaded`; then set `app.g_app`, start the dialog host and load the language.
 6. Build subsystems in dependency order: notification center → `Scout`'s event hooks → `ThumbnailSet` → `ChatlogMonitor` (worker stopped) → activity `Trackers` → start the chatlog worker.
 7. Create the hidden timer window, focus hook, tray icon, update check thread.
 8. Scan windows, populate thumbnails, add characters to the chatlog monitor.
@@ -66,8 +66,8 @@ Reload entry points:
 |---|---|---|
 | `requestProfileSwitch` → `WM_SWITCH_PROFILE` → `switchProfile` | Tray, hotkey | Deferred to the next message-loop turn |
 | `switchProfile` | Protocol, dialog | Loads the profile, then `restartSubsystems` |
-| `applySavedSettings` | Dialog Save | `restartSubsystems` with the same store |
-| `onLiveProfileEdited` | Every dialog edit | Restyle/reflow; rebuilds the thumbnail set only on a view-mode change |
+| `saveSettings` (`DIALOG_HOST.save`) | Dialog Save | Commits the profile, `restartSubsystems` with the same store adopting a copy of the global draft, then writes and applies the global settings |
+| `onLiveProfileEdited` (`DIALOG_HOST.run`) | Every dialog edit | Restyle/reflow; rebuilds the thumbnail set only on a view-mode change |
 
 `restartSubsystems` runs the steps from `control/restart_plan.zig` (pure, tested): which subsystems are kept, paused or rebuilt, in what order, and what to bring back up if a step fails. A kept chatlog worker is paused until the new trackers are wired in. A new store is built before anything is torn down, so a load failure leaves the running profile intact.
 
@@ -318,7 +318,7 @@ WM_HOTKEY -> timerWindowProc -> HotkeyManager.handleHotkeyPress -> runAction
 Immediate-mode (knots on Vulkan), main thread, nested message loop so the tick and tray keep running. Each frame reads settings and writes them straight back; there's no form state.
 
 - `knots/host.zig`: window lifecycle, nested loop, close prompt, saved position. Every save goes through `saveChanges`, which refuses while hotkeys conflict. Anything that replaces documents or touches the app is posted as `WM_KNOTS_COMMAND` and runs between frames.
-- `knots/session.zig`: edits `store.live` and a `GlobalConfig` draft. Every change goes through `Ref.set` (or list `append`/`remove`/`move`): copies strings, clamps, calls `App.onLiveProfileEdited`. Replaced strings are freed a frame later. Dirty = differs from saved. `save()` commits, restarts subsystems and adopts the global draft.
+- `knots/session.zig`: edits `store.live` and a `GlobalConfig` draft. Every change goes through `Ref.set` (or list `append`/`remove`/`move`): copies strings, clamps, asks App to restyle through `session.run`. Replaced strings are freed a frame later. Dirty = differs from saved, or a Save with global changes failed. `save()` hands App the profile's dirty flag and the global draft, which App adopts a copy of, so a failed save leaves the draft as typed.
 - `knots/form.zig`: header, sidebar, open tab, footer, prompts. The sidebar groups tabs under Clients, Display, Panels, Input, Alerts and App. `knots/tabs/`: one file per tab, plus sections kept in their own files (`panel_settings.zig`, `window_filters.zig`, `chatlog.zig`). `widgets.openSharedSection` tags a section whose settings every profile shares.
 - `knots/widgets.zig`, `bind.zig`, `style.zig`: layout pieces, setting-bound controls, styles.
 - `knots/roster.zig`, `selection.zig`: a list tab's rows and which item its details show (pure, tested). `tabs/panel_preview.zig`: the panel previews' stage, frame, header and clickable parts.
@@ -332,7 +332,7 @@ Immediate-mode (knots on Vulkan), main thread, nested message loop so the tick a
 - Direct calls, no event bus. Code is handed `*App` or just what it needs.
 - Win32 callbacks have no context pointer: window procs and hooks read `app.g_app` (or `app.currentThumbnailSet()`) and pass it down, except the panels', which get App's `PANEL_HOST` (the Map Panel through `MapPanel.host`, set by `App.init`) and find what they belong to through their window's owner. Modules below them never read the global. Scout keeps a private pointer for its own hooks so it stays testable.
 - A panel finds its own window struct from the `hwnd`: its owner attaches it with `PanelWindow.attachOwner` once it's stored, and the window proc reads it back with `panel_window.ownerOf`.
-- The dialog reaches the app through `session.runningApp()`. App doesn't import the dialog: `host.init` hands it `DialogHooks` (redraw, is open, close for exit, the live global settings, open at a panel's settings page).
+- The dialog reaches App only through `dialog/dialog_host.zig`, as the panels do through `PANEL_HOST`: `host.init` takes App's `Context` (allocator, io, store, global settings, Scout, character IDs) and `DIALOG_HOST` (thumbnail set, timer window, save, requests), and hands back `DialogHooks` (redraw, is open, close for exit, the live global settings, open at a panel's settings page). `import_cycles.py` fails if `dialog/` imports `app.zig` again.
 - `platform/` depends on nothing app-specific. Win32 declarations live in `platform/win32.zig`, which never logs.
 - Pure logic is split into its own file (marked "no I/O" in its header) and tested.
 

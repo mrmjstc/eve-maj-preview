@@ -52,7 +52,7 @@ pub fn show(context: *ui.Frame) !void {
 
 /// Saved with the fetched prices, so discarding them discards it too.
 pub fn stampPricesFetched() void {
-    session.global().set("orePricesFetchedAtSeconds", std.Io.Timestamp.now(session.runningApp().io, .real).toSeconds());
+    session.global().set("orePricesFetchedAtSeconds", std.Io.Timestamp.now(session.appContext().io, .real).toSeconds());
 }
 
 /// Global settings only hold prices that differ from the catalogue's.

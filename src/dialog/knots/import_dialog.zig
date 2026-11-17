@@ -166,7 +166,7 @@ pub fn applyImport() !void {
 }
 
 fn readFile(path: []const u8) !void {
-    g_file_text = try std.Io.Dir.cwd().readFileAlloc(session.runningApp().io, path, arena(), .limited(MAX_FILE_BYTES));
+    g_file_text = try std.Io.Dir.cwd().readFileAlloc(session.appContext().io, path, arena(), .limited(MAX_FILE_BYTES));
     g_file_name = try arena().dupe(u8, std.fs.path.basename(path));
 }
 

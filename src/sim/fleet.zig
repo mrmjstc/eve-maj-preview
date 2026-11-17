@@ -326,8 +326,8 @@ pub const Fleet = struct {
     pub fn fireAlert(self: *Fleet, index: usize, alert: Alert) void {
         const client = &self.clients.items[index];
         if (!self.isWritable(client)) return;
-        var destination_buf: [lines.MAX_SYSTEM_NAME_LENGTH]u8 = undefined;
-        const destination = if (alert == .conduit_jump) self.randomNeighbour(client.system, &destination_buf) else "";
+        var destination_buffer: [lines.MAX_SYSTEM_NAME_LENGTH]u8 = undefined;
+        const destination = if (alert == .conduit_jump) self.randomNeighbour(client.system, &destination_buffer) else "";
         var text: std.Io.Writer.Allocating = .init(self.allocator);
         defer text.deinit();
         alert.write(&text.writer, destination) catch return self.outOfMemory("an alert line");
@@ -407,11 +407,11 @@ pub const Fleet = struct {
             self.note(.warning, "{s} is already on a route", .{client.name});
             return;
         }
-        var route_buf: [ROUTE_JUMPS][lines.MAX_SYSTEM_NAME_LENGTH]u8 = undefined;
+        var route_buffer: [ROUTE_JUMPS][lines.MAX_SYSTEM_NAME_LENGTH]u8 = undefined;
         var from = client.system;
         const now = win32.Ticks.now().ms;
-        for (&route_buf, 0..) |*buf, step_index| {
-            const system = self.randomNeighbour(from, buf);
+        for (&route_buffer, 0..) |*buffer, step_index| {
+            const system = self.randomNeighbour(from, buffer);
             from = system;
             self.schedule.add(now + @as(u64, step_index) * ROUTE_INTERVAL_MS, client.name, .route, .{ .move = .{ .system = system } }) catch |err| {
                 slog.err("Failed to schedule a route for '{s}': {}", .{ client.name, err });
@@ -425,8 +425,8 @@ pub const Fleet = struct {
 
     /// Through one random gate.
     pub fn jumpRandomly(self: *Fleet, index: usize) void {
-        var destination_buf: [lines.MAX_SYSTEM_NAME_LENGTH]u8 = undefined;
-        const destination = self.randomNeighbour(self.clients.items[index].system, &destination_buf);
+        var destination_buffer: [lines.MAX_SYSTEM_NAME_LENGTH]u8 = undefined;
+        const destination = self.randomNeighbour(self.clients.items[index].system, &destination_buffer);
         self.move(index, destination, .both, 0);
     }
 
@@ -742,8 +742,8 @@ pub const Fleet = struct {
         return std.Io.Dir.path.join(self.allocator, &.{ self.state_dir, file_name.written() });
     }
 
-    /// A gate neighbour of `from`, written into `buf`; from Jita when `from` isn't on the gate map.
-    fn randomNeighbour(self: *Fleet, from: []const u8, buf: *[lines.MAX_SYSTEM_NAME_LENGTH]u8) []const u8 {
+    /// A gate neighbour of `from`, written into `buffer`; from Jita when `from` isn't on the gate map.
+    fn randomNeighbour(self: *Fleet, from: []const u8, buffer: *[lines.MAX_SYSTEM_NAME_LENGTH]u8) []const u8 {
         const origin = universe.findSystem(from) orelse universe.findSystem(DEFAULT_SYSTEM) orelse return DEFAULT_SYSTEM;
         var neighbour_count: usize = 0;
         var counted = universe.neighbours(origin);
@@ -756,9 +756,9 @@ pub const Fleet = struct {
             chosen -= 1;
         } else origin;
         const name = universe.systemName(system);
-        const length = @min(name.len, buf.len);
-        @memcpy(buf[0..length], name[0..length]);
-        return buf[0..length];
+        const length = @min(name.len, buffer.len);
+        @memcpy(buffer[0..length], name[0..length]);
+        return buffer[0..length];
     }
 
     fn nowSeconds(self: *const Fleet) u64 {
@@ -771,8 +771,8 @@ pub const Fleet = struct {
 
     /// Re-copied each start, so clients run this build; a copy still running from a crashed simulator keeps the old one.
     fn refreshClientExe(self: *Fleet) void {
-        var path_buf: [std.Io.Dir.max_path_bytes]u8 = undefined;
-        const own_path = win32.selfExecutablePath(&path_buf) catch |err| {
+        var path_buffer: [std.Io.Dir.max_path_bytes]u8 = undefined;
+        const own_path = win32.selfExecutablePath(&path_buffer) catch |err| {
             slog.err("Failed to find the simulator's own executable: {}", .{err});
             return;
         };
@@ -821,7 +821,7 @@ const WindowSearch = struct { process_id: win32.DWORD, found: ?win32.HWND = null
 
 fn findWindow(process_id: win32.DWORD) ?win32.HWND {
     var search: WindowSearch = .{ .process_id = process_id };
-    _ = win32.EnumWindows(findWindowCallback, @bitCast(@intFromPtr(&search)));
+    _ = win32.EnumWindows(findWindowCallback, win32.ptrToLparam(&search));
     return search.found;
 }
 
@@ -830,8 +830,8 @@ fn findWindowCallback(hwnd: win32.HWND, lParam: win32.LPARAM) callconv(.c) win32
     var process_id: win32.DWORD = 0;
     _ = win32.GetWindowThreadProcessId(hwnd, &process_id);
     if (process_id != search.process_id) return win32.TRUE;
-    var class_buf: [64]u8 = undefined;
-    const class_name = win32.getClassNameBuf(hwnd, &class_buf) orelse return win32.TRUE;
+    var class_buffer: [64]u8 = undefined;
+    const class_name = win32.getClassName(hwnd, &class_buffer) orelse return win32.TRUE;
     if (!std.mem.eql(u8, class_name, client_window.CLASS_NAME)) return win32.TRUE;
     search.found = hwnd;
     return win32.FALSE;

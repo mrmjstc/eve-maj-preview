@@ -32,6 +32,7 @@ pub const environMap = files.environMap;
 pub const DEFAULT_PROFILE = files.DEFAULT_PROFILE;
 pub const atomicWriteFile = files.atomicWriteFile;
 pub const migrateLegacyLayout = files.migrateLegacyLayout;
+pub const sweepTempFiles = files.sweepTempFiles;
 pub const loadProfile = profiles.load;
 pub const listProfiles = profiles.list;
 pub const writeDefaultProfile = profiles.writeDefault;

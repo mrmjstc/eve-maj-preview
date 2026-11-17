@@ -65,6 +65,7 @@ pub fn build(b: *std.Build) void {
     });
 
     exe.root_module.linkSystemLibrary("advapi32", .{});
+    exe.root_module.linkSystemLibrary("crypt32", .{});
 
     // The configuration window is drawn with knots (src/dialog/knots/).
     const knots = b.dependency("knots", .{ .target = target, .optimize = optimize });

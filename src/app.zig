@@ -24,6 +24,9 @@ const character_ids_mod = @import("chatlog/character_ids.zig");
 const runtime = @import("activity/runtime.zig");
 const travel_left_behind = @import("travel/left_behind.zig");
 const tray = @import("tray.zig");
+const dialog_host = @import("dialog/dialog_host.zig");
+const run_on_startup = @import("dialog/run_on_startup.zig");
+const registry = @import("protocol/registry.zig");
 const schedule = @import("util/schedule.zig");
 const log = @import("log.zig");
 
@@ -42,22 +45,8 @@ const TRAVEL_CHECK_INTERVAL_MS: u64 = 2000;
 const PROFILE_NAME_BUFFER_SIZE = 256;
 /// What the panels ask of App, which they can't import.
 pub const PANEL_HOST: panel_host.Host = .{ .thumbnail_set = currentThumbnailSet, .run = runPanelRequest };
-
-/// How far a live profile edit moves thumbnails; `spaces` reflows only active spaces.
-pub const LiveLayout = enum { none, spaces, all };
-
-/// What App asks of the config dialog, which sits above it and so can't be imported; the dialog fills it in as it starts.
-pub const DialogHooks = struct {
-    /// Draws a frame soon, for a change made outside one.
-    redraw: *const fn () void,
-    is_open: *const fn () bool,
-    /// Returns whether the exit waits for the dialog to close, which then posts the quit itself.
-    close_for_exit: *const fn () bool,
-    /// The global settings as the dialog is editing them, else the saved ones.
-    live_global: *const fn () *const config.GlobalConfig,
-    /// Opens the dialog, or brings it forward, on `page`'s tab.
-    open_at: *const fn (page: panel_host.SettingsPage) void,
-};
+/// What the configuration window asks of App, which it can't import.
+pub const DIALOG_HOST: dialog_host.Host = .{ .thumbnail_set = currentThumbnailSet, .timer_window = currentTimerWindow, .save = saveDialogSettings, .run = runDialogRequest };
 
 /// What restartSubsystems' earlier steps hand to its later ones.
 const Restart = struct {
@@ -110,7 +99,7 @@ pub const App = struct {
     timer_hwnd: ?win32.HWND = null,
     tray_icon: ?tray.TrayIcon = null,
     /// Null until the dialog has started.
-    dialog: ?DialogHooks = null,
+    dialog: ?dialog_host.DialogHooks = null,
     pending_profile_buf: [PROFILE_NAME_BUFFER_SIZE]u8 = undefined,
     /// Borrows from pending_profile_buf.
     pending_profile: ?[]const u8 = null,
@@ -163,6 +152,17 @@ pub const App = struct {
         return .{ .allocator = self.allocator, .store = &self.store, .instance = self.instance };
     }
 
+    pub fn dialogContext(self: *App) dialog_host.Context {
+        return .{
+            .allocator = self.allocator,
+            .io = self.io,
+            .store = &self.store,
+            .global_settings = &self.global_settings,
+            .scout = &self.scout,
+            .character_ids = &self.character_ids,
+        };
+    }
+
     /// Deferred to the next message-loop turn, since the switch would tear down the caller; copies `profile_name`.
     pub fn requestProfileSwitch(self: *App, profile_name: []const u8) void {
         if (profile_name.len > self.pending_profile_buf.len) {
@@ -198,14 +198,27 @@ pub const App = struct {
         };
     }
 
-    /// After a Save, restarts what reads settings only at setup; adopts `global_draft`, leaving it holding the replaced values.
-    pub fn applySavedSettings(self: *App, global_draft: ?*config.GlobalConfig) !void {
+    /// The configuration window's Save; see dialog_host.Host.save.
+    fn saveSettings(self: *App, save: dialog_host.Save) !void {
+        if (save.is_profile_dirty) try self.store.commit();
+        if (!save.is_profile_dirty and save.global_draft == null) return;
         const timer_hwnd = self.timer_hwnd orelse return error.MissingTimerWindow;
-        try self.restartSubsystems(timer_hwnd, null, global_draft);
+        // Adopting swaps in the replaced values, which a restart failing after it would otherwise leave in the window's draft.
+        var draft_copy: ?config.GlobalConfig = if (save.global_draft) |draft| try draft.clone(self.allocator) else null;
+        defer if (draft_copy) |*copy| copy.deinit();
+        try self.restartSubsystems(timer_hwnd, null, if (draft_copy) |*copy| copy else null);
+        if (save.global_draft == null) return;
+
+        const settings = &self.global_settings;
+        try settings.save(self.io);
+        log.setLevel(settings.logLevel);
+        if (settings.logLevel == .debug) log.openDebugConsole() else log.closeDebugConsole();
+        run_on_startup.apply(settings.runOnStartup);
+        if (settings.autoRegisterProtocol) registry.ensureRegistered();
     }
 
     /// After a dialog edit to the live profile.
-    pub fn onLiveProfileEdited(self: *App, layout: LiveLayout) void {
+    fn onLiveProfileEdited(self: *App, layout: dialog_host.LiveLayout) void {
         self.map_panel.sync(self.panelContext());
         self.notifications.sync(self.panelContext());
         const thumbnail_set = self.thumbnail_set orelse return;
@@ -742,6 +755,31 @@ pub fn startChatlogWorker(monitor: *chatlog.ChatlogMonitor) void {
     monitor.startWorkerThread() catch |err| {
         slog.warn("Failed to start chatlog worker thread: {}", .{err});
     };
+}
+
+fn currentTimerWindow() ?win32.HWND {
+    const app = g_app orelse return null;
+    return app.timer_hwnd;
+}
+
+fn saveDialogSettings(save: dialog_host.Save) !void {
+    const app = g_app orelse return error.MissingApp;
+    try app.saveSettings(save);
+}
+
+/// For the configuration window, which reaches App only through DIALOG_HOST.
+fn runDialogRequest(request: dialog_host.Request) void {
+    const app = g_app orelse return;
+    switch (request) {
+        .live_profile_edited => |layout| app.onLiveProfileEdited(layout),
+        .switch_profile => |profile_name| app.switchProfile(profile_name),
+        .suspend_hotkeys_for_recording => if (app.hotkey_manager) |manager| manager.dialogSuspendHotkeys(),
+        .resume_hotkeys_for_recording => {
+            const manager = app.hotkey_manager orelse return;
+            const timer_hwnd = app.timer_hwnd orelse return;
+            manager.dialogResumeHotkeys(timer_hwnd);
+        },
+    }
 }
 
 /// For panel windows, which reach App only through PANEL_HOST.

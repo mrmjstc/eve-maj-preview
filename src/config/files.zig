@@ -20,6 +20,13 @@ pub const CHARACTER_IDS_FILE = DATA_DIR ++ "/character_ids.json";
 pub const PORTRAITS_DIR = DATA_DIR ++ "/portraits";
 /// The colour picked from each sovereignty-holding alliance's logo, so a logo is fetched once.
 pub const LOGO_COLORS_FILE = DATA_DIR ++ "/logo_colors.json";
+/// The folders atomicWriteFile writes the app's own files into; their subfolders aren't swept.
+const TEMP_FILE_DIRS = [_][]const u8{ PROFILES_DIR, DATA_DIR, PORTRAITS_DIR };
+/// What atomicWriteFile writes in TEMP_FILE_DIRS, so a temp file for anything else isn't the app's.
+const TEMP_FILE_TARGET_EXTENSIONS = [_][]const u8{ ".json", ".jpg" };
+const TEMP_FILE_EXTENSION = ".tmp";
+/// A u64 in hex, unpadded.
+const TEMP_FILE_MAX_HEX_DIGITS = 16;
 
 const LEGACY_FILES = [_]struct { from: []const u8, to: []const u8 }{
     .{ .from = "eve-maj.log", .to = log.LOG_FILE_NAME },
@@ -82,6 +89,34 @@ pub fn migrateLegacyLayout(io: std.Io) void {
     }
 }
 
+/// Deletes the temp files a save cut short by the process ending left behind; call once this is the only instance, before anything saves.
+pub fn sweepTempFiles(io: std.Io) void {
+    for (TEMP_FILE_DIRS) |dir_path| {
+        var dir = std.Io.Dir.cwd().openDir(io, dir_path, .{ .iterate = true }) catch |err| switch (err) {
+            error.FileNotFound => continue,
+            else => {
+                slog.warn("Failed to open folder '{s}' to clean up temp files: {}", .{ dir_path, err });
+                continue;
+            },
+        };
+        defer dir.close(io);
+
+        var it = dir.iterate();
+        while (true) {
+            const entry = it.next(io) catch |err| {
+                slog.warn("Failed to list folder '{s}' to clean up temp files: {}", .{ dir_path, err });
+                break;
+            } orelse break;
+            if (entry.kind != .file or !isTempFileName(entry.name)) continue;
+            dir.deleteFile(io, entry.name) catch |err| {
+                slog.warn("Failed to delete leftover temp file '{s}/{s}': {}", .{ dir_path, entry.name, err });
+                continue;
+            };
+            slog.info("Deleted leftover temp file '{s}/{s}'", .{ dir_path, entry.name });
+        }
+    }
+}
+
 /// Doesn't log.
 pub fn createDirIfMissing(io: std.Io, path: []const u8) !void {
     std.Io.Dir.cwd().createDir(io, path, .default_dir) catch |err| switch (err) {
@@ -111,7 +146,7 @@ pub fn atomicWriteFile(allocator: std.mem.Allocator, io: std.Io, path: []const u
         io.random(&random_bytes);
         break :blk std.mem.readInt(u64, &random_bytes, .little);
     };
-    const temp_path = allocator.print("{s}.{x}.tmp", .{ path, unique }) catch |err| {
+    const temp_path = allocator.print("{s}.{x}" ++ TEMP_FILE_EXTENSION, .{ path, unique }) catch |err| {
         slog.err("Failed to build a temp file name for '{s}': {}", .{ path, err });
         return err;
     };
@@ -197,4 +232,40 @@ fn deleteTemp(io: std.Io, temp_path: []const u8, original_err: anyerror) void {
     std.Io.Dir.cwd().deleteFile(io, temp_path) catch |err| {
         slog.err("Failed to clean up temp file '{s}' (original error: {}): {}", .{ temp_path, original_err, err });
     };
+}
+
+/// Only atomicWriteFile's exact `<name>.json|.jpg.<lowercase hex>.tmp`, so no file of anyone else's matches.
+fn isTempFileName(name: []const u8) bool {
+    if (!std.mem.endsWith(u8, name, TEMP_FILE_EXTENSION)) return false;
+    const stem = name[0 .. name.len - TEMP_FILE_EXTENSION.len];
+    const dot_index = std.mem.findScalarLast(u8, stem, '.') orelse return false;
+    const unique = stem[dot_index + 1 ..];
+    if (unique.len == 0 or unique.len > TEMP_FILE_MAX_HEX_DIGITS) return false;
+    for (unique) |char| {
+        if (!std.ascii.isDigit(char) and (char < 'a' or char > 'f')) return false;
+    }
+    const target = stem[0..dot_index];
+    for (TEMP_FILE_TARGET_EXTENSIONS) |extension| {
+        if (target.len > extension.len and std.mem.endsWith(u8, target, extension)) return true;
+    }
+    return false;
+}
+
+test "a temp file name from atomicWriteFile is recognised" {
+    try std.testing.expect(isTempFileName("default.json.9862892f425a8fc0.tmp"));
+    try std.testing.expect(isTempFileName("global.settings.json.a.tmp"));
+    try std.testing.expect(isTempFileName("2112625428.jpg.0123456789abcdef.tmp"));
+}
+
+test "a .tmp not named exactly as atomicWriteFile names one is left alone" {
+    try std.testing.expect(!isTempFileName("default.json"));
+    try std.testing.expect(!isTempFileName("notes.tmp"));
+    try std.testing.expect(!isTempFileName("default.json..tmp"));
+    try std.testing.expect(!isTempFileName("default.json.notahex.tmp"));
+    try std.testing.expect(!isTempFileName("default.json.9862892F425A8FC0.tmp"));
+    try std.testing.expect(!isTempFileName("default.json.123456789abcdef01.tmp"));
+    try std.testing.expect(!isTempFileName("notes.txt.9862892f.tmp"));
+    try std.testing.expect(!isTempFileName("default.9862892f.tmp"));
+    try std.testing.expect(!isTempFileName(".json.9862892f.tmp"));
+    try std.testing.expect(!isTempFileName("default.json.9862892f.tmp.bak"));
 }

@@ -194,7 +194,7 @@ fn scanSources() void {
 
 fn scanOpenClients() !Scan {
     const previous: ?[]const u8 = if (g_sources) |sources| if (sources.names.len > 0) sources.names[@min(sources.selected_index, sources.names.len - 1)] else null else null;
-    var arena = std.heap.ArenaAllocator.init(g_allocator);
+    var arena: std.heap.ArenaAllocator = .init(g_allocator);
     errdefer arena.deinit();
     const names = try positions.openClients(arena.allocator());
     var selected_index: u32 = 0;
@@ -284,8 +284,8 @@ fn scanPotato() void {
         g_potato = .failed;
         return;
     };
-    var arena = std.heap.ArenaAllocator.init(g_allocator);
-    const profiles = ultra_potato.scanProfiles(arena.allocator(), session.runningApp().io, environ_map) catch |err| {
+    var arena: std.heap.ArenaAllocator = .init(g_allocator);
+    const profiles = ultra_potato.scanProfiles(arena.allocator(), session.appContext().io, environ_map) catch |err| {
         arena.deinit();
         slog.err("Failed to scan EVE settings profiles: {}", .{err});
         g_potato = .failed;
@@ -295,9 +295,9 @@ fn scanPotato() void {
 }
 
 fn applyPotato(paths: []const []const u8) void {
-    var arena = std.heap.ArenaAllocator.init(g_allocator);
+    var arena: std.heap.ArenaAllocator = .init(g_allocator);
     defer arena.deinit();
-    const results = ultra_potato.applyToFiles(arena.allocator(), session.runningApp().io, paths) catch |err| {
+    const results = ultra_potato.applyToFiles(arena.allocator(), session.appContext().io, paths) catch |err| {
         slog.err("Failed to apply Ultra Potato Mode: {}", .{err});
         status.show(.failure, "Failed: {err}", .{ .err = err });
         return;

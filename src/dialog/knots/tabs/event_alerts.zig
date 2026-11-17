@@ -36,16 +36,16 @@ const CHIP_BORDERS = 2;
 /// Every type, by category, then as declared; chat rules have settings of their own instead, on the Chat Events tab.
 const TYPES_IN_ORDER = blk: {
     var ordered: [std.enums.values(NotificationType).len]NotificationType = undefined;
-    var count: usize = 0;
+    var listed_count: usize = 0;
     for (std.enums.values(notification.NotificationCategory)) |category| {
         if (category == .Chat) continue;
         for (std.enums.values(NotificationType)) |notification_type| {
             if (notification.notificationCategory(notification_type) != category) continue;
-            ordered[count] = notification_type;
-            count += 1;
+            ordered[listed_count] = notification_type;
+            listed_count += 1;
         }
     }
-    const listed = ordered[0..count].*;
+    const listed = ordered[0..listed_count].*;
     break :blk listed;
 };
 
@@ -115,7 +115,7 @@ pub fn alertSettings(context: *ui.Frame, ref: TypeRef, notification_type: Notifi
 
 /// Fires an alert on every thumbnail with the settings the window has for it, saved or not.
 pub fn testAlert(notification_type: NotificationType, alert: config.NotificationTypeConfig) void {
-    const thumbnail_set = session.runningApp().thumbnail_set orelse {
+    const thumbnail_set = session.thumbnailSet() orelse {
         slog.warn("Failed to test alert: the thumbnail set isn't ready", .{});
         return;
     };

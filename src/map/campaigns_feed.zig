@@ -3,6 +3,7 @@ const std = @import("std");
 const campaigns_mod = @import("campaigns.zig");
 const http_client = @import("../util/http_client.zig");
 const detached = @import("../util/detached.zig");
+const handoff = @import("../util/handoff.zig");
 const log = @import("../log.zig");
 
 const Campaigns = campaigns_mod.Campaigns;
@@ -17,12 +18,8 @@ const RETRY_INTERVAL_MS: u64 = std.time.ms_per_min;
 pub const CampaignsFeed = struct {
     /// Main thread only.
     next_fetch_ms: u64 = 0,
-    /// Set while the fetch thread runs.
-    is_busy: std.atomic.Value(bool) = .init(false),
-    /// Set by the fetch thread when nothing arrived; the main thread clears it.
-    has_failed: std.atomic.Value(bool) = .init(false),
-    /// The newest campaigns not yet taken; ownership passes with the swap.
-    ready: std.atomic.Value(?*Campaigns) = .init(null),
+    /// Shared with the fetch thread.
+    job: handoff.Job(Campaigns) = .{},
 
     /// After the fetch thread has finished; `allocator` is the one poll was given.
     pub fn deinit(self: *CampaignsFeed, allocator: std.mem.Allocator) void {
@@ -31,30 +28,30 @@ pub const CampaignsFeed = struct {
 
     /// Per tick while a running timer shows: starts a fetch once one is due.
     pub fn poll(self: *CampaignsFeed, allocator: std.mem.Allocator, now_ms: u64) void {
-        if (self.has_failed.swap(false, .acq_rel)) self.next_fetch_ms = now_ms + RETRY_INTERVAL_MS;
-        if (now_ms < self.next_fetch_ms or self.is_busy.swap(true, .acq_rel)) return;
+        if (self.job.takeFailure()) self.next_fetch_ms = now_ms + RETRY_INTERVAL_MS;
+        if (now_ms < self.next_fetch_ms or !self.job.claim()) return;
         self.next_fetch_ms = now_ms + LIVE_INTERVAL_MS;
         detached.spawn(fetchThread, .{ self, allocator }) catch |err| {
             slog.err("Failed to fetch sov campaigns: {}", .{err});
-            self.is_busy.store(false, .release);
+            self.job.finish();
         };
     }
 
     /// The caller owns the result, and frees it with the allocator poll was given.
     pub fn take(self: *CampaignsFeed) ?*Campaigns {
-        return self.ready.swap(null, .acq_rel);
+        return self.job.take();
     }
 };
 
-/// The fetch's thread; touches nothing of the main thread's but the feed's atomics and the allocator.
+/// The fetch's thread; touches nothing of the main thread's but the feed's job and the allocator.
 fn fetchThread(feed: *CampaignsFeed, allocator: std.mem.Allocator) void {
-    defer feed.is_busy.store(false, .release);
+    defer feed.job.finish();
     const campaigns = fetchCampaigns(allocator) catch |err| {
         slog.warn("Failed to fetch sov campaigns: {}", .{err});
-        feed.has_failed.store(true, .release);
+        feed.job.fail();
         return;
     };
-    if (feed.ready.swap(campaigns, .acq_rel)) |unclaimed| allocator.destroy(unclaimed);
+    if (feed.job.deliver(campaigns)) |unclaimed| allocator.destroy(unclaimed);
 }
 
 /// Caller destroys the result.

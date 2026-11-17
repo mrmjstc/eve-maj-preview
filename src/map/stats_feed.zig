@@ -7,6 +7,7 @@ const stats = @import("stats.zig");
 const holder_colors = @import("holder_colors.zig");
 const http_client = @import("../util/http_client.zig");
 const detached = @import("../util/detached.zig");
+const handoff = @import("../util/handoff.zig");
 const log = @import("../log.zig");
 
 const LogoColors = holder_colors.LogoColors;
@@ -32,14 +33,10 @@ const MAX_LOGO_COLORS_FILE_SIZE = 64 * 1024;
 pub const StatsFeed = struct {
     /// Main thread only.
     next_fetch: win32.Ticks = .{},
-    /// Set while the fetch thread runs.
-    is_busy: std.atomic.Value(bool) = .init(false),
-    /// Set by the fetch thread when nothing arrived; the main thread clears it.
-    has_failed: std.atomic.Value(bool) = .init(false),
-    /// The newest snapshot not yet taken; ownership passes with the swap.
-    ready: std.atomic.Value(?*Snapshot) = .init(null),
-    /// The newest logo colours not yet taken; ownership passes with the swap.
-    colors_ready: std.atomic.Value(?*LogoColors) = .init(null),
+    /// Shared with the fetch thread.
+    job: handoff.Job(Snapshot) = .{},
+    /// Filled by the fetch thread.
+    logo_colors: handoff.Slot(LogoColors) = .{},
 
     /// After the fetch thread has finished; `allocator` is the one poll was given.
     pub fn deinit(self: *StatsFeed, allocator: std.mem.Allocator) void {
@@ -49,23 +46,23 @@ pub const StatsFeed = struct {
 
     /// Per tick while the panel shows: starts a fetch once one is due.
     pub fn poll(self: *StatsFeed, allocator: std.mem.Allocator, io: std.Io, now: win32.Ticks) void {
-        if (self.has_failed.swap(false, .acq_rel)) self.next_fetch = .{ .ms = now.ms + RETRY_INTERVAL_MS };
-        if (now.ms < self.next_fetch.ms or self.is_busy.swap(true, .acq_rel)) return;
+        if (self.job.takeFailure()) self.next_fetch = .{ .ms = now.ms + RETRY_INTERVAL_MS };
+        if (now.ms < self.next_fetch.ms or !self.job.claim()) return;
         self.next_fetch = .{ .ms = now.ms + REFRESH_INTERVAL_MS };
         detached.spawn(fetchThread, .{ self, allocator, io }) catch |err| {
             slog.err("Failed to fetch map stats: {}", .{err});
-            self.is_busy.store(false, .release);
+            self.job.finish();
         };
     }
 
     /// The caller owns the result, and frees it with destroySnapshot.
     pub fn take(self: *StatsFeed) ?*Snapshot {
-        return self.ready.swap(null, .acq_rel);
+        return self.job.take();
     }
 
     /// The caller owns the result, and frees it with the allocator poll was given.
     pub fn takeColors(self: *StatsFeed) ?*LogoColors {
-        return self.colors_ready.swap(null, .acq_rel);
+        return self.logo_colors.take();
     }
 };
 
@@ -75,12 +72,12 @@ pub fn destroySnapshot(snapshot: *Snapshot) void {
     allocator.destroy(snapshot);
 }
 
-/// The fetch's thread; touches nothing of the main thread's but the feed's atomics and the allocator, and alone reads and writes the logo colours' file.
+/// The fetch's thread; touches nothing of the main thread's but the feed's job and logo colours and the allocator, and alone reads and writes the logo colours' file.
 fn fetchThread(feed: *StatsFeed, allocator: std.mem.Allocator, io: std.Io) void {
-    defer feed.is_busy.store(false, .release);
+    defer feed.job.finish();
     const snapshot = fetchSnapshot(allocator) catch |err| {
         slog.warn("Failed to fetch map stats: {}", .{err});
-        feed.has_failed.store(true, .release);
+        feed.job.fail();
         return;
     };
     // Listed before the snapshot's handed over, as the main thread owns it from then on.
@@ -89,7 +86,7 @@ fn fetchThread(feed: *StatsFeed, allocator: std.mem.Allocator, io: std.Io) void 
         break :blk &.{};
     };
     defer allocator.free(alliance_ids);
-    if (feed.ready.swap(snapshot, .acq_rel)) |unclaimed| destroySnapshot(unclaimed);
+    if (feed.job.deliver(snapshot)) |unclaimed| destroySnapshot(unclaimed);
     // After the figures, so a first run's logos don't hold them up.
     fetchLogoColors(feed, allocator, io, alliance_ids);
 }
@@ -168,7 +165,7 @@ fn publishColors(feed: *StatsFeed, allocator: std.mem.Allocator, colors: *const 
         return;
     };
     handed.* = colors.*;
-    if (feed.colors_ready.swap(handed, .acq_rel)) |unclaimed| allocator.destroy(unclaimed);
+    if (feed.logo_colors.put(handed)) |unclaimed| allocator.destroy(unclaimed);
 }
 
 /// Keeps what arrived, each reply's failure logged where it happened; an error only when nothing did.

@@ -1,5 +1,6 @@
 //! Settings shared by every profile (`profiles/global.settings.json`).
 const std = @import("std");
+const win32 = @import("../platform/win32.zig");
 const wire = @import("wire.zig");
 const key_list = @import("key_list.zig");
 const files = @import("files.zig");
@@ -18,6 +19,8 @@ const slog = log.Scoped("config");
 const UNREADABLE_BACKUP_EXTENSION = ".bak";
 /// Room for the file's name, an i64 and the extension, so formatting it can't fail.
 const BACKUP_PATH_SIZE = files.GLOBAL_SETTINGS_FILE.len + 32;
+/// Ties the token's encryption to this app, so a tool unprotecting blobs without entropy can't read it.
+const TOKEN_ENTROPY = "EVE-Maj Preview evestarsToken";
 
 /// The prices are a Jita snapshot that drifts; Fetch Prices overrides them.
 pub const DEFAULT_ORE_TABLE = [_]OreEntry{
@@ -172,6 +175,10 @@ const LoadReport = struct {
     needs_profile_chatlog: bool = false,
     /// Why the file couldn't be checked for a chatlog section.
     chatlog_check_error: ?anyerror = null,
+    /// Why the saved token couldn't be decrypted, e.g. the file came from another Windows account.
+    token_error: ?anyerror = null,
+    /// The file held the token unencrypted, so finishLoading saves to encrypt it.
+    has_plain_token: bool = false,
 };
 
 pub const GlobalConfig = struct {
@@ -203,8 +210,10 @@ pub const GlobalConfig = struct {
     /// Unix seconds of the last successful price fetch, or 0 if never.
     orePricesFetchedAtSeconds: i64 = 0,
     evestarsEnabled: bool = true,
-    /// Here rather than in a profile, since profiles get shared; never logged.
+    /// Here rather than in a profile, since profiles get shared; never logged, and saved only as evestarsTokenProtected.
     evestarsToken: []const u8 = "",
+    /// On disk only: evestarsToken encrypted to the Windows account (DPAPI), in base64; empty in memory.
+    evestarsTokenProtected: []const u8 = "",
     dialogX: ?i32 = null,
     dialogY: ?i32 = null,
     load_report: LoadReport = .{},
@@ -259,6 +268,7 @@ pub const GlobalConfig = struct {
         defer allocator.free(content);
 
         var settings = loadFromJson(allocator, content) catch |err| return defaults(allocator, keepUnreadable(io, .malformed, err));
+        settings.readProtectedToken();
         const has_chatlog = hasChatlog(allocator, content) catch |err| blk: {
             settings.load_report.chatlog_check_error = err;
             // True keeps what loaded rather than overwriting it from a profile.
@@ -291,7 +301,36 @@ pub const GlobalConfig = struct {
         }
         if (report.chatlog_check_error) |err| slog.warn("Failed to check the global settings for Log Monitoring: {}", .{err});
         if (report.needs_profile_chatlog) self.adoptProfileChatlog(io);
+        if (report.token_error) |err| slog.warn("Failed to decrypt the Eve Stars token, which only the Windows account that saved it can read, so it needs entering again: {}", .{err});
+        if (report.has_plain_token) {
+            if (self.save(io)) {
+                slog.info("Encrypted the Eve Stars token in the global settings", .{});
+            } else |err| {
+                slog.warn("Failed to encrypt the Eve Stars token in the global settings, which still hold it unencrypted: {}", .{err});
+            }
+        }
         self.chatlog.warnUnreachableDirs(io);
+    }
+
+    /// Decrypts evestarsTokenProtected into evestarsToken and empties it; a token the file holds unencrypted wins, as it was typed in by hand.
+    fn readProtectedToken(self: *GlobalConfig) void {
+        const protected = self.evestarsTokenProtected;
+        if (protected.len == 0) {
+            self.load_report.has_plain_token = self.evestarsToken.len > 0;
+            return;
+        }
+        defer {
+            self.allocator.free(protected);
+            self.evestarsTokenProtected = "";
+        }
+        if (self.evestarsToken.len > 0) {
+            self.load_report.has_plain_token = true;
+            return;
+        }
+        self.evestarsToken = unprotectToken(self.allocator, protected) catch |err| {
+            self.load_report.token_error = err;
+            return;
+        };
     }
 
     fn defaults(allocator: std.mem.Allocator, report: LoadReport) !GlobalConfig {
@@ -315,7 +354,7 @@ pub const GlobalConfig = struct {
 
     /// Log Monitoring was a profile setting before it was shared; the profile that last ran brings its own along, once it's taken or found to have none.
     fn adoptProfileChatlog(self: *GlobalConfig, io: std.Io) void {
-        var arena_state = std.heap.ArenaAllocator.init(self.allocator);
+        var arena_state: std.heap.ArenaAllocator = .init(self.allocator);
         defer arena_state.deinit();
         const arena = arena_state.allocator();
         const path = std.Io.Dir.path.join(arena, &.{ files.PROFILES_DIR, self.lastUsedProfile }) catch |err| {
@@ -369,7 +408,7 @@ pub const GlobalConfig = struct {
             slog.warn("Failed to save the global settings: the unreadable file they'd replace is kept until the next start", .{});
             return error.UnreadableSettingsKept;
         }
-        var arena_state = std.heap.ArenaAllocator.init(self.allocator);
+        var arena_state: std.heap.ArenaAllocator = .init(self.allocator);
         defer arena_state.deinit();
         const json = try self.savedJson(arena_state.allocator());
         try files.atomicWriteFile(self.allocator, io, files.GLOBAL_SETTINGS_FILE, json);
@@ -424,9 +463,12 @@ pub const GlobalConfig = struct {
         }
     }
 
-    /// Leaves chatlog out while a profile's is still to be taken, so a move that failed is tried again next start.
+    /// Saves the token encrypted, and leaves chatlog out while a profile's is still to be taken, so a move that failed is tried again next start.
     fn savedJson(self: *const GlobalConfig, arena: std.mem.Allocator) ![]const u8 {
-        const json = try self.toJsonString(arena);
+        var stored = self.*;
+        stored.evestarsToken = "";
+        stored.evestarsTokenProtected = try protectToken(arena, self.evestarsToken);
+        const json = try stored.toJsonString(arena);
         if (!self.load_report.needs_profile_chatlog) return json;
         var value = try std.json.parseFromSliceLeaky(std.json.Value, arena, json, .{});
         if (value == .object) _ = value.object.orderedRemove("chatlog");
@@ -454,6 +496,13 @@ pub const GlobalConfig = struct {
         settings.validate();
         return settings;
     }
+
+    /// Leaves out load_report.
+    pub fn clone(self: *const GlobalConfig, allocator: std.mem.Allocator) !GlobalConfig {
+        var arena: std.heap.ArenaAllocator = .init(allocator);
+        defer arena.deinit();
+        return fromWire(try self.toWire(arena.allocator()), allocator);
+    }
 };
 
 /// True when the global settings file's JSON has the shared chatlog section.
@@ -461,6 +510,23 @@ fn hasChatlog(allocator: std.mem.Allocator, content: []const u8) !bool {
     const parsed = try std.json.parseFromSlice(std.json.Value, allocator, content, .{ .duplicate_field_behavior = .use_last });
     defer parsed.deinit();
     return migrate.hasSharedChatlog(parsed.value);
+}
+
+/// Base64 of the DPAPI blob, in `arena`; empty for no token.
+fn protectToken(arena: std.mem.Allocator, token: []const u8) ![]const u8 {
+    if (token.len == 0) return "";
+    const blob = try win32.protectData(arena, token, TOKEN_ENTROPY);
+    const encoder = std.base64.standard.Encoder;
+    return encoder.encode(try arena.alloc(u8, encoder.calcSize(blob.len)), blob);
+}
+
+/// Caller frees; `text` is evestarsTokenProtected as saved.
+fn unprotectToken(allocator: std.mem.Allocator, text: []const u8) ![]u8 {
+    const decoder = std.base64.standard.Decoder;
+    const blob = try allocator.alloc(u8, try decoder.calcSizeForSlice(text));
+    defer allocator.free(blob);
+    try decoder.decode(blob, text);
+    return win32.unprotectData(allocator, blob, TOKEN_ENTROPY);
 }
 
 /// `<file>.<seconds>.bak` in `buffer`.

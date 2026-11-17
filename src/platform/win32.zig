@@ -823,6 +823,48 @@ pub extern "pdh" fn PdhCollectQueryData(hQuery: PDH_HQUERY) callconv(.c) PDH_STA
 pub extern "pdh" fn PdhGetFormattedCounterArrayA(hCounter: PDH_HCOUNTER, dwFormat: DWORD, lpdwBufferSize: *DWORD, lpdwItemCount: *DWORD, ItemBuffer: ?[*]u8) callconv(.c) PDH_STATUS;
 pub extern "pdh" fn PdhCloseQuery(hQuery: PDH_HQUERY) callconv(.c) PDH_STATUS;
 
+// DPAPI - secrets encrypted to the Windows account, for the settings files.
+pub const CRYPTPROTECT_UI_FORBIDDEN: DWORD = 0x1;
+
+pub const DATA_BLOB = extern struct {
+    cbData: DWORD = 0,
+    pbData: ?[*]u8 = null,
+};
+
+extern "crypt32" fn CryptProtectData(pDataIn: *const DATA_BLOB, szDataDescr: ?[*:0]const u16, pOptionalEntropy: ?*const DATA_BLOB, pvReserved: ?*anyopaque, pPromptStruct: ?*anyopaque, dwFlags: DWORD, pDataOut: *DATA_BLOB) callconv(.c) BOOL;
+extern "crypt32" fn CryptUnprotectData(pDataIn: *const DATA_BLOB, ppszDataDescr: ?*?[*:0]u16, pOptionalEntropy: ?*const DATA_BLOB, pvReserved: ?*anyopaque, pPromptStruct: ?*anyopaque, dwFlags: DWORD, pDataOut: *DATA_BLOB) callconv(.c) BOOL;
+extern "kernel32" fn LocalFree(hMem: ?*anyopaque) callconv(.c) ?*anyopaque;
+
+/// Caller frees; only the same Windows account, passing the same `entropy`, can read it back.
+pub fn protectData(allocator: std.mem.Allocator, plain: []const u8, entropy: []const u8) ![]u8 {
+    const input = constBlob(plain);
+    const entropy_blob = constBlob(entropy);
+    var output: DATA_BLOB = .{};
+    if (!toBool(CryptProtectData(&input, null, &entropy_blob, null, null, CRYPTPROTECT_UI_FORBIDDEN, &output))) return error.ProtectDataFailed;
+    defer _ = LocalFree(output.pbData);
+    const data = output.pbData orelse return error.ProtectDataFailed;
+    return allocator.dupe(u8, data[0..output.cbData]);
+}
+
+/// Caller frees; fails for data another Windows account or a different `entropy` protected.
+pub fn unprotectData(allocator: std.mem.Allocator, protected: []const u8, entropy: []const u8) ![]u8 {
+    const input = constBlob(protected);
+    const entropy_blob = constBlob(entropy);
+    var output: DATA_BLOB = .{};
+    if (!toBool(CryptUnprotectData(&input, null, &entropy_blob, null, null, CRYPTPROTECT_UI_FORBIDDEN, &output))) return error.UnprotectDataFailed;
+    defer _ = LocalFree(output.pbData);
+    const data = output.pbData orelse return error.UnprotectDataFailed;
+    const plain = data[0..output.cbData];
+    // Wiped before LocalFree returns the memory to the heap.
+    defer std.crypto.secureZero(u8, plain);
+    return allocator.dupe(u8, plain);
+}
+
+/// DPAPI never writes through an input blob, which only the C signature makes mutable.
+fn constBlob(bytes: []const u8) DATA_BLOB {
+    return .{ .cbData = @intCast(bytes.len), .pbData = @constCast(bytes.ptr) };
+}
+
 // IP Helper - which server each client is connected to, and an ICMP echo to it.
 pub const AF_INET = 2;
 pub const TCP_TABLE_OWNER_PID_CONNECTIONS = 4;
@@ -1235,10 +1277,10 @@ pub extern "kernel32" fn GetStdHandle(nStdHandle: DWORD) callconv(.c) ?HANDLE;
 pub extern "kernel32" fn GetConsoleMode(hConsoleHandle: HANDLE, lpMode: *DWORD) callconv(.c) BOOL;
 pub extern "kernel32" fn SetConsoleMode(hConsoleHandle: HANDLE, dwMode: DWORD) callconv(.c) BOOL;
 
-pub fn getWindowTitleBuf(hwnd: HWND, buffer: []u8) ![]const u8 {
+pub fn getWindowTitle(hwnd: HWND, buffer: []u8) ![]const u8 {
     if (buffer.len == 0) return error.BufferTooSmall;
-    const buf_ptr: [*:0]u8 = @ptrCast(buffer.ptr);
-    const title_length = GetWindowTextA(hwnd, buf_ptr, @intCast(buffer.len));
+    const buffer_ptr: [*:0]u8 = @ptrCast(buffer.ptr);
+    const title_length = GetWindowTextA(hwnd, buffer_ptr, @intCast(buffer.len));
     if (title_length == 0) return error.MissingWindowTitle;
     return buffer[0..@intCast(title_length)];
 }
@@ -1255,21 +1297,21 @@ pub fn getWindowTitleUtf8(hwnd: HWND, buffer: *[WINDOW_TITLE_MAX_UNITS * 3]u8) ?
     return buffer[0..length];
 }
 
-pub fn getClassNameBuf(hwnd: HWND, buffer: []u8) ?[]const u8 {
+pub fn getClassName(hwnd: HWND, buffer: []u8) ?[]const u8 {
     if (buffer.len == 0) return null;
-    const buf_ptr: [*:0]u8 = @ptrCast(buffer.ptr);
-    const class_length = GetClassNameA(hwnd, buf_ptr, @intCast(buffer.len));
+    const buffer_ptr: [*:0]u8 = @ptrCast(buffer.ptr);
+    const class_length = GetClassNameA(hwnd, buffer_ptr, @intCast(buffer.len));
     if (class_length <= 0) return null;
     return buffer[0..@intCast(class_length)];
 }
 
-/// Borrows executable_path_buf; null if the process can't be opened or queried.
-pub fn queryProcessExecutablePath(process_id: DWORD, executable_path_buf: *[MAX_PATH:0]u8) ?[]const u8 {
+/// Borrows executable_path_buffer; null if the process can't be opened or queried.
+pub fn queryProcessExecutablePath(process_id: DWORD, executable_path_buffer: *[MAX_PATH:0]u8) ?[]const u8 {
     const handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, process_id) orelse return null;
     defer _ = CloseHandle(handle);
-    const path_length = GetModuleFileNameExA(handle, null, executable_path_buf, executable_path_buf.len);
+    const path_length = GetModuleFileNameExA(handle, null, executable_path_buffer, executable_path_buffer.len);
     if (path_length == 0) return null;
-    return executable_path_buf[0..@intCast(path_length)];
+    return executable_path_buffer[0..@intCast(path_length)];
 }
 
 pub fn processStartTime(process_id: DWORD) ?FILETIME {
@@ -1281,12 +1323,12 @@ pub fn processStartTime(process_id: DWORD) ?FILETIME {
     return created;
 }
 
-/// The file name alone, borrowing executable_path_buf; null if its process can't be queried.
-pub fn windowExecutableName(hwnd: HWND, executable_path_buf: *[MAX_PATH:0]u8) ?[]const u8 {
+/// The file name alone, borrowing executable_path_buffer; null if its process can't be queried.
+pub fn windowExecutableName(hwnd: HWND, executable_path_buffer: *[MAX_PATH:0]u8) ?[]const u8 {
     var process_id: DWORD = 0;
     _ = GetWindowThreadProcessId(hwnd, &process_id);
     if (process_id == 0) return null;
-    const path = queryProcessExecutablePath(process_id, executable_path_buf) orelse return null;
+    const path = queryProcessExecutablePath(process_id, executable_path_buffer) orelse return null;
     return std.Io.Dir.path.basename(path);
 }
 
@@ -1307,8 +1349,8 @@ pub fn isOwnProcessWindow(hwnd: HWND) bool {
 
 /// Progman or a WorkerW.
 pub fn isDesktopShellWindow(hwnd: HWND) bool {
-    var class_buf: [32]u8 = undefined;
-    const class_name = getClassNameBuf(hwnd, &class_buf) orelse return false;
+    var class_buffer: [32]u8 = undefined;
+    const class_name = getClassName(hwnd, &class_buffer) orelse return false;
     return std.mem.eql(u8, class_name, "Progman") or std.mem.eql(u8, class_name, "WorkerW");
 }
 
@@ -1318,24 +1360,24 @@ pub fn isExplorerOwned(hwnd: HWND) bool {
     _ = GetWindowThreadProcessId(hwnd, &process_id);
     if (process_id == 0) return false;
 
-    var executable_path_buf: [MAX_PATH:0]u8 = undefined;
-    const executable_path = queryProcessExecutablePath(process_id, &executable_path_buf) orelse return false;
+    var executable_path_buffer: [MAX_PATH:0]u8 = undefined;
+    const executable_path = queryProcessExecutablePath(process_id, &executable_path_buffer) orelse return false;
     const suffix = "\\explorer.exe";
     if (executable_path.len < suffix.len) return false;
     return std.ascii.eqlIgnoreCase(executable_path[executable_path.len - suffix.len ..], suffix);
 }
 
 /// Stands in for std.fs.selfExecutablePath, which Zig 0.16 removed.
-pub fn selfExecutablePath(buf: []u8) ![]const u8 {
-    const length = GetModuleFileNameA(null, @ptrCast(buf.ptr), @intCast(buf.len));
+pub fn selfExecutablePath(buffer: []u8) ![]const u8 {
+    const length = GetModuleFileNameA(null, @ptrCast(buffer.ptr), @intCast(buffer.len));
     if (length == 0) return error.GetModuleFileNameFailed;
-    if (length == buf.len) return error.NameTooLong;
-    return buf[0..@intCast(length)];
+    if (length == buffer.len) return error.NameTooLong;
+    return buffer[0..@intCast(length)];
 }
 
 /// Stands in for std.fs.selfExecutableDirPath, which Zig 0.16 removed.
-pub fn selfExecutableDirPath(buf: []u8) ![]const u8 {
-    const full_path = try selfExecutablePath(buf);
+pub fn selfExecutableDirPath(buffer: []u8) ![]const u8 {
+    const full_path = try selfExecutablePath(buffer);
     return std.Io.Dir.path.dirname(full_path) orelse return error.MissingDirname;
 }
 
@@ -1347,8 +1389,8 @@ pub fn shellOpen(target: [*:0]const u8, workdir: ?[*:0]const u8) bool {
 
 /// shellOpen for an unterminated URL; false if it's too long to terminate or the shell refuses it.
 pub fn shellOpenUrl(url: []const u8) bool {
-    var buf: [1024]u8 = undefined;
-    const terminated_url = std.mem.printSentinel(&buf, "{s}", .{url}, 0) catch return false;
+    var buffer: [1024]u8 = undefined;
+    const terminated_url = std.mem.printSentinel(&buffer, "{s}", .{url}, 0) catch return false;
     return shellOpen(terminated_url.ptr, null);
 }
 

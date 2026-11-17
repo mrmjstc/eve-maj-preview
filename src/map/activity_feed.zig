@@ -5,6 +5,7 @@ const activity_mod = @import("activity.zig");
 const evestars = @import("evestars.zig");
 const http_client = @import("../util/http_client.zig");
 const detached = @import("../util/detached.zig");
+const handoff = @import("../util/handoff.zig");
 const log = @import("../log.zig");
 
 const Activity = activity_mod.Activity;
@@ -24,18 +25,12 @@ pub const ActivityFeed = struct {
     next_totals_ms: u64 = 0,
     /// What the newest sums were asked for; null before the first; main thread only.
     asked_span: ?TrafficSpan = null,
-    /// Set while the sums' thread runs.
-    is_totals_busy: std.atomic.Value(bool) = .init(false),
-    /// Set by the sums' thread when nothing arrived; the main thread clears it.
-    has_totals_failed: std.atomic.Value(bool) = .init(false),
-    /// The newest sums not yet taken; ownership passes with the swap.
-    totals_ready: std.atomic.Value(?*Activity) = .init(null),
+    /// Shared with the sums' thread.
+    totals: handoff.Job(Activity) = .{},
     /// When the NPC hours are next asked for, in ms since boot; main thread only.
     next_npc_hours_ms: u64 = 0,
-    /// Set while the NPC hours' thread runs.
-    is_npc_hours_busy: std.atomic.Value(bool) = .init(false),
-    /// The newest NPC hours not yet taken; ownership passes with the swap.
-    npc_hours_ready: std.atomic.Value(?*NpcHours) = .init(null),
+    /// Shared with the NPC hours' thread.
+    npc_hours: handoff.Job(NpcHours) = .{},
 
     /// After the threads have finished.
     pub fn deinit(self: *ActivityFeed) void {
@@ -44,41 +39,41 @@ pub const ActivityFeed = struct {
     }
 
     pub fn isBusy(self: *const ActivityFeed) bool {
-        return self.is_totals_busy.load(.acquire) or self.is_npc_hours_busy.load(.acquire);
+        return self.totals.isBusy() or self.npc_hours.isBusy();
     }
 
     /// Per tick while the map shows a span past the hour: asks at once for a span not yet asked for, then every TOTALS_INTERVAL_MS.
     pub fn pollTotals(self: *ActivityFeed, allocator: std.mem.Allocator, token: []const u8, span: TrafficSpan, now_ms: u64) void {
-        if (self.has_totals_failed.swap(false, .acq_rel)) self.next_totals_ms = now_ms + RETRY_INTERVAL_MS;
+        if (self.totals.takeFailure()) self.next_totals_ms = now_ms + RETRY_INTERVAL_MS;
         const is_new_span = if (self.asked_span) |asked| asked != span else true;
         if (!is_new_span and now_ms < self.next_totals_ms) return;
-        if (self.is_totals_busy.swap(true, .acq_rel)) return;
+        if (!self.totals.claim()) return;
         self.asked_span = span;
         self.next_totals_ms = now_ms + TOTALS_INTERVAL_MS;
         startTotals(self, allocator, token, span) catch |err| {
             slog.err("Failed to fetch Eve Stars' kills and jumps: {}", .{err});
-            self.is_totals_busy.store(false, .release);
+            self.totals.finish();
         };
     }
 
     /// Per tick while NPC delta shows and waits for its hour before: asks every NPC_HOURS_INTERVAL_MS.
     pub fn pollNpcHours(self: *ActivityFeed, allocator: std.mem.Allocator, token: []const u8, now_ms: u64) void {
-        if (now_ms < self.next_npc_hours_ms or self.is_npc_hours_busy.swap(true, .acq_rel)) return;
+        if (now_ms < self.next_npc_hours_ms or !self.npc_hours.claim()) return;
         self.next_npc_hours_ms = now_ms + NPC_HOURS_INTERVAL_MS;
         startNpcHours(self, allocator, token) catch |err| {
             slog.err("Failed to fetch Eve Stars' NPC kills by the hour: {}", .{err});
-            self.is_npc_hours_busy.store(false, .release);
+            self.npc_hours.finish();
         };
     }
 
     /// The caller destroys it.
     pub fn takeTotals(self: *ActivityFeed) ?*Activity {
-        return self.totals_ready.swap(null, .acq_rel);
+        return self.totals.take();
     }
 
     /// The caller destroys it.
     pub fn takeNpcHours(self: *ActivityFeed) ?*NpcHours {
-        return self.npc_hours_ready.swap(null, .acq_rel);
+        return self.npc_hours.take();
     }
 };
 
@@ -98,28 +93,28 @@ fn startNpcHours(feed: *ActivityFeed, allocator: std.mem.Allocator, token: []con
     try detached.spawn(npcHoursThread, .{ feed, allocator, urls, header });
 }
 
-/// The sums' thread, which owns `url` and `header`; touches nothing of the main thread's but the feed's atomics and the allocator.
+/// The sums' thread, which owns `url` and `header`; touches nothing of the main thread's but the feed's totals job and the allocator.
 fn totalsThread(feed: *ActivityFeed, allocator: std.mem.Allocator, url: []u8, header: []u8, span: TrafficSpan) void {
-    defer feed.is_totals_busy.store(false, .release);
+    defer feed.totals.finish();
     defer allocator.free(url);
     defer allocator.free(header);
     // Logs its own failures.
     const body = fetch(allocator, url, header) catch {
-        feed.has_totals_failed.store(true, .release);
+        feed.totals.fail();
         return;
     };
     defer allocator.free(body);
     const activity = Activity.create(allocator, span, body) catch |err| {
         slog.warn("Failed to read Eve Stars' kills and jumps: {}", .{err});
-        feed.has_totals_failed.store(true, .release);
+        feed.totals.fail();
         return;
     };
-    if (feed.totals_ready.swap(activity, .acq_rel)) |unclaimed| unclaimed.destroy();
+    if (feed.totals.deliver(activity)) |unclaimed| unclaimed.destroy();
 }
 
-/// The NPC hours' thread, which owns `urls` and `header`; touches nothing of the main thread's but the feed's atomics and the allocator.
+/// The NPC hours' thread, which owns `urls` and `header`; touches nothing of the main thread's but the feed's NPC hours job and the allocator.
 fn npcHoursThread(feed: *ActivityFeed, allocator: std.mem.Allocator, urls: [2][]u8, header: []u8) void {
-    defer feed.is_npc_hours_busy.store(false, .release);
+    defer feed.npc_hours.finish();
     defer for (urls) |url| allocator.free(url);
     defer allocator.free(header);
     // Logs its own failures.
@@ -136,7 +131,7 @@ fn npcHoursThread(feed: *ActivityFeed, allocator: std.mem.Allocator, urls: [2][]
         slog.debug("Eve Stars doesn't keep two matching hours of NPC kills yet", .{});
         return;
     };
-    if (feed.npc_hours_ready.swap(hours, .acq_rel)) |unclaimed| unclaimed.destroy();
+    if (feed.npc_hours.deliver(hours)) |unclaimed| unclaimed.destroy();
 }
 
 /// The answer's body, which the caller frees; logs its own failures, a status other than 200 included.

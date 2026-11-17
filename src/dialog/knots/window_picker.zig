@@ -32,7 +32,7 @@ pub const Picker = struct {
 /// Replaces `picker`'s earlier scan; leaves it closed when there are none.
 pub fn open(allocator: std.mem.Allocator, picker: *?Picker, index: usize) void {
     close(picker);
-    var arena = std.heap.ArenaAllocator.init(allocator);
+    var arena: std.heap.ArenaAllocator = .init(allocator);
     const windows = runningWindows(arena.allocator()) catch |err| {
         arena.deinit();
         slog.err("Failed to scan running windows: {}", .{err});
@@ -80,7 +80,7 @@ pub fn select(context: *ui.Frame, picker: *const ?Picker, key: ui.Key, index: us
 
 /// Sorted by executable name; everything borrows from `arena`.
 fn runningWindows(arena: std.mem.Allocator) ![]const RunningWindow {
-    var scan = WindowScan{ .arena = arena };
+    var scan: WindowScan = .{ .arena = arena };
     _ = win32.EnumWindows(collectWindow, win32.ptrToLparam(&scan));
     if (scan.scan_error) |err| return err;
     std.sort.pdq(RunningWindow, scan.windows.items, {}, struct {
@@ -93,15 +93,15 @@ fn runningWindows(arena: std.mem.Allocator) ![]const RunningWindow {
 
 fn collectWindow(hwnd: win32.HWND, lParam: win32.LPARAM) callconv(.c) win32.BOOL {
     const scan: *WindowScan = win32.lparamToPtr(WindowScan, lParam);
-    if (!win32.toBool(win32.IsWindowVisible(hwnd))) return win32.TRUE;
+    if (!win32.isWindowVisible(hwnd)) return win32.TRUE;
 
-    var title_buf: [win32.WINDOW_TITLE_MAX_UNITS * 3]u8 = undefined;
+    var title_buffer: [win32.WINDOW_TITLE_MAX_UNITS * 3]u8 = undefined;
     // UTF-8, since the dialog's text, picked labels included, must be.
-    const title = win32.getWindowTitleUtf8(hwnd, &title_buf) orelse return win32.TRUE;
-    var class_buf: [64:0]u8 = undefined;
-    const class = win32.getClassNameBuf(hwnd, &class_buf) orelse return win32.TRUE;
-    var executable_buf: [260:0]u8 = undefined;
-    const executable = win32.windowExecutableName(hwnd, &executable_buf) orelse return win32.TRUE;
+    const title = win32.getWindowTitleUtf8(hwnd, &title_buffer) orelse return win32.TRUE;
+    var class_buffer: [64:0]u8 = undefined;
+    const class = win32.getClassName(hwnd, &class_buffer) orelse return win32.TRUE;
+    var executable_buffer: [win32.MAX_PATH:0]u8 = undefined;
+    const executable = win32.windowExecutableName(hwnd, &executable_buffer) orelse return win32.TRUE;
     if (executable.len == 0) return win32.TRUE;
 
     for (scan.windows.items) |existing| {

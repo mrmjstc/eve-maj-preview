@@ -797,7 +797,8 @@ A window must pass both lists; a filter with both empty matches nothing. Non-EVE
 | `oreTable` | `[{name, price}]` | `[]` | ISK/unit overrides, 0–1e12. A name also covers its grade variants (`Veldspar` → `Veldspar II-Grade`). Others use built-in Jita prices. |
 | `orePricesFetchedAtSeconds` | int | `0` | Unix time of the last Fetch Prices. |
 | `evestarsEnabled` | bool | `true` | Off, the map drops its right-click destinations and Avoid System, whatever `evestarsToken` holds. |
-| `evestarsToken` | string | `""` | Eve Stars API token. Set, it adds the map's right-click destinations, Show Route, Avoid System and Ansiblex gates. Routes avoid the account's saved avoid list, which Avoid System changes; a read-only token can't. Plain text in this file, left out of the log. |
+| `evestarsToken` | string | `""` | Eve Stars API token. Set, it adds the map's right-click destinations, Show Route, Avoid System and Ansiblex gates. Routes avoid the account's saved avoid list, which Avoid System changes; a read-only token can't. Always saved empty: the token goes in `evestarsTokenProtected`. One typed in here by hand is read and encrypted when the app starts. Left out of the log. |
+| `evestarsTokenProtected` | string | `""` | `evestarsToken` encrypted with Windows DPAPI, in base64. Only the Windows account that saved it can decrypt it, so after moving this file to another account or PC, enter the token again. |
 
 ### chatlog
 

@@ -49,7 +49,7 @@ pub fn reset() void {
 
 /// From About's link to a found release: opens the prompt if there's a release to show; the caller draws a frame.
 pub fn openIfAvailable() void {
-    _ = openWithRelease(session.runningApp().io);
+    _ = openWithRelease(session.appContext().io);
 }
 
 pub fn show(context: *ui.Frame) !void {
@@ -95,20 +95,20 @@ fn notesColumn(context: *ui.Frame, notes: []const u8) !void {
 
 /// Once when the window opens, and once more if the check hadn't finished yet.
 fn check(context: *ui.Frame) void {
-    const now = context.ui().input.now_ms;
+    const now_ms = context.ui().input.now_ms;
     switch (g_check) {
         .done => return,
-        .retrying => if (now < g_retry_at_ms) return,
+        .retrying => if (now_ms < g_retry_at_ms) return,
         .pending => {},
     }
     if (session.global().get("disableUpdateChecks")) {
         g_check = .done;
         return;
     }
-    if (!openWithRelease(session.runningApp().io)) {
+    if (!openWithRelease(session.appContext().io)) {
         if (g_check == .pending) {
             g_check = .retrying;
-            g_retry_at_ms = now + RETRY_DELAY_MS;
+            g_retry_at_ms = now_ms + RETRY_DELAY_MS;
         } else {
             g_check = .done;
         }

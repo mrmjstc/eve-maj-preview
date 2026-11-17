@@ -25,7 +25,7 @@ pub fn init(allocator: std.mem.Allocator) void {
 
 /// `is_editing` adjusts the space's current rectangle instead of dragging a new one.
 pub fn start(space_id: u32, is_editing: bool) void {
-    const thumbnail_set = session.runningApp().thumbnail_set orelse return;
+    const thumbnail_set = session.thumbnailSet() orelse return;
     const current = rect(space_id);
     if (is_editing and current == null) return;
     const should_hide = session.profile().ptr.display.hideThumbnailsDuringRegionSelect;
@@ -121,7 +121,7 @@ fn onFinished() void {
         g_hidden.deinit(g_allocator);
         g_hidden = .empty;
     }
-    const thumbnail_set = session.runningApp().thumbnail_set orelse return;
+    const thumbnail_set = session.thumbnailSet() orelse return;
     thumbnail_set.showThumbnails(g_hidden.items);
     thumbnail_set.hint_box.hide();
 }

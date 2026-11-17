@@ -216,85 +216,85 @@ pub fn revision() u32 {
 }
 
 fn run(action: Action, name: []const u8, accent: ?u32, unsaved: ?Unsaved) !void {
-    const app = session.runningApp();
+    const app_context = session.appContext();
     if (unsaved) |choice| switch (choice) {
         .save => try host.saveChanges(),
         .discard => try host.discardChanges(),
     };
     switch (action) {
         .switch_to => {
-            app.switchProfile(name);
+            session.run(.{ .switch_profile = name });
             status.show(.success, "Switched to profile '{name}'", .{ .name = displayName(name) });
         },
         .create => {
-            try config.createProfile(g_allocator, app.io, name, accent);
-            app.switchProfile(name);
+            try config.createProfile(g_allocator, app_context.io, name, accent);
+            session.run(.{ .switch_profile = name });
             status.show(.success, "Created profile '{name}'", .{ .name = displayName(name) });
         },
         .copy => {
-            try config.copyProfile(g_allocator, app.io, app.store.live.profile_name, name, accent);
-            app.switchProfile(name);
+            try config.copyProfile(g_allocator, app_context.io, app_context.store.live.profile_name, name, accent);
+            session.run(.{ .switch_profile = name });
             status.show(.success, "Copied to profile '{name}'", .{ .name = displayName(name) });
         },
         .rename => {
             // Copied, since the switch below frees the running profile's name.
-            const old_name = try g_allocator.dupe(u8, app.store.live.profile_name);
+            const old_name = try g_allocator.dupe(u8, app_context.store.live.profile_name);
             defer g_allocator.free(old_name);
-            try config.renameProfile(g_allocator, app.io, old_name, name);
-            app.global_settings.retargetProfileSwitches(app.io, old_name, name) catch |err| {
+            try config.renameProfile(g_allocator, app_context.io, old_name, name);
+            app_context.global_settings.retargetProfileSwitches(app_context.io, old_name, name) catch |err| {
                 slog.warn("Failed to point the switch hotkeys of '{s}' at '{s}': {}", .{ old_name, name, err });
             };
             session.retargetProfileSwitches(old_name, name);
-            app.switchProfile(name);
+            session.run(.{ .switch_profile = name });
             status.show(.success, "Renamed profile to '{name}'", .{ .name = displayName(name) });
         },
         .delete => {
             // Checked before any switch, which a refused delete mustn't cause.
             try config.checkProfileDeletable(name);
-            if (std.mem.eql(u8, name, app.store.live.profile_name)) app.switchProfile(config.DEFAULT_PROFILE);
-            try config.deleteProfileToBackup(g_allocator, app.io, name);
+            if (std.mem.eql(u8, name, app_context.store.live.profile_name)) session.run(.{ .switch_profile = config.DEFAULT_PROFILE });
+            try config.deleteProfileToBackup(g_allocator, app_context.io, name);
             status.show(.success, "Deleted profile '{name}' (kept as a backup)", .{ .name = displayName(name) });
         },
         .restore => {
             const backup = try takeBackup();
             defer g_allocator.free(backup);
-            try config.restoreProfileBackup(g_allocator, app.io, backup, name, accent);
-            app.switchProfile(name);
+            try config.restoreProfileBackup(g_allocator, app_context.io, backup, name, accent);
+            session.run(.{ .switch_profile = name });
             status.show(.success, "Restored profile '{name}'", .{ .name = displayName(name) });
         },
         .replace_with_backup => {
             const backup = try takeBackup();
             defer g_allocator.free(backup);
-            try config.replaceProfileWithBackup(g_allocator, app.io, backup, name, accent);
-            app.switchProfile(name);
+            try config.replaceProfileWithBackup(g_allocator, app_context.io, backup, name, accent);
+            session.run(.{ .switch_profile = name });
             status.show(.success, "Replaced profile '{name}' with the backup", .{ .name = displayName(name) });
         },
         .delete_backup => {
-            try config.deleteProfileBackup(g_allocator, app.io, name);
+            try config.deleteProfileBackup(g_allocator, app_context.io, name);
             status.show(.success, "Deleted the backup of '{name}'", .{ .name = shownName(action, name) });
         },
         .import_new => {
-            try config.createProfile(g_allocator, app.io, name, accent);
-            app.switchProfile(name);
+            try config.createProfile(g_allocator, app_context.io, name, accent);
+            session.run(.{ .switch_profile = name });
             try import_dialog.applyImport();
             try host.saveChanges();
             status.show(.success, "Imported into new profile '{name}'", .{ .name = displayName(name) });
         },
         .import_running => {
-            try config.backUpProfile(g_allocator, app.io, name);
+            try config.backUpProfile(g_allocator, app_context.io, name);
             try import_dialog.applyImport();
             // Also saves any edits made before the import; the backup predates them.
             try host.saveChanges();
             status.show(.success, "Imported into profile '{name}'", .{ .name = displayName(name) });
         },
         .back_up => {
-            try config.backUpProfile(g_allocator, app.io, name);
+            try config.backUpProfile(g_allocator, app_context.io, name);
             status.show(.success, "Backed up profile '{name}'", .{ .name = displayName(name) });
         },
         .reset => {
-            try config.backUpProfile(g_allocator, app.io, name);
-            try config.writeDefaultProfile(g_allocator, app.io, name, null);
-            if (std.mem.eql(u8, name, app.store.live.profile_name)) app.switchProfile(name);
+            try config.backUpProfile(g_allocator, app_context.io, name);
+            try config.writeDefaultProfile(g_allocator, app_context.io, name, null);
+            if (std.mem.eql(u8, name, app_context.store.live.profile_name)) session.run(.{ .switch_profile = name });
             status.show(.success, "Reset profile '{name}' to defaults (kept as a backup)", .{ .name = displayName(name) });
         },
     }
@@ -353,7 +353,7 @@ fn clearPending() void {
 fn refresh() void {
     g_revision +%= 1;
     freeProfiles();
-    const io = session.runningApp().io;
+    const io = session.appContext().io;
     g_profiles = config.listProfiles(g_allocator, io) catch |err| blk: {
         slog.err("Failed to list profiles: {}", .{err});
         break :blk .empty;

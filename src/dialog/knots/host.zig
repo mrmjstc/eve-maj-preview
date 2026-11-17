@@ -4,13 +4,13 @@ const knots = @import("knots");
 const ui = @import("ui");
 const win32 = @import("../../platform/win32.zig");
 const gdi_overlay = @import("../../platform/gdi_overlay.zig");
-const app_mod = @import("../../app.zig");
 const config = @import("../../config.zig");
 const types = @import("../../config/types.zig");
 const monitors = @import("../../layout/monitors.zig");
 const update = @import("../../update.zig");
 const detached = @import("../../util/detached.zig");
 const panel_host = @import("../../panels/panel_host.zig");
+const dialog_host = @import("../dialog_host.zig");
 const session = @import("session.zig");
 const bind = @import("bind.zig");
 const form = @import("form.zig");
@@ -104,15 +104,15 @@ var g_window_language: Language = .en;
 /// A fit_language command is on its way, so another isn't posted each frame until it runs.
 var g_is_fit_posted: bool = false;
 
-/// At startup, also handing `app` its DialogHooks; `app` outlives every window.
-pub fn init(app: *app_mod.App) void {
-    g_allocator = app.allocator;
-    g_io = app.io;
-    session.init(app);
-    app.dialog = .{ .redraw = redraw, .is_open = isOpen, .close_for_exit = closeForExit, .live_global = session.liveGlobal, .open_at = openAt };
+/// At startup; returns what App asks of the window.
+pub fn init(app_context: dialog_host.Context, app_host: dialog_host.Host) dialog_host.DialogHooks {
+    g_allocator = app_context.allocator;
+    g_io = app_context.io;
+    session.init(app_context, app_host);
     pickers.init(g_allocator);
     prices.init(g_allocator);
     portraits.setAllocator(g_allocator);
+    return .{ .redraw = redraw, .is_open = isOpen, .close_for_exit = closeForExit, .live_global = session.liveGlobal, .open_at = openAt };
 }
 
 /// At app exit.
@@ -150,7 +150,7 @@ pub fn requestClose() void {
 }
 
 pub fn postCommand(command: Command) void {
-    const timer_hwnd = session.runningApp().timer_hwnd orelse {
+    const timer_hwnd = session.timerWindow() orelse {
         slog.err("Failed to run a knots configuration window command: the timer window is missing", .{});
         return;
     };
@@ -198,7 +198,7 @@ pub fn setAlwaysOnTop(is_enabled: bool) void {
 
 /// The picker owns its own modal loop on another thread; the result arrives as a `picked` command.
 pub fn browseFolder(target: pickers.Target, title: []const u8) void {
-    const timer_hwnd = session.runningApp().timer_hwnd orelse {
+    const timer_hwnd = session.timerWindow() orelse {
         slog.err("Failed to open the folder picker: the timer window is missing", .{});
         return;
     };
@@ -207,7 +207,7 @@ pub fn browseFolder(target: pickers.Target, title: []const u8) void {
 
 /// A settings file for the Import dialog, read once the picker closes.
 pub fn browseImportFile() void {
-    const timer_hwnd = session.runningApp().timer_hwnd orelse {
+    const timer_hwnd = session.timerWindow() orelse {
         slog.err("Failed to open the import file picker: the timer window is missing", .{});
         return;
     };
@@ -232,7 +232,7 @@ pub fn importIntoNewProfile(name: []const u8, accent: u32) void {
 
 /// A notification type's or chat alert rule's custom sound, set once the picker closes; `index` is whichever `target` names.
 pub fn browseSoundFile(target: pickers.Target, index: usize) void {
-    const timer_hwnd = session.runningApp().timer_hwnd orelse {
+    const timer_hwnd = session.timerWindow() orelse {
         slog.err("Failed to open the sound file picker: the timer window is missing", .{});
         return;
     };
@@ -241,7 +241,7 @@ pub fn browseSoundFile(target: pickers.Target, index: usize) void {
 
 /// Starts fetching Jita ore prices; returns false if a fetch is already running or couldn't start.
 pub fn fetchPrices() bool {
-    const timer_hwnd = session.runningApp().timer_hwnd orelse {
+    const timer_hwnd = session.timerWindow() orelse {
         slog.err("Failed to fetch ore prices: the timer window is missing", .{});
         return false;
     };
@@ -262,7 +262,7 @@ pub fn saveChanges() !void {
 /// Drops unsaved changes to both documents; between frames only.
 pub fn discardChanges() !void {
     try session.discard();
-    setAlwaysOnTop(session.runningApp().global_settings.alwaysOnTop);
+    setAlwaysOnTop(session.appContext().global_settings.alwaysOnTop);
 }
 
 /// Opens the window, or brings it forward, on `page`'s tab.
@@ -326,7 +326,7 @@ fn shouldReopen(reopen_count: u32) bool {
 
 /// One window over the open session, until it closes or a frame fails.
 fn runWindow(is_reopened: bool) !void {
-    const settings = &session.runningApp().global_settings;
+    const settings = session.appContext().global_settings;
     const position = savedPosition(settings);
     g_window_language = settings.language;
     g_is_fit_posted = false;
@@ -338,10 +338,10 @@ fn runWindow(is_reopened: bool) !void {
     defer hotkey.reset();
     region.init(g_allocator);
     defer region.cancel();
-    portraits.init(session.runningApp().timer_hwnd, @backingInt(Command.portrait_loaded));
+    portraits.init(session.timerWindow(), @backingInt(Command.portrait_loaded));
     for (session.profile().ptr.characters.items) |character| portraits.preload(character.name);
     // A language picked but not saved goes with the window.
-    defer lang.use(session.runningApp().global_settings.language);
+    defer lang.use(session.appContext().global_settings.language);
     search.init(g_allocator);
     defer search.reset();
     import_dialog.init(g_allocator);
@@ -498,7 +498,7 @@ fn windowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: w
 
 /// On a thread of its own, so About can show a release found since the app started.
 fn startUpdateCheck() void {
-    const timer_hwnd = session.runningApp().timer_hwnd orelse {
+    const timer_hwnd = session.timerWindow() orelse {
         slog.err("Failed to check for updates: the timer window is missing", .{});
         return;
     };
@@ -715,7 +715,7 @@ fn savePosition(window: win32.HWND) void {
         slog.warn("Failed to read the configuration window's position: error {d}", .{win32.GetLastError()});
         return;
     }
-    session.runningApp().global_settings.saveDialogPosition(g_io, rect.left, rect.top) catch |err| {
+    session.appContext().global_settings.saveDialogPosition(g_io, rect.left, rect.top) catch |err| {
         slog.warn("Failed to save the configuration window's position: {}", .{err});
     };
 }

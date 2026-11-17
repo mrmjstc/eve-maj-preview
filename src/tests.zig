@@ -14,6 +14,7 @@ test {
     _ = @import("clients/scout.zig");
     _ = @import("config.zig");
     _ = @import("config/characters.zig");
+    _ = @import("config/files.zig");
     _ = @import("config/global.zig");
     _ = @import("config/hotkeys.zig");
     _ = @import("config/import/draft.zig");
@@ -105,6 +106,7 @@ test {
     _ = @import("util/color.zig");
     _ = @import("util/fixed_text.zig");
     _ = @import("util/format.zig");
+    _ = @import("util/handoff.zig");
     _ = @import("util/pixel_buffer.zig");
     _ = @import("util/rgba.zig");
     _ = @import("util/schedule.zig");

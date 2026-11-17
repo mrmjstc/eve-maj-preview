@@ -89,7 +89,7 @@ fn openFolder() void {
 
 /// Creates the folder first, so it opens before anything has been backed up.
 fn showFolder() !void {
-    const dir = try config.profileBackupDir(g_allocator, session.runningApp().io);
+    const dir = try config.profileBackupDir(g_allocator, session.appContext().io);
     defer g_allocator.free(dir);
     const terminated_dir = try g_allocator.dupeSentinel(u8, dir, 0);
     defer g_allocator.free(terminated_dir);
@@ -116,7 +116,7 @@ fn scan() void {
     g_scanned_revision = profiles.revision();
     if (g_arena) |*arena| arena.deinit();
     g_arena = .init(g_allocator);
-    const names = config.listProfileBackups(g_arena.?.allocator(), session.runningApp().io) catch |err| {
+    const names = config.listProfileBackups(g_arena.?.allocator(), session.appContext().io) catch |err| {
         slog.err("Failed to list profile backups: {}", .{err});
         g_backups = &.{};
         return;

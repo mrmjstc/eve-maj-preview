@@ -13,6 +13,10 @@ const USER_AGENT = std.unicode.utf8ToUtf16LeStringLiteral("EVE-Maj-Preview");
 const TIMEOUT_MS: c_int = 10_000;
 const READ_CHUNK_BYTES = 16 * 1024;
 const MAX_URL_LENGTH = 2048;
+/// Far above any feed's real reply; stops a misbehaving proxy streaming without end.
+const MAX_BODY_BYTES = 16 * 1024 * 1024;
+/// Enough for a JSON error, short of a captive portal's HTML page.
+const MAX_LOGGED_BODY_BYTES = 200;
 /// A nonzero length with a null pointer makes WinHttpCrackUrl point the component into the input instead of copying it.
 const POINT_INTO_INPUT: DWORD = std.math.maxInt(DWORD);
 
@@ -93,7 +97,7 @@ pub const Session = struct {
         const response = try self.send(allocator, url, options);
         allocator.free(response.url);
         if (response.status != 200) {
-            slog.warn("Failed to fetch '{s}': status {d}: {s}", .{ url, response.status, response.body });
+            slog.warn("Failed to fetch '{s}': status {d}: {s}", .{ url, response.status, loggedBody(response.body) });
             allocator.free(response.body);
             return error.RequestFailed;
         }
@@ -173,6 +177,11 @@ pub const Session = struct {
     }
 };
 
+/// The start of a response body, short enough to log.
+pub fn loggedBody(body: []const u8) []const u8 {
+    return body[0..@min(body.len, MAX_LOGGED_BODY_BYTES)];
+}
+
 /// Records GetLastError before cleanup can overwrite it, and reports a timeout as error.TimedOut.
 fn winHttpFailure(win32_error: *DWORD, err: RequestError) RequestError {
     win32_error.* = win32.GetLastError();
@@ -205,6 +214,7 @@ fn readBody(allocator: std.mem.Allocator, request: HINTERNET, win32_error: *DWOR
         var bytes_read: DWORD = 0;
         if (!win32.toBool(win32.WinHttpReadData(request, &chunk, chunk.len, &bytes_read))) return winHttpFailure(win32_error, error.ReadDataFailed);
         if (bytes_read == 0) break;
+        if (body.items.len + bytes_read > MAX_BODY_BYTES) return error.ResponseTooLarge;
         try body.appendSlice(allocator, chunk[0..bytes_read]);
     }
     return body.toOwnedSlice(allocator);

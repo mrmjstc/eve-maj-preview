@@ -215,8 +215,8 @@ pub const Scout = struct {
         // A filter's windows are named after the filter, not their title.
         if (!eve_window.is_eve_client) return;
 
-        var title_buf: [MAX_TITLE_LENGTH]u8 = undefined;
-        const current_title = win32.getWindowTitleBuf(eve_window.hwnd, &title_buf) catch |err| switch (err) {
+        var title_buffer: [MAX_TITLE_LENGTH]u8 = undefined;
+        const current_title = win32.getWindowTitle(eve_window.hwnd, &title_buffer) catch |err| switch (err) {
             error.MissingWindowTitle => return,
             else => {
                 slog.err("Failed to get window title for '{s}': {}", .{ eve_window.character_name, err });
@@ -436,11 +436,11 @@ fn matchingFilter(filters: []const WindowFilterConfig, class_name: []const u8, e
 }
 
 fn currentFilter(filters: []const WindowFilterConfig, hwnd: win32.HWND, process_id: win32.DWORD) ?*const WindowFilterConfig {
-    var class_name_buf: [MAX_CLASS_NAME_LENGTH:0]u8 = undefined;
-    const class_name = win32.getClassNameBuf(hwnd, &class_name_buf) orelse return null;
+    var class_name_buffer: [MAX_CLASS_NAME_LENGTH:0]u8 = undefined;
+    const class_name = win32.getClassName(hwnd, &class_name_buffer) orelse return null;
 
-    var executable_path_buf: [win32.MAX_PATH:0]u8 = undefined;
-    const executable_path = win32.queryProcessExecutablePath(process_id, &executable_path_buf) orelse return null;
+    var executable_path_buffer: [win32.MAX_PATH:0]u8 = undefined;
+    const executable_path = win32.queryProcessExecutablePath(process_id, &executable_path_buffer) orelse return null;
 
     return matchingFilter(filters, class_name, executable_path);
 }
@@ -454,19 +454,19 @@ fn enumWindowsCallback(hwnd: win32.HWND, lParam: win32.LPARAM) callconv(.c) win3
     if (scout.indexOf(hwnd) != null) return win32.TRUE;
 
     // Class first, since it's much cheaper than opening the process for its executable path.
-    var class_name_buf: [MAX_CLASS_NAME_LENGTH:0]u8 = undefined;
-    const class_name = win32.getClassNameBuf(hwnd, &class_name_buf) orelse return win32.TRUE;
+    var class_name_buffer: [MAX_CLASS_NAME_LENGTH:0]u8 = undefined;
+    const class_name = win32.getClassName(hwnd, &class_name_buffer) orelse return win32.TRUE;
     if (matchingFilter(scan.filters, class_name, null) == null) return win32.TRUE;
 
     var process_id: win32.DWORD = 0;
     _ = win32.GetWindowThreadProcessId(hwnd, &process_id);
 
-    var executable_path_buf: [win32.MAX_PATH:0]u8 = undefined;
-    const executable_path = win32.queryProcessExecutablePath(process_id, &executable_path_buf) orelse return win32.TRUE;
+    var executable_path_buffer: [win32.MAX_PATH:0]u8 = undefined;
+    const executable_path = win32.queryProcessExecutablePath(process_id, &executable_path_buffer) orelse return win32.TRUE;
     const matching_filter = matchingFilter(scan.filters, class_name, executable_path) orelse return win32.TRUE;
 
-    var title_buf: [MAX_TITLE_LENGTH]u8 = undefined;
-    const title = win32.getWindowTitleBuf(hwnd, &title_buf) catch |err| switch (err) {
+    var title_buffer: [MAX_TITLE_LENGTH]u8 = undefined;
+    const title = win32.getWindowTitle(hwnd, &title_buffer) catch |err| switch (err) {
         error.MissingWindowTitle => return win32.TRUE,
         else => {
             slog.err("Failed to get window title for hwnd {*}: {}", .{ hwnd, err });

@@ -3,6 +3,7 @@ const std = @import("std");
 const evestars = @import("evestars.zig");
 const http_client = @import("../util/http_client.zig");
 const detached = @import("../util/detached.zig");
+const handoff = @import("../util/handoff.zig");
 const log = @import("../log.zig");
 
 const slog = log.Scoped("map");
@@ -78,10 +79,8 @@ pub fn Reply(comptime T: type) type {
 /// One endpoint: a call at a time, as two sends to one character would race in its client.
 fn Call(comptime T: type, comptime parse: fn (std.mem.Allocator, []const u8) anyerror!T) type {
     return struct {
-        /// Set while the call's thread runs.
-        is_busy: std.atomic.Value(bool) = .init(false),
-        /// The newest reply not yet taken; ownership passes with the swap.
-        ready: std.atomic.Value(?*Delivery) = .init(null),
+        /// Shared with the call's thread.
+        job: handoff.Job(Delivery) = .{},
 
         const Self = @This();
 
@@ -108,22 +107,22 @@ fn Call(comptime T: type, comptime parse: fn (std.mem.Allocator, []const u8) any
         };
 
         pub fn isBusy(self: *const Self) bool {
-            return self.is_busy.load(.acquire);
+            return self.job.isBusy();
         }
 
         /// Whether the call started, false if one is running or it couldn't, which it logs; `url`, `token` and `body` are copied.
         pub fn start(self: *Self, allocator: std.mem.Allocator, token: []const u8, url: []const u8, method: Method, body: ?[]const u8) bool {
-            if (self.is_busy.swap(true, .acq_rel)) return false;
+            if (!self.job.claim()) return false;
             self.spawnCall(allocator, token, url, method, body) catch |err| {
                 slog.err("Failed to start a call to Eve Stars: {}", .{err});
-                self.is_busy.store(false, .release);
+                self.job.finish();
                 return false;
             };
             return true;
         }
 
         pub fn take(self: *Self) ?Reply(T) {
-            const delivery = self.ready.swap(null, .acq_rel) orelse return null;
+            const delivery = self.job.take() orelse return null;
             defer delivery.allocator.destroy(delivery);
             return delivery.reply;
         }
@@ -138,16 +137,16 @@ fn Call(comptime T: type, comptime parse: fn (std.mem.Allocator, []const u8) any
             try detached.spawn(thread, .{ self, allocator, Request{ .url = owned_url, .header = header, .method = method, .body = owned_body } });
         }
 
-        /// The call's thread, which owns `request`; touches nothing of the main thread's but this slot's atomics and the allocator.
+        /// The call's thread, which owns `request`; touches nothing of the main thread's but this call's job and the allocator.
         fn thread(self: *Self, allocator: std.mem.Allocator, request: Request) void {
-            defer self.is_busy.store(false, .release);
+            defer self.job.finish();
             defer request.deinit(allocator);
             const delivery = allocator.create(Delivery) catch |err| {
                 slog.err("Failed to keep Eve Stars' reply: {}", .{err});
                 return;
             };
             delivery.* = .{ .allocator = allocator, .reply = call(allocator, &request) };
-            if (self.ready.swap(delivery, .acq_rel)) |unclaimed| allocator.destroy(unclaimed);
+            if (self.job.deliver(delivery)) |unclaimed| allocator.destroy(unclaimed);
         }
 
         fn call(allocator: std.mem.Allocator, request: *const Request) Reply(T) {
@@ -175,7 +174,7 @@ fn Call(comptime T: type, comptime parse: fn (std.mem.Allocator, []const u8) any
             var arena: std.heap.ArenaAllocator = .init(allocator);
             defer arena.deinit();
             if (response.status != 200) {
-                slog.warn("Failed to call Eve Stars at '{s}': status {d}: {s}", .{ request.url, response.status, response.body });
+                slog.warn("Failed to call Eve Stars at '{s}': status {d}: {s}", .{ request.url, response.status, http_client.loggedBody(response.body) });
                 return .{ .failure = evestars.failureOf(arena.allocator(), response.status, response.body) };
             }
             const answer = parse(arena.allocator(), response.body) catch |err| {
