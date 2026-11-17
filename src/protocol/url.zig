@@ -230,7 +230,7 @@ test "closeAction is null for commands that close nothing" {
     try testing.expectEqual(@as(?CloseAction, null), (Command{ .group = .{ .action = .minimize, .name = "Miners" } }).closeAction());
     try testing.expectEqual(@as(?CloseAction, null), (Command{ .switch_character = "Pilot" }).closeAction());
     try testing.expectEqual(@as(?CloseAction, null), (Command{ .profile = "pvp.json" }).closeAction());
-    try testing.expectEqual(@as(?CloseAction, null), Command.open_config.closeAction());
+    try testing.expectEqual(@as(?CloseAction, null), (Command{ .open_config = {} }).closeAction());
 }
 
 test "urlDecode decodes percent escapes and keeps plus signs" {
