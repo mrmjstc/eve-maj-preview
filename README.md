@@ -1,6 +1,8 @@
 
 # EVE-Maj Preview
 
+[![CI](https://github.com/mrmjstc/eve-maj-preview/actions/workflows/ci.yml/badge.svg)](https://github.com/mrmjstc/eve-maj-preview/actions/workflows/ci.yml)
+
 ![EVE-Maj Preview screenshot](http://i.mjst.cc/D7eaOmFdmd.png)
 ![EVE-Maj Preview thumbnails](http://i.mjst.cc/BGIojpNJon.gif)
 
