@@ -22,6 +22,8 @@ const PATH_FORMAT = files.PORTRAITS_DIR ++ "/{s}.jpg";
 pub const CORNER_RADIUS = 6;
 /// A cached file past this isn't a 32px portrait, so it's fetched again.
 const MAX_FILE_BYTES = 256 * 1024;
+/// Fills a roster quickly without opening a connection per character at once.
+const MAX_LOADS = 4;
 
 /// Waits in `takeAll` until the main thread takes it.
 pub const Loaded = struct {
@@ -55,6 +57,10 @@ var g_entries: std.StringHashMapUnmanaged(Entry) = .empty;
 var g_next_serial: usize = 0;
 /// Pushed by load threads, taken by the main thread.
 var g_results: handoff.Stack(Loaded) = .{};
+/// IDs waiting for one of the MAX_LOADS, oldest first; each owned, freed in deinit.
+var g_waiting: std.ArrayList([]const u8) = .empty;
+/// Raised by the main thread as it starts a load, lowered by the load's thread before it hands back its result.
+var g_load_count: std.atomic.Value(u32) = .init(0);
 
 /// Once at startup, since a load thread can outlive the window that started it.
 pub fn setAllocator(allocator: std.mem.Allocator) void {
@@ -89,6 +95,9 @@ pub fn deinit() void {
     }
     g_entries.deinit(g_allocator);
     g_entries = .empty;
+    for (g_waiting.items) |id| g_allocator.free(id);
+    g_waiting.deinit(g_allocator);
+    g_waiting = .empty;
 }
 
 /// Starts loading `name`'s portrait, if its ID is known, so it's ready before the roster is shown.
@@ -120,8 +129,9 @@ pub fn image(arena: std.mem.Allocator, key: ui.Key, name: []const u8, image_styl
     };
 }
 
-/// Takes ownership of `loaded`.
+/// Takes ownership of `loaded`, then starts any loads waiting for its slot.
 pub fn store(loaded: *Loaded) void {
+    defer startWaiting();
     defer loaded.deinit();
     const entry = g_entries.getPtr(loaded.id) orelse return;
     entry.is_loading = false;
@@ -144,10 +154,30 @@ fn request(id: []const u8) void {
         slog.warn("Failed to load the portrait of character '{s}': {}", .{ id, err });
         return;
     };
-    startLoad(id) catch |err| {
+    queueLoad(id) catch |err| {
         slog.warn("Failed to load the portrait of character '{s}': {}", .{ id, err });
         entry.is_loading = false;
+        return;
     };
+    startWaiting();
+}
+
+fn queueLoad(id: []const u8) !void {
+    const owned_id = try g_allocator.dupe(u8, id);
+    errdefer g_allocator.free(owned_id);
+    try g_waiting.append(g_allocator, owned_id);
+}
+
+/// One that can't start leaves its entry empty until the window reopens, as request does.
+fn startWaiting() void {
+    while (g_waiting.items.len > 0 and g_load_count.load(.acquire) < MAX_LOADS) {
+        const id = g_waiting.orderedRemove(0);
+        startLoad(id) catch |err| {
+            slog.warn("Failed to load the portrait of character '{s}': {}", .{ id, err });
+            if (g_entries.getPtr(id)) |entry| entry.is_loading = false;
+            g_allocator.free(id);
+        };
+    }
 }
 
 fn addEntry(id: []const u8) !*Entry {
@@ -159,16 +189,18 @@ fn addEntry(id: []const u8) !*Entry {
     return slot.value_ptr;
 }
 
+/// Takes ownership of `id` once the load has started; only the main thread raises the count, so its check can't be raced.
 fn startLoad(id: []const u8) !void {
     const timer_hwnd = g_timer_hwnd orelse return error.MissingTimerWindow;
-    const owned_id = try g_allocator.dupe(u8, id);
-    errdefer g_allocator.free(owned_id);
-    try detached.spawn(loadThread, .{ session.appContext().io, timer_hwnd, g_command, owned_id });
+    _ = g_load_count.fetchAdd(1, .monotonic);
+    errdefer _ = g_load_count.fetchSub(1, .monotonic);
+    try detached.spawn(loadThread, .{ session.appContext().io, timer_hwnd, g_command, id });
 }
 
-/// Takes ownership of `id`; shares only the allocator, the results and the posted message with the main thread.
+/// Takes ownership of `id`; shares only the allocator, the load count, the results and the posted message with the main thread.
 fn loadThread(io: std.Io, timer_hwnd: win32.HWND, command: usize, id: []const u8) void {
     const loaded = g_allocator.create(Loaded) catch |err| {
+        _ = g_load_count.fetchSub(1, .release);
         slog.warn("Failed to load the portrait of character '{s}': {}", .{ id, err });
         g_allocator.free(id);
         return;
@@ -177,6 +209,8 @@ fn loadThread(io: std.Io, timer_hwnd: win32.HWND, command: usize, id: []const u8
         slog.warn("Failed to load the portrait of character '{s}': {}", .{ id, err });
         break :blk null;
     } };
+    // Before the result goes, so the main thread taking it finds the slot free for the next.
+    _ = g_load_count.fetchSub(1, .release);
     g_results.push(loaded);
     // `id` belongs to the stack now, and the main thread may already have freed it.
     if (!win32.toBool(win32.PostMessageA(timer_hwnd, win32.WM_KNOTS_COMMAND, command, 0))) {
