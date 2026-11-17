@@ -184,6 +184,7 @@ Rendering:
 - `panels/glyphs.zig` (pure, tested): the one icon set the dialog, map and panels draw, built at compile time from strokes on a 16-unit grid at whatever size a caller needs, with the same 1.5px line, so no image files ship. `dialog/knots/glyphs.zig` lays them out as canvas pixels.
 - `panels/panel_header.zig` (pure, tested) + `header_panel.zig`: the header the Client List, History and Intel panels share (chevron, title, buttons) and its window procedure; `panel_chrome.zig` draws it.
 - `panels/panel_menu.zig` + `panel_menu_look.zig` (pure, tested): the ⋯ menu, a borderless topmost window of its own under the button, shared by those three panels; each supplies what it shows and what its rows do.
+- `panels/panel_section.zig`: what those three panels' settings sections share (keep on top, lock, opacity, folding, position), changed through `ProfileStore.updateSection` by the section's name.
 - `panels/segmented.zig` (pure, tested): the segmented control the Map Panel's metric bar, the Intel Panel's range filter and the ⋯ menu's Order row share.
 - `panels/palette.zig`: the configuration window's colours, sizes and fonts, so the GDI panels match it.
 - `thumbnail/hover_zoom.zig` + `layout/zoom.zig`: click-through enlarged copy under the cursor.
@@ -308,7 +309,7 @@ WM_HOTKEY -> timerWindowProc -> HotkeyManager.handleHotkeyPress -> runAction
 - **`store.zig`** (`ProfileStore`): the only writer of the running profile.
   - `live`: what the app shows, including unsaved dialog edits. Read by `ThumbnailSet` and panels (as `*const Config`).
   - `saved`: what's on disk. Read by setup-once consumers: Scout filters, hotkey bindings, chatlog, trackers, timer.
-  - Runtime changes (drags, tray toggles, group membership) apply to both and save immediately.
+  - Runtime changes (drags, tray toggles, group membership) apply to both and save immediately: `update` takes a patch from the root, `updateSection` one for a single named section.
   - `commit` (Save) clones `live` → `saved`; `discard` clones `saved` → `live`.
 - **`patch.zig`**: path-addressed `set`/`insert`/`remove`/`move` ops; keyed lists (`characters`, `hotkeyGroups`, `thumbnailSpaces`) are addressed by runtime `id`. Used for imports.
 - **`profiles.zig`**: load with fallbacks, save, create (exclusive), copy, rename, backup, restore. Every name passes `validateName`.
