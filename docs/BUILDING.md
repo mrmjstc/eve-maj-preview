@@ -34,6 +34,8 @@ To run the unit tests (listed in `src/tests.zig`), which cover log parsing, hotk
 zig build test
 ```
 
+GitHub Actions (`.github/workflows/ci.yml`) runs `zig build check` and `zig build test` on every push and pull request.
+
 ## Version
 
 The build reads the app version from the `VERSION` file at the repo root and embeds it via `build_options`. Bump `VERSION` (not `build.zig.zon`) to change the version reported by the built executables.
