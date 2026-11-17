@@ -21,6 +21,7 @@ const log = @import("../log.zig");
 const ThumbnailWindow = window.ThumbnailWindow;
 const ActivityStats = activity_stats.ActivityStats;
 const RenderSettings = look.RenderSettings;
+const TextStyle = look.TextStyle;
 const TextPosition = types.TextPosition;
 const TextDimensions = draw.TextDimensions;
 const TextOrigin = draw.TextOrigin;
@@ -43,12 +44,12 @@ const MeasuredText = struct {
     font_size: i32 = 0,
     font_weight: types.FontWeight = .Regular,
 
-    fn measure(self: *MeasuredText, layout: *Layout, font: win32.HFONT, text: []const u8, font_name: []const u8, font_size: i32, font_weight: types.FontWeight) TextDimensions {
+    fn measure(self: *MeasuredText, layout: *Layout, font: win32.HFONT, text: []const u8, text_style: TextStyle) TextDimensions {
         if (self.dimensions) |cached| {
-            if (look.stringsEqualFast(self.font_name, font_name) and self.font_size == font_size and self.font_weight == font_weight) return cached;
+            if (look.stringsEqualFast(self.font_name, text_style.font_name) and self.font_size == text_style.font_size and self.font_weight == text_style.font_weight) return cached;
         }
         const measured = layout.measure(font, text);
-        self.* = .{ .dimensions = measured, .font_name = font_name, .font_size = font_size, .font_weight = font_weight };
+        self.* = .{ .dimensions = measured, .font_name = text_style.font_name, .font_size = text_style.font_size, .font_weight = text_style.font_weight };
         return measured;
     }
 };
@@ -323,30 +324,29 @@ pub fn createRenderSettings(config: *const config_mod.Config, thumbnail: *const 
 
 fn addCharacterName(layout: *Layout, fonts: Fonts, cache: *RenderCache, settings: RenderSettings) !void {
     if (!settings.show_character_name) return;
-    const font = try fonts.get(.main, settings.character_name_font_name, settings.character_name_font_size, settings.character_name_font_weight);
-    const dimensions = cache.character_name.measure(layout, font, settings.display_name, settings.character_name_font_name, settings.character_name_font_size, settings.character_name_font_weight);
-    layout.addAt(font, settings.display_name, dimensions, .{ .anchor = settings.character_name_position, .offset_x = settings.character_name_offset_x, .offset_y = settings.character_name_offset_y, .color = settings.character_name_color, .bg_color = settings.character_name_bg_color });
+    try addStyledText(layout, fonts, .main, settings.display_name, settings.character_name_style, &cache.character_name);
 }
 
 fn addSystemName(layout: *Layout, fonts: Fonts, cache: *RenderCache, settings: RenderSettings) !void {
     if (!settings.show_system_name or settings.connections.count > 0) return;
-    const font = try fonts.get(.system_name, settings.system_name_font_name, settings.system_name_font_size, settings.system_name_font_weight);
-    const dimensions = cache.system_name.measure(layout, font, settings.system_name, settings.system_name_font_name, settings.system_name_font_size, settings.system_name_font_weight);
-    layout.addAt(font, settings.system_name, dimensions, .{ .anchor = settings.system_name_position, .offset_x = settings.system_name_offset_x, .offset_y = settings.system_name_offset_y, .color = settings.system_name_color, .bg_color = settings.system_name_bg_color });
+    try addStyledText(layout, fonts, .system_name, settings.system_name, settings.system_name_style, &cache.system_name);
 }
 
 fn addGroupBadge(layout: *Layout, fonts: Fonts, cache: *RenderCache, settings: RenderSettings) !void {
     if (!settings.show_group_badge) return;
-    const font = try fonts.get(.group_badge, settings.group_badge_font_name, settings.group_badge_font_size, settings.group_badge_font_weight);
-    const dimensions = cache.group_badge.measure(layout, font, settings.group_badge_text, settings.group_badge_font_name, settings.group_badge_font_size, settings.group_badge_font_weight);
-    layout.addAt(font, settings.group_badge_text, dimensions, .{ .anchor = settings.group_badge_position, .offset_x = settings.group_badge_offset_x, .offset_y = settings.group_badge_offset_y, .color = settings.group_badge_color, .bg_color = settings.group_badge_bg_color });
+    try addStyledText(layout, fonts, .group_badge, settings.group_badge_text, settings.group_badge_style, &cache.group_badge);
 }
 
 fn addSessionTimer(layout: *Layout, fonts: Fonts, settings: RenderSettings) !void {
     if (!settings.show_session_timer) return;
-    const font = try fonts.get(.session_timer, settings.session_timer_font_name, settings.session_timer_font_size, settings.session_timer_font_weight);
-    const text = format.formatSessionDuration(layout.nextTextBuffer(), settings.session_minutes);
-    layout.addAt(font, text, layout.measure(font, text), .{ .anchor = settings.session_timer_position, .offset_x = settings.session_timer_offset_x, .offset_y = settings.session_timer_offset_y, .color = settings.session_timer_color, .bg_color = settings.session_timer_bg_color });
+    try addStyledText(layout, fonts, .session_timer, format.formatSessionDuration(layout.nextTextBuffer(), settings.session_minutes), settings.session_timer_style, null);
+}
+
+/// Measured through `cache` when given, for a text that rarely changes.
+fn addStyledText(layout: *Layout, fonts: Fonts, slot: font_cache_mod.FontSlot, text: []const u8, text_style: TextStyle, cache: ?*MeasuredText) !void {
+    const font = try fonts.get(slot, text_style.font_name, text_style.font_size, text_style.font_weight);
+    const dimensions = if (cache) |measured| measured.measure(layout, font, text, text_style) else layout.measure(font, text);
+    layout.addAt(font, text, dimensions, .{ .anchor = text_style.position, .offset_x = text_style.offset_x, .offset_y = text_style.offset_y, .color = text_style.color, .bg_color = text_style.bg_color });
 }
 
 fn addCombat(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, stats: *const ActivityStats, settings: RenderSettings) !void {
@@ -438,7 +438,8 @@ fn addPing(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, stat
 fn layoutConnectionMap(map: *layout_mod.Layout, layout: *Layout, fonts: Fonts, settings: RenderSettings) !?win32.HFONT {
     const connections = settings.connections.slice();
     if (!settings.show_system_name or connections.len == 0) return null;
-    const font = try fonts.get(.system_name, settings.system_name_font_name, settings.system_name_font_size, settings.system_name_font_weight);
+    const text_style = settings.system_name_style;
+    const font = try fonts.get(.system_name, text_style.font_name, text_style.font_size, text_style.font_weight);
 
     var systems: [connections_mod.CAPACITY]universe.SystemIndex = undefined;
     for (connections, 0..) |connection, index| systems[index] = connection.system;
@@ -446,7 +447,7 @@ fn layoutConnectionMap(map: *layout_mod.Layout, layout: *Layout, fonts: Fonts, s
         .width = @min(@as(usize, @intCast(settings.connection_map_width)), layout.width),
         .height = @min(@as(usize, @intCast(settings.connection_map_height)), layout.height),
     };
-    const origin = layout.position(settings.system_name_position, dimensions, settings.system_name_offset_x, settings.system_name_offset_y);
+    const origin = layout.position(text_style.position, dimensions, text_style.offset_x, text_style.offset_y);
     const area: layout_mod.Box = .{ .left = origin.x, .top = origin.y, .right = origin.x + @as(i32, @intCast(dimensions.width)), .bottom = origin.y + @as(i32, @intCast(dimensions.height)) };
     map.buildAround(systems[0..connections.len], area);
 
@@ -518,7 +519,7 @@ fn drawConnectionMap(canvas: pixel_buffer.Canvas, map: *const layout_mod.Layout,
 fn renderConnectionLabels(dc: win32.HDC, map: *const layout_mod.Layout, settings: RenderSettings) void {
     for (map.nodes[0..map.node_count], 0..) |node, index| {
         const label = node.label orelse continue;
-        const plain_color = if (index == 0) settings.system_name_color else settings.connection_color;
+        const plain_color = if (index == 0) settings.system_name_style.color else settings.connection_color;
         draw.renderText(dc, universe.systemName(node.system), label.left - draw.TEXT_PADDING_X, label.top - draw.TEXT_PADDING_Y, labelColor(settings.connections.find(node.system), plain_color));
     }
     for (map.exits[0..map.exit_count]) |exit| {

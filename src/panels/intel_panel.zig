@@ -20,6 +20,7 @@ const panel_host = @import("panel_host.zig");
 const panel_lifecycle = @import("panel_lifecycle.zig");
 const panel_menu = @import("panel_menu.zig");
 const panel_menu_look = @import("panel_menu_look.zig");
+const panel_section = @import("panel_section.zig");
 const palette = @import("palette.zig");
 const segmented = @import("segmented.zig");
 const box = @import("../util/box.zig");
@@ -31,6 +32,7 @@ const PanelWindow = panel_window.PanelWindow;
 const slog = log.Scoped("intel_panel");
 
 const INTEL_PANEL_WINDOW_CLASS = "EVE_INTEL_PANEL_CLASS";
+const SETTINGS_SECTION = "intelPanel";
 const HEADER_ACTIONS = [_]panel_header.Action{ .mute, .pin, .menu };
 const ROW_ACTIONS = [_]RowAction{ .show_on_map, .copy_name };
 
@@ -182,14 +184,14 @@ pub const IntelPanelWindow = struct {
     }
 
     pub fn toggleCollapsed(self: *IntelPanelWindow) void {
-        self.store.update(.{ .intelPanel = .{ .collapsed = !self.config.intelPanel.collapsed } });
+        panel_section.toggleCollapsed(self.store, SETTINGS_SECTION);
         self.redraw();
     }
 
     pub fn runHeaderAction(self: *IntelPanelWindow, action: panel_header.Action) void {
         const intel_settings = &self.config.intelPanel;
         switch (action) {
-            .pin => self.store.update(.{ .intelPanel = .{ .alwaysOnTop = !intel_settings.alwaysOnTop } }),
+            .pin => panel_section.toggleOnTop(self.store, SETTINGS_SECTION),
             .mute => self.store.update(.{ .intelPanel = .{ .muteSounds = !intel_settings.muteSounds } }),
             .menu => self.menu.toggle(self.panel.allocator, self.instance, panel_menu.ownerFor(IntelPanelWindow, self), self.menuButton() orelse return),
             .clear => {},
@@ -205,27 +207,11 @@ pub const IntelPanelWindow = struct {
     }
 
     pub fn menuContents(self: *const IntelPanelWindow) panel_menu_look.Contents {
-        const intel_settings = &self.config.intelPanel;
-        return .{
-            .is_on_top = intel_settings.alwaysOnTop,
-            .is_locked = intel_settings.lockPosition,
-            .opacity = intel_settings.opacity,
-            .settings_label = "Intel Panel Settings\u{2026}",
-            .can_hide = true,
-            .accent = self.config.accentColor,
-        };
+        return panel_section.menuContents(self.config, SETTINGS_SECTION, "Intel Panel Settings\u{2026}", true);
     }
 
     pub fn runMenuAction(self: *IntelPanelWindow, action: panel_menu_look.Action) void {
-        const intel_settings = &self.config.intelPanel;
-        switch (action) {
-            .toggle => |toggle| switch (toggle) {
-                .keep_on_top => self.store.update(.{ .intelPanel = .{ .alwaysOnTop = !intel_settings.alwaysOnTop } }),
-                .lock_position => self.store.update(.{ .intelPanel = .{ .lockPosition = !intel_settings.lockPosition } }),
-                .group_by_system => {},
-            },
-            .order => {},
-            .opacity => |opacity| if (opacity.is_final) self.store.update(.{ .intelPanel = .{ .opacity = opacity.value } }) else self.store.preview(.{ .intelPanel = .{ .opacity = opacity.value } }),
+        if (!panel_section.runMenuAction(self.store, SETTINGS_SECTION, action)) switch (action) {
             .command => |command| switch (command) {
                 .settings => self.host.run(.{ .open_settings = .intel_panel }),
                 .hide => {
@@ -234,7 +220,8 @@ pub const IntelPanelWindow = struct {
                     return;
                 },
             },
-        }
+            .toggle, .order, .opacity => {},
+        };
         self.redraw();
     }
 
@@ -255,10 +242,7 @@ pub const IntelPanelWindow = struct {
     }
 
     pub fn saveWindowPosition(self: *const IntelPanelWindow) void {
-        const intel_settings = &self.config.intelPanel;
-        if (!intel_settings.rememberPosition) return;
-        const top_left = self.panel.topLeft() orelse return;
-        self.store.update(.{ .intelPanel = .{ .x = top_left.x, .y = top_left.y } });
+        panel_section.savePosition(self.store, SETTINGS_SECTION, &self.panel);
     }
 
     /// A range segment filters the rows; a hovered row's button runs its action, and the rest of a row shows its system on the map.
@@ -376,20 +360,16 @@ pub const IntelPanelWindow = struct {
         const is_collapsed = intel_settings.collapsed;
         const panel_width: i32 = @max(1, intel_settings.width);
         const panel_height = panel_header.panelHeight(is_collapsed, intel_settings.height);
-        const bitmap = try self.panel.beginFrame(panel_width, panel_height);
-        const dc = bitmap.mem_dc;
-        const canvas = bitmap.canvas();
-        panel_chrome.fillBody(canvas);
-        panel_chrome.fillHeader(canvas, &panel_header_state);
-
-        const old_font = panel_chrome.selectFont(&self.panel, dc);
-        defer panel_chrome.restoreFont(dc, old_font);
-        const summary_left = panel_chrome.drawHeaderText(dc, &self.header_fonts, &panel_header_state);
+        const frame = try panel_chrome.beginFrame(&self.panel, &self.header_fonts, &panel_header_state, panel_width, panel_height);
+        defer frame.restoreFont();
+        const bitmap = frame.bitmap;
+        const dc = frame.dc;
+        const canvas = frame.canvas;
         self.range_layout = null;
         self.drawn_count = 0;
         self.action_row = null;
         if (is_collapsed) {
-            self.drawSummary(canvas, dc, entries, summary_left, panel_header_state.layout.content_right);
+            self.drawSummary(canvas, dc, entries, frame.summary_left, panel_header_state.layout.content_right);
         } else {
             self.range_layout = self.drawRangeBar(canvas, dc, panel_width, entries.len, all_entries.len);
             const rows_top = if (self.range_layout) |layout| layout.bottom else panel_header.HEIGHT;

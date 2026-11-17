@@ -363,6 +363,24 @@ pub const CardShape = struct {
     row_count: usize = 0,
     /// Shows the header alone.
     is_collapsed: bool = false,
+
+    /// Fills `rows` under the header; the box keeps one row's room while there are none.
+    fn layOut(self: CardShape, areas: Areas, rows: []Box) CardOutline {
+        const right = areas.body.right - CARD_MARGIN;
+        const left = right - areas.intel_width;
+        const header: Box = .{ .left = left, .top = self.top, .right = right, .bottom = self.top + self.header_height };
+        for (rows, 0..) |*row, index| {
+            const row_top = header.bottom + @as(i32, @intCast(index)) * self.row_height;
+            row.* = .{ .left = left, .top = row_top, .right = right, .bottom = row_top + self.row_height };
+        }
+        const shown_rows: i32 = if (self.is_collapsed) 0 else @intCast(@max(1, rows.len));
+        return .{ .header = header, .box = .{ .left = left, .top = self.top, .right = right, .bottom = header.bottom + shown_rows * self.row_height } };
+    }
+};
+
+const CardOutline = struct {
+    box: Box,
+    header: Box,
 };
 
 /// The Intel card, below the search box and clear of the map controls.
@@ -387,16 +405,11 @@ pub const IntelCard = struct {
 
     /// With no rows it keeps one row's room to say so.
     pub fn init(areas: Areas, shape: CardShape) IntelCard {
-        const right = areas.body.right - CARD_MARGIN;
-        const left = right - areas.intel_width;
-        var card: IntelCard = .{ .box = undefined, .header = .{ .left = left, .top = shape.top, .right = right, .bottom = shape.top + shape.header_height }, .is_collapsed = shape.is_collapsed };
+        var card: IntelCard = .{ .box = undefined, .header = undefined, .is_collapsed = shape.is_collapsed };
         card.row_count = if (shape.is_collapsed) 0 else @min(shape.row_count, MAX_INTEL_ROWS);
-        for (card.rows[0..card.row_count], 0..) |*row, index| {
-            const row_top = card.header.bottom + @as(i32, @intCast(index)) * shape.row_height;
-            row.* = .{ .left = left, .top = row_top, .right = right, .bottom = row_top + shape.row_height };
-        }
-        const shown_rows: i32 = if (shape.is_collapsed) 0 else @intCast(@max(1, card.row_count));
-        card.box = .{ .left = left, .top = shape.top, .right = right, .bottom = card.header.bottom + shown_rows * shape.row_height };
+        const outline = shape.layOut(areas, card.rows[0..card.row_count]);
+        card.box = outline.box;
+        card.header = outline.header;
         return card;
     }
 
@@ -439,18 +452,14 @@ pub const ListCard = struct {
 
     /// Down to `bottom`, as many rows as fit, at least one to say there are none.
     pub fn init(areas: Areas, shape: CardShape, bottom: i32) ListCard {
-        const right = areas.body.right - CARD_MARGIN;
-        const left = right - areas.intel_width;
-        var card: ListCard = .{ .box = undefined, .header = .{ .left = left, .top = shape.top, .right = right, .bottom = shape.top + shape.header_height }, .is_collapsed = shape.is_collapsed };
-        const fitting: usize = @intCast(std.math.clamp(@divTrunc(@max(0, bottom - card.header.bottom), shape.row_height), 1, MAX_LIST_ROWS));
+        var card: ListCard = .{ .box = undefined, .header = undefined, .is_collapsed = shape.is_collapsed };
+        const rows_top = shape.top + shape.header_height;
+        const fitting: usize = @intCast(std.math.clamp(@divTrunc(@max(0, bottom - rows_top), shape.row_height), 1, MAX_LIST_ROWS));
         card.visible_count = fitting;
         card.row_count = if (shape.is_collapsed) 0 else @min(shape.row_count, fitting);
-        for (card.rows[0..card.row_count], 0..) |*row, index| {
-            const row_top = card.header.bottom + @as(i32, @intCast(index)) * shape.row_height;
-            row.* = .{ .left = left, .top = row_top, .right = right, .bottom = row_top + shape.row_height };
-        }
-        const shown_rows: i32 = if (shape.is_collapsed) 0 else @intCast(@max(1, card.row_count));
-        card.box = .{ .left = left, .top = shape.top, .right = right, .bottom = card.header.bottom + shown_rows * shape.row_height };
+        const outline = shape.layOut(areas, card.rows[0..card.row_count]);
+        card.box = outline.box;
+        card.header = outline.header;
         return card;
     }
 

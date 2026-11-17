@@ -28,16 +28,24 @@ pub const ProfileStore = struct {
         self.saved.deinit();
     }
 
-    /// A runtime change (drag, tray or panel toggle) saved to both copies, which Save and Discard can't undo; `patch` mirrors Config's nesting, e.g. `.{ .display = .{ .startX = 10 } }`.
+    /// A runtime change, e.g. a drag or a toggle, saved to both copies so Save and Discard can't undo it.
+    /// `patch`: mirrors Config's nesting, e.g. `.{ .display = .{ .startX = 10 } }`.
     pub fn update(self: *ProfileStore, patch: anytype) void {
         assign(Config, &self.live, patch);
         assign(Config, &self.saved, patch);
         self.persist();
     }
 
-    /// Live only and unsaved, for a drag whose last step is an update; `patch` is as update's.
-    pub fn preview(self: *ProfileStore, patch: anytype) void {
-        assign(Config, &self.live, patch);
+    /// update for the Config field `section` names; `patch` mirrors that section, e.g. `.{ .collapsed = true }`.
+    pub fn updateSection(self: *ProfileStore, comptime section: []const u8, patch: anytype) void {
+        assign(@FieldType(Config, section), &@field(self.live, section), patch);
+        assign(@FieldType(Config, section), &@field(self.saved, section), patch);
+        self.persist();
+    }
+
+    /// Live only and unsaved, for a drag whose last step is an updateSection; `patch` is as updateSection's.
+    pub fn previewSection(self: *ProfileStore, comptime section: []const u8, patch: anytype) void {
+        assign(@FieldType(Config, section), &@field(self.live, section), patch);
     }
 
     pub const CharacterPosition = struct { name: []const u8, position: config_mod.Position };
@@ -194,7 +202,7 @@ fn assign(comptime T: type, target: *T, patch: anytype) void {
         if (@TypeOf(value) != Field and @typeInfo(Field) == .@"struct") {
             assign(Field, &@field(target, name), value);
         } else {
-            if (comptime wire.hasPointers(Field)) @compileError(name ++ " holds pointers, so it can't be set through ProfileStore.update");
+            if (comptime wire.hasPointers(Field)) @compileError(name ++ " holds pointers, so it can't be set through a ProfileStore update");
             @field(target, name) = value;
         }
     }
@@ -326,6 +334,17 @@ test "a nested patch sets only the fields it names" {
     assign(Config, &store.live, .{ .display = .{ .startX = 42 } });
     try testing.expectEqual(@as(i32, 42), store.live.display.startX);
     try testing.expectEqual(start_y, store.live.display.startY);
+}
+
+test "a section preview sets only the fields it names, and only in the live copy" {
+    var store = try testStore("{}");
+    defer store.deinit();
+    const width = store.live.historyPanel.width;
+
+    store.previewSection("historyPanel", .{ .opacity = 90 });
+    try testing.expectEqual(@as(u8, 90), store.live.historyPanel.opacity);
+    try testing.expectEqual(width, store.live.historyPanel.width);
+    try testing.expect(store.saved.historyPanel.opacity != 90);
 }
 
 test "a new store isn't dirty, a live edit makes it dirty, and discard undoes it" {

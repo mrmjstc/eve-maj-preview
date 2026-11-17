@@ -280,16 +280,7 @@ pub const MapPanelWindow = struct {
         };
         var card: look.IntelCard = .init(areas, .{ .top = top, .header_height = header_height, .row_height = row_height, .row_count = row_count, .is_collapsed = self.state.is_intel_collapsed });
         card.tab = tab;
-        if (self.isIntelInside() and self.config.mapPanel.showKills) {
-            var left = card.header.left + look.INTEL_PADDING_X;
-            for (std.enums.values(look.CardTab), &card.tabs) |each, *box| {
-                _ = win32.SelectObject(dc, if (each == tab) fonts.semibold_font else fonts.chrome.name_font);
-                const width = panel_chrome.textWidth(dc, paint.cardTabName(each));
-                box.* = .{ .left = left, .top = card.header.top, .right = left + width, .bottom = card.header.bottom };
-                left += width + look.CARD_TAB_GAP;
-            }
-            _ = win32.SelectObject(dc, fonts.chrome.name_font);
-        }
+        if (self.isIntelInside() and self.config.mapPanel.showKills) layOutTabs(look.CardTab, paint.cardTabName, dc, fonts, card.header, tab, &card.tabs);
         return card;
     }
 
@@ -305,14 +296,7 @@ pub const MapPanelWindow = struct {
         self.state.wormhole_scroll = @min(self.state.wormhole_scroll, wormhole_list.maxScroll(self.state.wormhole_entry_count, probe.visible_count));
         const shown_count = self.state.wormhole_entry_count - self.state.wormhole_scroll;
         var card: look.ListCard = .init(areas, .{ .top = top, .header_height = look.intelHeaderHeight(areas.card_height), .row_height = row_height, .row_count = shown_count, .is_collapsed = self.state.is_wormholes_collapsed }, bottom);
-        var left = card.header.left + look.INTEL_PADDING_X;
-        for (std.enums.values(wormholes.Hub), &card.tabs) |each, *box| {
-            _ = win32.SelectObject(dc, if (each == hub) fonts.semibold_font else fonts.chrome.name_font);
-            const width = panel_chrome.textWidth(dc, text_mod.hubName(each));
-            box.* = .{ .left = left, .top = card.header.top, .right = left + width, .bottom = card.header.bottom };
-            left += width + look.CARD_TAB_GAP;
-        }
-        _ = win32.SelectObject(dc, fonts.chrome.name_font);
+        layOutTabs(wormholes.Hub, text_mod.hubName, dc, fonts, card.header, hub, &card.tabs);
         return card;
     }
 
@@ -853,6 +837,18 @@ fn measureChrome(dc: win32.HDC, fonts: MapFonts, areas: look.Areas, shown: Chrom
     _ = win32.SelectObject(dc, fonts.chrome.name_font);
     for (look.TOGGLE_ORDER, &text.toggle_widths) |toggle, *width| width.* = panel_chrome.textWidth(dc, text_mod.toggleLabel(toggle));
     return .init(areas, text);
+}
+
+/// Each of `Tab`'s names in a row across `header`, `selected` in semibold; leaves `dc` holding the chrome's name font.
+fn layOutTabs(comptime Tab: type, comptime name_of: fn (Tab) []const u8, dc: win32.HDC, fonts: MapFonts, header: Box, selected: Tab, boxes: []Box) void {
+    var left = header.left + look.INTEL_PADDING_X;
+    for (std.enums.values(Tab), boxes) |each, *box| {
+        _ = win32.SelectObject(dc, if (each == selected) fonts.semibold_font else fonts.chrome.name_font);
+        const width = panel_chrome.textWidth(dc, name_of(each));
+        box.* = .{ .left = left, .top = header.top, .right = left + width, .bottom = header.bottom };
+        left += width + look.CARD_TAB_GAP;
+    }
+    _ = win32.SelectObject(dc, fonts.chrome.name_font);
 }
 
 fn regionFromSettings(region_id: u32) RegionIndex {

@@ -17,6 +17,7 @@ const panel_header = @import("panel_header.zig");
 const panel_host = @import("panel_host.zig");
 const panel_menu = @import("panel_menu.zig");
 const panel_menu_look = @import("panel_menu_look.zig");
+const panel_section = @import("panel_section.zig");
 const template = @import("../notifications/template.zig");
 const box = @import("../util/box.zig");
 const pixel_buffer = @import("../util/pixel_buffer.zig");
@@ -30,6 +31,7 @@ const slog = log.Scoped("list_view");
 const TEXT_BUFFER_SIZE: usize = 256;
 
 const LIST_WINDOW_CLASS = "EVE_LIST_CLASS";
+const SETTINGS_SECTION = "listView";
 const HEADER_ACTIONS = [_]panel_header.Action{ .pin, .menu };
 /// Fits a system's name, upper-cased for its heading.
 const HEADING_TEXT_MAX = 64;
@@ -156,13 +158,13 @@ pub const ListWindow = struct {
     }
 
     pub fn toggleCollapsed(self: *ListWindow) void {
-        self.store.update(.{ .listView = .{ .collapsed = !self.config.listView.collapsed } });
+        panel_section.toggleCollapsed(self.store, SETTINGS_SECTION);
         self.redraw();
     }
 
     pub fn runHeaderAction(self: *ListWindow, action: panel_header.Action) void {
         switch (action) {
-            .pin => self.store.update(.{ .listView = .{ .alwaysOnTop = !self.config.listView.alwaysOnTop } }),
+            .pin => panel_section.toggleOnTop(self.store, SETTINGS_SECTION),
             .menu => self.menu.toggle(self.panel.allocator, self.instance, panel_menu.ownerFor(ListWindow, self), self.menuButton() orelse return),
             .clear, .mute => {},
         }
@@ -177,35 +179,26 @@ pub const ListWindow = struct {
     }
 
     pub fn menuContents(self: *const ListWindow) panel_menu_look.Contents {
-        const list_settings = &self.config.listView;
-        return .{
-            .is_on_top = list_settings.alwaysOnTop,
-            .groups_by_system = list_settings.groupBySystem,
-            .is_locked = list_settings.lockPosition,
-            .order = list_settings.order,
-            .opacity = list_settings.opacity,
-            .settings_label = "Client List Settings\u{2026}",
-            // It's shown by the view mode, which belongs to the dialog.
-            .can_hide = false,
-            .accent = self.config.accentColor,
-        };
+        // It's shown by the view mode, which belongs to the dialog.
+        var contents = panel_section.menuContents(self.config, SETTINGS_SECTION, "Client List Settings\u{2026}", false);
+        contents.groups_by_system = self.config.listView.groupBySystem;
+        contents.order = self.config.listView.order;
+        return contents;
     }
 
     pub fn runMenuAction(self: *ListWindow, action: panel_menu_look.Action) void {
-        const list_settings = &self.config.listView;
-        switch (action) {
+        if (!panel_section.runMenuAction(self.store, SETTINGS_SECTION, action)) switch (action) {
             .toggle => |toggle| switch (toggle) {
-                .keep_on_top => self.store.update(.{ .listView = .{ .alwaysOnTop = !list_settings.alwaysOnTop } }),
-                .group_by_system => self.store.update(.{ .listView = .{ .groupBySystem = !list_settings.groupBySystem } }),
-                .lock_position => self.store.update(.{ .listView = .{ .lockPosition = !list_settings.lockPosition } }),
+                .group_by_system => self.store.update(.{ .listView = .{ .groupBySystem = !self.config.listView.groupBySystem } }),
+                .keep_on_top, .lock_position => {},
             },
             .order => |order| self.store.update(.{ .listView = .{ .order = order } }),
-            .opacity => |opacity| if (opacity.is_final) self.store.update(.{ .listView = .{ .opacity = opacity.value } }) else self.store.preview(.{ .listView = .{ .opacity = opacity.value } }),
             .command => |command| switch (command) {
                 .settings => self.host.run(.{ .open_settings = .client_list }),
                 .hide => {},
             },
-        }
+            .opacity => {},
+        };
         self.redraw();
     }
 
@@ -462,19 +455,13 @@ pub const ListWindow = struct {
         const shows_totals = list_look.showsTotals(self.statSettings());
         const content_bottom = if (shows_totals) lines_bottom + sizes.footer_height else lines_bottom + list_look.BOTTOM_PADDING;
         const panel_height = panel_header.panelHeight(is_collapsed, content_bottom);
-        const bitmap = try self.panel.beginFrame(panel_width, panel_height);
-        const dc = bitmap.mem_dc;
-        const canvas = bitmap.canvas();
-
-        panel_chrome.fillBody(canvas);
-        panel_chrome.fillHeader(canvas, &panel_header_state);
-
-        // A font still selected into the DC can't be deleted when the settings change.
-        const old_font = panel_chrome.selectFont(&self.panel, dc);
-        defer panel_chrome.restoreFont(dc, old_font);
-        const summary_left = panel_chrome.drawHeaderText(dc, &self.header_fonts, &panel_header_state);
+        const frame = try panel_chrome.beginFrame(&self.panel, &self.header_fonts, &panel_header_state, panel_width, panel_height);
+        defer frame.restoreFont();
+        const bitmap = frame.bitmap;
+        const dc = frame.dc;
+        const canvas = frame.canvas;
         if (is_collapsed) {
-            self.drawSummary(canvas, dc, thumbnails, active_source_hwnd, summary_left, panel_header_state.layout.content_right);
+            self.drawSummary(canvas, dc, thumbnails, active_source_hwnd, frame.summary_left, panel_header_state.layout.content_right);
         } else {
             var row_text: ?RowText = null;
             if (self.panel.font.handle) |regular_font| {
@@ -538,7 +525,7 @@ pub const ListWindow = struct {
         for (order, self.rows.items) |position, *row| row.* = sorted[position];
     }
 
-    /// Fills `lines`: a heading over each system's rows while grouped, every line two lines of text tall while the list shows stats; returns the last line's bottom.
+    /// Fills `lines`, with a heading over each system's rows while grouped; returns the last line's bottom.
     fn layOutLines(self: *ListWindow, thumbnails: []const ThumbnailWindow, columns: i32, sizes: list_look.Metrics) !i32 {
         const allocator = self.panel.allocator;
         const column_count: usize = @intCast(columns);
@@ -680,7 +667,7 @@ pub const ListWindow = struct {
         drawStats(dc, list_settings, readings, text_left, name_y + text.name_height + list_look.LINE_GAP, name_right);
     }
 
-    /// The newest notification as a pill, else "Excluded", else the system and any security unless grouped; returns where it starts, or `slot.right` when empty.
+    /// The newest notification's pill, else "Excluded", else the system and security unless grouped; returns where it starts, or `slot.right` if empty.
     fn drawRightSlot(self: *const ListWindow, canvas: pixel_buffer.Canvas, dc: win32.HDC, thumbnail: *const ThumbnailWindow, slot: Slot) i32 {
         const list_settings = &self.config.listView;
         var notification_buffer: [TEXT_BUFFER_SIZE]u8 = undefined;

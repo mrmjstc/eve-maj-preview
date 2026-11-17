@@ -27,6 +27,19 @@ pub const NotificationLine = struct {
     lead_color: u32 = 0,
 };
 
+/// One overlay text's font, place and colours.
+pub const TextStyle = struct {
+    /// Borrows from config.
+    font_name: []const u8 = types.DEFAULT_FONT,
+    font_size: i32 = types.DEFAULT_FONT_SIZE,
+    font_weight: types.FontWeight = .Regular,
+    position: TextPosition,
+    offset_x: i32 = 0,
+    offset_y: i32 = 0,
+    color: u32 = 0xFFFFFF,
+    bg_color: u32 = 0x80000000,
+};
+
 /// All an overlay depends on except the stat config, which every config edit's cache clear covers.
 pub const RenderSettings = struct {
     /// Every overlay text; the per-element flags below are already false without it.
@@ -39,28 +52,13 @@ pub const RenderSettings = struct {
     system_name: []const u8 = "",
     /// Shown in place of system_name unless empty.
     connections: connections_mod.Connections = .{},
-    character_name_color: u32 = 0xFFFFFF,
-    system_name_color: u32 = 0xFFFFFF,
-    /// For every connection but the character's own system, which keeps system_name_color.
+    character_name_style: TextStyle = .{ .position = .TopLeft },
+    /// Also the connection map's place and font.
+    system_name_style: TextStyle = .{ .position = .BottomLeft },
+    /// For every connection but the character's own system, which keeps system_name_style's colour.
     connection_color: u32 = 0xFFFFFF,
     connection_map_width: i32 = 0,
     connection_map_height: i32 = 0,
-    character_name_bg_color: u32 = 0x80000000,
-    system_name_bg_color: u32 = 0x80000000,
-    /// Borrows from config.
-    character_name_font_name: []const u8 = types.DEFAULT_FONT,
-    character_name_font_size: i32 = types.DEFAULT_FONT_SIZE,
-    character_name_font_weight: types.FontWeight = .Regular,
-    character_name_position: TextPosition = .TopLeft,
-    character_name_offset_x: i32 = 0,
-    character_name_offset_y: i32 = 0,
-    system_name_position: TextPosition = .BottomLeft,
-    system_name_offset_x: i32 = 0,
-    system_name_offset_y: i32 = 0,
-    /// Borrows from config.
-    system_name_font_name: []const u8 = types.DEFAULT_FONT,
-    system_name_font_size: i32 = types.DEFAULT_FONT_SIZE,
-    system_name_font_weight: types.FontWeight = .Regular,
     show_notifications: bool = false,
     /// Borrows the notification stack's text, freed as entries expire, so compare by notification_revision.
     notification_lines: [MAX_NOTIFICATION_LINES]NotificationLine = @splat(.{}),
@@ -87,28 +85,12 @@ pub const RenderSettings = struct {
     show_group_badge: bool = false,
     /// Borrows from the thumbnail.
     group_badge_text: []const u8 = "",
-    group_badge_color: u32 = 0xFF44FF44,
-    group_badge_position: TextPosition = .RightCenter,
-    group_badge_offset_x: i32 = 0,
-    group_badge_offset_y: i32 = 0,
-    /// Borrows from config.
-    group_badge_font_name: []const u8 = types.DEFAULT_FONT,
-    group_badge_font_size: i32 = types.DEFAULT_FONT_SIZE,
-    group_badge_font_weight: types.FontWeight = .Regular,
-    group_badge_bg_color: u32 = 0x80000000,
+    group_badge_style: TextStyle = .{ .position = .RightCenter, .color = 0xFF44FF44 },
 
     show_session_timer: bool = false,
     /// 0 while not shown.
     session_minutes: u64 = 0,
-    session_timer_color: u32 = 0xFFFFFF,
-    session_timer_position: TextPosition = .RightCenter,
-    session_timer_offset_x: i32 = 0,
-    session_timer_offset_y: i32 = -24,
-    /// Borrows from config.
-    session_timer_font_name: []const u8 = types.DEFAULT_FONT,
-    session_timer_font_size: i32 = types.DEFAULT_FONT_SIZE,
-    session_timer_font_weight: types.FontWeight = .Regular,
-    session_timer_bg_color: u32 = 0x80000000,
+    session_timer_style: TextStyle = .{ .position = .RightCenter, .offset_y = -24 },
 
     combat_incoming_bg_color: u32 = 0x80000000,
     combat_outgoing_bg_color: u32 = 0x80000000,
@@ -204,12 +186,27 @@ pub fn renderSettings(config: *const config_mod.Config, subject: *const Subject)
         .connection_color = thumbnail_config.systemNameColor,
         .connection_map_width = scalePixels(thumbnail_config.systemConnectionMapWidth, dpi_scale),
         .connection_map_height = scalePixels(thumbnail_config.systemConnectionMapHeight, dpi_scale),
-        // Unique character colours win over the state's text colour.
-        .character_name_color = subject.character_color orelse state_config.textColor orelse thumbnail_config.characterNameColor,
-        .system_name_color = subject.system_color,
-        .character_name_bg_color = resolveTextBgColor(state_config, thumbnail_config.characterNameBgColor, forces_opaque_backgrounds),
-        .system_name_bg_color = resolveTextBgColor(state_config, thumbnail_config.systemNameBgColor, forces_opaque_backgrounds),
-        .group_badge_bg_color = resolveTextBgColor(state_config, thumbnail_config.quickGroupBadgeBgColor, forces_opaque_backgrounds),
+        .character_name_style = .{
+            .font_name = thumbnail_config.characterNameFontName,
+            .font_size = scalePixels(thumbnail_config.characterNameFontSize, dpi_scale),
+            .font_weight = thumbnail_config.characterNameFontWeight,
+            .position = thumbnail_config.characterNamePosition,
+            .offset_x = thumbnail_config.characterNameOffsetX,
+            .offset_y = thumbnail_config.characterNameOffsetY,
+            // Unique character colours win over the state's text colour.
+            .color = subject.character_color orelse state_config.textColor orelse thumbnail_config.characterNameColor,
+            .bg_color = resolveTextBgColor(state_config, thumbnail_config.characterNameBgColor, forces_opaque_backgrounds),
+        },
+        .system_name_style = .{
+            .font_name = thumbnail_config.systemNameFontName,
+            .font_size = scalePixels(thumbnail_config.systemNameFontSize, dpi_scale),
+            .font_weight = thumbnail_config.systemNameFontWeight,
+            .position = thumbnail_config.systemNamePosition,
+            .offset_x = thumbnail_config.systemNameOffsetX,
+            .offset_y = thumbnail_config.systemNameOffsetY,
+            .color = subject.system_color,
+            .bg_color = resolveTextBgColor(state_config, thumbnail_config.systemNameBgColor, forces_opaque_backgrounds),
+        },
         .notifications_bg_color = resolveTextBgColor(state_config, thumbnail_config.notifications.bg_color, forces_opaque_backgrounds),
         .combat_incoming_bg_color = resolveTextBgColor(state_config, config.combat.incoming_bg_color, forces_opaque_backgrounds),
         .combat_outgoing_bg_color = resolveTextBgColor(state_config, config.combat.outgoing_bg_color, forces_opaque_backgrounds),
@@ -217,18 +214,6 @@ pub fn renderSettings(config: *const config_mod.Config, subject: *const Subject)
         .bounty_bg_color = resolveTextBgColor(state_config, config.bounty.bg_color, forces_opaque_backgrounds),
         .resources_bg_color = resolveTextBgColor(state_config, config.resources.bg_color, forces_opaque_backgrounds),
         .ping_bg_color = resolveTextBgColor(state_config, config.ping.bg_color, forces_opaque_backgrounds),
-        .character_name_font_name = thumbnail_config.characterNameFontName,
-        .character_name_font_size = scalePixels(thumbnail_config.characterNameFontSize, dpi_scale),
-        .character_name_font_weight = thumbnail_config.characterNameFontWeight,
-        .character_name_position = thumbnail_config.characterNamePosition,
-        .character_name_offset_x = thumbnail_config.characterNameOffsetX,
-        .character_name_offset_y = thumbnail_config.characterNameOffsetY,
-        .system_name_position = thumbnail_config.systemNamePosition,
-        .system_name_offset_x = thumbnail_config.systemNameOffsetX,
-        .system_name_offset_y = thumbnail_config.systemNameOffsetY,
-        .system_name_font_name = thumbnail_config.systemNameFontName,
-        .system_name_font_size = scalePixels(thumbnail_config.systemNameFontSize, dpi_scale),
-        .system_name_font_weight = thumbnail_config.systemNameFontWeight,
         .show_notifications = show_text and thumbnail_config.notifications.enabled,
         .notifications_position = thumbnail_config.notifications.position,
         .notifications_offset_x = thumbnail_config.notifications.offset_x,
@@ -245,23 +230,28 @@ pub fn renderSettings(config: *const config_mod.Config, subject: *const Subject)
         .exclusion_overlay_color = thumbnail_config.exclusionOverlayColor,
         .show_group_badge = show_text and thumbnail_config.showQuickGroupBadge and subject.group_badge_label.len > 0,
         .group_badge_text = subject.group_badge_label,
-        .group_badge_color = thumbnail_config.quickGroupBadgeColor,
-        .group_badge_position = thumbnail_config.quickGroupBadgePosition,
-        .group_badge_offset_x = thumbnail_config.quickGroupBadgeOffsetX,
-        .group_badge_offset_y = thumbnail_config.quickGroupBadgeOffsetY,
-        .group_badge_font_name = thumbnail_config.quickGroupBadgeFontName,
-        .group_badge_font_size = scalePixels(thumbnail_config.quickGroupBadgeFontSize, dpi_scale),
-        .group_badge_font_weight = thumbnail_config.quickGroupBadgeFontWeight,
+        .group_badge_style = .{
+            .font_name = thumbnail_config.quickGroupBadgeFontName,
+            .font_size = scalePixels(thumbnail_config.quickGroupBadgeFontSize, dpi_scale),
+            .font_weight = thumbnail_config.quickGroupBadgeFontWeight,
+            .position = thumbnail_config.quickGroupBadgePosition,
+            .offset_x = thumbnail_config.quickGroupBadgeOffsetX,
+            .offset_y = thumbnail_config.quickGroupBadgeOffsetY,
+            .color = thumbnail_config.quickGroupBadgeColor,
+            .bg_color = resolveTextBgColor(state_config, thumbnail_config.quickGroupBadgeBgColor, forces_opaque_backgrounds),
+        },
         .show_session_timer = session_minutes != null,
         .session_minutes = session_minutes orelse 0,
-        .session_timer_color = thumbnail_config.sessionTimerColor,
-        .session_timer_position = thumbnail_config.sessionTimerPosition,
-        .session_timer_offset_x = thumbnail_config.sessionTimerOffsetX,
-        .session_timer_offset_y = thumbnail_config.sessionTimerOffsetY,
-        .session_timer_font_name = thumbnail_config.sessionTimerFontName,
-        .session_timer_font_size = scalePixels(thumbnail_config.sessionTimerFontSize, dpi_scale),
-        .session_timer_font_weight = thumbnail_config.sessionTimerFontWeight,
-        .session_timer_bg_color = resolveTextBgColor(state_config, thumbnail_config.sessionTimerBgColor, forces_opaque_backgrounds),
+        .session_timer_style = .{
+            .font_name = thumbnail_config.sessionTimerFontName,
+            .font_size = scalePixels(thumbnail_config.sessionTimerFontSize, dpi_scale),
+            .font_weight = thumbnail_config.sessionTimerFontWeight,
+            .position = thumbnail_config.sessionTimerPosition,
+            .offset_x = thumbnail_config.sessionTimerOffsetX,
+            .offset_y = thumbnail_config.sessionTimerOffsetY,
+            .color = thumbnail_config.sessionTimerColor,
+            .bg_color = resolveTextBgColor(state_config, thumbnail_config.sessionTimerBgColor, forces_opaque_backgrounds),
+        },
         // Visibility and the character's own hideThumbnail win over the state's showThumbnail.
         .show_thumbnail = if (!is_shown or subject.is_hidden_for_character) false else state_config.showThumbnail orelse !is_active_hidden,
         .overlay_alpha = if (forces_opaque_backgrounds) subject.opacity else OVERLAY_ALPHA,
@@ -574,11 +564,11 @@ test "opacity on texts makes their backgrounds opaque and moves the alpha to the
     subject.opacity = 128;
     config.thumbnail.applyOpacityToOverlayTexts = true;
     const applied = renderSettings(&config, &subject);
-    try testing.expectEqual(@as(u32, 0xFF000000), applied.character_name_bg_color);
+    try testing.expectEqual(@as(u32, 0xFF000000), applied.character_name_style.bg_color);
     try testing.expectEqual(@as(u8, 128), applied.overlay_alpha);
     config.thumbnail.applyOpacityToOverlayTexts = false;
     const unapplied = renderSettings(&config, &subject);
-    try testing.expectEqual(@as(u32, 0xE6000000), unapplied.character_name_bg_color);
+    try testing.expectEqual(@as(u32, 0xE6000000), unapplied.character_name_style.bg_color);
     try testing.expectEqual(@as(u8, 255), unapplied.overlay_alpha);
 }
 
@@ -627,7 +617,7 @@ test "font sizes and the connection map scale with the window's DPI" {
     var subject = testSubject(.inactive);
     subject.dpi_scale = 1.5;
     const settings = renderSettings(&config, &subject);
-    try testing.expectEqual(@as(i32, 18), settings.character_name_font_size);
+    try testing.expectEqual(@as(i32, 18), settings.character_name_style.font_size);
     try testing.expectEqual(@as(i32, 270), settings.connection_map_width);
 }
 

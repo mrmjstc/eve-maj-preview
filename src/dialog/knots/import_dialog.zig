@@ -135,9 +135,7 @@ pub fn loadFile(path: []const u8) void {
 pub fn show(context: *ui.Frame) !void {
     // Cleared the frame after closing: the closing frame's text still borrows from the arena.
     if (!g_is_open) return clearArena();
-    const dialog = widgets.modal(.src(@src()), &g_is_open, &style.modal_wide);
-    _ = try dialog.open(context);
-    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = lang.text(if (g_summary == null) "Import Settings" else "Settings Imported"), .style = &style.heading });
+    const dialog = try widgets.openModal(context, .src(@src()), &g_is_open, &style.modal_wide, lang.text(if (g_summary == null) "Import Settings" else "Settings Imported"));
     if (g_summary) |summary| {
         try summaryView(context, summary);
     } else {

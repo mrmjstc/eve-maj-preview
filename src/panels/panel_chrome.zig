@@ -70,6 +70,33 @@ pub const Run = struct {
     fill: ?u32 = null,
 };
 
+/// A list panel's frame with its body and header drawn; the caller draws the rest, then calls finish.
+pub const Frame = struct {
+    /// Borrows the panel's bitmap.
+    bitmap: *gdi_overlay.OverlayBitmap,
+    dc: win32.HDC,
+    canvas: Canvas,
+    /// Where a collapsed panel's summary starts.
+    summary_left: i32,
+    old_font: ?win32.HANDLE,
+
+    /// Deferred straight after beginFrame, so a failed draw doesn't leave the panel's font selected.
+    pub fn restoreFont(self: *const Frame) void {
+        if (self.old_font) |font| _ = win32.SelectObject(self.dc, font);
+    }
+};
+
+/// With the panel's font selected, as Frame.restoreFont undoes.
+pub fn beginFrame(panel: *PanelWindow, fonts: *const HeaderFonts, header: *const Header, width: i32, height: i32) !Frame {
+    const bitmap = try panel.beginFrame(width, height);
+    const dc = bitmap.mem_dc;
+    const canvas = bitmap.canvas();
+    fillBody(canvas);
+    fillHeader(canvas, header);
+    const old_font = selectFont(panel, dc);
+    return .{ .bitmap = bitmap, .dc = dc, .canvas = canvas, .old_font = old_font, .summary_left = drawHeaderText(dc, fonts, header) };
+}
+
 /// Every panel uses the History Panel's font, so they match.
 pub fn ensureFonts(panel: *PanelWindow, history_settings: *const HistoryPanelConfig) !void {
     try panel.ensureFont("panel", history_settings.fontName, history_settings.fontSize, history_settings.fontWeight);
@@ -89,41 +116,6 @@ pub fn selectFont(panel: *const PanelWindow, dc: win32.HDC) ?win32.HANDLE {
 
 pub fn restoreFont(dc: win32.HDC, old_font: ?win32.HANDLE) void {
     if (old_font) |font| _ = win32.SelectObject(dc, font);
-}
-
-/// Behind a panel's rows; the header draws over it.
-pub fn fillBody(canvas: Canvas) void {
-    pixel_buffer.fillRect(canvas, 0, 0, canvas.width, canvas.height, list_look.PANEL);
-}
-
-/// The bar, its divider while expanded, the hovered button's fill and the glyphs.
-pub fn fillHeader(canvas: Canvas, header: *const Header) void {
-    const layout = &header.layout;
-    pixel_buffer.fillRect(canvas, 0, 0, canvas.width, @intCast(panel_header.HEIGHT), palette.CHROME);
-    if (!header.is_collapsed) pixel_buffer.fillRect(canvas, 0, @intCast(panel_header.HEIGHT - 1), canvas.width, 1, list_look.DIVIDER);
-    if (header.hovered) |hit| {
-        if (layout.boxOf(hit)) |lit_box| pixel_buffer.fillRoundedRect(canvas, @intCast(lit_box.left), @intCast(lit_box.top), @intCast(lit_box.right - lit_box.left), @intCast(lit_box.bottom - lit_box.top), HEADER_BUTTON_RADIUS, palette.SURFACE);
-    }
-    const chevron_glyph: glyphs.Glyph = if (header.is_collapsed) .chevron_right else .chevron_down;
-    drawGlyphIn(canvas, layout.chevron, chevron_glyph, if (panel_header.sameHit(header.hovered, .chevron)) palette.TEXT else palette.MUTED);
-    for (layout.buttons[0..layout.button_count], layout.actions[0..layout.button_count]) |button, action| {
-        const glyph_color = if (header.lit.contains(action)) header.accent else if (panel_header.sameHit(header.hovered, .{ .button = action })) palette.TEXT else palette.MUTED;
-        drawGlyphIn(canvas, button, actionGlyph(action, header.lit.contains(action)), glyph_color);
-    }
-}
-
-/// The title, then its count; returns where a collapsed panel's summary starts, a gap after them.
-pub fn drawHeaderText(dc: win32.HDC, fonts: *const HeaderFonts, header: *const Header) i32 {
-    const layout = &header.layout;
-    const title_font = fonts.title.handle orelse return layout.title_left;
-    _ = win32.SelectObject(dc, title_font);
-    const title_y = @divTrunc(panel_header.HEIGHT - lineHeight(dc), 2);
-    var x = layout.title_left + drawFitted(dc, header.title, layout.title_left, title_y, palette.TEXT, layout.content_right - layout.title_left) + HEADER_TEXT_GAP;
-    if (header.count.len == 0) return x;
-    const small_font = fonts.small.handle orelse return x;
-    _ = win32.SelectObject(dc, small_font);
-    x += drawFitted(dc, header.count, x, @divTrunc(panel_header.HEIGHT - lineHeight(dc), 2), palette.MUTED, layout.content_right - x) + HEADER_TEXT_GAP;
-    return x;
 }
 
 /// A collapsed panel's summary from `left` to `right` in the small header font, a gap between runs, cut short where it runs out of room.
@@ -200,6 +192,41 @@ pub fn textWidth(dc: win32.HDC, text: []const u8) i32 {
 /// Like textWidth, for text that may not be ASCII, as intel and alliance names can be.
 pub fn wideTextWidth(dc: win32.HDC, text: []const u8) i32 {
     return gdi_overlay.measureTextSizeUtf8(MAX_TEXT_LENGTH, dc, text).cx;
+}
+
+/// Behind a panel's rows; the header draws over it.
+fn fillBody(canvas: Canvas) void {
+    pixel_buffer.fillRect(canvas, 0, 0, canvas.width, canvas.height, list_look.PANEL);
+}
+
+/// The bar, its divider while expanded, the hovered button's fill and the glyphs.
+fn fillHeader(canvas: Canvas, header: *const Header) void {
+    const layout = &header.layout;
+    pixel_buffer.fillRect(canvas, 0, 0, canvas.width, @intCast(panel_header.HEIGHT), palette.CHROME);
+    if (!header.is_collapsed) pixel_buffer.fillRect(canvas, 0, @intCast(panel_header.HEIGHT - 1), canvas.width, 1, list_look.DIVIDER);
+    if (header.hovered) |hit| {
+        if (layout.boxOf(hit)) |lit_box| pixel_buffer.fillRoundedRect(canvas, @intCast(lit_box.left), @intCast(lit_box.top), @intCast(lit_box.right - lit_box.left), @intCast(lit_box.bottom - lit_box.top), HEADER_BUTTON_RADIUS, palette.SURFACE);
+    }
+    const chevron_glyph: glyphs.Glyph = if (header.is_collapsed) .chevron_right else .chevron_down;
+    drawGlyphIn(canvas, layout.chevron, chevron_glyph, if (panel_header.sameHit(header.hovered, .chevron)) palette.TEXT else palette.MUTED);
+    for (layout.buttons[0..layout.button_count], layout.actions[0..layout.button_count]) |button, action| {
+        const glyph_color = if (header.lit.contains(action)) header.accent else if (panel_header.sameHit(header.hovered, .{ .button = action })) palette.TEXT else palette.MUTED;
+        drawGlyphIn(canvas, button, actionGlyph(action, header.lit.contains(action)), glyph_color);
+    }
+}
+
+/// The title, then its count; returns where a collapsed panel's summary starts, a gap after them.
+fn drawHeaderText(dc: win32.HDC, fonts: *const HeaderFonts, header: *const Header) i32 {
+    const layout = &header.layout;
+    const title_font = fonts.title.handle orelse return layout.title_left;
+    _ = win32.SelectObject(dc, title_font);
+    const title_y = @divTrunc(panel_header.HEIGHT - lineHeight(dc), 2);
+    var x = layout.title_left + drawFitted(dc, header.title, layout.title_left, title_y, palette.TEXT, layout.content_right - layout.title_left) + HEADER_TEXT_GAP;
+    if (header.count.len == 0) return x;
+    const small_font = fonts.small.handle orelse return x;
+    _ = win32.SelectObject(dc, small_font);
+    x += drawFitted(dc, header.count, x, @divTrunc(panel_header.HEIGHT - lineHeight(dc), 2), palette.MUTED, layout.content_right - x) + HEADER_TEXT_GAP;
+    return x;
 }
 
 fn drawGlyphIn(canvas: Canvas, glyph_box: Box, glyph: glyphs.Glyph, glyph_color: u32) void {

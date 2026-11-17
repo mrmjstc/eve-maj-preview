@@ -20,8 +20,6 @@ const Text = ui.component.Text;
 const ListRef = session.Ref(config.ListViewConfig);
 const PART_PADDING = panel_preview.PART_PADDING;
 
-const POPOVER_KEY: ui.Key = .str("knots.client_list.popover");
-const PART_KEY: ui.Key = .str("knots.client_list.part");
 const ROW_KEY: ui.Key = .str("knots.client_list.row");
 const LINE_KEY: ui.Key = .str("knots.client_list.line");
 const STAGE_KEY: ui.Key = .str("knots.client_list.stage");
@@ -125,7 +123,7 @@ const Look = struct {
     scale: f32,
 
     /// `pixels` real pixels at the preview's scale.
-    fn scaled(self: Look, pixels: i32) f32 {
+    fn scaled(self: *const Look, pixels: i32) f32 {
         return panel_preview.scaled(self.scale, pixels);
     }
 };
@@ -142,12 +140,11 @@ const StatRows = struct {
     color_field: []const u8,
 };
 
-var g_selected: Part = .names;
-var g_is_popover_open: bool = false;
+var g_picker: panel_preview.Picker(Part) = .{ .part_key = .str("knots.client_list.part"), .popover_key = .str("knots.client_list.popover"), .selected = .names };
 
 /// Once the window has closed.
 pub fn reset() void {
-    g_is_popover_open = false;
+    g_picker.is_open = false;
 }
 
 pub fn show(context: *ui.Frame) !void {
@@ -158,7 +155,7 @@ pub fn show(context: *ui.Frame) !void {
     const section = try widgets.openSection(context, "Client List", "A compact panel of client names. Click a part of the preview to change it.", &style.section);
     const stage = try panel_preview.Stage.open(context, STAGE_KEY);
     const look = try lookOf(context.arena(), session.profile().ptr, stage);
-    try preview(context, &session.profile().ptr.listView, look);
+    try preview(context, &session.profile().ptr.listView, &look);
     try stage.close(context, look.scale, "Shrunk to fit; the list itself is wider.");
     try section.close(context);
 
@@ -188,7 +185,7 @@ fn layout(context: *ui.Frame, list_view: ListRef) !void {
 }
 
 /// The panel in list_look's look, with sample clients, at `look.scale`.
-fn preview(context: *ui.Frame, list_settings: *const config.ListViewConfig, look: Look) !void {
+fn preview(context: *ui.Frame, list_settings: *const config.ListViewConfig, look: *const Look) !void {
     const arena = context.arena();
     const column_count = look.column_count;
     // No bottom padding, as the totals footer is always drawn and pads the bottom itself.
@@ -223,7 +220,7 @@ fn preview(context: *ui.Frame, list_settings: *const config.ListViewConfig, look
 }
 
 /// A rule over the sample rates added up, as the part that edits the totals line.
-fn totalsFooter(context: *ui.Frame, look: Look) !void {
+fn totalsFooter(context: *ui.Frame, look: *const Look) !void {
     const arena = context.arena();
     const footer_style = try arena.create(ui.Style);
     footer_style.* = .{
@@ -248,7 +245,7 @@ fn totalsFooter(context: *ui.Frame, look: Look) !void {
 }
 
 /// The active row is one part; so are one row's name and system, and each notification and rate.
-fn sampleRow(context: *ui.Frame, sample: Sample, index: usize, height: f32, look: Look) !void {
+fn sampleRow(context: *ui.Frame, sample: Sample, index: usize, height: f32, look: *const Look) !void {
     const arena = context.arena();
     const key = ROW_KEY.indexed(index);
     // A part pads its text for its outline, so the space before a name part and after a right-hand part gives that back.
@@ -307,7 +304,7 @@ fn sampleRow(context: *ui.Frame, sample: Sample, index: usize, height: f32, look
 }
 
 /// A row's name over its stats line, taking the room the right-hand slot leaves.
-fn linesStyle(arena: std.mem.Allocator, look: Look) !*const ui.Style {
+fn linesStyle(arena: std.mem.Allocator, look: *const Look) !*const ui.Style {
     const lines_style = try arena.create(ui.Style);
     lines_style.* = .{ .width = .grow(), .direction = .column, .gap = look.scaled(list_look.LINE_GAP) };
     return lines_style;
@@ -321,7 +318,7 @@ fn groupStyle(arena: std.mem.Allocator, gap: f32) !*const ui.Style {
 }
 
 /// The system then its security; the system is the part that edits it on the row marked `is_system_part`.
-fn systemSlot(context: *ui.Frame, sample: Sample, key: ui.Key, look: Look) !void {
+fn systemSlot(context: *ui.Frame, sample: Sample, key: ui.Key, look: *const Look) !void {
     const arena = context.arena();
     const group = Rect{ .key = key, .style = try groupStyle(arena, look.scaled(list_look.SECURITY_GAP)) };
     _ = try group.open(context);
@@ -337,7 +334,7 @@ fn systemSlot(context: *ui.Frame, sample: Sample, key: ui.Key, look: Look) !void
 }
 
 /// The sample notification in its pill, as the part that edits it.
-fn pillPart(context: *ui.Frame, key: ui.Key, look: Look) !void {
+fn pillPart(context: *ui.Frame, key: ui.Key, look: *const Look) !void {
     const arena = context.arena();
     const part = try openPart(context, look, .{}, list_look.PANEL, .notifications, look.shows_notifications);
     const pill_style = try arena.create(ui.Style);
@@ -356,7 +353,7 @@ fn pillPart(context: *ui.Frame, key: ui.Key, look: Look) !void {
 }
 
 /// A row's rates under its name, each the part that edits it.
-fn statsLine(context: *ui.Frame, stats: []const list_look.Stat, key: ui.Key, look: Look) !void {
+fn statsLine(context: *ui.Frame, stats: []const list_look.Stat, key: ui.Key, look: *const Look) !void {
     const arena = context.arena();
     const group = Rect{ .key = key, .style = try groupStyle(arena, look.scaled(list_look.STAT_GAP - 2 * PART_PADDING)) };
     _ = try group.open(context);
@@ -368,7 +365,7 @@ fn statsLine(context: *ui.Frame, stats: []const list_look.Stat, key: ui.Key, loo
 }
 
 /// `content` as the part that edits it.
-fn textPart(context: *ui.Frame, part: Part, key: ui.Key, content: []const u8, text_style: *const ui.Style, is_shown: bool, look: Look) !void {
+fn textPart(context: *ui.Frame, part: Part, key: ui.Key, content: []const u8, text_style: *const ui.Style, is_shown: bool, look: *const Look) !void {
     const open = try openPart(context, look, .{}, list_look.PANEL, part, is_shown);
     try context.e(Text{ .selectable = false, .key = key, .content = content, .style = text_style });
     try open.close(context);
@@ -415,7 +412,7 @@ fn lookOf(arena: std.mem.Allocator, profile: *const config.Config, stage: panel_
 }
 
 /// `is_shown` is whether the list shows the part's text; the active row's always is.
-fn openPart(context: *ui.Frame, look: Look, base: ui.Style, background: u32, part: Part, is_shown: bool) !panel_preview.Part {
+fn openPart(context: *ui.Frame, look: *const Look, base: ui.Style, background: u32, part: Part, is_shown: bool) !panel_preview.Part {
     var part_style = base.with(.{ .background = color_convert.solid(background) });
     var inset = [2]f32{ 0, 0 };
     // The row's own padding already places the active row's content.
@@ -423,23 +420,11 @@ fn openPart(context: *ui.Frame, look: Look, base: ui.Style, background: u32, par
         inset = .{ look.scaled(PART_PADDING), 0 };
         part_style.padding = .xy(inset[0], inset[1]);
     }
-    const open = try panel_preview.Part.open(context, partKey(part), part_style, inset, .{ .is_shown = is_shown, .is_selected = g_is_popover_open and g_selected == part });
-    if (open.is_clicked) select(context, part);
-    return open;
-}
-
-fn select(context: *ui.Frame, part: Part) void {
-    g_selected = part;
-    g_is_popover_open = true;
-    context.requestRedraw();
-}
-
-fn partKey(part: Part) ui.Key {
-    return PART_KEY.indexed(@backingInt(part));
+    return g_picker.openPart(context, part_style, inset, part, is_shown);
 }
 
 /// The active client's is bigger; every one sits in a slot as wide as that, so names line up.
-fn indicator(context: *ui.Frame, key: ui.Key, color: u32, is_lit: bool, look: Look) !void {
+fn indicator(context: *ui.Frame, key: ui.Key, color: u32, is_lit: bool, look: *const Look) !void {
     const diameter = look.scaled(2 * (if (is_lit) list_look.LIT_BADGE_RADIUS else list_look.BADGE_RADIUS));
     const shape: ui.Style = switch (look.indicator) {
         .Dot => .{ .width = .fixed(diameter), .height = .fixed(diameter), .radius = .{ .fixed = diameter / 2 } },
@@ -459,20 +444,8 @@ fn indicator(context: *ui.Frame, key: ui.Key, color: u32, is_lit: bool, look: Lo
 
 /// Beside the clicked part; a click on another part moves it there.
 fn popover(context: *ui.Frame, list_view: ListRef) !void {
-    if (!g_is_popover_open) return;
-    const ui_state = context.ui();
-    const dialog = try widgets.openPopover(context, POPOVER_KEY, &g_is_popover_open, widgets.measuredBox(ui_state, partKey(g_selected)));
-    if (try settings(context, list_view, g_selected)) {
-        g_is_popover_open = false;
-        context.requestRedraw();
-    }
-    const reason = try widgets.closePopover(context, dialog);
-    if (reason != .backdrop) return;
-    const mouse = ui_state.input.mouse_pos;
-    const point = [2]f32{ @floatCast(mouse[0]), @floatCast(mouse[1]) };
-    for (std.enums.values(Part)) |part| {
-        if (part != g_selected and widgets.measuredBox(ui_state, partKey(part)).contains(point)) select(context, part);
-    }
+    const dialog = try g_picker.openPopover(context) orelse return;
+    try g_picker.closePopover(context, dialog, try settings(context, list_view, g_picker.selected));
 }
 
 /// Returns whether close was pressed.

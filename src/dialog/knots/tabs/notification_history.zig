@@ -25,8 +25,6 @@ const STAGE_KEY: ui.Key = .str("knots.notification_history.stage");
 const ROW_KEY: ui.Key = .str("knots.notification_history.row");
 const FILTER_KEY: ui.Key = .str("knots.notification_history.filter");
 const CHIP_LINE_KEY: ui.Key = .str("knots.notification_history.chip_line");
-const PART_KEY: ui.Key = .str("knots.notification_history.part");
-const POPOVER_KEY: ui.Key = .str("knots.notification_history.popover");
 /// A chip's width before it's been laid out once.
 const UNMEASURED_CHIP_WIDTH: i32 = 60;
 
@@ -86,12 +84,11 @@ const Part = enum {
     }
 };
 
-var g_selected: Part = .filters;
-var g_is_popover_open: bool = false;
+var g_picker: panel_preview.Picker(Part) = .{ .part_key = .str("knots.notification_history.part"), .popover_key = .str("knots.notification_history.popover"), .selected = .filters };
 
 /// Once the window has closed.
 pub fn reset() void {
-    g_is_popover_open = false;
+    g_picker.is_open = false;
 }
 
 pub fn show(context: *ui.Frame) !void {
@@ -138,16 +135,26 @@ fn layout(context: *ui.Frame, ref: HistoryRef, is_shown: bool) !void {
 fn rowSettings(context: *ui.Frame, ref: HistoryRef, is_shown: bool) !void {
     const section = try widgets.openSection(context, "Rows", "How each alert is shown in the panel.", &style.section);
     const options = try widgets.openGroup(context, .src(@src()), is_shown);
-    try bind.toggle(context, ref, "showTimestamp", "Relative Timestamps");
-    try widgets.hintText(context, .src(@src()), "Shows times like \"5m ago\" instead of a fixed clock time.");
-    try bind.toggle(context, ref, "mergeEnabled", "Merge Repeats");
-    try widgets.hintText(context, .src(@src()), "Repeats share one row with a count; click it to expand.");
-    const merge = try widgets.openGroup(context, .src(@src()), ref.get("mergeEnabled"));
-    try bind.number(context, ref, "mergeWindowSec", "Merge Window", .{ .unit = "s" });
-    try widgets.hintText(context, .src(@src()), "Repeats this close together share a row.");
-    try merge.close(context);
+    try timestampRow(context, ref);
+    try mergeRows(context, ref);
     try options.close(context);
     try section.close(context);
+}
+
+/// In the Rows section and the popover, which tell their keys apart by `ref`'s index.
+fn timestampRow(context: *ui.Frame, ref: HistoryRef) !void {
+    try bind.toggle(context, ref, "showTimestamp", "Relative Timestamps");
+    try widgets.hintText(context, ui.Key.src(@src()).indexed(ref.index), "Shows times like \"5m ago\" instead of a fixed clock time.");
+}
+
+/// As timestampRow.
+fn mergeRows(context: *ui.Frame, ref: HistoryRef) !void {
+    try bind.toggle(context, ref, "mergeEnabled", "Merge Repeats");
+    try widgets.hintText(context, ui.Key.src(@src()).indexed(ref.index), "Repeats share one row with a count; click it to expand.");
+    const merge = try widgets.openGroup(context, ui.Key.src(@src()).indexed(ref.index), ref.get("mergeEnabled"));
+    try bind.number(context, ref, "mergeWindowSec", "Merge Window", .{ .unit = "s" });
+    try widgets.hintText(context, ui.Key.src(@src()).indexed(ref.index), "Repeats this close together share a row.");
+    try merge.close(context);
 }
 
 /// The panel in history_look's look, with sample notifications, shrunk to fit the section.
@@ -255,7 +262,7 @@ fn chips(context: *ui.Frame, history_settings: *const config.HistoryPanelConfig,
     const bar = Rect{ .key = .src(@src()), .style = bar_style };
     _ = try bar.open(context);
     const is_shown = history_settings.showCategoryFilters;
-    const part = try openPart(context, .{ .width = .grow(), .padding = .all(padding), .background = color_convert.solid(list_look.PANEL) }, .{ padding, padding }, .filters, is_shown);
+    const part = try g_picker.openPart(context, .{ .width = .grow(), .padding = .all(padding), .background = color_convert.solid(list_look.PANEL) }, .{ padding, padding }, .filters, is_shown);
     // Faded apart from the part, so its dashed outline isn't.
     const lines_style = try arena.create(ui.Style);
     lines_style.* = .{ .width = .grow(), .direction = .column, .gap = look.scaled(history_look.CHIP_GAP), .opacity = if (is_shown) 1 else style.OFF_TEXT_OPACITY };
@@ -397,7 +404,7 @@ fn sampleRow(context: *ui.Frame, profile: *const config.Config, sample: Sample, 
     try context.e(Text{ .selectable = false, .key = key.indexed(4), .content = try widgets.fittedText(context, sample.text, message_style, try messageRoom(context, key, sample, look)), .style = message_style });
     if (sample.merged_count > 1) {
         const merges = history_settings.mergeEnabled;
-        const part = try openPart(context, .{ .@"align" = .center, .padding = .xy(padding, 0), .background = color_convert.solid(list_look.PANEL) }, .{ padding, 0 }, .merged, merges);
+        const part = try g_picker.openPart(context, .{ .@"align" = .center, .padding = .xy(padding, 0), .background = color_convert.solid(list_look.PANEL) }, .{ padding, 0 }, .merged, merges);
         const pill_style = try arena.create(ui.Style);
         pill_style.* = .{
             .background = color_convert.solid(palette.SURFACE),
@@ -418,7 +425,7 @@ fn sampleRow(context: *ui.Frame, profile: *const config.Config, sample: Sample, 
         const time_text = panel_look.relativeTime(try arena.create([panel_look.TIME_TEXT_MAX]u8), sample.age_ms);
         const time = Text{ .selectable = false, .key = key.indexed(8), .content = time_text, .style = try widgets.textStyle(arena, list_look.MUTED, look.small_size, .{ .is_shown = shows_timestamp }) };
         if (is_first) {
-            const part = try openPart(context, .{ .padding = .xy(padding, 0), .background = color_convert.solid(list_look.PANEL) }, .{ padding, 0 }, .timestamp, shows_timestamp);
+            const part = try g_picker.openPart(context, .{ .padding = .xy(padding, 0), .background = color_convert.solid(list_look.PANEL) }, .{ padding, 0 }, .timestamp, shows_timestamp);
             try context.e(time);
             try part.close(context);
         } else {
@@ -435,46 +442,17 @@ fn messageRoom(context: *ui.Frame, key: ui.Key, sample: Sample, look: Look) !f32
     if (ui_state.state.get(.measured, middle_key.hash()) == null) context.requestRedraw();
     _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, middle_key.hash());
     var room = widgets.measuredBox(ui_state, middle_key).w();
-    if (sample.merged_count > 1) room -= widgets.measuredBox(ui_state, partKey(.merged)).w() + look.scaled(history_look.TEXT_GAP);
+    if (sample.merged_count > 1) room -= widgets.measuredBox(ui_state, g_picker.keyOf(.merged)).w() + look.scaled(history_look.TEXT_GAP);
     return room;
-}
-
-/// `base` and `inset` as for panel_preview.Part.open; `is_shown` is whether the panel draws the part.
-fn openPart(context: *ui.Frame, base: ui.Style, inset: [2]f32, part: Part, is_shown: bool) !panel_preview.Part {
-    const open = try panel_preview.Part.open(context, partKey(part), base, inset, .{ .is_shown = is_shown, .is_selected = g_is_popover_open and g_selected == part });
-    if (open.is_clicked) select(context, part);
-    return open;
-}
-
-fn select(context: *ui.Frame, part: Part) void {
-    g_selected = part;
-    g_is_popover_open = true;
-    context.requestRedraw();
-}
-
-fn partKey(part: Part) ui.Key {
-    return PART_KEY.indexed(@backingInt(part));
 }
 
 /// Beside the clicked part; a click on another part moves it there.
 fn popover(context: *ui.Frame, ref: HistoryRef) !void {
-    if (!g_is_popover_open) return;
-    const ui_state = context.ui();
-    const dialog = try widgets.openPopover(context, POPOVER_KEY, &g_is_popover_open, widgets.measuredBox(ui_state, partKey(g_selected)));
+    const dialog = try g_picker.openPopover(context) orelse return;
     // The sections below bind the same fields, so the popover's rows need keys of their own.
     var popover_ref = ref;
     popover_ref.index = 1;
-    if (try settings(context, popover_ref, g_selected)) {
-        g_is_popover_open = false;
-        context.requestRedraw();
-    }
-    const reason = try widgets.closePopover(context, dialog);
-    if (reason != .backdrop) return;
-    const mouse = ui_state.input.mouse_pos;
-    const point = [2]f32{ @floatCast(mouse[0]), @floatCast(mouse[1]) };
-    for (std.enums.values(Part)) |part| {
-        if (part != g_selected and widgets.measuredBox(ui_state, partKey(part)).contains(point)) select(context, part);
-    }
+    try g_picker.closePopover(context, dialog, try settings(context, popover_ref, g_picker.selected));
 }
 
 /// Returns whether close was pressed.
@@ -498,18 +476,8 @@ fn settings(context: *ui.Frame, ref: HistoryRef, part: Part) !bool {
             try widgets.hintText(context, .src(@src()), "The categories the panel lists; clicking a chip on the panel switches its category too.");
             try filters.close(context);
         },
-        .timestamp => {
-            try bind.toggle(context, ref, "showTimestamp", "Relative Timestamps");
-            try widgets.hintText(context, .src(@src()), "Shows times like \"5m ago\" instead of a fixed clock time.");
-        },
-        .merged => {
-            try bind.toggle(context, ref, "mergeEnabled", "Merge Repeats");
-            try widgets.hintText(context, .src(@src()), "Repeats share one row with a count; click it to expand.");
-            const merge = try widgets.openGroup(context, .src(@src()), ref.get("mergeEnabled"));
-            try bind.number(context, ref, "mergeWindowSec", "Merge Window", .{ .unit = "s" });
-            try widgets.hintText(context, .src(@src()), "Repeats this close together share a row.");
-            try merge.close(context);
-        },
+        .timestamp => try timestampRow(context, ref),
+        .merged => try mergeRows(context, ref),
     }
     return is_close_clicked;
 }

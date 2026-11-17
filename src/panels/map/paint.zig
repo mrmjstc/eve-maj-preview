@@ -159,6 +159,16 @@ const LabelSuffix = struct {
     color: u32,
 };
 
+/// A list card's line about one system.
+const PlaceRow = struct {
+    system: SystemIndex,
+    /// Muted after the system's name, cut short before `detail`; borrowed for the draw.
+    place: []const u8,
+    /// Against the line's right; borrowed for the draw.
+    detail: []const u8,
+    detail_color: u32,
+};
+
 /// How a name is lifted off the gates behind it.
 const Outline = enum {
     full,
@@ -388,13 +398,7 @@ pub const Painter = struct {
             const connection = &listed.connections[item.index];
             var detail_buffer: [DETAIL_TEXT_MAX]u8 = undefined;
             const detail = std.fmt.bufPrint(&detail_buffer, "{s}  {d}h", .{ text_mod.shipSizeShort(connection.ship_size), connection.remaining_hours }) catch unreachable;
-            const detail_width = panel_chrome.textWidth(dc, detail);
-            panel_chrome.drawLine(dc, detail, right - detail_width, top, list_look.MUTED);
-            const system_name = universe.systemName(item.system);
-            const is_lit = self.state.focus_system == item.system;
-            panel_chrome.drawLine(dc, system_name, left, top, if (is_lit) list_look.NAME else look.securityTextColor(universe.systemInfo(item.system).security_tenths));
-            const region_left = left + panel_chrome.textWidth(dc, system_name) + look.LABEL_SUFFIX_GAP * 2;
-            _ = panel_chrome.drawFitted(dc, universe.regionName(universe.systemInfo(item.system).region), region_left, top, list_look.MUTED, right - detail_width - look.LEGEND_VALUE_GAP - region_left);
+            self.drawPlaceRow(dc, left, right, top, .{ .system = item.system, .place = universe.regionName(universe.systemInfo(item.system).region), .detail = detail, .detail_color = list_look.MUTED });
         }
     }
 
@@ -417,14 +421,19 @@ pub const Painter = struct {
             const campaign = &campaigns.slice()[entry.index];
             const top = centredTop(box, text.name_height);
             const timer = text_mod.timerText(campaign, scene.now_seconds);
-            const timer_width = panel_chrome.textWidth(dc, timer.slice());
-            panel_chrome.drawLine(dc, timer.slice(), right - timer_width, top, look.SOV_TIMER);
-            const system_name = universe.systemName(campaign.system);
-            const is_lit = self.state.focus_system == campaign.system;
-            panel_chrome.drawLine(dc, system_name, left, top, if (is_lit) list_look.NAME else look.securityTextColor(universe.systemInfo(campaign.system).security_tenths));
-            const constellation_left = left + panel_chrome.textWidth(dc, system_name) + look.LABEL_SUFFIX_GAP * 2;
-            _ = panel_chrome.drawFitted(dc, universe.constellationName(universe.systemInfo(campaign.system).constellation), constellation_left, top, list_look.MUTED, right - timer_width - look.LEGEND_VALUE_GAP - constellation_left);
+            self.drawPlaceRow(dc, left, right, top, .{ .system = campaign.system, .place = universe.constellationName(universe.systemInfo(campaign.system).constellation), .detail = timer.slice(), .detail_color = look.SOV_TIMER });
         }
+    }
+
+    /// The system in its security colour, or lit while selected.
+    fn drawPlaceRow(self: *const Painter, dc: win32.HDC, left: i32, right: i32, top: i32, row: PlaceRow) void {
+        const detail_width = panel_chrome.textWidth(dc, row.detail);
+        panel_chrome.drawLine(dc, row.detail, right - detail_width, top, row.detail_color);
+        const system_name = universe.systemName(row.system);
+        const is_lit = self.state.focus_system == row.system;
+        panel_chrome.drawLine(dc, system_name, left, top, if (is_lit) list_look.NAME else look.securityTextColor(universe.systemInfo(row.system).security_tenths));
+        const place_left = left + panel_chrome.textWidth(dc, system_name) + look.LABEL_SUFFIX_GAP * 2;
+        _ = panel_chrome.drawFitted(dc, row.place, place_left, top, list_look.MUTED, right - detail_width - look.LEGEND_VALUE_GAP - place_left);
     }
 
     /// Two lines a kill: its ship and value, then its system, victim and age.

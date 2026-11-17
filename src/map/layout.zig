@@ -18,7 +18,7 @@ pub const MAX_NODES = universe.MAX_REGION_SYSTEMS * MAX_REGIONS;
 /// A gate between two regions shown is an edge rather than an exit.
 pub const MAX_EDGES = (MAX_REGION_EDGES + MAX_REGION_EXITS) * MAX_REGIONS;
 pub const MAX_EXITS = MAX_REGION_EXITS * MAX_REGIONS;
-/// Wormhole and Ansiblex stubs on the map at once; past the forty-odd wormholes both hubs have open across New Eden and the gates out of a coalition's busiest regions.
+/// Wormhole and Ansiblex stubs shown at once; past both hubs' forty-odd wormholes and the gates out of a coalition's busiest regions.
 pub const MAX_PORTALS = 96;
 /// Between regions shown together, in CCP's map units, where a gate inside a region is about 65 long.
 const REGION_GAP: f32 = 160;
@@ -307,7 +307,7 @@ pub const PortalEnd = struct {
     target: PortalTarget,
 };
 
-/// A few regions side by side, or a handful of systems around one, laid out; gathered again when the regions change, and placed again when the area or view does.
+/// A few regions side by side, or a few systems around one; gathered again when the regions change, placed again when the area or view does.
 pub const Layout = struct {
     regions: Regions = .{},
     /// How far each region's diagram moved from CCP's place for it, by its place in `regions`.
@@ -361,7 +361,7 @@ pub const Layout = struct {
         self.placePortals();
     }
 
-    /// Replaces the portals with one a system and target among `ends`, those not shown left out; one to a hub points into the widest gap between its system's gates, and one to a system toward it on CCP's map, as an exit does; drops their labels until placeLabels.
+    /// Replaces the portals with `ends`, leaving out those not shown; drops their labels until placeLabels.
     pub fn setPortals(self: *Layout, ends: []const PortalEnd) void {
         self.portal_count = 0;
         for (ends) |end| {
@@ -421,16 +421,7 @@ pub const Layout = struct {
 
     /// The nearest portal within reach of the cursor.
     pub fn portalAt(self: *const Layout, x: i32, y: i32) ?u16 {
-        var nearest: ?u16 = null;
-        var nearest_distance: i32 = HIT_RADIUS * HIT_RADIUS + 1;
-        for (self.portals[0..self.portal_count], 0..) |portal, index| {
-            const distance = distanceSquared(x, y, portal.x, portal.y);
-            if (distance < nearest_distance) {
-                nearest_distance = distance;
-                nearest = @intCast(index);
-            }
-        }
-        return nearest;
+        return nearestInReach(Portal, self.portals[0..self.portal_count], x, y);
     }
 
     /// The portal whose name, with its padding, is under the cursor; placed labels never overlap, so the first is the only one.
@@ -482,7 +473,8 @@ pub const Layout = struct {
         self.sortLabelOrder();
     }
 
-    /// Greedily, the most connected systems first, then exits and portals, `clearance` from their systems, inside `label_area` and clear of `covered`, the first MAX_COVERED of what floats over the map.
+    /// Greedily, the most connected systems first, then exits and portals, `clearance` from their systems, inside `label_area`.
+    /// `covered`: what floats over the map; only the first MAX_COVERED count.
     pub fn placeLabels(self: *Layout, label_area: Box, covered: []const Box, sizes: LabelSizes, line_height: i32, clearance: i32) void {
         var taken: [TAKEN_CAPACITY]Box = undefined;
         var claims: Claims = .{ .area = label_area, .boxes = &taken };
@@ -495,7 +487,9 @@ pub const Layout = struct {
         }
     }
 
-    /// Only while several regions show, after placeLabels: around each region, the first spot that touches no system, name, exit, gate or `covered` box, else the least crowded, inside `label_area`; `widths` are by place in `regions`.
+    /// After placeLabels, while several regions show: by each region, the first clear spot inside `label_area`, else the least crowded.
+    /// `covered`: kept clear of, like the systems, names, exits and gates.
+    /// `widths`: by place in `regions`.
     pub fn placeRegionLabels(self: *Layout, label_area: Box, covered: []const Box, widths: []const i32, line_height: i32) void {
         if (self.regions.count < 2) return;
         var taken: [TAKEN_CAPACITY + MAX_REGIONS]Box = undefined;
@@ -574,16 +568,7 @@ pub const Layout = struct {
 
     /// The nearest system within reach of the cursor.
     pub fn nodeAt(self: *const Layout, x: i32, y: i32) ?u16 {
-        var nearest: ?u16 = null;
-        var nearest_distance: i32 = HIT_RADIUS * HIT_RADIUS + 1;
-        for (self.nodes[0..self.node_count], 0..) |node, index| {
-            const distance = distanceSquared(x, y, node.x, node.y);
-            if (distance < nearest_distance) {
-                nearest_distance = distance;
-                nearest = @intCast(index);
-            }
-        }
-        return nearest;
+        return nearestInReach(Node, self.nodes[0..self.node_count], x, y);
     }
 
     /// The system whose name is under the cursor; placed labels never overlap, so the first is the only one.
@@ -627,16 +612,7 @@ pub const Layout = struct {
 
     /// The nearest exit within reach of the cursor.
     pub fn exitAt(self: *const Layout, x: i32, y: i32) ?u16 {
-        var nearest: ?u16 = null;
-        var nearest_distance: i32 = HIT_RADIUS * HIT_RADIUS + 1;
-        for (self.exits[0..self.exit_count], 0..) |exit, index| {
-            const distance = distanceSquared(x, y, exit.x, exit.y);
-            if (distance < nearest_distance) {
-                nearest_distance = distance;
-                nearest = @intCast(index);
-            }
-        }
-        return nearest;
+        return nearestInReach(Exit, self.exits[0..self.exit_count], x, y);
     }
 
     pub fn nodeOf(self: *const Layout, system: SystemIndex) ?u16 {
@@ -913,7 +889,7 @@ pub fn chipBox(label: Box) Box {
     return .{ .left = label.left - CHIP_PADDING_X, .top = label.top - CHIP_PADDING_Y, .right = label.right + CHIP_PADDING_X, .bottom = label.bottom + CHIP_PADDING_Y };
 }
 
-/// How far to move each of `regions`' diagrams, by its place there, so they sit REGION_GAP apart in the directions they lie in New Eden; CCP's own places leave them far apart.
+/// Each region's move, by place in `regions`, to sit REGION_GAP apart the ways they lie in New Eden; CCP's own places are far apart.
 fn packRegions(regions: []const RegionIndex) [MAX_REGIONS]MapPoint {
     var bounds: [MAX_REGIONS]Bounds = @splat(.{});
     for (0..universe.SYSTEM_COUNT) |index| {
@@ -1051,6 +1027,20 @@ fn gateCount(system: SystemIndex) usize {
     var count: usize = 0;
     while (links.next() != null) count += 1;
     return count;
+}
+
+/// The index of the item in `items` nearest `x`,`y`, within HIT_RADIUS; `T` has `x` and `y` fields.
+fn nearestInReach(comptime T: type, items: []const T, x: i32, y: i32) ?u16 {
+    var nearest: ?u16 = null;
+    var nearest_distance: i32 = HIT_RADIUS * HIT_RADIUS + 1;
+    for (items, 0..) |item, index| {
+        const distance = distanceSquared(x, y, item.x, item.y);
+        if (distance < nearest_distance) {
+            nearest_distance = distance;
+            nearest = @intCast(index);
+        }
+    }
+    return nearest;
 }
 
 fn distanceSquared(from_x: i32, from_y: i32, to_x: i32, to_y: i32) i32 {
@@ -1512,4 +1502,12 @@ test "a portal points between its system's gates, once a hub, and only for a sys
     }
     layout.build(.one(try regionNamed("Domain")), TEST_AREA);
     try testing.expectEqual(@as(usize, 0), layout.portal_count);
+}
+
+test "the nearest item in reach is picked, and one past the hit radius isn't" {
+    const Place = struct { x: i32, y: i32 };
+    const places = [_]Place{ .{ .x = 0, .y = 0 }, .{ .x = 4, .y = 0 }, .{ .x = 100, .y = 100 } };
+    try testing.expectEqual(@as(?u16, 1), nearestInReach(Place, &places, 3, 0));
+    try testing.expectEqual(@as(?u16, 0), nearestInReach(Place, &places, -1, 0));
+    try testing.expectEqual(@as(?u16, null), nearestInReach(Place, &places, 100 + HIT_RADIUS + 1, 100));
 }

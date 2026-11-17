@@ -352,18 +352,12 @@ fn namePrompt(context: *ui.Frame) !void {
         return;
     }
     const arena = context.arena();
-    const dialog = widgets.modal(.src(@src()), &g_is_name_open, &style.modal);
-    _ = try dialog.open(context);
-    try context.e(Text{
-        .selectable = false,
-        .key = .src(@src()),
-        .content = switch (prompt) {
-            .new => lang.text("New Profile"),
-            .rename => lang.text("Rename Profile"),
-            .restore => try lang.format(arena, "Restore Backup: {name}", .{ .name = g_restore_label orelse "" }),
-        },
-        .style = &style.heading,
-    });
+    const title = switch (prompt) {
+        .new => lang.text("New Profile"),
+        .rename => lang.text("Rename Profile"),
+        .restore => try lang.format(arena, "Restore Backup: {name}", .{ .name = g_restore_label orelse "" }),
+    };
+    const dialog = try widgets.openModal(context, .src(@src()), &g_is_name_open, &style.modal, title);
 
     const name_row = try widgets.openModalRow(context, .src(@src()), "Name");
     if (g_should_focus_name) {
@@ -472,12 +466,10 @@ fn confirmPrompt(context: *ui.Frame) !void {
         return;
     }
     const name = session.profile().ptr.profile_name;
-    const dialog = widgets.modal(.src(@src()), &g_is_confirm_open, &style.modal);
-    _ = try dialog.open(context);
-    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = lang.text(switch (confirm) {
+    const dialog = try widgets.openModal(context, .src(@src()), &g_is_confirm_open, &style.modal, lang.text(switch (confirm) {
         .delete => "Delete Profile?",
         .reset => "Reset Profile?",
-    }), .style = &style.heading });
+    }));
     try context.e(Text{
         .selectable = false,
         .key = .src(@src()),

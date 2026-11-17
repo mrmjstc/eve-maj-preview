@@ -1,4 +1,4 @@
-//! What the panels' previews share: the stage that shrinks a preview to fit its section, and the frame and header every panel draws; main thread only.
+//! What the panels' previews share: the stage that shrinks a preview to fit, the parts clicked to edit it, and the frame and header every panel draws; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const list_look = @import("../../../panels/list_look.zig");
@@ -11,6 +11,7 @@ const color_convert = @import("../color_convert.zig");
 
 const Button = ui.component.Button;
 const Canvas = ui.component.Canvas;
+const Dialog = ui.component.Dialog;
 const Rect = ui.component.Rect;
 const Text = ui.component.Text;
 
@@ -50,7 +51,7 @@ pub const Stage = struct {
     }
 };
 
-/// A part of a preview clicked to edit it, outlined as the thumbnail preview's chips are: solid while the panel shows it, dashed while it's off, and accent while hovered or open; the caller closes it.
+/// A preview part clicked to edit it: solid while shown, dashed while off, accent while hovered or open; the caller closes it.
 pub const Part = struct {
     button: Button,
     state: State,
@@ -98,6 +99,57 @@ pub const Part = struct {
         try self.button.close(context);
     }
 };
+
+/// Which of a preview's parts has its settings popover open; `Kind` is the tab's enum of parts.
+pub fn Picker(comptime Kind: type) type {
+    return struct {
+        part_key: ui.Key,
+        popover_key: ui.Key,
+        selected: Kind,
+        is_open: bool = false,
+
+        const Self = @This();
+
+        /// As Part.open, keyed for `part`; a click opens its popover.
+        pub fn openPart(self: *Self, context: *ui.Frame, base: ui.Style, inset: [2]f32, part: Kind, is_shown: bool) !Part {
+            const open = try Part.open(context, self.keyOf(part), base, inset, .{ .is_shown = is_shown, .is_selected = self.is_open and self.selected == part });
+            if (open.is_clicked) self.select(context, part);
+            return open;
+        }
+
+        pub fn keyOf(self: *const Self, part: Kind) ui.Key {
+            return self.part_key.indexed(@backingInt(part));
+        }
+
+        /// Beside the selected part, or null while closed; the caller fills it and passes it to closePopover.
+        pub fn openPopover(self: *Self, context: *ui.Frame) !?Dialog {
+            if (!self.is_open) return null;
+            return try widgets.openPopover(context, self.popover_key, &self.is_open, widgets.measuredBox(context.ui(), self.keyOf(self.selected)));
+        }
+
+        /// A click outside it on another part moves it there.
+        pub fn closePopover(self: *Self, context: *ui.Frame, dialog: Dialog, is_close_clicked: bool) !void {
+            if (is_close_clicked) {
+                self.is_open = false;
+                context.requestRedraw();
+            }
+            const reason = try widgets.closePopover(context, dialog);
+            if (reason != .backdrop) return;
+            const ui_state = context.ui();
+            const mouse = ui_state.input.mouse_pos;
+            const point = [2]f32{ @floatCast(mouse[0]), @floatCast(mouse[1]) };
+            for (std.enums.values(Kind)) |part| {
+                if (part != self.selected and widgets.measuredBox(ui_state, self.keyOf(part)).contains(point)) self.select(context, part);
+            }
+        }
+
+        fn select(self: *Self, context: *ui.Frame, part: Kind) void {
+            self.selected = part;
+            self.is_open = true;
+            context.requestRedraw();
+        }
+    };
+}
 
 /// `pixels` real pixels at `scale`.
 pub fn scaled(scale: f32, pixels: i32) f32 {

@@ -17,6 +17,7 @@ const panel_host = @import("panel_host.zig");
 const panel_lifecycle = @import("panel_lifecycle.zig");
 const panel_menu = @import("panel_menu.zig");
 const panel_menu_look = @import("panel_menu_look.zig");
+const panel_section = @import("panel_section.zig");
 const palette = @import("palette.zig");
 const box = @import("../util/box.zig");
 const pixel_buffer = @import("../util/pixel_buffer.zig");
@@ -26,6 +27,7 @@ const PanelWindow = panel_window.PanelWindow;
 const slog = log.Scoped("history_panel");
 
 const HISTORY_PANEL_WINDOW_CLASS = "EVE_HISTORY_PANEL_CLASS";
+const SETTINGS_SECTION = "historyPanel";
 const HEADER_ACTIONS = [_]panel_header.Action{ .clear, .pin, .menu };
 
 const Class = header_panel.HeaderPanel(HistoryPanelWindow, HISTORY_PANEL_WINDOW_CLASS);
@@ -37,7 +39,7 @@ pub const Links = struct {
     history: *history_mod.NotificationHistory,
 };
 
-/// Owns the History Panel window and when it's on-screen: historyPanel.show creates it, its auto-hide settings hide it, and the tray toggle can force it visible.
+/// Owns the History Panel window and when it shows: historyPanel.show, its auto-hide settings and the tray toggle.
 pub const HistoryPanel = struct {
     window: ?HistoryPanelWindow = null,
     visibility: panel_look.Visibility = .{},
@@ -167,13 +169,13 @@ pub const HistoryPanelWindow = struct {
     }
 
     pub fn toggleCollapsed(self: *HistoryPanelWindow) void {
-        self.store.update(.{ .historyPanel = .{ .collapsed = !self.config.historyPanel.collapsed } });
+        panel_section.toggleCollapsed(self.store, SETTINGS_SECTION);
         self.redraw();
     }
 
     pub fn runHeaderAction(self: *HistoryPanelWindow, action: panel_header.Action) void {
         switch (action) {
-            .pin => self.store.update(.{ .historyPanel = .{ .alwaysOnTop = !self.config.historyPanel.alwaysOnTop } }),
+            .pin => panel_section.toggleOnTop(self.store, SETTINGS_SECTION),
             .menu => self.menu.toggle(self.panel.allocator, self.instance, panel_menu.ownerFor(HistoryPanelWindow, self), self.menuButton() orelse return),
             .mute => {},
             .clear => {
@@ -192,27 +194,11 @@ pub const HistoryPanelWindow = struct {
     }
 
     pub fn menuContents(self: *const HistoryPanelWindow) panel_menu_look.Contents {
-        const history_settings = &self.config.historyPanel;
-        return .{
-            .is_on_top = history_settings.alwaysOnTop,
-            .is_locked = history_settings.lockPosition,
-            .opacity = history_settings.opacity,
-            .settings_label = "Alert History Settings\u{2026}",
-            .can_hide = true,
-            .accent = self.config.accentColor,
-        };
+        return panel_section.menuContents(self.config, SETTINGS_SECTION, "Alert History Settings\u{2026}", true);
     }
 
     pub fn runMenuAction(self: *HistoryPanelWindow, action: panel_menu_look.Action) void {
-        const history_settings = &self.config.historyPanel;
-        switch (action) {
-            .toggle => |toggle| switch (toggle) {
-                .keep_on_top => self.store.update(.{ .historyPanel = .{ .alwaysOnTop = !history_settings.alwaysOnTop } }),
-                .lock_position => self.store.update(.{ .historyPanel = .{ .lockPosition = !history_settings.lockPosition } }),
-                .group_by_system => {},
-            },
-            .order => {},
-            .opacity => |opacity| if (opacity.is_final) self.store.update(.{ .historyPanel = .{ .opacity = opacity.value } }) else self.store.preview(.{ .historyPanel = .{ .opacity = opacity.value } }),
+        if (!panel_section.runMenuAction(self.store, SETTINGS_SECTION, action)) switch (action) {
             .command => |command| switch (command) {
                 .settings => self.host.run(.{ .open_settings = .history_panel }),
                 .hide => {
@@ -221,7 +207,8 @@ pub const HistoryPanelWindow = struct {
                     return;
                 },
             },
-        }
+            .toggle, .order, .opacity => {},
+        };
         self.redraw();
     }
 
@@ -237,9 +224,7 @@ pub const HistoryPanelWindow = struct {
     }
 
     pub fn saveWindowPosition(self: *const HistoryPanelWindow) void {
-        if (!self.config.historyPanel.rememberPosition) return;
-        const top_left = self.panel.topLeft() orelse return;
-        self.store.update(.{ .historyPanel = .{ .x = top_left.x, .y = top_left.y } });
+        panel_section.savePosition(self.store, SETTINGS_SECTION, &self.panel);
     }
 
     /// A chip filters its category; a merged row expands or folds, and any other row goes to its client.
@@ -351,19 +336,14 @@ pub const HistoryPanelWindow = struct {
         const is_collapsed = history_settings.collapsed;
         const panel_width: i32 = @max(1, history_settings.width);
         const panel_height = panel_header.panelHeight(is_collapsed, history_settings.height);
-        const bitmap = try self.panel.beginFrame(panel_width, panel_height);
-        const dc = bitmap.mem_dc;
-        const canvas = bitmap.canvas();
-        panel_chrome.fillBody(canvas);
-        panel_chrome.fillHeader(canvas, &panel_header_state);
-
-        const old_font = panel_chrome.selectFont(&self.panel, dc);
-        defer panel_chrome.restoreFont(dc, old_font);
-        const summary_left = panel_chrome.drawHeaderText(dc, &self.header_fonts, &panel_header_state);
+        const frame = try panel_chrome.beginFrame(&self.panel, &self.header_fonts, &panel_header_state, panel_width, panel_height);
+        defer frame.restoreFont();
+        const dc = frame.dc;
+        const canvas = frame.canvas;
         self.chip_layout = null;
         self.drawn_count = 0;
         if (is_collapsed) {
-            self.drawSummary(canvas, dc, entries, summary_left, panel_header_state.layout.content_right);
+            self.drawSummary(canvas, dc, entries, frame.summary_left, panel_header_state.layout.content_right);
         } else {
             var rows_top: i32 = panel_header.HEIGHT;
             if (history_settings.showCategoryFilters) {

@@ -387,9 +387,7 @@ fn footer(context: *ui.Frame) !void {
 
 fn unsavedPrompt(context: *ui.Frame) !void {
     if (!g_is_close_prompt_open) return;
-    const dialog = widgets.modal(.src(@src()), &g_is_close_prompt_open, &style.modal);
-    _ = try dialog.open(context);
-    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = lang.text("Unsaved Changes"), .style = &style.heading });
+    const dialog = try widgets.openModal(context, .src(@src()), &g_is_close_prompt_open, &style.modal, lang.text("Unsaved Changes"));
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = lang.text("You have unsaved changes. Save them before closing, or close without saving?"), .style = &style.modal_text });
     const actions = Rect{ .key = .src(@src()), .style = &style.modal_actions };
     _ = try actions.open(context);
@@ -414,9 +412,7 @@ fn unsavedPrompt(context: *ui.Frame) !void {
 fn switchPrompt(context: *ui.Frame) !void {
     const target = profiles.awaitedName() orelse return;
     const is_open = profiles.awaitingFlag();
-    const dialog = widgets.modal(.src(@src()), is_open, &style.modal);
-    _ = try dialog.open(context);
-    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = lang.text("Unsaved Changes"), .style = &style.heading });
+    const dialog = try widgets.openModal(context, .src(@src()), is_open, &style.modal, lang.text("Unsaved Changes"));
     try context.e(Text{
         .selectable = false,
         .key = .src(@src()),

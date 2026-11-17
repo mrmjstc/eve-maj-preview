@@ -55,9 +55,7 @@ pub fn openIfAvailable() void {
 pub fn show(context: *ui.Frame) !void {
     check(context);
     if (!g_is_open) return;
-    const dialog = widgets.modal(.src(@src()), &g_is_open, &style.modal_wide);
-    _ = try dialog.open(context);
-    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = lang.text("Update Available!"), .style = &style.heading });
+    const dialog = try widgets.openModal(context, .src(@src()), &g_is_open, &style.modal_wide, lang.text("Update Available!"));
     const line = Rect{ .key = .src(@src()), .style = &style.text_link_row };
     _ = try line.open(context);
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = lang.text("A new version is available:"), .style = &style.modal_text_inline });

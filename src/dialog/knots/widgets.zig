@@ -26,6 +26,8 @@ const MAX_ROW_HINTS = 128;
 const ROW_TOOLTIP_INDEX = 12;
 /// Dialog keys its panel as its own key indexed by this.
 const DIALOG_PANEL_INDEX = 2;
+/// openModal keys its heading as the modal's own key indexed by this, past Dialog's panel.
+const MODAL_HEADING_INDEX = 3;
 /// Kept between a popover and the window's edges.
 const POPOVER_MARGIN: f32 = 8;
 const POPOVER_GAP: f32 = 8;
@@ -521,9 +523,12 @@ pub fn openSliderBinding(context: *ui.Frame, key: ui.Key, label: []const u8) !Ro
     return row;
 }
 
-/// The rest of the dialog dims and blurs behind it; the caller opens and closes it.
-pub fn modal(key: ui.Key, is_open: *bool, panel_style: *const ui.Style) Dialog {
-    return .{ .is_open = is_open, .key = key, .style = panel_style, .parts = .{ .backdrop = &style.modal_backdrop } };
+/// Opened with `title` as its heading, the rest of the dialog dimmed and blurred behind it; the caller fills and closes it.
+pub fn openModal(context: *ui.Frame, key: ui.Key, is_open: *bool, panel_style: *const ui.Style, title: []const u8) !Dialog {
+    const dialog: Dialog = .{ .is_open = is_open, .key = key, .style = panel_style, .parts = .{ .backdrop = &style.modal_backdrop } };
+    _ = try dialog.open(context);
+    try context.e(Text{ .selectable = false, .key = key.indexed(MODAL_HEADING_INDEX), .content = title, .style = &style.heading });
+    return dialog;
 }
 
 /// On whichever side of `anchor` has room; close it with closePopover, whose `.backdrop` is a click outside.
@@ -658,7 +663,7 @@ pub fn textWidth(context: *ui.Frame, text: []const u8, text_style: *const ui.Sty
     return (try face.measure(text, font_size * scale)).width / scale;
 }
 
-/// `text` cut short with "..." to fit `max_width`, as the panels' own text is, since knots only clips; `text` itself when it fits or `max_width` isn't known yet, else made in the frame's arena.
+/// Ends in "..." to fit `max_width`, as knots only clips; `text` itself if it fits or the width's unknown, else in the frame's arena.
 pub fn fittedText(context: *ui.Frame, text: []const u8, text_style: *const ui.Style, max_width: f32) ![]const u8 {
     if (max_width <= 0 or try textWidth(context, text, text_style) <= max_width) return text;
     const ellipsis = "...";
@@ -1367,7 +1372,7 @@ fn reorderLifted(context: *ui.Frame, base: ui.Key) ?Lifted {
 }
 
 fn openAnyFieldGroup(context: *ui.Frame, key: ui.Key, label: []const u8, row_style: *const ui.Style, column_style: *const ui.Style) !FieldGroup {
-    // Among aligned rows it's divided off like one and takes a row's label width; detail panes divide their groups themselves and share their narrow label column.
+    // Among aligned rows it's divided and labelled like a row; detail panes divide their groups and share their label column themselves.
     const is_among_rows = g_modes.is_aligned;
     if (is_among_rows and nextRowHasDivider()) try separator(context, key.indexed(3));
     g_open.last_labelled_row = null;
