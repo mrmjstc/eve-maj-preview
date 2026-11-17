@@ -5,17 +5,18 @@ const vk = @import("../../platform/virtual_keys.zig");
 const config_mod = @import("../../config.zig");
 const destinations_mod = @import("destinations.zig");
 const look = @import("look.zig");
+const metric_segments = @import("metric_segments.zig");
 const menu_mod = @import("menu.zig");
 const search = @import("search.zig");
 const state = @import("state.zig");
 const window_mod = @import("window.zig");
+const wormhole_list = @import("wormhole_list.zig");
 const panel_host = @import("../panel_host.zig");
 const popup_look = @import("../popup_look.zig");
 const universe = @import("../../map/universe.zig");
 const evestars = @import("../../map/evestars.zig");
 const system_links = @import("../../map/system_links.zig");
 const zkill = @import("../../map/zkill.zig");
-const wormhole_list = @import("wormhole_list.zig");
 const log = @import("../../log.zig");
 
 const Destinations = destinations_mod.Destinations;
@@ -161,7 +162,7 @@ fn endPan(window: *MapPanelWindow) void {
     if (!pan.has_moved) window.state.focus_system = null;
 }
 
-/// Whether the map zoomed, New Eden opened or closed, or the wormhole list scrolled; `wParam` and `lParam` are WM_MOUSEWHEEL's, whose position is on the screen.
+/// Whether the map zoomed, New Eden opened or closed, or the wormhole list scrolled; WM_MOUSEWHEEL's position is on the screen.
 fn onWheel(window: *MapPanelWindow, wParam: win32.WPARAM, lParam: win32.LPARAM) bool {
     if (window.state.isPopupOpen()) return false;
     var point: win32.POINT = .{ .x = win32.lparamX(lParam), .y = win32.lparamY(lParam) };
@@ -234,7 +235,7 @@ fn handleClick(window: *MapPanelWindow, context: Context, x: i32, y: i32) void {
         } else {
             openNewEden(window);
         },
-        .metric => window.store.update(.{ .mapPanel = .{ .metric = look.metricAfterClick(window.config.mapPanel.metric, @fromBackingInt(@intCast(hit.index))) } }),
+        .metric => window.store.update(.{ .mapPanel = .{ .metric = metric_segments.metricAfterClick(window.config.mapPanel.metric, @fromBackingInt(@intCast(hit.index))) } }),
         .span => window.store.update(.{ .mapPanel = .{ .trafficSpan = look.SPAN_ORDER[hit.index] } }),
         .toggle => pressToggle(window, @fromBackingInt(@intCast(hit.index))),
         .bar => {},

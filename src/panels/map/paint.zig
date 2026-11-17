@@ -10,6 +10,8 @@ const list_look = @import("../list_look.zig");
 const destinations_mod = @import("destinations.zig");
 const traffic_mod = @import("traffic.zig");
 const look = @import("look.zig");
+const metric_segments = @import("metric_segments.zig");
+const ownership = @import("ownership.zig");
 const marks = @import("marks.zig");
 const menu_mod = @import("menu.zig");
 const search = @import("search.zig");
@@ -53,6 +55,7 @@ const Layout = layout_mod.Layout;
 const LogoColors = holder_colors.LogoColors;
 const MapMetric = types.MapMetric;
 const MapState = state_mod.MapState;
+const MetricSegment = metric_segments.MetricSegment;
 const PopupRow = popup_look.PopupRow;
 const RegionIndex = universe.RegionIndex;
 const Snapshot = stats_mod.Snapshot;
@@ -146,7 +149,7 @@ const MapPaint = struct {
     span: ?TrafficSpan,
     /// The busiest system shown by `metric`, which heat is measured against.
     peak: u32,
-    holders: look.HolderRanks,
+    holders: ownership.HolderRanks,
 };
 
 /// What follows a system's name.
@@ -291,7 +294,7 @@ pub const Painter = struct {
     /// The span Eve Stars sums `metric` over; null for the last hour, which ESI gives.
     fn pickedSpan(self: *const Painter, metric: MapMetric) ?TrafficSpan {
         const map_settings = &self.config.mapPanel;
-        if (!look.isSpannedMetric(metric) or !self.has_eve_stars or !map_settings.liveStats or map_settings.trafficSpan == .Hour) return null;
+        if (!metric_segments.isSpannedMetric(metric) or !self.has_eve_stars or !map_settings.liveStats or map_settings.trafficSpan == .Hour) return null;
         return map_settings.trafficSpan;
     }
 
@@ -511,20 +514,20 @@ pub const Painter = struct {
         var peak: u32 = 0;
         if (self.shownTraffic(scene, metric)) |traffic| {
             for (traffic, 0..) |system_stats, index| {
-                totals[universe.systemInfo(@intCast(index)).region] += look.metricValue(metric, system_stats);
+                totals[universe.systemInfo(@intCast(index)).region] += metric_segments.metricValue(metric, system_stats);
             }
             peak = std.mem.max(u32, &totals);
         }
         var region_holders: [universe.REGION_COUNT]u16 = @splat(stats_mod.NO_HOLDER);
-        var ranks: look.HolderRanks = .{};
+        var ranks: ownership.HolderRanks = .{};
         var region_occupiers: [universe.REGION_COUNT]u8 = @splat(faction_warfare.NO_FACTION);
         if (scene.stats) |stats| {
             switch (metric) {
                 .Sovereignty => {
-                    region_holders = look.regionHolders(stats);
+                    region_holders = ownership.regionHolders(stats);
                     ranks = .fromHolders(stats, &region_holders, scene.logo_colors);
                 },
-                .FactionWarfare => region_occupiers = look.regionOccupiers(stats),
+                .FactionWarfare => region_occupiers = ownership.regionOccupiers(stats),
                 .Security, .ShipKills, .PodKills, .NpcKills, .NpcDelta, .Jumps => {},
             }
         }
@@ -596,8 +599,8 @@ pub const Painter = struct {
         look.drawChevron(canvas, title_x + @min(title_width, title_room) + look.CHEVRON_OFFSET, title_y + @divTrunc(fonts.heading_height, 2), self.state.is_picking_region);
 
         segmented.drawBar(canvas, chrome.metric_bar);
-        const picked_segment = look.segmentOf(map_settings.metric);
-        for (look.SEGMENT_ORDER, chrome.metrics) |segment, box| {
+        const picked_segment = metric_segments.segmentOf(map_settings.metric);
+        for (metric_segments.SEGMENT_ORDER, chrome.metrics) |segment, box| {
             if (segmented.buttonFill(self.segmentState(segment, picked_segment), accent)) |fill| segmented.fillButton(canvas, box, fill);
         }
         if (chrome.span_bar.right > chrome.span_bar.left) {
@@ -620,10 +623,10 @@ pub const Painter = struct {
         _ = panel_chrome.drawFitted(dc, title.slice(), title_x, title_y, list_look.NAME, title_room);
 
         const name_height = fonts.chrome.name_height;
-        for (look.SEGMENT_ORDER, chrome.metrics) |segment, box| {
+        for (metric_segments.SEGMENT_ORDER, chrome.metrics) |segment, box| {
             const is_picked = segment == picked_segment;
             _ = win32.SelectObject(dc, if (is_picked) fonts.semibold_font else fonts.chrome.name_font);
-            const label = text_mod.metricLabel(look.shownMetric(segment, map_settings.metric));
+            const label = text_mod.metricLabel(metric_segments.shownMetric(segment, map_settings.metric));
             const label_color = segmented.labelColor(self.segmentState(segment, picked_segment), accent);
             // Centred, as each segment is sized for its label in semibold.
             const label_x = box.left + @divTrunc(box.right - box.left - panel_chrome.textWidth(dc, label), 2);
@@ -645,7 +648,7 @@ pub const Painter = struct {
         }
     }
 
-    fn segmentState(self: *const Painter, segment: look.MetricSegment, picked: look.MetricSegment) segmented.State {
+    fn segmentState(self: *const Painter, segment: MetricSegment, picked: MetricSegment) segmented.State {
         if (segment == picked) return .picked;
         return if (self.isHovered(.metric, @backingInt(segment))) .hovered else .idle;
     }
@@ -704,7 +707,7 @@ pub const Painter = struct {
 
     /// The selected system's disc, out past its ring.
     fn focusRadius(self: *const Painter, paint: *const MapPaint, system: SystemIndex) f32 {
-        const value = if (paint.traffic) |traffic| look.metricValue(paint.metric, traffic[system]) else 0;
+        const value = if (paint.traffic) |traffic| metric_segments.metricValue(paint.metric, traffic[system]) else 0;
         return look.markerRadius(value, paint.peak) * look.markerScale(self.state.layout.view.zoom) + look.RING_GAP + look.FOCUS_OUTLINE_THICKNESS;
     }
 
@@ -786,7 +789,7 @@ pub const Painter = struct {
 
         const focus_ring_color = self.focusRingColor();
         for (layout.nodes[0..layout.node_count], 0..) |node, index| {
-            const value = if (paint.traffic) |traffic| look.metricValue(paint.metric, traffic[node.system]) else 0;
+            const value = if (paint.traffic) |traffic| metric_segments.metricValue(paint.metric, traffic[node.system]) else 0;
             const radius = look.markerRadius(value, paint.peak) * scale;
             const ring_radius = radius + look.RING_GAP;
             const is_focus = self.state.focus_system == node.system;
@@ -1220,7 +1223,7 @@ fn drawLegends(bitmap: *const gdi_overlay.OverlayBitmap, legends: []const text_m
     }
 }
 
-/// In the bottom left, above `avoid` where they'd meet; null without legends, in a window too small for them, or once `avoid` keeps to the bottom left itself.
+/// Bottom left, above `avoid` where they'd meet; null without legends, without room, or once `avoid` takes the bottom left itself.
 fn legendBox(dc: win32.HDC, legends: []const text_mod.Legend, areas: look.Areas, text: panel_chrome.Text, avoid: Box) ?Box {
     const row_height = text.name_height + look.LEGEND_ROW_GAP;
     var box_height: i32 = 0;
@@ -1499,6 +1502,6 @@ fn markerColor(scene: Scene, paint: *const MapPaint, system: SystemIndex, value:
 fn peakValue(layout: *const Layout, traffic: ?[]const SystemStats, metric: MapMetric) u32 {
     const systems = traffic orelse return 0;
     var peak: u32 = 0;
-    for (layout.nodes[0..layout.node_count]) |node| peak = @max(peak, look.metricValue(metric, systems[node.system]));
+    for (layout.nodes[0..layout.node_count]) |node| peak = @max(peak, metric_segments.metricValue(metric, systems[node.system]));
     return peak;
 }

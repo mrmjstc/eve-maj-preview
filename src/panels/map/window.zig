@@ -10,6 +10,7 @@ const history_rows = @import("../history_rows.zig");
 const list_look = @import("../list_look.zig");
 const destinations_mod = @import("destinations.zig");
 const look = @import("look.zig");
+const metric_segments = @import("metric_segments.zig");
 const menu_mod = @import("menu.zig");
 const paint = @import("paint.zig");
 const state_mod = @import("state.zig");
@@ -259,7 +260,7 @@ pub const MapPanelWindow = struct {
         return if (self.isIntelInside()) intel_history.snapshot(buffer) else &.{};
     }
 
-    /// Lists the rows that fit into the state's intel_rows or kill_rows, once this render has measured the chrome; null with nothing to list; leaves `dc` holding the chrome's name font.
+    /// Fills intel_rows or kill_rows with what fits, after the chrome is measured; leaves `dc` holding the chrome's name font.
     fn placeIntelCard(self: *MapPanelWindow, dc: win32.HDC, areas: look.Areas, fonts: MapFonts, entries: []const history.Entry, scene: Scene) ?look.IntelCard {
         if (!self.hasSideCard()) return null;
         const header_height = look.intelHeaderHeight(areas.card_height);
@@ -292,7 +293,7 @@ pub const MapPanelWindow = struct {
         return card;
     }
 
-    /// Below the Intel card, or in its place, down to the sov timer card or the map controls; lists the picked hub's connections, kept scrolled inside the list; leaves `dc` holding the chrome's name font.
+    /// Below the Intel card or in its place, keeping the scroll inside the list; leaves `dc` holding the chrome's name font.
     fn placeWormholeCard(self: *MapPanelWindow, dc: win32.HDC, areas: look.Areas, fonts: MapFonts, scene: Scene) ?look.ListCard {
         if (!self.showsWormholeCard()) return null;
         const hub = self.state.wormhole_hub;
@@ -413,7 +414,7 @@ pub const MapPanelWindow = struct {
     /// Eve Stars sums the picked metric over longer spans than ESI's hour.
     pub fn showsSpans(self: *const MapPanelWindow) bool {
         const map_settings = &self.config.mapPanel;
-        return self.hasEveStars() and map_settings.liveStats and look.isSpannedMetric(map_settings.metric);
+        return self.hasEveStars() and map_settings.liveStats and metric_segments.isSpannedMetric(map_settings.metric);
     }
 
     pub fn hasEveStars(self: *const MapPanelWindow) bool {
@@ -592,7 +593,7 @@ pub const MapPanelWindow = struct {
         self.state.labels_signature = null;
     }
 
-    /// After `layout` is built, as a build drops them; only when it or the connections shown change, as setting them drops their names; an Ansiblex gate with both ends shown is drawn across the map instead.
+    /// After `layout` is built, which drops them; set only on a change, as setting them drops their names.
     fn ensurePortals(self: *MapPanelWindow, scene: Scene) void {
         const map_layout = &self.state.layout;
         var ends: [layout.MAX_PORTALS]layout.PortalEnd = undefined;
@@ -608,6 +609,7 @@ pub const MapPanelWindow = struct {
         if (paint.shownBridges(self.config, self.hasEveStars(), scene)) |bridges| {
             for (bridges.slice()) |bridge| {
                 if (end_count == ends.len) break;
+                // One with both ends shown is drawn across the map instead.
                 if (map_layout.nodeOf(bridge.from) == null or map_layout.nodeOf(bridge.to) != null) continue;
                 ends[end_count] = .{ .system = bridge.from, .target = .{ .system = bridge.to } };
                 end_count += 1;
@@ -626,7 +628,7 @@ pub const MapPanelWindow = struct {
         self.state.labels_signature = null;
     }
 
-    /// After `layout` is built and what floats over the map is measured, as the names keep clear of `covered`; a name makes room for its sov timer while `campaigns` show.
+    /// After `layout` is built and the cards over it measured, as names keep clear of `covered`; timed names make room for `campaigns`.
     fn ensureLabels(self: *MapPanelWindow, dc: win32.HDC, areas: look.Areas, fonts: ?MapFonts, covered: []const Box, campaigns: ?*const Campaigns) void {
         const loaded = fonts orelse return;
         const node_count = self.state.layout.node_count;
@@ -840,7 +842,7 @@ fn measureChrome(dc: win32.HDC, fonts: MapFonts, areas: look.Areas, shown: Chrom
     text.title_height = fonts.heading_height;
     // Semibold, the picked segment's font and the wider of the two, so picking a segment doesn't resize the bar.
     _ = win32.SelectObject(dc, fonts.semibold_font);
-    for (look.SEGMENT_ORDER, &text.metric_widths) |segment, *width| width.* = panel_chrome.textWidth(dc, text_mod.metricLabel(look.shownMetric(segment, shown.metric)));
+    for (metric_segments.SEGMENT_ORDER, &text.metric_widths) |segment, *width| width.* = panel_chrome.textWidth(dc, text_mod.metricLabel(metric_segments.shownMetric(segment, shown.metric)));
     text.span_widths = null;
     text.shows_spans = shown.shows_spans;
     if (shown.has_span_room) {

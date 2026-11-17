@@ -210,6 +210,8 @@ The panel's own files in `panels/map/`:
 - `search.zig` (pure, tested): the search's query, its cursor and selection, and its results.
 - `marks.zig` (pure, tested): the clients on the map.
 - `look.zig`: sizes, colours, markers and the panel's `Areas`.
+- `metric_segments.zig` (pure, tested): which metrics each metric bar segment shows, and the value a metric reads from a system.
+- `ownership.zig` (pure, tested): who holds the shown systems and regions, ranked, and each holder's colour.
 - `text.zig`: tooltips, legends and titles.
 - `wormhole_list.zig` (pure, tested): the Thera and Turnur card's list, one hub a tab, sorted by region, and its scrolling.
 - `timer_list.zig` (pure, tested): the sov timer card's list, the shown regions' campaigns, soonest first.

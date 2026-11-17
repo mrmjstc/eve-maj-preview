@@ -3,16 +3,17 @@ const std = @import("std");
 const history = @import("../../notifications/history.zig");
 const history_rows = @import("../history_rows.zig");
 const look = @import("look.zig");
+const metric_segments = @import("metric_segments.zig");
 const marks_mod = @import("marks.zig");
 const menu_mod = @import("menu.zig");
 const search_mod = @import("search.zig");
+const timer_list = @import("timer_list.zig");
+const wormhole_list = @import("wormhole_list.zig");
 const popup_menu = @import("../popup_menu.zig");
 const universe = @import("../../map/universe.zig");
 const jump_range = @import("../../map/jump_range.zig");
 const layout_mod = @import("../../map/layout.zig");
 const zkill = @import("../../map/zkill.zig");
-const timer_list = @import("timer_list.zig");
-const wormhole_list = @import("wormhole_list.zig");
 const wormholes = @import("../../map/wormholes.zig");
 const overview_mod = @import("../../map/overview.zig");
 
@@ -23,7 +24,7 @@ const SystemIndex = universe.SystemIndex;
 
 pub const Hover = struct {
     kind: Kind = .none,
-    /// A `nodes`, `exits` or `portals` place, a RegionIndex, a MetricSegment's, TrafficSpan's, Toggle's, MapControl's or card tab's value, a card's row, or a popup, submenu or nested row, by kind.
+    /// What `kind` points at: a layout, card or popup row's place, a RegionIndex, or a bar button's or card tab's enum value.
     index: u16 = 0,
 
     /// `bar` is a card's part that does nothing, such as a bar's padding, which keeps a click off the map.
@@ -317,8 +318,8 @@ test "a map control lies over the map" {
 test "the bars find their buttons, and their padding keeps a click off the map" {
     var state = forgeState();
     state.chrome = .init(TEST_AREAS, .{ .title_width = 80, .title_height = 20, .metric_widths = @splat(40), .toggle_widths = @splat(50) });
-    const kills = state.chrome.metrics[@backingInt(look.MetricSegment.kills)];
-    try testing.expect(state.hitTest(TEST_AREAS, kills.left, kills.top).eql(.{ .kind = .metric, .index = @backingInt(look.MetricSegment.kills) }));
+    const kills = state.chrome.metrics[@backingInt(metric_segments.MetricSegment.kills)];
+    try testing.expect(state.hitTest(TEST_AREAS, kills.left, kills.top).eql(.{ .kind = .metric, .index = @backingInt(metric_segments.MetricSegment.kills) }));
     const follow = state.chrome.toggles[@backingInt(look.Toggle.follow)];
     try testing.expect(state.hitTest(TEST_AREAS, follow.left, follow.top).eql(.{ .kind = .toggle, .index = @backingInt(look.Toggle.follow) }));
     const bar = state.chrome.toggle_bar;

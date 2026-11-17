@@ -84,6 +84,8 @@ test {
     _ = @import("panels/map/look.zig");
     _ = @import("panels/map/marks.zig");
     _ = @import("panels/map/menu.zig");
+    _ = @import("panels/map/metric_segments.zig");
+    _ = @import("panels/map/ownership.zig");
     _ = @import("panels/map/search.zig");
     _ = @import("panels/map/state.zig");
     _ = @import("panels/map/text.zig");

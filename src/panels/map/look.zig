@@ -7,10 +7,10 @@ const palette = @import("../palette.zig");
 const popup_look = @import("../popup_look.zig");
 const segmented = @import("../segmented.zig");
 const glyphs = @import("../glyphs.zig");
+const metric_segments = @import("metric_segments.zig");
 const universe = @import("../../map/universe.zig");
 const storms = @import("../../map/storms.zig");
 const layout = @import("../../map/layout.zig");
-const stats_mod = @import("../../map/stats.zig");
 const holder_colors = @import("../../map/holder_colors.zig");
 const faction_warfare = @import("../../map/faction_warfare.zig");
 const wormholes = @import("../../map/wormholes.zig");
@@ -18,11 +18,7 @@ const color = @import("../../util/color.zig");
 const pixel_buffer = @import("../../util/pixel_buffer.zig");
 
 const Box = layout.Box;
-const LogoColors = holder_colors.LogoColors;
-const MapMetric = types.MapMetric;
-const SystemIndex = universe.SystemIndex;
-const SystemStats = stats_mod.SystemStats;
-const Snapshot = stats_mod.Snapshot;
+const MetricSegment = metric_segments.MetricSegment;
 const TrafficSpan = types.TrafficSpan;
 
 /// The search box and pin side by side, and the cards under them.
@@ -242,6 +238,8 @@ const HEAT_HIGH: u32 = 0xFFFF3B30;
 const SECURITY_COLORS = [_]u32{ 0xFFF00000, 0xFFD73000, 0xFFF04800, 0xFFF06000, 0xFFD77700, 0xFFEFEF00, 0xFF8FEF2F, 0xFF00F000, 0xFF00EF47, 0xFF48F0C0, 0xFF2FEFEF };
 /// Where null security ends at -1.0, a darker red than 0.0's: EVE paints it all one red, which says nothing across a null region.
 const DEEPEST_NULL: u32 = 0xFF8E0A12;
+/// From -1.0 up to 1.0, in tenths.
+const SECURITY_SCALE_STEPS = 21;
 /// From -1.0 up to 1.0.
 pub const SECURITY_SCALE = securityScale();
 /// Where NPC kills fell on the hour, against HEAT_LOW and HEAT_HIGH where they rose.
@@ -254,11 +252,7 @@ pub const HEAT_RAMP = [_]u32{ HEAT_LOW, color.mix(HEAT_HIGH, HEAT_LOW, 33), colo
 const WARFARE_CALM_PERCENT = 35;
 /// From a calm warzone system to a fully contested one, in a neutral colour as each faction has its own.
 pub const WARFARE_RAMP = [_]u32{ color.mix(list_look.NAME, HEAT_NONE, WARFARE_CALM_PERCENT), color.mix(list_look.NAME, HEAT_NONE, 67), list_look.NAME };
-/// By a holder's rank on the map, for one with neither a faction's nor a logo's colour.
-const HOLDER_COLORS = [_]u32{ 0xFF4F9DFF, 0xFFFF7A59, 0xFF54D18C, 0xFFE8C547, 0xFFC77DFF, 0xFF3FD0D8, 0xFFFF6FAE, 0xFF9CCB3B, 0xFFB08D6E, 0xFF8E9BFF };
 
-/// Left to right.
-pub const SEGMENT_ORDER = std.enums.values(MetricSegment);
 const NO_BOX: Box = .{ .left = 0, .top = 0, .right = 0, .bottom = 0 };
 
 pub const TOGGLE_ORDER = std.enums.values(Toggle);
@@ -268,8 +262,6 @@ pub const LAYER_ORDER = std.enums.values(Layer);
 /// Beside the metric bar, left to right.
 pub const SPAN_ORDER = std.enums.values(TrafficSpan);
 
-/// A button in the bar along the map's bottom; one with a second metric flips to it when clicked again.
-pub const MetricSegment = enum { security, kills, npc, jumps, sovereignty, faction_warfare };
 /// In the bar along the map's bottom, left to right; Follow sits past a divider, as it moves the map rather than showing more on it.
 pub const Toggle = enum { layers, follow };
 /// What the Layers menu turns on and off, top to bottom.
@@ -353,6 +345,15 @@ pub const Areas = struct {
     }
 };
 
+/// What drawing a card's frame needs, from an Intel or list card.
+const CardFrame = struct {
+    box: Box,
+    header: Box,
+    /// Borrows from the card.
+    rows: []const Box,
+    is_collapsed: bool,
+};
+
 /// Where a card in the right column starts, and its rows.
 pub const CardShape = struct {
     top: i32,
@@ -406,6 +407,10 @@ pub const IntelCard = struct {
         return null;
     }
 
+    fn frame(self: *const IntelCard) CardFrame {
+        return .{ .box = self.box, .header = self.header, .rows = self.rows[0..self.row_count], .is_collapsed = self.is_collapsed };
+    }
+
     pub fn hasTabs(self: *const IntelCard) bool {
         return self.tabs[0].right > self.tabs[0].left;
     }
@@ -449,6 +454,10 @@ pub const ListCard = struct {
         return card;
     }
 
+    fn frame(self: *const ListCard) CardFrame {
+        return .{ .box = self.box, .header = self.header, .rows = self.rows[0..self.row_count], .is_collapsed = self.is_collapsed };
+    }
+
     pub fn tabAt(self: *const ListCard, x: i32, y: i32) ?wormholes.Hub {
         for (std.enums.values(wormholes.Hub), self.tabs) |hub, box| {
             if (box.containsPoint(x, y)) return hub;
@@ -469,7 +478,7 @@ pub const ChromeText = struct {
     title_width: i32,
     title_height: i32,
     /// Each segment's shown label.
-    metric_widths: [SEGMENT_ORDER.len]i32,
+    metric_widths: [metric_segments.SEGMENT_ORDER.len]i32,
     toggle_widths: [TOGGLE_ORDER.len]i32,
     /// Each span's label; null while no metric could take the span bar, so the bars keep its room as the metric changes.
     span_widths: ?[SPAN_ORDER.len]i32 = null,
@@ -482,14 +491,14 @@ pub const ChromeText = struct {
 pub const Chrome = struct {
     title: Box = NO_BOX,
     metric_bar: Box = NO_BOX,
-    metrics: [SEGMENT_ORDER.len]Box = @splat(NO_BOX),
+    metrics: [metric_segments.SEGMENT_ORDER.len]Box = @splat(NO_BOX),
     toggle_bar: Box = NO_BOX,
     toggles: [TOGGLE_ORDER.len]Box = @splat(NO_BOX),
     /// Right of the metric bar; empty while hidden.
     span_bar: Box = NO_BOX,
     spans: [SPAN_ORDER.len]Box = @splat(NO_BOX),
 
-    /// The title in the top left, clear of the search; along the bottom, the toggle bar on the metric bar, each centred, or both kept to the left where centring either would meet the legends or crowd the zoom controls.
+    /// Both bottom bars centred, or kept left together where centring would meet the legends or crowd the zoom controls.
     pub fn init(areas: Areas, text: ChromeText) Chrome {
         var chrome: Chrome = .{};
         const body = areas.body;
@@ -499,7 +508,7 @@ pub const Chrome = struct {
         const title_right = @min(left + title_content + 2 * TITLE_PADDING_X, areas.search_box.left - CARD_GAP);
         chrome.title = .{ .left = left, .top = top, .right = @max(left, title_right), .bottom = top + TITLE_PADDING_TOP + text.title_height + TITLE_PADDING_BOTTOM };
 
-        var metric_widths: [SEGMENT_ORDER.len]i32 = undefined;
+        var metric_widths: [metric_segments.SEGMENT_ORDER.len]i32 = undefined;
         for (&metric_widths, text.metric_widths) |*width, text_width| width.* = segmented.buttonWidth(text_width);
         var span_widths: [SPAN_ORDER.len]i32 = @splat(0);
         if (text.span_widths) |widths| {
@@ -553,7 +562,7 @@ pub const Chrome = struct {
     }
 
     pub fn segmentAt(self: *const Chrome, x: i32, y: i32) ?MetricSegment {
-        for (SEGMENT_ORDER, self.metrics) |segment, box| {
+        for (metric_segments.SEGMENT_ORDER, self.metrics) |segment, box| {
             if (box.containsPoint(x, y)) return segment;
         }
         return null;
@@ -578,99 +587,6 @@ pub const Chrome = struct {
     }
 };
 
-/// A holder of systems in a region, into Snapshot.holder_ids.
-pub const RankedHolder = struct { holder: u16, system_count: u16 };
-
-/// Who holds the systems shown, most first; only these take the palette's colours.
-pub const HolderRanks = struct {
-    holders: [HOLDER_COLORS.len]RankedHolder = undefined,
-    /// By place in `holders`: a faction's own, else its logo's, else the palette's next.
-    colors: [HOLDER_COLORS.len]u32 = undefined,
-    count: usize = 0,
-    /// Systems held by anyone past the ranked.
-    other_count: usize = 0,
-    unclaimed_count: usize = 0,
-    /// Borrowed for one render, for an unranked holder's own colour.
-    snapshot: ?*const Snapshot = null,
-    /// Borrowed for one render; null until the first logo colours arrive.
-    logos: ?*const LogoColors = null,
-
-    /// `logos` is null until the first logo colours arrive.
-    pub fn fromNodes(snapshot: *const Snapshot, nodes: []const layout.Node, logos: ?*const LogoColors) HolderRanks {
-        var held: [layout.MAX_NODES]u16 = undefined;
-        for (nodes, held[0..nodes.len]) |node, *holder| holder.* = snapshot.systems[node.system].holder;
-        return .fromHolders(snapshot, held[0..nodes.len], logos);
-    }
-
-    /// One holder per system or region in `held`, at most MAX_NODES; `logos` is null until the first logo colours arrive.
-    pub fn fromHolders(snapshot: *const Snapshot, held: []const u16, logos: ?*const LogoColors) HolderRanks {
-        var ranks: HolderRanks = .{ .snapshot = snapshot, .logos = logos };
-        var tally: [layout.MAX_NODES]RankedHolder = undefined;
-        var tally_count: usize = 0;
-        counting: for (held) |holder| {
-            if (holder == stats_mod.NO_HOLDER) {
-                ranks.unclaimed_count += 1;
-                continue;
-            }
-            for (tally[0..tally_count]) |*counted| {
-                if (counted.holder != holder) continue;
-                counted.system_count += 1;
-                continue :counting;
-            }
-            tally[tally_count] = .{ .holder = holder, .system_count = 1 };
-            tally_count += 1;
-        }
-        std.mem.sort(RankedHolder, tally[0..tally_count], {}, holdsMore);
-        ranks.count = @min(tally_count, ranks.holders.len);
-        @memcpy(ranks.holders[0..ranks.count], tally[0..ranks.count]);
-        for (tally[ranks.count..tally_count]) |counted| ranks.other_count += counted.system_count;
-        var palette_index: usize = 0;
-        for (ranks.holders[0..ranks.count], ranks.colors[0..ranks.count]) |ranked, *shade| {
-            shade.* = holderColor(snapshot, ranked.holder, logos) orelse blk: {
-                palette_index += 1;
-                break :blk HOLDER_COLORS[palette_index - 1];
-            };
-        }
-        return ranks;
-    }
-
-    /// An unranked holder keeps its faction's or logo's colour, else it's muted.
-    pub fn colorOf(self: *const HolderRanks, holder: u16) u32 {
-        if (holder == stats_mod.NO_HOLDER) return HEAT_NONE;
-        for (self.holders[0..self.count], self.colors[0..self.count]) |ranked, shade| {
-            if (ranked.holder == holder) return shade;
-        }
-        const snapshot = self.snapshot orelse return list_look.MUTED;
-        return holderColor(snapshot, holder, self.logos) orelse list_look.MUTED;
-    }
-};
-
-/// Each region's holder of the most systems, NO_HOLDER where its unclaimed systems outnumber every holder's.
-pub fn regionHolders(snapshot: *const Snapshot) [universe.REGION_COUNT]u16 {
-    comptime std.debug.assert(universe.REGION_COUNT <= layout.MAX_NODES);
-    // Sorted by region then holder, each run is one holder's systems in one region.
-    var sort_keys: [universe.SYSTEM_COUNT]u32 = undefined;
-    for (snapshot.systems, &sort_keys, 0..) |system_stats, *sort_key, system| {
-        sort_key.* = @as(u32, universe.systemInfo(@intCast(system)).region) << 16 | system_stats.holder;
-    }
-    std.mem.sort(u32, &sort_keys, {}, std.sort.asc(u32));
-
-    var holders: [universe.REGION_COUNT]u16 = @splat(stats_mod.NO_HOLDER);
-    var best_counts: [universe.REGION_COUNT]usize = @splat(0);
-    var run_start: usize = 0;
-    for (sort_keys, 0..) |sort_key, index| {
-        if (index + 1 < sort_keys.len and sort_keys[index + 1] == sort_key) continue;
-        const run_length = index + 1 - run_start;
-        run_start = index + 1;
-        const region = sort_key >> 16;
-        // Strictly more, so a holder keeps a tie over NO_HOLDER, which sorts last.
-        if (run_length <= best_counts[region]) continue;
-        best_counts[region] = run_length;
-        holders[region] = @truncate(sort_key);
-    }
-    return holders;
-}
-
 pub fn intelHeaderHeight(card_height: i32) i32 {
     return card_height + INTEL_HEADER_EXTRA;
 }
@@ -682,15 +598,8 @@ pub fn intelRowHeight(line_height: i32) i32 {
 
 /// The card, its header's chevron, and dividers under the header and between rows, set in like the dialog's; a hovered row or header lit.
 pub fn drawIntelCard(canvas: pixel_buffer.Canvas, card: *const IntelCard, hovered_row: ?usize, is_header_hovered: bool) void {
-    drawCard(canvas, card.box);
-    const inner_left = card.box.left + ROW_INSET;
-    const inner_right = card.box.right - ROW_INSET;
-    if (is_header_hovered) fillBox(canvas, rowHighlight(card.header, inner_left, inner_right), segmented.RADIUS, SEGMENT_HOVER);
-    if (hovered_row) |index| {
-        if (index < card.row_count) fillBox(canvas, rowHighlight(card.rows[index], inner_left, inner_right), segmented.RADIUS, SEGMENT_HOVER);
-    }
-    if (!card.is_collapsed) drawDivider(canvas, inner_left, inner_right, card.header.bottom - 1);
-    for (card.rows[0..card.row_count -| 1]) |row| drawDivider(canvas, inner_left, inner_right, row.bottom - 1);
+    drawCardFrame(canvas, card.frame(), hovered_row, is_header_hovered);
+    for (card.rows[0..card.row_count -| 1]) |row| drawDivider(canvas, card.box.left + ROW_INSET, card.box.right - ROW_INSET, row.bottom - 1);
     drawChevron(canvas, card.header.right - INTEL_PADDING_X - CHEVRON_SIZE, @divTrunc(card.header.top + card.header.bottom, 2), !card.is_collapsed);
 }
 
@@ -700,13 +609,13 @@ pub fn listRowHeight(line_height: i32) i32 {
 
 /// The card, its header's chevron and the divider under the header; a hovered row or header lit.
 pub fn drawListCard(canvas: pixel_buffer.Canvas, card: *const ListCard, hovered_row: ?usize, is_header_hovered: bool) void {
-    drawListFrame(canvas, card, hovered_row, is_header_hovered);
+    drawCardFrame(canvas, card.frame(), hovered_row, is_header_hovered);
     drawChevron(canvas, card.header.right - INTEL_PADDING_X - CHEVRON_SIZE, @divTrunc(card.header.top + card.header.bottom, 2), !card.is_collapsed);
 }
 
 /// A list card whose header closes it, with a cross where the others have their chevron.
 pub fn drawClosableCard(canvas: pixel_buffer.Canvas, card: *const ListCard, hovered_row: ?usize, is_header_hovered: bool) void {
-    drawListFrame(canvas, card, hovered_row, is_header_hovered);
+    drawCardFrame(canvas, card.frame(), hovered_row, is_header_hovered);
     drawGlyphAt(canvas, .off, card.header.right - INTEL_PADDING_X - CHEVRON_SIZE, @divTrunc(card.header.top + card.header.bottom, 2), if (is_header_hovered) SEGMENT_TEXT else CARD_MUTED);
 }
 
@@ -737,49 +646,6 @@ pub fn stormEdgeColor(mark: storms.EdgeMark) u32 {
     return if (mark.is_core) shade else color.mix(shade, EDGE_LOCAL, STORM_PERIPHERY_PERCENT);
 }
 
-/// What `segment` shows while `current` is the map's metric: that, if it's the segment's, else the segment's first.
-pub fn shownMetric(segment: MetricSegment, current: MapMetric) MapMetric {
-    return if (segmentOf(current) == segment) current else segmentMetrics(segment)[0];
-}
-
-pub fn segmentOf(metric: MapMetric) MetricSegment {
-    return switch (metric) {
-        .Security => .security,
-        .ShipKills, .PodKills => .kills,
-        .NpcKills, .NpcDelta => .npc,
-        .Jumps => .jumps,
-        .Sovereignty => .sovereignty,
-        .FactionWarfare => .faction_warfare,
-    };
-}
-
-/// A click on the segment showing `current` moves on to its next metric; on any other, picks that segment's first.
-pub fn metricAfterClick(current: MapMetric, segment: MetricSegment) MapMetric {
-    const metrics = segmentMetrics(segment);
-    const index = std.mem.indexOfScalar(MapMetric, metrics, current) orelse return metrics[0];
-    return metrics[(index + 1) % metrics.len];
-}
-
-/// Those the span bar sums over a longer span; NPC delta is ESI's change on the hour, so it isn't one.
-pub fn isSpannedMetric(metric: MapMetric) bool {
-    return switch (metric) {
-        .ShipKills, .PodKills, .NpcKills, .Jumps => true,
-        .Security, .NpcDelta, .Sovereignty, .FactionWarfare => false,
-    };
-}
-
-/// Zero for what colours by the system rather than its traffic.
-pub fn metricValue(metric: MapMetric, stats: SystemStats) u32 {
-    return switch (metric) {
-        .Security, .Sovereignty, .FactionWarfare => 0,
-        .ShipKills => stats.ship_kills,
-        .PodKills => stats.pod_kills,
-        .NpcKills => stats.npc_kills,
-        .NpcDelta => @abs(stats.npc_delta),
-        .Jumps => stats.jumps,
-    };
-}
-
 /// Its occupier's colour, the stronger the further it's contested; HEAT_NONE outside a warzone.
 pub fn warfareColor(system: faction_warfare.System) u32 {
     if (system.occupier == faction_warfare.NO_FACTION) return HEAT_NONE;
@@ -791,25 +657,6 @@ pub fn warfareColor(system: faction_warfare.System) u32 {
 /// `place` is an occupier or owner, past NO_FACTION.
 pub fn factionColorOf(place: u8) u32 {
     return holder_colors.factionColor(faction_warfare.faction(place).id) orelse list_look.MUTED;
-}
-
-/// Each region's occupier of the most warzone systems, NO_FACTION for a region outside the warzones.
-pub fn regionOccupiers(snapshot: *const Snapshot) [universe.REGION_COUNT]u8 {
-    var counts: [universe.REGION_COUNT][faction_warfare.FACTIONS.len + 1]u16 = @splat(@splat(0));
-    for (snapshot.warfare, 0..) |system, index| {
-        if (system.occupier == faction_warfare.NO_FACTION) continue;
-        counts[universe.systemInfo(@intCast(index)).region][system.occupier] += 1;
-    }
-    var occupiers: [universe.REGION_COUNT]u8 = @splat(faction_warfare.NO_FACTION);
-    for (&occupiers, counts) |*occupier, region_counts| {
-        var best: u16 = 0;
-        for (region_counts[1..], 1..) |count, place| {
-            if (count <= best) continue;
-            best = count;
-            occupier.* = @intCast(place);
-        }
-    }
-    return occupiers;
 }
 
 /// EVE's scale from 0.0 up, carried on through null security so a region's depths show.
@@ -1008,7 +855,7 @@ pub fn drawClientLead(canvas: pixel_buffer.Canvas, x: i32, y: i32, reach: f32, b
     pixel_buffer.drawLine(canvas, from_x, from_y, to_x, to_y, tag_color);
 }
 
-/// `offset` from the marker at `x`,`y`, stepped up then down, further each time, until its chip is clear of `taken`, as names mostly sit below; null when no step inside `area` is.
+/// Stepped up then down from beside the marker until its chip clears `taken`, as names mostly sit below; null when no step fits `area`.
 pub fn clientTagBox(area: Box, x: i32, y: i32, offset: i32, width: i32, height: i32, taken: []const Box) ?Box {
     const right_left = x + offset;
     const left = if (right_left + width <= area.right) right_left else x - offset - width;
@@ -1062,7 +909,7 @@ pub fn rippleAt(age_ms: u64) ?Ripple {
     };
 }
 
-/// The view that pans a ping at `x`,`y` to the middle of the map left of the cards, when its ring would spread under `covered` or past the panel; null when it shows whole already.
+/// Pans a ping whose ring would reach under `covered` or off the panel to the map's middle left of the cards; null when it shows whole.
 pub fn revealedView(view: layout.View, areas: Areas, covered: []const Box, x: i32, y: i32) ?layout.View {
     const reach: i32 = @intFromFloat(@ceil(RIPPLE_END_RADIUS * markerScale(view.zoom)));
     const ring: Box = .{ .left = x - reach, .top = y - reach, .right = x + reach, .bottom = y + reach };
@@ -1146,7 +993,7 @@ pub fn drawAvoidMark(canvas: pixel_buffer.Canvas, x: i32, y: i32) void {
     pixel_buffer.drawLine(canvas, x - AVOID_MARK_SIZE, y + AVOID_MARK_SIZE, x + AVOID_MARK_SIZE, y - AVOID_MARK_SIZE, AVOID);
 }
 
-/// A square, as every other mark on the map is round or a diamond: its corners only until the timer starts, then whole; drawn twice over, one pixel in, as a single line is too thin to find.
+/// Corners only until the timer starts; drawn twice over, one pixel in, as a single line is too thin to find.
 pub fn drawTimerMark(canvas: pixel_buffer.Canvas, x: i32, y: i32, scale: f32, has_started: bool) void {
     const size: i32 = @intFromFloat(TIMER_MARK_SIZE * scale);
     const corner: i32 = if (has_started) size else @intFromFloat(TIMER_CORNER_LENGTH * scale);
@@ -1166,27 +1013,16 @@ pub fn regionRangeColor(systems_in_range: u16) u32 {
     return if (systems_in_range > 0) RANGE else OUT_OF_RANGE;
 }
 
-fn drawListFrame(canvas: pixel_buffer.Canvas, card: *const ListCard, hovered_row: ?usize, is_header_hovered: bool) void {
+/// The card, a hovered row or header lit, and the divider under the header.
+fn drawCardFrame(canvas: pixel_buffer.Canvas, card: CardFrame, hovered_row: ?usize, is_header_hovered: bool) void {
     drawCard(canvas, card.box);
     const inner_left = card.box.left + ROW_INSET;
     const inner_right = card.box.right - ROW_INSET;
     if (is_header_hovered) fillBox(canvas, rowHighlight(card.header, inner_left, inner_right), segmented.RADIUS, SEGMENT_HOVER);
     if (hovered_row) |index| {
-        if (index < card.row_count) fillBox(canvas, rowHighlight(card.rows[index], inner_left, inner_right), segmented.RADIUS, SEGMENT_HOVER);
+        if (index < card.rows.len) fillBox(canvas, rowHighlight(card.rows[index], inner_left, inner_right), segmented.RADIUS, SEGMENT_HOVER);
     }
     if (!card.is_collapsed) drawDivider(canvas, inner_left, inner_right, card.header.bottom - 1);
-}
-
-/// What a segment shows, the one a first click picks first.
-fn segmentMetrics(segment: MetricSegment) []const MapMetric {
-    return switch (segment) {
-        .security => &.{.Security},
-        .kills => &.{ .ShipKills, .PodKills },
-        .npc => &.{ .NpcKills, .NpcDelta },
-        .jumps => &.{.Jumps},
-        .sovereignty => &.{.Sovereignty},
-        .faction_warfare => &.{.FactionWarfare},
-    };
 }
 
 fn drawMapControlGlyph(canvas: pixel_buffer.Canvas, box: Box, control: MapControl, is_always_on_top: bool) void {
@@ -1273,28 +1109,13 @@ fn intelRimColor(is_clear: bool, freshness_percent: u64) u32 {
     return color.withAlpha(intelColor(is_clear), alpha);
 }
 
-fn securityScale() [21]u32 {
-    var scale: [21]u32 = undefined;
+fn securityScale() [SECURITY_SCALE_STEPS]u32 {
+    var scale: [SECURITY_SCALE_STEPS]u32 = undefined;
     for (&scale, 0..) |*shade, index| {
-        const tenths: i8 = @as(i8, @intCast(index)) - 10;
+        const tenths: i8 = @as(i8, @intCast(index)) - SECURITY_SCALE_STEPS / 2;
         shade.* = securityColor(tenths);
     }
     return scale;
-}
-
-/// A faction's own colour, or an alliance's logo's; null when neither is known.
-fn holderColor(snapshot: *const Snapshot, holder: u16, logos: ?*const LogoColors) ?u32 {
-    if (holder >= snapshot.holder_ids.items.len) return null;
-    const id = snapshot.holder_ids.items[holder];
-    if (holder_colors.factionColor(id)) |faction_color| return faction_color;
-    const known = logos orelse return null;
-    const logo_color = known.get(id) orelse return null;
-    return if (logo_color == holder_colors.NO_COLOR) null else logo_color;
-}
-
-fn holdsMore(_: void, first: RankedHolder, second: RankedHolder) bool {
-    if (first.system_count != second.system_count) return first.system_count > second.system_count;
-    return first.holder < second.holder;
 }
 
 fn heatShare(value: u32, peak: u32) f32 {
@@ -1309,15 +1130,6 @@ fn testChromeText(title_width: i32) ChromeText {
     return .{ .title_width = title_width, .title_height = 20, .metric_widths = @splat(40), .toggle_widths = @splat(50) };
 }
 
-test "metricValue counts ships and pods apart, and Security counts nothing" {
-    const stats: SystemStats = .{ .ship_kills = 3, .pod_kills = 2, .npc_kills = 40, .jumps = 9 };
-    try testing.expectEqual(@as(u32, 3), metricValue(.ShipKills, stats));
-    try testing.expectEqual(@as(u32, 2), metricValue(.PodKills, stats));
-    try testing.expectEqual(@as(u32, 40), metricValue(.NpcKills, stats));
-    try testing.expectEqual(@as(u32, 9), metricValue(.Jumps, stats));
-    try testing.expectEqual(@as(u32, 0), metricValue(.Security, stats));
-}
-
 test "a warzone system grows stronger in its occupier's colour as it's contested" {
     try testing.expectEqual(HEAT_NONE, warfareColor(.{}));
     const calm = warfareColor(.{ .occupier = 1 });
@@ -1330,26 +1142,6 @@ test "a rise in NPC kills is warm, a fall cool, and none quiet" {
     try testing.expectEqual(HEAT_NONE, deltaColor(0, 10));
     try testing.expectEqual(HEAT_HIGH, deltaColor(10, 10));
     try testing.expectEqual(DROP_HIGH, deltaColor(-10, 10));
-}
-
-test "every metric sits in its own segment's list" {
-    for (std.enums.values(MapMetric)) |metric| {
-        try testing.expect(std.mem.indexOfScalar(MapMetric, segmentMetrics(segmentOf(metric)), metric) != null);
-    }
-}
-
-test "a segment shows the map's metric while it's that segment's, and its first otherwise" {
-    try testing.expectEqual(MapMetric.NpcDelta, shownMetric(.npc, .NpcDelta));
-    try testing.expectEqual(MapMetric.NpcKills, shownMetric(.npc, .Jumps));
-    try testing.expectEqual(MapMetric.Security, shownMetric(.security, .Security));
-}
-
-test "a second click on a segment flips to its other metric, and another segment starts at its first" {
-    try testing.expectEqual(MapMetric.ShipKills, metricAfterClick(.Security, .kills));
-    try testing.expectEqual(MapMetric.PodKills, metricAfterClick(.ShipKills, .kills));
-    try testing.expectEqual(MapMetric.ShipKills, metricAfterClick(.PodKills, .kills));
-    try testing.expectEqual(MapMetric.Jumps, metricAfterClick(.Jumps, .jumps));
-    try testing.expectEqual(MapMetric.Jumps, metricAfterClick(.PodKills, .jumps));
 }
 
 test "the search box spans the side column top right, and narrows with the map" {
@@ -1446,7 +1238,7 @@ test "the metric bar is centred along the bottom, and each segment finds its met
     const chrome: Chrome = .init(areas, testChromeText(80));
     try testing.expectEqual(areas.body.bottom - CARD_MARGIN, chrome.metric_bar.bottom);
     try testing.expectApproxEqAbs(@as(f32, 500), @as(f32, @floatFromInt(chrome.metric_bar.left + chrome.metric_bar.right)) / 2, 1);
-    for (SEGMENT_ORDER, chrome.metrics) |segment, box| {
+    for (metric_segments.SEGMENT_ORDER, chrome.metrics) |segment, box| {
         try testing.expect(chrome.metric_bar.contains(box));
         try testing.expectEqual(@as(?MetricSegment, segment), chrome.segmentAt(box.left, box.top));
     }
@@ -1471,13 +1263,6 @@ test "the span bar hangs off the centred metric bar's right, and showing it move
     try testing.expectEqual(@as(?TrafficSpan, null), hidden.spanAt(chrome.spans[0].left, chrome.spans[0].top));
     try testing.expectEqual(chrome.metric_bar, hidden.metric_bar);
     try testing.expectEqual(chrome.toggle_bar, hidden.toggle_bar);
-}
-
-test "only the traffic metrics a span sums take the span bar" {
-    try testing.expect(isSpannedMetric(.ShipKills));
-    try testing.expect(isSpannedMetric(.Jumps));
-    try testing.expect(!isSpannedMetric(.NpcDelta));
-    try testing.expect(!isSpannedMetric(.Security));
 }
 
 test "the title card stops short of the search box" {
@@ -1568,80 +1353,6 @@ test "the zoom controls stack bottom right, the pin alone above them, and each f
     try testing.expectEqual(areas.mapControlBox(.zoom_in).bottom, areas.mapControlBox(.zoom_out).top);
     try testing.expectEqual(areas.zoomStack().top - CARD_GAP, areas.mapControlBox(.always_on_top).bottom);
     try testing.expectEqual(@as(?MapControl, null), areas.mapControlAt(0, 0));
-}
-
-test "holders rank by systems held, past the colours sum up, and the unclaimed count apart" {
-    var snapshot: Snapshot = try .init(testing.allocator);
-    defer snapshot.deinit();
-    var nodes: [HOLDER_COLORS.len + 5]layout.Node = undefined;
-    for (&nodes, 0..) |*node, index| {
-        const system: SystemIndex = @intCast(index);
-        node.* = .{ .system = system, .x = 0, .y = 0 };
-        snapshot.systems[system].holder = @intCast(index);
-    }
-    snapshot.systems[0].holder = 7;
-    snapshot.systems[1].holder = 7;
-    snapshot.systems[2].holder = stats_mod.NO_HOLDER;
-    const ranks: HolderRanks = .fromNodes(&snapshot, &nodes, null);
-    try testing.expectEqual(@as(u16, 7), ranks.holders[0].holder);
-    try testing.expectEqual(@as(u16, 3), ranks.holders[0].system_count);
-    try testing.expectEqual(HOLDER_COLORS.len, ranks.count);
-    try testing.expectEqual(@as(usize, 1), ranks.unclaimed_count);
-    try testing.expect(ranks.other_count > 0);
-    try testing.expectEqual(HOLDER_COLORS[0], ranks.colorOf(7));
-    try testing.expectEqual(HEAT_NONE, ranks.colorOf(stats_mod.NO_HOLDER));
-}
-
-test "a holder is coloured as its faction, else its logo, else by the palette's next colour" {
-    var snapshot: Snapshot = try .init(testing.allocator);
-    defer snapshot.deinit();
-    // Guristas Pirates, an alliance with a logo colour, one whose logo had none, and one not yet looked at.
-    const ids = [_]u32{ 500010, 99000001, 99000002, 99000003 };
-    var nodes: [ids.len]layout.Node = undefined;
-    for (&nodes, ids, 0..) |*node, id, index| {
-        const system: SystemIndex = @intCast(index);
-        node.* = .{ .system = system, .x = 0, .y = 0 };
-        snapshot.systems[system].holder = @intCast(index);
-        try snapshot.holder_ids.append(testing.allocator, id);
-    }
-    var logos: LogoColors = .{};
-    logos.put(99000001, 0xFF123456);
-    logos.put(99000002, holder_colors.NO_COLOR);
-    const ranks: HolderRanks = .fromNodes(&snapshot, &nodes, &logos);
-    try testing.expectEqual(holder_colors.factionColor(500010).?, ranks.colorOf(0));
-    try testing.expectEqual(@as(u32, 0xFF123456), ranks.colorOf(1));
-    try testing.expectEqual(HOLDER_COLORS[0], ranks.colorOf(2));
-    try testing.expectEqual(HOLDER_COLORS[1], ranks.colorOf(3));
-}
-
-test "a holder past the ranked keeps its faction's colour" {
-    var snapshot: Snapshot = try .init(testing.allocator);
-    defer snapshot.deinit();
-    // Each ranked alliance holds two systems; Caldari State, last, holds one.
-    var nodes: [2 * HOLDER_COLORS.len + 1]layout.Node = undefined;
-    for (&nodes, 0..) |*node, index| {
-        const system: SystemIndex = @intCast(index);
-        node.* = .{ .system = system, .x = 0, .y = 0 };
-        snapshot.systems[system].holder = @intCast(index / 2);
-    }
-    for (0..HOLDER_COLORS.len) |index| try snapshot.holder_ids.append(testing.allocator, 99000000 + @as(u32, @intCast(index)));
-    try snapshot.holder_ids.append(testing.allocator, 500001);
-    const ranks: HolderRanks = .fromNodes(&snapshot, &nodes, null);
-    try testing.expectEqual(HOLDER_COLORS.len, ranks.count);
-    try testing.expectEqual(holder_colors.factionColor(500001).?, ranks.colorOf(HOLDER_COLORS.len));
-}
-
-test "a region goes to the holder of most of its systems, and one nobody holds stays unclaimed" {
-    var snapshot: Snapshot = try .init(testing.allocator);
-    defer snapshot.deinit();
-    const region = universe.systemInfo(0).region;
-    for (snapshot.systems, 0..) |*system_stats, system| {
-        if (universe.systemInfo(@intCast(system)).region == region) system_stats.holder = 4;
-    }
-    snapshot.systems[0].holder = 2;
-    const holders = regionHolders(&snapshot);
-    try testing.expectEqual(@as(u16, 4), holders[region]);
-    try testing.expectEqual(@as(u16, stats_mod.NO_HOLDER), holders[(region + 1) % universe.REGION_COUNT]);
 }
 
 test "a client tag sits beside its marker, flips at the edge, and steps clear of another" {

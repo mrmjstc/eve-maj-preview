@@ -3,6 +3,7 @@ const std = @import("std");
 const types = @import("../../config/types.zig");
 const list_look = @import("../list_look.zig");
 const look = @import("look.zig");
+const ownership = @import("ownership.zig");
 const panel_look = @import("../panel_look.zig");
 const universe = @import("../../map/universe.zig");
 const jump_range = @import("../../map/jump_range.zig");
@@ -93,7 +94,7 @@ pub const SystemFacts = struct {
     is_intel_clear: bool = false,
     /// Eve Stars' sums for a span past the hour, shown in place of ESI's; borrowed.
     activity: ?*const Activity = null,
-    /// Null when routes don't avoid it; "" when it's named on the list, else the constellation or region covering it; borrowed for the call.
+    /// "" when the system itself is listed, else the constellation or region avoided; borrowed for the call.
     avoided_area: ?[]const u8 = null,
     /// Null with no jump range showing.
     reach: ?*const jump_range.Reach = null,
@@ -349,7 +350,7 @@ pub fn deltaLegend(peak: u32, has_delta: bool) Legend {
 }
 
 /// Null `snapshot` until the first fetch.
-pub fn sovereigntyLegend(ranks: *const look.HolderRanks, snapshot: ?*const Snapshot) Legend {
+pub fn sovereigntyLegend(ranks: *const ownership.HolderRanks, snapshot: ?*const Snapshot) Legend {
     var legend: Legend = .{ .title = .print("Sovereignty", .{}) };
     const stats = snapshot orelse {
         legend.add(.{ .swatch = look.HEAT_NONE, .text = .print("Waiting for figures", .{}) });
@@ -761,7 +762,7 @@ test "the always on top control's tooltip gives its state, as a plain line" {
 test "the sovereignty legend sums up what it doesn't name" {
     var snapshot: Snapshot = try .init(testing.allocator);
     defer snapshot.deinit();
-    var ranks: look.HolderRanks = .{ .colors = @splat(0), .unclaimed_count = 2 };
+    var ranks: ownership.HolderRanks = .{ .colors = @splat(0), .unclaimed_count = 2 };
     ranks.count = ranks.holders.len;
     for (&ranks.holders, 0..) |*ranked, index| {
         ranked.* = .{ .holder = @intCast(index), .system_count = 3 };
