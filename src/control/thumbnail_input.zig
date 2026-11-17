@@ -109,7 +109,7 @@ fn raiseTextOverlay(hwnd: win32.HWND) void {
         return;
     };
     if (app.currentThumbnailSet()) |thumbnail_set| {
-        hdwp = thumbnail_set.renderer.hover_zoom.deferRaise(hdwp) orelse {
+        hdwp = thumbnail_set.deferRaiseHoverZoom(hdwp) orelse {
             slog.debug("Failed to raise the hover zoom with the text overlay", .{});
             return;
         };
@@ -152,7 +152,7 @@ fn handleMouseMove(hwnd: win32.HWND) void {
 
     // Re-armed on every move, since the cursor crosses between the thumbnail and its text overlay.
     if (!win32.trackMouseLeave(hwnd)) slog.debug("Failed to track mouse leave for '{s}'", .{thumbnail.character_name});
-    thumbnail_set.renderer.hover_zoom.show(thumbnail_set.instance, &thumbnail_set.renderer.font_cache, thumbnail, thumbnail_set.config);
+    thumbnail_set.showHoverZoom(thumbnail);
 }
 
 /// Messages the thumbnail and its text overlay handle identically; null for anything else.

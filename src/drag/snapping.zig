@@ -105,15 +105,15 @@ fn applyPanelEdgeSnapping(drag: Drag, threshold: i32) SnapPosition {
     return context.snap.position();
 }
 
-/// Snaps to a ghost's exact saved position when within `threshold` px (Chebyshev distance), else aligns edges against ghost rects like applyThumbnailEdgeSnapping does for live thumbnails.
+/// Docks onto a saved position within `threshold` px (Chebyshev), then aligns edges against the ghosts.
 fn applyGhostSnapping(thumbnail_set: *ThumbnailSet, drag: Drag, threshold: i32) SnapPosition {
     const character_name = if (thumbnail_set.getThumbnailByOverlayHwnd(drag.hwnd)) |t| t.character_name else "";
 
-    // Reuses GhostOverlay.show's cache; a drag without outlines never shows it, so it gets an uncached copy.
+    // A drag without outlines has no cached groups, so it gets an uncached copy.
     var owned_fallback: ?[]GhostGroup = null;
     defer if (owned_fallback) |fallback| ghost_groups.freeGroups(thumbnail_set.allocator, fallback);
 
-    const groups: []const GhostGroup = thumbnail_set.ghost_overlay.groups orelse blk: {
+    const groups: []const GhostGroup = thumbnail_set.dragGhostGroups() orelse blk: {
         const fresh = ghost_groups.collect(thumbnail_set.allocator, thumbnail_set.config, character_name) catch |err| {
             slog.warn("Failed to collect ghost positions to snap to: {}", .{err});
             return drag.position();

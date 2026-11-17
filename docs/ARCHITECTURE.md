@@ -145,7 +145,7 @@ Cross-thread data:
 
 **`clients/scout.zig`** (`Scout`): `EnumWindows` matched against `windowFilters` (class name, then exe path for new windows only). `trinityWindow` titles give the character name. Per-process `EVENT_OBJECT_NAMECHANGE`/`DESTROY` hooks catch renames and closes between scans; the destroy hook only records the hwnd, and `update()` drops it before handing out the window list, so the slice a tick borrows never changes under it. No creation hook: it would fire for every window on the desktop.
 
-**`thumbnail/set.zig`** (`ThumbnailSet`): the central mutable state. Owns the `ThumbnailWindow` list (linear search, a few dozen at most), keeps it in step with Scout, dispatches notifications, schedules layout and redraws. Holds the `Renderer`, auto-move verifier, ghost overlay, hint box and `AutoColorStore`.
+**`thumbnail/set.zig`** (`ThumbnailSet`): the central mutable state. Owns the `ThumbnailWindow` list (linear search, a few dozen at most), keeps it in step with Scout, dispatches notifications, schedules layout and redraws. Holds the `Renderer`, auto-move verifier, a drag's ghost overlay and hint (`DragOverlays`) and `AutoColorStore`; callers outside `thumbnail/` reach the hover zoom and drag overlays through its methods, not `renderer`.
 
 **`thumbnail/window.zig`** (`ThumbnailWindow`): one per client, two HWNDs:
 
@@ -260,7 +260,7 @@ Drawing and input:
 - **`control/auto_minimize.zig`**: minimizes idle clients; decisions in `minimize_rules.zig` (pure, tested).
 - **`clients/`**: actions on EVE windows only (minimize, close, move, `animation.zig`'s `showClient`). Imports nothing from thumbnail, hotkey, drag or control.
 - **`control/thumbnail_input.zig`**: thumbnail window procs, passed into `thumbnail/` by App, and the client list's row input (`list_view.RowInput`). Left click → `activate`; shift-click → exclusion toggle; right drag → `drag/thumbnail.zig` (Ctrl moves all).
-- **`drag/`**: snapping (`snap_math.zig` pure), ghost overlays. Panel header drags are `panels/drag.zig`; `PanelWindow` tags its window so drags can find panels to snap to.
+- **`drag/`**: snapping (`snap_math.zig` pure), and `DragOverlays` (ghost outlines and the drag hint). Panel header drags are `panels/drag.zig`; `PanelWindow` tags its window so drags can find panels to snap to.
 - **`protocol/`**: `url.zig` parses `evemajpreview://` URLs into a `Command` (pure, tested); `ipc.zig` sends the URL text itself to the running instance over `WM_COPYDATA`, giving up after 5 s on a hung one (the timer window lets the message through UIPI, so an elevated instance still receives it); `run.zig` parses it there and runs it through the same code as its hotkey or tray item (group actions via `HotkeyManager.runGroupAction`), refusing a command that closes clients or the app (`Command.closeAction`) unless its `protocolLinks` setting is on; `registry.zig` registers the handler, again whenever the exe path changes.
 
 Hotkey press → character switch:
@@ -326,7 +326,7 @@ Immediate-mode (knots on Vulkan), main thread, nested message loop so the tick a
 - `knots/widgets.zig`, `bind.zig`, `style.zig`: layout pieces, setting-bound controls, styles.
 - `knots/roster.zig`, `selection.zig`: a list tab's rows and which item its details show (pure, tested). `tabs/panel_preview.zig`: the panel previews' stage, frame, header and clickable parts.
 - `knots/hotkey.zig`: recording field; pauses live hotkeys while recording. Draws its key caps compact when full size would overrun the room `widgets.controlsRoom` reports beside the row's label. Finds conflicting combos and names their holders, using `labels.zig`'s hotkey labels.
-- `tools/region_select.zig`: full-screen overlay for drawing a thumbnail space; math in `region_math.zig`.
+- `tools/region_select.zig`: full-screen overlay for drawing a thumbnail space, with its own hint box; math in `region_math.zig`.
 - `tools/esi_prices.zig`: Jita ore prices. `tools/ultra_potato.zig`: patches EVE's graphics YAML.
 - `run_on_startup.zig`: the Run registry key.
 

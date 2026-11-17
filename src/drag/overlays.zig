@@ -14,14 +14,48 @@ const log = @import("../log.zig");
 
 const Config = config_mod.Config;
 const FontCache = font_cache_mod.FontCache;
-const GhostGroup = ghost_groups.GhostGroup;
 const slog = log.Scoped("drag_overlays");
+
+pub const GhostGroup = ghost_groups.GhostGroup;
 
 const WINDOW_CLASS_NAME = "EVE_GHOST_OVERLAY_CLASS";
 const OUTLINE_THICKNESS = 2;
 
+/// What a thumbnail drag shows on screen from start to drop.
+pub const DragOverlays = struct {
+    ghost: GhostOverlay,
+    hint: gdi_overlay.HintBox = .{},
+
+    pub fn init(allocator: std.mem.Allocator) DragOverlays {
+        return .{ .ghost = .init(allocator) };
+    }
+
+    pub fn deinit(self: *DragOverlays) void {
+        self.ghost.deinit();
+        self.hint.deinit();
+    }
+
+    /// Called once when a drag starts; `dragged_character` is null when `dragging_hwnd` isn't a thumbnail's, which leaves out the ghosts.
+    pub fn show(self: *DragOverlays, instance: win32.HINSTANCE, font_cache: *FontCache, config: *const Config, dragging_hwnd: win32.HWND, dragged_character: ?[]const u8) void {
+        if (dragged_character) |name| {
+            if (config.snapping.showGhostPositionBorders) self.ghost.show(instance, font_cache, config, name);
+        }
+        showHint(&self.hint, instance, font_cache, config, dragging_hwnd);
+    }
+
+    pub fn hide(self: *DragOverlays) void {
+        self.ghost.hide();
+        self.hint.hide();
+    }
+
+    /// Borrowed, valid until hide; null when the ghosts aren't shown.
+    pub fn ghostGroups(self: *const DragOverlays) ?[]const GhostGroup {
+        return self.ghost.groups;
+    }
+};
+
 /// A topmost, click-through overlay outlining every other saved position during a drag, created on first use and hidden between drags.
-pub const GhostOverlay = struct {
+const GhostOverlay = struct {
     allocator: std.mem.Allocator,
     hwnd: ?win32.HWND = null,
     bitmap: ?gdi_overlay.OverlayBitmap = null,
@@ -45,7 +79,7 @@ pub const GhostOverlay = struct {
         self.groups = null;
     }
 
-    /// Called once when a drag starts, since the ghosts don't change during it.
+    /// Once per drag, since the ghosts don't change during it.
     pub fn show(self: *GhostOverlay, instance: win32.HINSTANCE, font_cache: *FontCache, config: *const Config, exclude_character: []const u8) void {
         self.clearGroups();
 
@@ -150,8 +184,8 @@ pub const GhostOverlay = struct {
 
 const GhostClass = gdi_overlay.WindowClass(WINDOW_CLASS_NAME, win32.DefWindowProcA);
 
-/// Hint box centered on the monitor nearest `dragging_hwnd`; called once when a drag starts, static for its duration.
-pub fn showDragHint(hint_box: *gdi_overlay.HintBox, instance: win32.HINSTANCE, font_cache: *FontCache, config: *const Config, dragging_hwnd: win32.HWND) void {
+/// Centred on the monitor nearest `dragging_hwnd`, and static for the drag.
+fn showHint(hint_box: *gdi_overlay.HintBox, instance: win32.HINSTANCE, font_cache: *FontCache, config: *const Config, dragging_hwnd: win32.HWND) void {
     const nearest = monitors.nearestMonitorBounds(dragging_hwnd);
     const font = font_cache.characterNameFont(&config.thumbnail, monitors.dpiForMonitor(nearest.monitor)) catch |err| {
         slog.err("Failed to get font for drag hint: {}", .{err});

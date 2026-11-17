@@ -1,14 +1,13 @@
 //! Owns the thumbnail for every tracked EVE client: keeps the set in step with Scout, shows which is focused and which are hidden, and renders them each tick.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
-const gdi_overlay = @import("../platform/gdi_overlay.zig");
 const config_mod = @import("../config.zig");
 const types = @import("../config/types.zig");
 const scout = @import("../clients/scout.zig");
 const actions = @import("../clients/actions.zig");
 const auto_move_mod = @import("../clients/auto_move.zig");
 const exclusions_mod = @import("../clients/exclusions.zig");
-const drag_overlays = @import("../drag/overlays.zig");
+const drag_overlays_mod = @import("../drag/overlays.zig");
 const placement = @import("../layout/placement.zig");
 const spaces = @import("../layout/spaces.zig");
 const monitors = @import("../layout/monitors.zig");
@@ -78,9 +77,7 @@ pub const ThumbnailSet = struct {
     destroy_event_hook: ?win32.HANDLE = null,
     renderer: renderer_mod.Renderer,
     auto_move: auto_move_mod.AutoMoveVerifier,
-    ghost_overlay: drag_overlays.GhostOverlay,
-    /// Shared by dragging and region select.
-    hint_box: gdi_overlay.HintBox = .{},
+    drag_overlays: drag_overlays_mod.DragOverlays,
     /// Sole "who's focused" source of truth; write only via reconcileThumbnailStates.
     active_source_hwnd: ?win32.HWND = null,
     /// Unique system and character colours.
@@ -128,7 +125,7 @@ pub const ThumbnailSet = struct {
             .thumbnails = .empty,
             .auto_colors = .init(allocator, store.io),
             .auto_move = .init(allocator),
-            .ghost_overlay = .init(allocator),
+            .drag_overlays = .init(allocator),
             .renderer = .init(allocator),
             .instance = instance,
             .config = config,
@@ -150,8 +147,7 @@ pub const ThumbnailSet = struct {
     pub fn deinit(self: *ThumbnailSet) void {
         if (self.destroy_event_hook) |hook| _ = win32.UnhookWinEvent(hook);
 
-        self.ghost_overlay.deinit();
-        self.hint_box.deinit();
+        self.drag_overlays.deinit();
         self.renderer.deinit();
 
         for (self.thumbnails.items) |thumbnail| self.destroyThumbnail(thumbnail);
@@ -196,6 +192,34 @@ pub const ThumbnailSet = struct {
     /// Hides the hover zoom once the cursor has left its thumbnail.
     pub fn checkHoverZoom(self: *ThumbnailSet) void {
         self.renderer.hover_zoom.check(self.config, self.thumbnails.items);
+    }
+
+    pub fn showHoverZoom(self: *ThumbnailSet, thumbnail: *const ThumbnailWindow) void {
+        self.renderer.hover_zoom.show(self.instance, &self.renderer.font_cache, thumbnail, self.config);
+    }
+
+    pub fn hideHoverZoom(self: *ThumbnailSet) void {
+        self.renderer.hover_zoom.hide();
+    }
+
+    /// Goes last in a batch that raises thumbnails, so none is ever composited above the zoom.
+    pub fn deferRaiseHoverZoom(self: *const ThumbnailSet, hdwp: win32.HDWP) ?win32.HDWP {
+        return self.renderer.hover_zoom.deferRaise(hdwp);
+    }
+
+    /// Once per drag of either of `dragging_hwnd`'s windows.
+    pub fn showDragOverlays(self: *ThumbnailSet, dragging_hwnd: win32.HWND) void {
+        const dragged_character = if (self.getThumbnailByOverlayHwnd(dragging_hwnd)) |thumbnail| thumbnail.character_name else null;
+        self.drag_overlays.show(self.instance, &self.renderer.font_cache, self.config, dragging_hwnd, dragged_character);
+    }
+
+    pub fn hideDragOverlays(self: *ThumbnailSet) void {
+        self.drag_overlays.hide();
+    }
+
+    /// Cached for the drag by showDragOverlays; null when the ghost outlines aren't shown.
+    pub fn dragGhostGroups(self: *const ThumbnailSet) ?[]const drag_overlays_mod.GhostGroup {
+        return self.drag_overlays.ghostGroups();
     }
 
     pub fn layout(self: *const ThumbnailSet) placement.Layout {

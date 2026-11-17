@@ -1,4 +1,4 @@
-//! GDI drawing into DIB-backed layered windows: the bitmap, text helpers, and the shared hint box.
+//! GDI drawing into DIB-backed layered windows: the bitmap, text helpers, and the hint box.
 const std = @import("std");
 const win32 = @import("win32.zig");
 const fonts = @import("fonts.zig");
@@ -139,7 +139,7 @@ pub const CachedFont = struct {
     }
 };
 
-/// A topmost, click-through two-line hint box centred in given bounds for dragging and region select, created on first use and hidden between uses.
+/// A topmost, click-through two-line hint box centred in given bounds, created on first use and hidden between uses.
 pub const HintBox = struct {
     hwnd: ?win32.HWND = null,
     bitmap: ?OverlayBitmap = null,
@@ -270,7 +270,7 @@ pub fn drawText(comptime buf_size: usize, dc: win32.HDC, x: i32, y: i32, text: [
     _ = win32.TextOutA(dc, x, y, &buf, @intCast(copy_length));
 }
 
-/// Null if `name` isn't installed, which CreateFontA would hide by substituting a face; matched by prefix, as GDI may name a variable font's weight ("Cascadia Code SemiBold").
+/// Null if `name` isn't installed, not CreateFontA's substitute; matched by prefix, as GDI may append a weight ("Cascadia Code SemiBold").
 pub fn createInstalledFont(dc: win32.HDC, name: [:0]const u8, height_px: i32, weight: c_int) ?win32.HFONT {
     const font = fonts.create(name, height_px, weight, false) orelse return null;
 

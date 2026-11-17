@@ -1,7 +1,6 @@
 //! Right-button drag of a thumbnail and its linked text overlay; holding Ctrl moves every thumbnail together.
 const win32 = @import("../platform/win32.zig");
 const set = @import("../thumbnail/set.zig");
-const overlays = @import("overlays.zig");
 const snapping = @import("snapping.zig");
 const arrange = @import("../thumbnail/arrange.zig");
 const spaces = @import("../layout/spaces.zig");
@@ -22,7 +21,7 @@ var g_drag_state: DragState = .{};
 pub fn start(thumbnail_set: *ThumbnailSet, hwnd: win32.HWND, lParam: win32.LPARAM) void {
     if (!thumbnail_set.config.interaction.enableDragging or grabbedThumbnailIsPlaced(thumbnail_set, hwnd)) return;
 
-    thumbnail_set.renderer.hover_zoom.hide();
+    thumbnail_set.hideHoverZoom();
     g_drag_state = .{
         .hwnd = hwnd,
         .offset_x = win32.lparamX(lParam),
@@ -34,11 +33,8 @@ pub fn start(thumbnail_set: *ThumbnailSet, hwnd: win32.HWND, lParam: win32.LPARA
         thumbnail_set.renderThumbnail(thumbnail) catch |err| {
             slog.err("Failed to render dragging thumbnail for '{s}': {}", .{ thumbnail.character_name, err });
         };
-        if (thumbnail_set.config.snapping.showGhostPositionBorders) {
-            thumbnail_set.ghost_overlay.show(thumbnail_set.instance, &thumbnail_set.renderer.font_cache, thumbnail_set.config, thumbnail.character_name);
-        }
     }
-    overlays.showDragHint(&thumbnail_set.hint_box, thumbnail_set.instance, &thumbnail_set.renderer.font_cache, thumbnail_set.config, hwnd);
+    thumbnail_set.showDragOverlays(hwnd);
 
     _ = win32.SetCapture(hwnd);
 }
@@ -137,6 +133,5 @@ fn stop(thumbnail_set: *ThumbnailSet) void {
     }
     g_drag_state = .{};
     _ = win32.ReleaseCapture();
-    thumbnail_set.ghost_overlay.hide();
-    thumbnail_set.hint_box.hide();
+    thumbnail_set.hideDragOverlays();
 }
