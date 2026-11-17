@@ -53,6 +53,15 @@ const MeasuredText = struct {
     }
 };
 
+/// Where a text sits on the overlay, and in what colours.
+const Placement = struct {
+    anchor: TextPosition,
+    offset_x: i32,
+    offset_y: i32,
+    color: u32,
+    bg_color: u32,
+};
+
 pub const RenderCache = struct {
     /// Recreated only on resize.
     bitmap: ?gdi_overlay.OverlayBitmap = null,
@@ -94,10 +103,10 @@ const Layout = struct {
     height: usize,
     lines: [MAX_LINES]DrawLine = undefined,
     line_count: usize = 0,
-    // The lines' formatted text lives here, so a Layout is never copied once built.
+    /// The lines' formatted text lives here, so a Layout is never copied once built.
     text_buffers: [MAX_LINES][TEXT_BUFFER_SIZE]u8 = undefined,
     used_text_count: usize = 0,
-    // The DC's own font, put back once rendering is done.
+    /// The DC's own font, put back once rendering is done.
     original_font: ?win32.HANDLE = null,
 
     fn select(self: *Layout, font: win32.HFONT) void {
@@ -139,13 +148,13 @@ const Layout = struct {
         self.line_count += 1;
     }
 
-    fn addAt(self: *Layout, font: win32.HFONT, text: []const u8, dimensions: TextDimensions, anchor: TextPosition, offset_x: i32, offset_y: i32, color: u32, bg_color: u32) void {
-        const origin = self.position(anchor, dimensions, offset_x, offset_y);
-        self.add(.{ .font = font, .text = text, .render_origin = origin, .background_origin = origin, .background_dimensions = dimensions, .color = color, .bg_color = bg_color });
+    fn addAt(self: *Layout, font: win32.HFONT, text: []const u8, dimensions: TextDimensions, placement: Placement) void {
+        const origin = self.position(placement.anchor, dimensions, placement.offset_x, placement.offset_y);
+        self.add(.{ .font = font, .text = text, .render_origin = origin, .background_origin = origin, .background_dimensions = dimensions, .color = placement.color, .bg_color = placement.bg_color });
     }
 
-    /// One block anchored at `anchor`, so Bottom and Center positions count every line.
-    fn addStack(self: *Layout, font: win32.HFONT, texts: []const []const u8, anchor: TextPosition, offset_x: i32, offset_y: i32, color: u32, bg_color: u32) void {
+    /// One block anchored at `placement.anchor`, so Bottom and Center positions count every line.
+    fn addStack(self: *Layout, font: win32.HFONT, texts: []const []const u8, placement: Placement) void {
         var dimensions: [MAX_STACK_LINES]TextDimensions = undefined;
         var block: TextDimensions = .{ .width = 0, .height = 0 };
         for (texts, 0..) |text, i| {
@@ -153,8 +162,8 @@ const Layout = struct {
             block.width = @max(block.width, dimensions[i].width);
             block.height += dimensions[i].height;
         }
-        const origin = self.position(anchor, block, offset_x, offset_y);
-        const horizontal_align = draw.horizontalAlignOf(anchor);
+        const origin = self.position(placement.anchor, block, placement.offset_x, placement.offset_y);
+        const horizontal_align = draw.horizontalAlignOf(placement.anchor);
         var y = origin.y;
         for (texts, dimensions[0..texts.len]) |text, line_dimensions| {
             self.add(.{
@@ -163,8 +172,8 @@ const Layout = struct {
                 .render_origin = .{ .x = draw.alignedLineX(origin.x, block.width, line_dimensions.width, horizontal_align), .y = y },
                 .background_origin = .{ .x = origin.x, .y = y },
                 .background_dimensions = .{ .width = block.width, .height = line_dimensions.height },
-                .color = color,
-                .bg_color = bg_color,
+                .color = placement.color,
+                .bg_color = placement.bg_color,
             });
             y += @as(i32, @intCast(line_dimensions.height));
         }
@@ -316,28 +325,28 @@ fn addCharacterName(layout: *Layout, fonts: Fonts, cache: *RenderCache, settings
     if (!settings.show_character_name) return;
     const font = try fonts.get(.main, settings.character_name_font_name, settings.character_name_font_size, settings.character_name_font_weight);
     const dimensions = cache.character_name.measure(layout, font, settings.display_name, settings.character_name_font_name, settings.character_name_font_size, settings.character_name_font_weight);
-    layout.addAt(font, settings.display_name, dimensions, settings.character_name_position, settings.character_name_offset_x, settings.character_name_offset_y, settings.character_name_color, settings.character_name_bg_color);
+    layout.addAt(font, settings.display_name, dimensions, .{ .anchor = settings.character_name_position, .offset_x = settings.character_name_offset_x, .offset_y = settings.character_name_offset_y, .color = settings.character_name_color, .bg_color = settings.character_name_bg_color });
 }
 
 fn addSystemName(layout: *Layout, fonts: Fonts, cache: *RenderCache, settings: RenderSettings) !void {
     if (!settings.show_system_name or settings.connections.count > 0) return;
     const font = try fonts.get(.system_name, settings.system_name_font_name, settings.system_name_font_size, settings.system_name_font_weight);
     const dimensions = cache.system_name.measure(layout, font, settings.system_name, settings.system_name_font_name, settings.system_name_font_size, settings.system_name_font_weight);
-    layout.addAt(font, settings.system_name, dimensions, settings.system_name_position, settings.system_name_offset_x, settings.system_name_offset_y, settings.system_name_color, settings.system_name_bg_color);
+    layout.addAt(font, settings.system_name, dimensions, .{ .anchor = settings.system_name_position, .offset_x = settings.system_name_offset_x, .offset_y = settings.system_name_offset_y, .color = settings.system_name_color, .bg_color = settings.system_name_bg_color });
 }
 
 fn addGroupBadge(layout: *Layout, fonts: Fonts, cache: *RenderCache, settings: RenderSettings) !void {
     if (!settings.show_group_badge) return;
     const font = try fonts.get(.group_badge, settings.group_badge_font_name, settings.group_badge_font_size, settings.group_badge_font_weight);
     const dimensions = cache.group_badge.measure(layout, font, settings.group_badge_text, settings.group_badge_font_name, settings.group_badge_font_size, settings.group_badge_font_weight);
-    layout.addAt(font, settings.group_badge_text, dimensions, settings.group_badge_position, settings.group_badge_offset_x, settings.group_badge_offset_y, settings.group_badge_color, settings.group_badge_bg_color);
+    layout.addAt(font, settings.group_badge_text, dimensions, .{ .anchor = settings.group_badge_position, .offset_x = settings.group_badge_offset_x, .offset_y = settings.group_badge_offset_y, .color = settings.group_badge_color, .bg_color = settings.group_badge_bg_color });
 }
 
 fn addSessionTimer(layout: *Layout, fonts: Fonts, settings: RenderSettings) !void {
     if (!settings.show_session_timer) return;
     const font = try fonts.get(.session_timer, settings.session_timer_font_name, settings.session_timer_font_size, settings.session_timer_font_weight);
     const text = format.formatSessionDuration(layout.nextTextBuffer(), settings.session_minutes);
-    layout.addAt(font, text, layout.measure(font, text), settings.session_timer_position, settings.session_timer_offset_x, settings.session_timer_offset_y, settings.session_timer_color, settings.session_timer_bg_color);
+    layout.addAt(font, text, layout.measure(font, text), .{ .anchor = settings.session_timer_position, .offset_x = settings.session_timer_offset_x, .offset_y = settings.session_timer_offset_y, .color = settings.session_timer_color, .bg_color = settings.session_timer_bg_color });
 }
 
 fn addCombat(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, stats: *const ActivityStats, settings: RenderSettings) !void {
@@ -346,12 +355,12 @@ fn addCombat(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, st
     if (combat.show_incoming and stats.showsIncoming()) {
         const font = try fonts.getScaled(.combat, combat.incoming_font_name, combat.incoming_font_size, combat.incoming_font_weight);
         const text = rateText(layout, if (combat.incoming_show_prefix) "IN: " else "", stats.incoming_dps);
-        layout.addAt(font, text, layout.measure(font, text), combat.incoming_position, combat.incoming_offset_x, combat.incoming_offset_y, combat.incoming_color, settings.combat_incoming_bg_color);
+        layout.addAt(font, text, layout.measure(font, text), .{ .anchor = combat.incoming_position, .offset_x = combat.incoming_offset_x, .offset_y = combat.incoming_offset_y, .color = combat.incoming_color, .bg_color = settings.combat_incoming_bg_color });
     }
     if (combat.show_outgoing and stats.showsOutgoing()) {
         const font = try fonts.getScaled(.combat_outgoing, combat.outgoing_font_name, combat.outgoing_font_size, combat.outgoing_font_weight);
         const text = rateText(layout, if (combat.outgoing_show_prefix) "OUT: " else "", stats.outgoing_dps);
-        layout.addAt(font, text, layout.measure(font, text), combat.outgoing_position, combat.outgoing_offset_x, combat.outgoing_offset_y, combat.outgoing_color, settings.combat_outgoing_bg_color);
+        layout.addAt(font, text, layout.measure(font, text), .{ .anchor = combat.outgoing_position, .offset_x = combat.outgoing_offset_x, .offset_y = combat.outgoing_offset_y, .color = combat.outgoing_color, .bg_color = settings.combat_outgoing_bg_color });
     }
 }
 
@@ -378,7 +387,7 @@ fn addMining(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, st
         texts[1] = iskRateText(layout, "", stats.mining_isk_rate, mining.isk_rate_unit);
         text_count = 2;
     }
-    layout.addStack(font, texts[0..text_count], mining.position, mining.offset_x, mining.offset_y, mining.color, settings.mining_bg_color);
+    layout.addStack(font, texts[0..text_count], .{ .anchor = mining.position, .offset_x = mining.offset_x, .offset_y = mining.offset_y, .color = mining.color, .bg_color = settings.mining_bg_color });
 }
 
 fn addBounty(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, stats: *const ActivityStats, settings: RenderSettings) !void {
@@ -386,7 +395,7 @@ fn addBounty(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, st
     if (!bounty.enabled or !stats.showsBounty()) return;
     const font = try fonts.getScaled(.bounty, bounty.font_name, bounty.font_size, bounty.font_weight);
     const text = iskRateText(layout, if (bounty.show_prefix) "ISK: " else "", stats.bounty_isk_rate, bounty.isk_rate_unit);
-    layout.addAt(font, text, layout.measure(font, text), bounty.position, bounty.offset_x, bounty.offset_y, bounty.color, settings.bounty_bg_color);
+    layout.addAt(font, text, layout.measure(font, text), .{ .anchor = bounty.position, .offset_x = bounty.offset_x, .offset_y = bounty.offset_y, .color = bounty.color, .bg_color = settings.bounty_bg_color });
 }
 
 fn iskRateText(layout: *Layout, prefix: []const u8, isk_per_second: ?f32, unit: config_mod.RateUnit) []const u8 {
@@ -414,7 +423,7 @@ fn addResources(layout: *Layout, fonts: Fonts, config: *const config_mod.Config,
         texts[text_count] = layout.print("VRAM: {d:.0}MB", .{stats.vram_mb});
         text_count += 1;
     }
-    if (text_count > 0) layout.addStack(font, texts[0..text_count], resources.position, resources.offset_x, resources.offset_y, resources.color, settings.resources_bg_color);
+    if (text_count > 0) layout.addStack(font, texts[0..text_count], .{ .anchor = resources.position, .offset_x = resources.offset_x, .offset_y = resources.offset_y, .color = resources.color, .bg_color = settings.resources_bg_color });
 }
 
 fn addPing(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, stats: *const ActivityStats, settings: RenderSettings) !void {
@@ -422,7 +431,7 @@ fn addPing(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, stat
     if (!ping.enabled or !stats.has_ping) return;
     const font = try fonts.getScaled(.ping, ping.font_name, ping.font_size, ping.font_weight);
     const text = if (stats.ping_ms) |ms| layout.print("{d} ms", .{ms}) else layout.print("?? ms", .{});
-    layout.addAt(font, text, layout.measure(font, text), ping.position, ping.offset_x, ping.offset_y, ping.color, settings.ping_bg_color);
+    layout.addAt(font, text, layout.measure(font, text), .{ .anchor = ping.position, .offset_x = ping.offset_x, .offset_y = ping.offset_y, .color = ping.color, .bg_color = settings.ping_bg_color });
 }
 
 /// Fills `map` and returns its labels' font; null while the plain system name shows instead.
@@ -537,7 +546,9 @@ fn layoutNotifications(layout: *Layout, fonts: Fonts, settings: RenderSettings) 
 fn overlaySize(config: *const config_mod.Config, thumbnail: *const ThumbnailWindow, dpi_scale: f32) window.Size {
     if (spaces.spaceFor(config, thumbnail.character_name) != null) {
         var client_rect: win32.RECT = undefined;
-        if (win32.toBool(win32.GetClientRect(thumbnail.hwnd, &client_rect)) and client_rect.right > 0 and client_rect.bottom > 0) {
+        if (!win32.toBool(win32.GetClientRect(thumbnail.hwnd, &client_rect))) {
+            slog.debug("Failed to read the laid-out size of '{s}', using the configured one", .{thumbnail.character_name});
+        } else if (client_rect.right > 0 and client_rect.bottom > 0) {
             return .{ .width = client_rect.right, .height = client_rect.bottom };
         }
     }

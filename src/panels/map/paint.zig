@@ -678,21 +678,13 @@ pub const Painter = struct {
         const area = self.areas.body;
         const layout = &self.state.layout;
         var taken: [layout_mod.MAX_NODES + layout_mod.MAX_EXITS + layout_mod.MAX_PORTALS + layout_mod.MAX_REGIONS + marks.MAX_MARKS]Box = undefined;
-        var taken_count: usize = 0;
+        var claims: layout_mod.Claims = .{ .area = area, .boxes = &taken };
         // Every name on the map, a region's and an exit's too, so no tag lands on one.
         const labels = .{ layout.nodes[0..layout.node_count], layout.exits[0..layout.exit_count], layout.portals[0..layout.portal_count] };
         inline for (labels) |placed| {
-            for (placed) |item| {
-                const label = item.label orelse continue;
-                taken[taken_count] = layout_mod.chipBox(label);
-                taken_count += 1;
-            }
+            for (placed) |item| claims.add(layout_mod.chipBox(item.label orelse continue));
         }
-        for (layout.region_labels[0..layout.regions.count]) |region_label| {
-            const label = region_label orelse continue;
-            taken[taken_count] = layout_mod.chipBox(label);
-            taken_count += 1;
-        }
+        for (layout.region_labels[0..layout.regions.count]) |region_label| claims.add(layout_mod.chipBox(region_label orelse continue));
         for (self.state.marks.slice(), 0..) |mark, index| {
             if (!self.state.marks.leadsSystem(index)) continue;
             const node_index = layout.nodeOf(mark.system) orelse continue;
@@ -702,9 +694,8 @@ pub const Painter = struct {
             const reach = self.markReach(paint, mark.system);
             const offset = look.clientTagOffset(reach);
             // Dropped where the names leave no room, as the marker's ring still shows the client.
-            const box = look.clientTagBox(area, node.x, node.y, offset, box_width, text.small_height, taken[0..taken_count]) orelse continue;
-            taken[taken_count] = box;
-            taken_count += 1;
+            const box = look.clientTagBox(area, node.x, node.y, offset, box_width, text.small_height, claims.taken()) orelse continue;
+            claims.add(box);
             const tag_color = self.markColor(mark);
             look.drawClientLead(canvas, node.x, node.y, reach, box, tag_color);
             drawHaloWideText(dc, label.slice(), box.left, box.top, tag_color);
@@ -1028,7 +1019,15 @@ pub const Painter = struct {
             .map_control => return text_mod.mapControlTooltip(@fromBackingInt(@intCast(self.state.hover.index)), self.config.mapPanel.alwaysOnTop),
             .region => {
                 const region: RegionIndex = @intCast(self.state.hover.index);
-                return text_mod.regionTooltip(region, self.state.overview.bubbles[region].system_count, self.state.marks.countIn(region), if (self.state.reach) |*reach| reach else null, self.shownStorms(scene), self.shownIncursions(scene), shownCampaigns(self.config, scene));
+                return text_mod.regionTooltip(.{
+                    .region = region,
+                    .system_count = self.state.overview.bubbles[region].system_count,
+                    .client_count = self.state.marks.countIn(region),
+                    .reach = if (self.state.reach) |*reach| reach else null,
+                    .storms = self.shownStorms(scene),
+                    .incursions = self.shownIncursions(scene),
+                    .campaigns = shownCampaigns(self.config, scene),
+                });
             },
             .exit => {
                 const exit = self.state.layout.exits[self.state.hover.index];

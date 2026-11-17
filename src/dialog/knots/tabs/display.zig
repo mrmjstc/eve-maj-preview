@@ -76,7 +76,7 @@ fn dimensions(context: *ui.Frame, thumbnail: ThumbnailRef) !void {
     // Stops where either side hits its bound, or saving clamps that side alone and breaks the ratio.
     const min_width = @max(@as(f32, config.ThumbnailConfig.WIDTH[0]), @as(f32, config.ThumbnailConfig.HEIGHT[0]) * ratio);
     const max_width = @max(min_width, @min(@as(f32, MAX_SIZE_SLIDER), @as(f32, config.ThumbnailConfig.HEIGHT[1]) * ratio));
-    if (try widgets.slider(context, .str("knots.thumbnails.size.slider"), &width, min_width, max_width, 1)) {
+    if (try widgets.slider(context, .str("knots.thumbnails.size.slider"), &width, .{ .min = min_width, .max = max_width })) {
         const new_width: i32 = @intFromFloat(@round(width));
         const new_height: i32 = @intFromFloat(@round(width / ratio));
         thumbnail.setFields(.{ .width = new_width, .height = new_height });

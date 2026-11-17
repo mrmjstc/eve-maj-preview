@@ -67,6 +67,14 @@ const RowText = struct {
     small_height: i32,
 };
 
+/// The room at a row's right: text at `y`, ending at `right` and starting no further left than `min_left`.
+const Slot = struct {
+    y: i32,
+    text_height: i32,
+    min_left: i32,
+    right: i32,
+};
+
 pub const ListWindow = struct {
     panel: PanelWindow,
     /// Borrowed; outlives the window.
@@ -655,7 +663,7 @@ pub const ListWindow = struct {
         const readings = self.statReadings(thumbnail, &readings_buffer);
 
         _ = win32.SelectObject(dc, text.slot_font);
-        const slot_left = self.drawRightSlot(canvas, dc, thumbnail, center_y - @divTrunc(text.small_height, 2), text.small_height, text_left + list_look.MIN_NAME_WIDTH, right_x);
+        const slot_left = self.drawRightSlot(canvas, dc, thumbnail, .{ .y = center_y - @divTrunc(text.small_height, 2), .text_height = text.small_height, .min_left = text_left + list_look.MIN_NAME_WIDTH, .right = right_x });
         const name_right = if (slot_left < right_x) slot_left - list_look.SLOT_GAP else right_x;
 
         const text_height = if (readings.len > 0) text.name_height + list_look.LINE_GAP + text.small_height else text.name_height;
@@ -672,8 +680,8 @@ pub const ListWindow = struct {
         drawStats(dc, list_settings, readings, text_left, name_y + text.name_height + list_look.LINE_GAP, name_right);
     }
 
-    /// The newest notification as a pill, else "Excluded", else the system and any security unless grouped; returns where it starts, or `right` when empty.
-    fn drawRightSlot(self: *const ListWindow, canvas: pixel_buffer.Canvas, dc: win32.HDC, thumbnail: *const ThumbnailWindow, y: i32, text_height: i32, min_left: i32, right: i32) i32 {
+    /// The newest notification as a pill, else "Excluded", else the system and any security unless grouped; returns where it starts, or `slot.right` when empty.
+    fn drawRightSlot(self: *const ListWindow, canvas: pixel_buffer.Canvas, dc: win32.HDC, thumbnail: *const ThumbnailWindow, slot: Slot) i32 {
         const list_settings = &self.config.listView;
         var notification_buffer: [TEXT_BUFFER_SIZE]u8 = undefined;
         const newest = if (list_settings.showNotifications) thumbnail.notifications.newestWithText() else null;
@@ -681,20 +689,20 @@ pub const ListWindow = struct {
             const line = template.oneLine(notification.text, &notification_buffer);
             const text_color = notification.text_color_override orelse list_settings.notificationColor;
             const lead: Lead = if (notification.lead) |lead| .{ .length = @min(lead.length, line.len), .color = lead.color } else .{ .length = 0, .color = text_color };
-            return drawPill(canvas, dc, line, lead, text_color, alertColor(thumbnail), y, text_height, min_left, right);
+            return drawPill(canvas, dc, slot, line, lead, text_color, alertColor(thumbnail));
         }
-        if (thumbnail.is_excluded_from_cycle) return drawRightAligned(dc, "Excluded", y, list_look.MUTED, min_left, right);
+        if (thumbnail.is_excluded_from_cycle) return drawRightAligned(dc, slot, "Excluded", list_look.MUTED);
         // Grouped rows sit under their system's heading.
-        if (!list_settings.showSystemName or list_settings.groupBySystem or thumbnail.system_name.len == 0) return right;
+        if (!list_settings.showSystemName or list_settings.groupBySystem or thumbnail.system_name.len == 0) return slot.right;
 
-        var system_right = right;
+        var system_slot = slot;
         if (list_settings.showSystemSecurity) security: {
             const system = universe.findSystem(thumbnail.system_name) orelse break :security;
             const security_tenths = universe.systemInfo(system).security_tenths;
             var security_buffer: [map_text.SECURITY_TEXT_MAX]u8 = undefined;
-            system_right = drawRightAligned(dc, map_text.securityText(&security_buffer, security_tenths), y, map_look.securityTextColor(security_tenths), min_left, right) - list_look.SECURITY_GAP;
+            system_slot.right = drawRightAligned(dc, slot, map_text.securityText(&security_buffer, security_tenths), map_look.securityTextColor(security_tenths)) - list_look.SECURITY_GAP;
         }
-        return drawRightAligned(dc, thumbnail.system_name, y, thumbnail.cached_system_color, min_left, system_right);
+        return drawRightAligned(dc, system_slot, thumbnail.system_name, thumbnail.cached_system_color);
     }
 };
 
@@ -724,28 +732,28 @@ fn drawIndicator(canvas: pixel_buffer.Canvas, style: types.ListIndicatorStyle, c
     }
 }
 
-/// Ending at `right`, or cut short to start at `min_left`; returns where it starts, or `right` when there's no room.
-fn drawRightAligned(dc: win32.HDC, text: []const u8, y: i32, argb: u32, min_left: i32, right: i32) i32 {
-    if (right <= min_left) return right;
-    const left = @max(min_left, right - panel_chrome.wideTextWidth(dc, text));
-    _ = panel_chrome.drawFitted(dc, text, left, y, argb, right - left);
+/// Cut short rather than start left of `slot.min_left`; returns where it starts, or `slot.right` when there's no room.
+fn drawRightAligned(dc: win32.HDC, slot: Slot, text: []const u8, argb: u32) i32 {
+    if (slot.right <= slot.min_left) return slot.right;
+    const left = @max(slot.min_left, slot.right - panel_chrome.wideTextWidth(dc, text));
+    _ = panel_chrome.drawFitted(dc, text, left, slot.y, argb, slot.right - left);
     return left;
 }
 
-/// Outlined and filled in shades of `alert_color`, ending at `right`; returns where it starts, or `right` when there's no room.
-fn drawPill(canvas: pixel_buffer.Canvas, dc: win32.HDC, text: []const u8, lead: Lead, text_color: u32, alert_color: u32, y: i32, text_height: i32, min_left: i32, right: i32) i32 {
+/// Outlined and filled in shades of `alert_color`; returns where it starts, or `slot.right` when there's no room.
+fn drawPill(canvas: pixel_buffer.Canvas, dc: win32.HDC, slot: Slot, text: []const u8, lead: Lead, text_color: u32, alert_color: u32) i32 {
     const padding = list_look.PILL_PADDING_X;
-    const room = right - min_left - 2 * padding;
-    if (room <= 0) return right;
+    const room = slot.right - slot.min_left - 2 * padding;
+    if (room <= 0) return slot.right;
     const text_width = @min(panel_chrome.wideTextWidth(dc, text), room);
-    const left = right - text_width - 2 * padding;
-    const top = y - 1;
+    const left = slot.right - text_width - 2 * padding;
+    const top = slot.y - 1;
     const pill_width: usize = @intCast(text_width + 2 * padding);
-    const pill_height: usize = @intCast(text_height + 2);
+    const pill_height: usize = @intCast(slot.text_height + 2);
     pixel_buffer.fillRoundedRect(canvas, @intCast(left), @intCast(top), pill_width, pill_height, list_look.PILL_RADIUS, list_look.pillBorder(alert_color));
     pixel_buffer.fillRoundedRect(canvas, @intCast(left + 1), @intCast(top + 1), pill_width - 2, pill_height - 2, list_look.PILL_RADIUS - 1, list_look.pillFill(alert_color));
-    const lead_width = panel_chrome.drawFitted(dc, text[0..lead.length], left + padding, y, lead.color, text_width);
-    _ = panel_chrome.drawFitted(dc, text[lead.length..], left + padding + lead_width, y, text_color, text_width - lead_width);
+    const lead_width = panel_chrome.drawFitted(dc, text[0..lead.length], left + padding, slot.y, lead.color, text_width);
+    _ = panel_chrome.drawFitted(dc, text[lead.length..], left + padding + lead_width, slot.y, text_color, text_width - lead_width);
     return left;
 }
 

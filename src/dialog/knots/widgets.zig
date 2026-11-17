@@ -268,6 +268,9 @@ pub const TextOptions = struct { is_grown: bool = false, is_shown: bool = true, 
 /// What an optional colour row changed to.
 pub const ColorChange = union(enum) { cleared, set: u32 };
 
+/// A slider's ends, and the step it moves by.
+pub const SliderRange = struct { min: f32, max: f32, step: f32 = 1 };
+
 /// A finished drag: item `from` now goes before what was item `before`.
 pub const Move = struct { from: usize, before: usize };
 
@@ -1174,21 +1177,21 @@ pub fn subheading(context: *ui.Frame, key: ui.Key, content: []const u8) !void {
 }
 
 /// Returns whether the user moved it this frame.
-pub fn slider(context: *ui.Frame, key: ui.Key, value: *f32, min: f32, max: f32, steps: f32) !bool {
+pub fn slider(context: *ui.Frame, key: ui.Key, value: *f32, range: SliderRange) !bool {
     const track_style = if (g_modes.is_in_field_group) &style.slider_box_grouped else if (g_modes.is_aligned) &style.slider_box_aligned else &style.slider_box;
-    return sizedSlider(context, key, value, min, max, steps, track_style);
+    return sizedSlider(context, key, value, range, track_style);
 }
 
 /// slider with its own track width, e.g. to leave room for more controls in its row.
-pub fn sizedSlider(context: *ui.Frame, key: ui.Key, value: *f32, min: f32, max: f32, steps: f32, track_style: *const ui.Style) !bool {
+pub fn sizedSlider(context: *ui.Frame, key: ui.Key, value: *f32, range: SliderRange, track_style: *const ui.Style) !bool {
     const track = Rect{ .key = key, .style = track_style };
     _ = try track.open(context);
     const response = try context.interact(SliderInput{
         .key = key.indexed(1),
         .value = value,
-        .min = min,
-        .max = max,
-        .steps = steps,
+        .min = range.min,
+        .max = range.max,
+        .steps = range.step,
         .parts = .{ .track = &style.slider_track, .fill = &style.slider_fill, .thumb = &style.slider_thumb },
     });
     try track.close(context);

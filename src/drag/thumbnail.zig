@@ -79,15 +79,19 @@ pub fn move(thumbnail_set: *ThumbnailSet, hwnd: win32.HWND) void {
 
     // The real cursor, not the message's coordinates, which lag behind a window that's moving under them.
     var cursor: win32.POINT = undefined;
-    if (!win32.toBool(win32.GetCursorPos(&cursor))) return;
+    if (!win32.toBool(win32.GetCursorPos(&cursor))) {
+        slog.debug("Failed to get the cursor position while dragging a thumbnail", .{});
+        return;
+    }
     const new_x = cursor.x - g_drag_state.offset_x;
     const new_y = cursor.y - g_drag_state.offset_y;
 
     const width = win32.rectWidth(rect);
     const height = win32.rectHeight(rect);
+    const unsnapped: snapping.Drag = .{ .x = new_x, .y = new_y, .width = width, .height = height, .hwnd = hwnd };
 
     if (!win32.isCtrlPressed()) {
-        const snapped = snapping.applySnapping(thumbnail_set, new_x, new_y, width, height, hwnd);
+        const snapped = snapping.applySnapping(thumbnail_set, unsnapped);
         const dragged = thumbnail_set.getThumbnailByOverlayHwnd(hwnd) orelse return;
         dragged.moveTo(snapped.x, snapped.y, .{ .width = width, .height = height });
         return;
@@ -97,7 +101,7 @@ pub fn move(thumbnail_set: *ThumbnailSet, hwnd: win32.HWND) void {
     var delta_x = new_x - rect.left;
     var delta_y = new_y - rect.top;
     if (thumbnail_set.config.snapping.enabled and thumbnail_set.config.snapping.screenEdges) {
-        const snapped = snapping.applyScreenEdgeSnapping(new_x, new_y, width, height, thumbnail_set.config.snapping.threshold, hwnd);
+        const snapped = snapping.applyScreenEdgeSnapping(unsnapped, thumbnail_set.config.snapping.threshold);
         delta_x = snapped.x - rect.left;
         delta_y = snapped.y - rect.top;
     }

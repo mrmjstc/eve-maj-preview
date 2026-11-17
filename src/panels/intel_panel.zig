@@ -199,7 +199,7 @@ pub const IntelPanelWindow = struct {
     }
 
     /// The ⋯ button in screen pixels.
-    fn menuButton(self: *const IntelPanelWindow) ?box.Box {
+    fn menuButton(self: *const IntelPanelWindow) ?Box {
         const button = self.headerLayout().boxOf(.{ .button = .menu }) orelse return null;
         return panel_menu.screenBox(&self.panel, button);
     }
@@ -393,7 +393,7 @@ pub const IntelPanelWindow = struct {
         } else {
             self.range_layout = self.drawRangeBar(canvas, dc, panel_width, entries.len, all_entries.len);
             const rows_top = if (self.range_layout) |layout| layout.bottom else panel_header.HEIGHT;
-            self.drawRows(canvas, dc, entries, all_entries.len, rows_top, panel_width, panel_height);
+            self.drawRows(bitmap, entries, all_entries.len, rows_top, panel_width, panel_height);
         }
 
         panel_chrome.finish(canvas);
@@ -466,12 +466,12 @@ pub const IntelPanelWindow = struct {
     }
 
     /// From `top` down, as many as fit; records where each landed.
-    fn drawRows(self: *IntelPanelWindow, canvas: pixel_buffer.Canvas, dc: win32.HDC, entries: []const history.Entry, total_count: usize, top: i32, panel_width: i32, panel_height: i32) void {
+    fn drawRows(self: *IntelPanelWindow, bitmap: *const gdi_overlay.OverlayBitmap, entries: []const history.Entry, total_count: usize, top: i32, panel_width: i32, panel_height: i32) void {
+        const dc = bitmap.mem_dc;
         const message_font = self.panel.font.handle orelse return;
         const small_font = self.panel.small_font.handle orelse return;
-        const fonts: RowFonts = .{ .system = self.bold_font.handle orelse message_font, .message = message_font, .small = small_font };
         _ = win32.SelectObject(dc, message_font);
-        const name_height = panel_chrome.lineHeight(dc);
+        const text: RowText = .{ .system_font = self.bold_font.handle orelse message_font, .message_font = message_font, .small_font = small_font, .name_height = panel_chrome.lineHeight(dc) };
         const row_height = intel_look.rowHeight(self.config.historyPanel.fontSize);
         const bottom = panel_height - list_look.BOTTOM_PADDING;
         var y = top + intel_look.ROWS_PADDING_TOP;
@@ -486,7 +486,7 @@ pub const IntelPanelWindow = struct {
         const now = win32.Ticks.now();
         for (self.rows[0..self.row_count], 0..) |row, index| {
             if (y + row_height > bottom) return;
-            self.drawRow(canvas, dc, fonts, name_height, entries, row, index, .{ .left = 0, .top = y, .right = panel_width, .bottom = y + row_height }, now);
+            self.drawRow(bitmap, text, entries, row, index, .{ .left = 0, .top = y, .right = panel_width, .bottom = y + row_height }, now);
             self.row_spans[index] = .{ y, y + row_height };
             self.drawn_count = index + 1;
             y += row_height;
@@ -494,14 +494,16 @@ pub const IntelPanelWindow = struct {
     }
 
     /// Its distance pill, system, clear tag and message, any merged count, the hovered row's buttons, then its age.
-    fn drawRow(self: *IntelPanelWindow, canvas: pixel_buffer.Canvas, dc: win32.HDC, fonts: RowFonts, name_height: i32, entries: []const history.Entry, row: history_rows.Row, index: usize, row_box: Box, now: win32.Ticks) void {
+    fn drawRow(self: *IntelPanelWindow, bitmap: *const gdi_overlay.OverlayBitmap, text: RowText, entries: []const history.Entry, row: history_rows.Row, index: usize, row_box: Box, now: win32.Ticks) void {
+        const canvas = bitmap.canvas();
+        const dc = bitmap.mem_dc;
         const entry = &entries[row.first_index];
         const is_hovered = self.hovered_row == index;
         if (is_hovered) pixel_buffer.fillRect(canvas, @intCast(row_box.left), @intCast(row_box.top), @intCast(row_box.right - row_box.left), @intCast(row_box.bottom - row_box.top), list_look.ROW_HOVER);
         const is_old = now.elapsedSince(entry.timestamp) > intel_look.OLD_AFTER_MS;
         const center_y = row_box.top + @divTrunc(row_box.bottom - row_box.top, 2);
 
-        _ = win32.SelectObject(dc, fonts.small);
+        _ = win32.SelectObject(dc, text.small_font);
         const small_height = panel_chrome.lineHeight(dc);
         const small_y = center_y - @divTrunc(small_height, 2);
         const jumps = if (entry.intel) |facts| facts.jumps else null;
@@ -532,12 +534,12 @@ pub const IntelPanelWindow = struct {
         }
 
         const parts = self.partsOf(entry);
-        const name_y = center_y - @divTrunc(name_height, 2);
+        const name_y = center_y - @divTrunc(text.name_height, 2);
         var x = pill_left + pill_width + intel_look.ROW_GAP;
-        _ = win32.SelectObject(dc, fonts.system);
+        _ = win32.SelectObject(dc, text.system_font);
         x += panel_chrome.drawFitted(dc, parts.system, x, name_y, intel_look.faded(parts.system_color, is_old), content_right - x) + history_look.TEXT_GAP;
         if (parts.is_clear and x < content_right) {
-            _ = win32.SelectObject(dc, fonts.small);
+            _ = win32.SelectObject(dc, text.small_font);
             const clear = intel_look.clearSwatch();
             const tag_width = @min(panel_chrome.textWidth(dc, intel_look.CLEAR_TEXT) + 2 * intel_look.TAG_PADDING_X, content_right - x);
             pixel_buffer.fillRoundedRect(canvas, @intCast(x), @intCast(small_y - 1), @intCast(tag_width), @intCast(small_height + 2), intel_look.TAG_RADIUS, intel_look.faded(clear.fill, is_old));
@@ -545,7 +547,7 @@ pub const IntelPanelWindow = struct {
             x += tag_width + history_look.TEXT_GAP;
         }
         if (x >= content_right) return;
-        _ = win32.SelectObject(dc, fonts.message);
+        _ = win32.SelectObject(dc, text.message_font);
         _ = panel_chrome.drawFitted(dc, parts.message, x, name_y, intel_look.faded(palette.TEXT, is_old), content_right - x);
     }
 
@@ -595,11 +597,13 @@ const RowParts = struct {
     is_clear: bool,
 };
 
-const RowFonts = struct {
+const RowText = struct {
     /// Bold.
-    system: win32.HFONT,
-    message: win32.HFONT,
-    small: win32.HFONT,
+    system_font: win32.HFONT,
+    message_font: win32.HFONT,
+    small_font: win32.HFONT,
+    /// The message font's.
+    name_height: i32,
 };
 
 fn actionGlyph(action: RowAction) glyphs.Glyph {

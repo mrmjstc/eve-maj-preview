@@ -18,7 +18,10 @@ pub fn handleMessage(thumbnail_set: ?*const ThumbnailSet, hwnd: win32.HWND, msg:
     switch (msg) {
         win32.WM_NCHITTEST => {
             var window_rect: win32.RECT = undefined;
-            _ = win32.GetWindowRect(hwnd, &window_rect);
+            if (!win32.toBool(win32.GetWindowRect(hwnd, &window_rect))) {
+                slog.debug("Failed to read a panel's position to hit-test its header", .{});
+                return win32.HTCLIENT;
+            }
             return if (win32.lparamY(lParam) - window_rect.top < header_height) win32.HTCAPTION else win32.HTCLIENT;
         },
         win32.WM_ENTERSIZEMOVE => {
@@ -63,7 +66,7 @@ fn updatePanelDragRect(thumbnail_set: ?*const ThumbnailSet, hwnd: win32.HWND, re
     const visible_width = width - inset.left - inset.right;
     const visible_height = height - inset.top - inset.bottom;
 
-    const snapped: snapping.SnapPosition = if (thumbnail_set) |active_set| snapping.applyPanelSnapping(active_set, intended_x, intended_y, visible_width, visible_height, hwnd) else .{ .x = intended_x, .y = intended_y };
+    const snapped: snapping.SnapPosition = if (thumbnail_set) |active_set| snapping.applyPanelSnapping(active_set, .{ .x = intended_x, .y = intended_y, .width = visible_width, .height = visible_height, .hwnd = hwnd }) else .{ .x = intended_x, .y = intended_y };
 
     rect.left = snapped.x - inset.left;
     rect.top = snapped.y - inset.top;

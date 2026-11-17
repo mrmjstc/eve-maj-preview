@@ -485,11 +485,11 @@ fn runMenuAction(window: *MapPanelWindow, context: Context, action: menu_mod.Act
         .toggle_waypoints => window.store.update(.{ .mapPanel = .{ .routeEveryWaypoint = !map_settings.routeEveryWaypoint } }),
         .send_to_all => {
             const options = routeOptions(window.config);
-            destinations.sendToAll(window.panel.allocator, window.evestarsToken(), menu.system, &options, now_ms);
+            destinations.sendToAll(routeRequest(window, &options, now_ms), menu.system);
         },
         .send => |index| {
             const options = routeOptions(window.config);
-            destinations.send(window.panel.allocator, window.evestarsToken(), &destinations.targets.slice()[index], menu.system, &options, now_ms);
+            destinations.send(routeRequest(window, &options, now_ms), &destinations.targets.slice()[index], menu.system);
         },
     }
 }
@@ -501,7 +501,7 @@ fn planRoute(window: *const MapPanelWindow, destinations: *Destinations, system:
         return;
     };
     const options = routeOptions(window.config);
-    destinations.planRoute(window.panel.allocator, window.evestarsToken(), active.system, system, &options, now_ms);
+    destinations.planRoute(routeRequest(window, &options, now_ms), active.system, system);
 }
 
 /// Sets the route for the active client's character, who it was planned from.
@@ -512,7 +512,7 @@ fn sendRouteRow(window: *const MapPanelWindow, destinations: *Destinations, row_
         return;
     };
     const options = routeOptions(window.config);
-    destinations.sendRoute(window.panel.allocator, window.evestarsToken(), row_index, active.character_name, &options, now_ms);
+    destinations.sendRoute(routeRequest(window, &options, now_ms), row_index, active.character_name);
 }
 
 fn copySystemName(destinations: *Destinations, system: SystemIndex) void {
@@ -530,6 +530,11 @@ fn openUrl(destinations: *Destinations, site: system_links.Site, url: evestars.T
     if (win32.shellOpenUrl(url.slice())) return;
     slog.warn("Failed to open '{s}'", .{url.slice()});
     destinations.showFailureText(.print("Couldn't open {s}", .{system_links.siteName(site)}), win32.Ticks.now().ms);
+}
+
+/// `options` must outlive the request.
+fn routeRequest(window: *const MapPanelWindow, options: *const evestars.RouteOptions, now_ms: u64) destinations_mod.RouteRequest {
+    return .{ .allocator = window.panel.allocator, .token = window.evestarsToken(), .options = options, .now_ms = now_ms };
 }
 
 fn routeOptions(config: *const config_mod.Config) evestars.RouteOptions {

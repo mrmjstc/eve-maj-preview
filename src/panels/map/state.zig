@@ -339,11 +339,11 @@ test "while a popup is open the map takes no hover, though the search box still 
 test "the Intel card's header and rows take the hover, and the rest of it keeps a click off the map" {
     var state = forgeState();
     const areas: look.Areas = .init(800, 600, 30, true);
-    const card: look.IntelCard = .init(areas, areas.intelTop(), look.intelHeaderHeight(areas.card_height), 40, 0, false);
+    const card: look.IntelCard = .init(areas, .{ .top = areas.intelTop(), .header_height = look.intelHeaderHeight(areas.card_height), .row_height = 40 });
     state.intel_card = card;
     try testing.expectEqual(Hover.Kind.intel_header, state.hitTest(areas, card.header.left, card.header.top).kind);
     try testing.expectEqual(Hover.Kind.bar, state.hitTest(areas, card.box.left, card.box.bottom - 1).kind);
-    state.intel_card = .init(areas, areas.intelTop(), look.intelHeaderHeight(areas.card_height), 40, 2, false);
+    state.intel_card = .init(areas, .{ .top = areas.intelTop(), .header_height = look.intelHeaderHeight(areas.card_height), .row_height = 40, .row_count = 2 });
     const second = state.intel_card.?.rows[1];
     try testing.expect(state.hitTest(areas, second.left, second.top).eql(.{ .kind = .intel_row, .index = 1 }));
 }
@@ -351,7 +351,7 @@ test "the Intel card's header and rows take the hover, and the rest of it keeps 
 test "the side card's tabs take the hover before its header, and the Kills tab's rows are kill rows" {
     var state = forgeState();
     const areas: look.Areas = .init(800, 600, 30, true);
-    var card: look.IntelCard = .init(areas, areas.intelTop(), look.intelHeaderHeight(areas.card_height), 40, 2, false);
+    var card: look.IntelCard = .init(areas, .{ .top = areas.intelTop(), .header_height = look.intelHeaderHeight(areas.card_height), .row_height = 40, .row_count = 2 });
     card.tab = .kills;
     card.tabs[@backingInt(look.CardTab.kills)] = .{ .left = card.header.left + 60, .top = card.header.top, .right = card.header.left + 100, .bottom = card.header.bottom };
     state.intel_card = card;
@@ -362,9 +362,9 @@ test "the side card's tabs take the hover before its header, and the Kills tab's
 test "the route card's header and rows take the hover, before the Intel card under it" {
     var state = forgeState();
     const areas: look.Areas = .init(800, 600, 30, true);
-    const card: look.ListCard = .init(areas, areas.intelTop(), areas.sideBottom(), look.intelHeaderHeight(areas.card_height), 20, 2, false);
+    const card: look.ListCard = .init(areas, .{ .top = areas.intelTop(), .header_height = look.intelHeaderHeight(areas.card_height), .row_height = 20, .row_count = 2 }, areas.sideBottom());
     state.route_card = card;
-    state.intel_card = .init(areas, areas.intelTop(), look.intelHeaderHeight(areas.card_height), 40, 2, false);
+    state.intel_card = .init(areas, .{ .top = areas.intelTop(), .header_height = look.intelHeaderHeight(areas.card_height), .row_height = 40, .row_count = 2 });
     try testing.expectEqual(Hover.Kind.route_header, state.hitTest(areas, card.header.left, card.header.top).kind);
     try testing.expect(state.hitTest(areas, card.rows[1].left, card.rows[1].top).eql(.{ .kind = .route_row, .index = 1 }));
 }

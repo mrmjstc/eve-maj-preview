@@ -353,6 +353,17 @@ pub const Areas = struct {
     }
 };
 
+/// Where a card in the right column starts, and its rows.
+pub const CardShape = struct {
+    top: i32,
+    header_height: i32,
+    row_height: i32,
+    /// The entries there are to show.
+    row_count: usize = 0,
+    /// Shows the header alone.
+    is_collapsed: bool = false,
+};
+
 /// The Intel card, below the search box and clear of the map controls.
 pub const IntelCard = struct {
     box: Box,
@@ -373,18 +384,18 @@ pub const IntelCard = struct {
         return @intCast(std.math.clamp(@divTrunc(@max(0, room), row_height), MIN_INTEL_ROWS, MAX_INTEL_ROWS));
     }
 
-    /// `row_count` rows below the header, or the header alone while collapsed; with no rows it keeps one row's room to say so.
-    pub fn init(areas: Areas, top: i32, header_height: i32, row_height: i32, row_count: usize, is_collapsed: bool) IntelCard {
+    /// With no rows it keeps one row's room to say so.
+    pub fn init(areas: Areas, shape: CardShape) IntelCard {
         const right = areas.body.right - CARD_MARGIN;
         const left = right - areas.intel_width;
-        var card: IntelCard = .{ .box = undefined, .header = .{ .left = left, .top = top, .right = right, .bottom = top + header_height }, .is_collapsed = is_collapsed };
-        card.row_count = if (is_collapsed) 0 else @min(row_count, MAX_INTEL_ROWS);
+        var card: IntelCard = .{ .box = undefined, .header = .{ .left = left, .top = shape.top, .right = right, .bottom = shape.top + shape.header_height }, .is_collapsed = shape.is_collapsed };
+        card.row_count = if (shape.is_collapsed) 0 else @min(shape.row_count, MAX_INTEL_ROWS);
         for (card.rows[0..card.row_count], 0..) |*row, index| {
-            const row_top = card.header.bottom + @as(i32, @intCast(index)) * row_height;
-            row.* = .{ .left = left, .top = row_top, .right = right, .bottom = row_top + row_height };
+            const row_top = card.header.bottom + @as(i32, @intCast(index)) * shape.row_height;
+            row.* = .{ .left = left, .top = row_top, .right = right, .bottom = row_top + shape.row_height };
         }
-        const shown_rows: i32 = if (is_collapsed) 0 else @intCast(@max(1, card.row_count));
-        card.box = .{ .left = left, .top = top, .right = right, .bottom = card.header.bottom + shown_rows * row_height };
+        const shown_rows: i32 = if (shape.is_collapsed) 0 else @intCast(@max(1, card.row_count));
+        card.box = .{ .left = left, .top = shape.top, .right = right, .bottom = card.header.bottom + shown_rows * shape.row_height };
         return card;
     }
 
@@ -421,20 +432,20 @@ pub const ListCard = struct {
     /// Each hub's name in the header, by Hub; unset on the sov timer card.
     tabs: [std.enums.values(wormholes.Hub).len]Box = @splat(NO_BOX),
 
-    /// From `top` down to `bottom`, as many rows as fit, at least one to say there are none; up to `row_count` of them hold entries.
-    pub fn init(areas: Areas, top: i32, bottom: i32, header_height: i32, row_height: i32, row_count: usize, is_collapsed: bool) ListCard {
+    /// Down to `bottom`, as many rows as fit, at least one to say there are none.
+    pub fn init(areas: Areas, shape: CardShape, bottom: i32) ListCard {
         const right = areas.body.right - CARD_MARGIN;
         const left = right - areas.intel_width;
-        var card: ListCard = .{ .box = undefined, .header = .{ .left = left, .top = top, .right = right, .bottom = top + header_height }, .is_collapsed = is_collapsed };
-        const fitting: usize = @intCast(std.math.clamp(@divTrunc(@max(0, bottom - card.header.bottom), row_height), 1, MAX_LIST_ROWS));
+        var card: ListCard = .{ .box = undefined, .header = .{ .left = left, .top = shape.top, .right = right, .bottom = shape.top + shape.header_height }, .is_collapsed = shape.is_collapsed };
+        const fitting: usize = @intCast(std.math.clamp(@divTrunc(@max(0, bottom - card.header.bottom), shape.row_height), 1, MAX_LIST_ROWS));
         card.visible_count = fitting;
-        card.row_count = if (is_collapsed) 0 else @min(row_count, fitting);
+        card.row_count = if (shape.is_collapsed) 0 else @min(shape.row_count, fitting);
         for (card.rows[0..card.row_count], 0..) |*row, index| {
-            const row_top = card.header.bottom + @as(i32, @intCast(index)) * row_height;
-            row.* = .{ .left = left, .top = row_top, .right = right, .bottom = row_top + row_height };
+            const row_top = card.header.bottom + @as(i32, @intCast(index)) * shape.row_height;
+            row.* = .{ .left = left, .top = row_top, .right = right, .bottom = row_top + shape.row_height };
         }
-        const shown_rows: i32 = if (is_collapsed) 0 else @intCast(@max(1, card.row_count));
-        card.box = .{ .left = left, .top = top, .right = right, .bottom = card.header.bottom + shown_rows * row_height };
+        const shown_rows: i32 = if (shape.is_collapsed) 0 else @intCast(@max(1, card.row_count));
+        card.box = .{ .left = left, .top = shape.top, .right = right, .bottom = card.header.bottom + shown_rows * shape.row_height };
         return card;
     }
 
@@ -1361,7 +1372,7 @@ test "at the smallest window the cards keep clear of each other and the controls
     try testing.expect(chrome.toggle_bar.right <= zoom.left - CARD_GAP);
     try testing.expect(chrome.metric_bar.right <= zoom.left - CARD_GAP);
     try testing.expectEqual(chrome.metric_bar.top - CARD_GAP, chrome.toggle_bar.bottom);
-    const card: IntelCard = .init(areas, areas.intelTop(), intelHeaderHeight(areas.card_height), intelRowHeight(17), MIN_INTEL_ROWS, false);
+    const card: IntelCard = .init(areas, .{ .top = areas.intelTop(), .header_height = intelHeaderHeight(areas.card_height), .row_height = intelRowHeight(17), .row_count = MIN_INTEL_ROWS });
     try testing.expect(card.box.bottom <= areas.mapControlBox(.always_on_top).top - CARD_GAP);
     try testing.expect(chrome.title.right <= areas.search_box.left - CARD_GAP);
 }
@@ -1382,7 +1393,7 @@ test "the map stays centred across the panel while the Intel card shows" {
 test "the Intel card spans the search box" {
     for ([_]i32{ 300, 800, 1200 }) |width| {
         const areas: Areas = .init(width, 600, 22, true);
-        const card: IntelCard = .init(areas, areas.intelTop(), intelHeaderHeight(areas.card_height), intelRowHeight(14), 3, false);
+        const card: IntelCard = .init(areas, .{ .top = areas.intelTop(), .header_height = intelHeaderHeight(areas.card_height), .row_height = intelRowHeight(14), .row_count = 3 });
         try testing.expectEqual(areas.search_box.left, card.box.left);
         try testing.expectEqual(areas.search_box.right, card.box.right);
     }
@@ -1396,30 +1407,30 @@ test "the Intel card fits what it can above the map controls, between two and si
     try testing.expectEqual(@as(usize, MIN_INTEL_ROWS), IntelCard.capacity(short.intelTop(), short.sideBottom(), intelHeaderHeight(short.card_height), row_height));
     const fitting: Areas = .init(800, 600, 22, true);
     const capacity = IntelCard.capacity(fitting.intelTop(), fitting.sideBottom(), intelHeaderHeight(fitting.card_height), row_height);
-    const card: IntelCard = .init(fitting, fitting.intelTop(), intelHeaderHeight(fitting.card_height), row_height, capacity, false);
+    const card: IntelCard = .init(fitting, .{ .top = fitting.intelTop(), .header_height = intelHeaderHeight(fitting.card_height), .row_height = row_height, .row_count = capacity });
     try testing.expect(card.box.bottom <= fitting.mapControlBox(.always_on_top).top - CARD_GAP);
 }
 
 test "a list card fits rows down to its bottom, and an empty one keeps a row to say so" {
     const areas: Areas = .init(800, 600, 22, true);
-    const card: ListCard = .init(areas, 300, 500, 26, 20, 40, false);
+    const card: ListCard = .init(areas, .{ .top = 300, .header_height = 26, .row_height = 20, .row_count = 40 }, 500);
     try testing.expectEqual(@as(usize, 8), card.visible_count);
     try testing.expectEqual(@as(usize, 8), card.row_count);
     try testing.expect(card.box.bottom <= 500);
     try testing.expectEqual(@as(?usize, 1), card.rowAt(card.rows[1].left, card.rows[1].top));
-    const empty: ListCard = .init(areas, 300, 500, 26, 20, 0, false);
+    const empty: ListCard = .init(areas, .{ .top = 300, .header_height = 26, .row_height = 20 }, 500);
     try testing.expectEqual(empty.header.bottom + 20, empty.box.bottom);
 }
 
 test "a collapsed Intel card is its header alone, and an empty one keeps a row to say so" {
     const areas: Areas = .init(800, 600, 22, true);
     const header_height = intelHeaderHeight(areas.card_height);
-    const collapsed: IntelCard = .init(areas, areas.intelTop(), header_height, 40, 4, true);
+    const collapsed: IntelCard = .init(areas, .{ .top = areas.intelTop(), .header_height = header_height, .row_height = 40, .row_count = 4, .is_collapsed = true });
     try testing.expectEqual(collapsed.header, collapsed.box);
     try testing.expectEqual(@as(usize, 0), collapsed.row_count);
-    const empty: IntelCard = .init(areas, areas.intelTop(), header_height, 40, 0, false);
+    const empty: IntelCard = .init(areas, .{ .top = areas.intelTop(), .header_height = header_height, .row_height = 40 });
     try testing.expectEqual(empty.header.bottom + 40, empty.box.bottom);
-    const listed: IntelCard = .init(areas, areas.intelTop(), header_height, 40, 3, false);
+    const listed: IntelCard = .init(areas, .{ .top = areas.intelTop(), .header_height = header_height, .row_height = 40, .row_count = 3 });
     try testing.expectEqual(@as(?usize, 2), listed.rowAt(listed.rows[2].left, listed.rows[2].top));
     try testing.expectEqual(@as(?usize, null), listed.rowAt(listed.header.left, listed.header.top));
 }

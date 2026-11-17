@@ -50,11 +50,8 @@ pub const Overview = struct {
     /// Greedily, the biggest regions first; `widths` are pixel widths by RegionIndex.
     pub fn placeLabels(self: *Overview, widths: []const i32, line_height: i32) void {
         var taken: [TAKEN_CAPACITY]Box = undefined;
-        var taken_count: usize = 0;
-        for (self.bubbles) |bubble| {
-            taken[taken_count] = bubbleBox(bubble);
-            taken_count += 1;
-        }
+        var claims: layout.Claims = .{ .area = self.area, .boxes = &taken };
+        for (self.bubbles) |bubble| claims.add(bubbleBox(bubble));
 
         var order: [universe.REGION_COUNT]RegionIndex = undefined;
         for (&order, 0..) |*slot, index| slot.* = @intCast(index);
@@ -63,7 +60,7 @@ pub const Overview = struct {
         for (order) |region| {
             const bubble = &self.bubbles[region];
             const clearance: i32 = @intFromFloat(@ceil(bubble.radius) + 2);
-            bubble.label = layout.claimSpot(self.area, &taken, &taken_count, bubble.x, bubble.y, widths[region], line_height, clearance);
+            bubble.label = claims.claim(bubble.x, bubble.y, widths[region], line_height, clearance);
         }
     }
 

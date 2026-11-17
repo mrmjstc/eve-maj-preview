@@ -80,19 +80,20 @@ pub const Legend = struct {
     }
 };
 
-/// What a system's tooltip reports; its slices are borrowed for the call.
+/// What a system's tooltip reports.
 pub const SystemFacts = struct {
     system: SystemIndex,
     /// Null until the first fetch.
     stats: ?*const Snapshot = null,
+    /// Borrowed for the call.
     characters: []const []const u8 = &.{},
-    /// Null without a live intel pin.
+    /// Null without a live intel pin; borrowed for the call.
     intel_message: ?[]const u8 = null,
     intel_age_ms: u64 = 0,
     is_intel_clear: bool = false,
     /// Eve Stars' sums for a span past the hour, shown in place of ESI's; borrowed.
     activity: ?*const Activity = null,
-    /// Null when routes don't avoid it; "" when it's named on the list, else the constellation or region covering it.
+    /// Null when routes don't avoid it; "" when it's named on the list, else the constellation or region covering it; borrowed for the call.
     avoided_area: ?[]const u8 = null,
     /// Null with no jump range showing.
     reach: ?*const jump_range.Reach = null,
@@ -108,6 +109,21 @@ pub const SystemFacts = struct {
     bridges: ?*const Bridges = null,
     /// Seconds since 1970, UTC, for a sov timer's countdown.
     now_seconds: i64 = 0,
+};
+
+/// What a region's tooltip shows.
+pub const RegionFacts = struct {
+    region: RegionIndex,
+    system_count: usize,
+    client_count: usize = 0,
+    /// Null with no jump range showing.
+    reach: ?*const jump_range.Reach = null,
+    /// Null while they're hidden or unknown.
+    storms: ?*const Storms = null,
+    /// Null while they're hidden or unknown.
+    incursions: ?*const Incursions = null,
+    /// Null while they're hidden or unknown.
+    campaigns: ?*const Campaigns = null,
 };
 
 /// Formats as the regions' names joined by " + "; borrows `regions`.
@@ -259,24 +275,24 @@ pub fn systemTooltip(facts: SystemFacts) Tooltip {
     return tooltip;
 }
 
-/// `reach` is null with no jump range showing, and `storms`, `incursions` and `campaigns` while they're hidden or unknown.
-pub fn regionTooltip(region: RegionIndex, system_count: usize, client_count: usize, reach: ?*const jump_range.Reach, storms: ?*const Storms, incursions: ?*const Incursions, campaigns: ?*const Campaigns) Tooltip {
+pub fn regionTooltip(facts: RegionFacts) Tooltip {
+    const region = facts.region;
     var tooltip: Tooltip = .{};
     tooltip.add("{s}", .{universe.regionName(region)});
-    tooltip.addRow("Systems", "{d}", .{system_count});
-    if (client_count > 0) tooltip.addRow("Characters", "{d}", .{client_count});
-    if (reach) |shown| tooltip.addRow("Jump range", SYSTEMS_FORMAT, .{shown.region_counts[region]});
-    if (storms) |reported| {
+    tooltip.addRow("Systems", "{d}", .{facts.system_count});
+    if (facts.client_count > 0) tooltip.addRow("Characters", "{d}", .{facts.client_count});
+    if (facts.reach) |shown| tooltip.addRow("Jump range", SYSTEMS_FORMAT, .{shown.region_counts[region]});
+    if (facts.storms) |reported| {
         for (reported.slice()) |*storm| {
             if (universe.systemInfo(storm.center).region == region) tooltip.addColoredRow("Storm", look.stormColor(storm.kind), "{s} at {s}", .{ stormName(storm.kind), universe.systemName(storm.center) });
         }
     }
-    if (incursions) |reported| {
+    if (facts.incursions) |reported| {
         for (reported.slice()) |*incursion| {
             if (universe.systemInfo(incursion.staging).region == region) tooltip.addColoredRow("Incursion", look.INCURSION, "Staging at {s}", .{universe.systemName(incursion.staging)});
         }
     }
-    if (campaigns) |reported| {
+    if (facts.campaigns) |reported| {
         var count: usize = 0;
         for (reported.slice()) |*campaign| count += @intFromBool(universe.systemInfo(campaign.system).region == region);
         if (count > 0) tooltip.addColoredRow("Sov timers", look.SOV_TIMER, "{d}", .{count});
@@ -875,8 +891,8 @@ test "a range with nothing in it says so" {
 test "a region's tooltip counts what's in jump range only while one shows" {
     const reach: jump_range.Reach = .measure(universe.findSystem("1DQ1-A").?, .titan);
     const region = universe.systemInfo(reach.origin).region;
-    try testing.expectEqual(@as(usize, 2), regionTooltip(region, 10, 0, null, null, null, null).line_count);
-    try testing.expectEqual(@as(usize, 3), regionTooltip(region, 10, 0, &reach, null, null, null).line_count);
+    try testing.expectEqual(@as(usize, 2), regionTooltip(.{ .region = region, .system_count = 10 }).line_count);
+    try testing.expectEqual(@as(usize, 3), regionTooltip(.{ .region = region, .system_count = 10, .reach = &reach }).line_count);
 }
 
 test "a system's tooltip names the storm over it and how it stands" {
@@ -891,7 +907,7 @@ test "a system's tooltip names the storm over it and how it stands" {
 test "a region's tooltip names the storms centred in it" {
     const storms: Storms = try .parse(testing.allocator, STORM_REPLY);
     const region = universe.systemInfo(storms.storms[0].center).region;
-    try testing.expectEqualStrings("Gamma Ray at OEG-K9", regionTooltip(region, 10, 0, null, &storms, null, null).line(2));
+    try testing.expectEqualStrings("Gamma Ray at OEG-K9", regionTooltip(.{ .region = region, .system_count = 10, .storms = &storms }).line(2));
 }
 
 test "the storm legend lists what reaches the map, and is absent without any" {
@@ -915,7 +931,7 @@ test "a system's tooltip says how it stands in an incursion" {
 test "a region's tooltip names the incursions staging in it" {
     const incursions: Incursions = try .parse(testing.allocator, INCURSION_REPLY);
     const region = universe.systemInfo(incursions.incursions[0].staging).region;
-    try testing.expectEqualStrings("Staging at Jita", regionTooltip(region, 10, 0, null, null, &incursions, null).line(2));
+    try testing.expectEqualStrings("Staging at Jita", regionTooltip(.{ .region = region, .system_count = 10, .incursions = &incursions }).line(2));
 }
 
 test "the incursion legend lists what reaches the map, and is absent without any" {

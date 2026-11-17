@@ -17,6 +17,18 @@ pub const Alert = struct {
     recipients: []const []const u8,
 };
 
+/// A chat message as one client's log recorded it.
+pub const Heard = struct {
+    /// Borrowed for the call.
+    channel: []const u8,
+    /// Whose log holds it; borrowed, and the alert's recipients may point at it.
+    listener: []const u8,
+    /// Borrowed for the call.
+    message: lines.ChatMessage,
+    /// One of the user's own characters said it.
+    is_own_character: bool = false,
+};
+
 /// What a system report changes.
 pub const SystemReport = struct {
     /// A gate jump or conduit, rather than an undock or Local naming where the character already was.
@@ -82,13 +94,13 @@ pub const ClientSystems = struct {
     }
 };
 
-/// Null when the message alerts no one: one of the user's own characters said it, no rule matches, another client's copy already alerted, or the rule's term is cooling down; `listener` logged the line.
-pub fn route(rules: *const RuleSet, recent_hits: *RecentHits, channel: []const u8, listener: []const u8, message: lines.ChatMessage, is_own_character: bool, clients: []const Client, now_ms: u64, out: *[alert_rules.MAX_CLIENTS][]const u8) ?Alert {
-    if (is_own_character) return null;
-    const hit = rules.firstHit(channel, message, clients) orelse return null;
-    if (recent_hits.isRepeat(alert_rules.messageKey(message), now_ms, alert_rules.DUPLICATE_WINDOW_MS)) return null;
+/// Null when the message alerts no one: one of the user's own characters said it, no rule matches, another client's copy already alerted, or the rule's term is cooling down.
+pub fn route(rules: *const RuleSet, recent_hits: *RecentHits, heard: Heard, clients: []const Client, now_ms: u64, out: *[alert_rules.MAX_CLIENTS][]const u8) ?Alert {
+    if (heard.is_own_character) return null;
+    const hit = rules.firstHit(heard.channel, heard.message, clients) orelse return null;
+    if (recent_hits.isRepeat(alert_rules.messageKey(heard.message), now_ms, alert_rules.DUPLICATE_WINDOW_MS)) return null;
     if (recent_hits.isRepeat(hit.cooldown_key, now_ms, hit.cooldown_ms)) return null;
-    return .{ .hit = hit, .recipients = recipients(rules, hit, listener, clients, out) };
+    return .{ .hit = hit, .recipients = recipients(rules, hit, heard.listener, clients, out) };
 }
 
 /// Null for an undock or Local report repeating the last system, which never holds back a jump; `last_hash` is the log's, and updated here.
@@ -181,7 +193,7 @@ test "a message from one of the user's own characters alerts no one" {
     defer rules.deinit();
     var recent_hits: RecentHits = .{};
     var out: [alert_rules.MAX_CLIENTS][]const u8 = undefined;
-    try testing.expect(route(&rules, &recent_hits, "Fleet", "Listener", said("Alt", "cyno up"), true, &.{}, NOW_MS, &out) == null);
+    try testing.expect(route(&rules, &recent_hits, .{ .channel = "Fleet", .listener = "Listener", .message = said("Alt", "cyno up"), .is_own_character = true }, &.{}, NOW_MS, &out) == null);
 }
 
 test "an intel hit goes to every client tied for nearest" {
@@ -191,7 +203,7 @@ test "an intel hit goes to every client tied for nearest" {
     var out: [alert_rules.MAX_CLIENTS][]const u8 = undefined;
     const clients = [_]Client{ clientAt("Near", "Perimeter"), clientAt("Same", "Maurasi"), clientAt("Also Same", "Maurasi") };
 
-    const alert = route(&rules, &recent_hits, "Fleet", "Near", said("Scout", "Maurasi hostile gang"), false, &clients, NOW_MS, &out).?;
+    const alert = route(&rules, &recent_hits, .{ .channel = "Fleet", .listener = "Near", .message = said("Scout", "Maurasi hostile gang") }, &clients, NOW_MS, &out).?;
     try testing.expectEqual(@as(usize, 2), alert.recipients.len);
     try testing.expectEqualStrings("Same", alert.recipients[0]);
     try testing.expectEqualStrings("Also Same", alert.recipients[1]);
@@ -204,7 +216,7 @@ test "a keyword hit goes to the client that logged the line" {
     var out: [alert_rules.MAX_CLIENTS][]const u8 = undefined;
     const clients = [_]Client{ clientAt("Other", "Jita"), clientAt("Listener", "Perimeter") };
 
-    const alert = route(&rules, &recent_hits, "Fleet", "Listener", said("Scout", "cyno up"), false, &clients, NOW_MS, &out).?;
+    const alert = route(&rules, &recent_hits, .{ .channel = "Fleet", .listener = "Listener", .message = said("Scout", "cyno up") }, &clients, NOW_MS, &out).?;
     try testing.expectEqual(@as(usize, 1), alert.recipients.len);
     try testing.expectEqualStrings("Listener", alert.recipients[0]);
 }
@@ -216,7 +228,7 @@ test "a hit logged by a muted client goes to another client instead" {
     var out: [alert_rules.MAX_CLIENTS][]const u8 = undefined;
     const clients = [_]Client{clientAt("Other", "Jita")};
 
-    const alert = route(&rules, &recent_hits, "Fleet", "Listener", said("Scout", "cyno up"), false, &clients, NOW_MS, &out).?;
+    const alert = route(&rules, &recent_hits, .{ .channel = "Fleet", .listener = "Listener", .message = said("Scout", "cyno up") }, &clients, NOW_MS, &out).?;
     try testing.expectEqualStrings("Other", alert.recipients[0]);
 }
 
@@ -226,7 +238,7 @@ test "a hit with every client muted still alerts, but goes to no one" {
     var recent_hits: RecentHits = .{};
     var out: [alert_rules.MAX_CLIENTS][]const u8 = undefined;
 
-    const alert = route(&rules, &recent_hits, "Fleet", "Listener", said("Scout", "cyno up"), false, &.{}, NOW_MS, &out).?;
+    const alert = route(&rules, &recent_hits, .{ .channel = "Fleet", .listener = "Listener", .message = said("Scout", "cyno up") }, &.{}, NOW_MS, &out).?;
     try testing.expectEqual(@as(usize, 0), alert.recipients.len);
 }
 
@@ -237,9 +249,9 @@ test "the same message logged by a second client alerts once" {
     var out: [alert_rules.MAX_CLIENTS][]const u8 = undefined;
     const message = said("Scout", "cyno up");
 
-    try testing.expect(route(&rules, &recent_hits, "Fleet", "First", message, false, &.{}, NOW_MS, &out) != null);
-    try testing.expect(route(&rules, &recent_hits, "Fleet", "Second", message, false, &.{}, NOW_MS + 1500, &out) == null);
-    try testing.expect(route(&rules, &recent_hits, "Fleet", "First", message, false, &.{}, NOW_MS + alert_rules.DUPLICATE_WINDOW_MS + 1, &out) != null);
+    try testing.expect(route(&rules, &recent_hits, .{ .channel = "Fleet", .listener = "First", .message = message }, &.{}, NOW_MS, &out) != null);
+    try testing.expect(route(&rules, &recent_hits, .{ .channel = "Fleet", .listener = "Second", .message = message }, &.{}, NOW_MS + 1500, &out) == null);
+    try testing.expect(route(&rules, &recent_hits, .{ .channel = "Fleet", .listener = "First", .message = message }, &.{}, NOW_MS + alert_rules.DUPLICATE_WINDOW_MS + 1, &out) != null);
 }
 
 test "a rule's cooldown holds back its term from another message until it ends" {
@@ -248,9 +260,9 @@ test "a rule's cooldown holds back its term from another message until it ends" 
     var recent_hits: RecentHits = .{};
     var out: [alert_rules.MAX_CLIENTS][]const u8 = undefined;
 
-    try testing.expect(route(&rules, &recent_hits, "Fleet", "Listener", said("Scout", "cyno up"), false, &.{}, NOW_MS, &out) != null);
-    try testing.expect(route(&rules, &recent_hits, "Fleet", "Listener", said("Other Scout", "second cyno"), false, &.{}, NOW_MS + 10_000, &out) == null);
-    try testing.expect(route(&rules, &recent_hits, "Fleet", "Listener", said("Third Scout", "cyno again"), false, &.{}, NOW_MS + 15_001, &out) != null);
+    try testing.expect(route(&rules, &recent_hits, .{ .channel = "Fleet", .listener = "Listener", .message = said("Scout", "cyno up") }, &.{}, NOW_MS, &out) != null);
+    try testing.expect(route(&rules, &recent_hits, .{ .channel = "Fleet", .listener = "Listener", .message = said("Other Scout", "second cyno") }, &.{}, NOW_MS + 10_000, &out) == null);
+    try testing.expect(route(&rules, &recent_hits, .{ .channel = "Fleet", .listener = "Listener", .message = said("Third Scout", "cyno again") }, &.{}, NOW_MS + 15_001, &out) != null);
 }
 
 test "a message no rule matches alerts no one" {
@@ -258,8 +270,8 @@ test "a message no rule matches alerts no one" {
     defer rules.deinit();
     var recent_hits: RecentHits = .{};
     var out: [alert_rules.MAX_CLIENTS][]const u8 = undefined;
-    try testing.expect(route(&rules, &recent_hits, "Fleet", "Listener", said("Scout", "all quiet"), false, &.{}, NOW_MS, &out) == null);
-    try testing.expect(route(&rules, &recent_hits, "Corp", "Listener", said("Scout", "cyno up"), false, &.{}, NOW_MS, &out) == null);
+    try testing.expect(route(&rules, &recent_hits, .{ .channel = "Fleet", .listener = "Listener", .message = said("Scout", "all quiet") }, &.{}, NOW_MS, &out) == null);
+    try testing.expect(route(&rules, &recent_hits, .{ .channel = "Corp", .listener = "Listener", .message = said("Scout", "cyno up") }, &.{}, NOW_MS, &out) == null);
 }
 
 test "a repeated undock or Local report is ignored, but a repeated jump isn't" {

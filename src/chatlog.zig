@@ -637,7 +637,8 @@ pub const ChatlogMonitor = struct {
         var client_buf: [alert_rules_mod.MAX_CLIENTS]alert_rules_mod.Client = undefined;
         const clients = self.client_systems.alertable(rules, &client_buf);
         var recipient_buf: [alert_rules_mod.MAX_CLIENTS][]const u8 = undefined;
-        const alert = routing.route(rules, &self.recent_hits, file.channel_name, file.character_name, message, self.wanted.contains(message.speaker), clients, win32.Ticks.now().ms, &recipient_buf) orelse return;
+        const heard: routing.Heard = .{ .channel = file.channel_name, .listener = file.character_name, .message = message, .is_own_character = self.wanted.contains(message.speaker) };
+        const alert = routing.route(rules, &self.recent_hits, heard, clients, win32.Ticks.now().ms, &recipient_buf) orelse return;
         const hit = alert.hit;
 
         var jumps_buf: [3]u8 = undefined;

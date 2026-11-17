@@ -290,7 +290,7 @@ pub fn slider(context: *ui.Frame, ref: anytype, comptime field: []const u8, labe
     const max = options.max orelse if (bounds) |b| b[1] else 100;
     const key = fieldKey(ref, field);
     const row = try widgets.openSliderBinding(context, key, label);
-    if (try sliderControls(context, key, @floatCast(numberTo(F, ref.get(field))), min, max, options.step, options.display, null)) |value| {
+    if (try sliderControls(context, key, @floatCast(numberTo(F, ref.get(field))), .{ .min = min, .max = max, .step = options.step }, options.display, null)) |value| {
         ref.set(field, numberFrom(F, value));
     }
     try row.close(context);
@@ -504,7 +504,7 @@ fn unitValueBox(context: *ui.Frame, key: ui.Key, value: f64, unit: []const u8) !
 
 /// percentSlider with its own track width, or null for the row's usual one.
 fn percentSliderSized(context: *ui.Frame, key: ui.Key, value: u8, min: f32, max: f32, track_style: ?*const ui.Style) !?u8 {
-    const changed = try sliderControls(context, key, @floatFromInt(value), min, max, 1, .percent_of_255, track_style) orelse return null;
+    const changed = try sliderControls(context, key, @floatFromInt(value), .{ .min = min, .max = max }, .percent_of_255, track_style) orelse return null;
     return @intFromFloat(@round(changed));
 }
 
@@ -537,10 +537,10 @@ fn alphaControls(context: *ui.Frame, ref: anytype, comptime field: []const u8, k
 }
 
 /// The box takes `display`'s units, in the caller's row; returns the new value if either changed it.
-fn sliderControls(context: *ui.Frame, key: ui.Key, value: f32, min: f32, max: f32, step: f32, display: Display, track_style: ?*const ui.Style) !?f64 {
+fn sliderControls(context: *ui.Frame, key: ui.Key, value: f32, range: widgets.SliderRange, display: Display, track_style: ?*const ui.Style) !?f64 {
     var slider_value = value;
     var changed: ?f64 = null;
-    const moved = if (track_style) |track| try widgets.sizedSlider(context, key.indexed(2), &slider_value, min, max, step, track) else try widgets.slider(context, key.indexed(2), &slider_value, min, max, step);
+    const moved = if (track_style) |track| try widgets.sizedSlider(context, key.indexed(2), &slider_value, range, track) else try widgets.slider(context, key.indexed(2), &slider_value, range);
     if (moved) changed = @round(slider_value);
     const shown: f64 = switch (display) {
         .value, .percent => @round(slider_value),
@@ -555,7 +555,7 @@ fn sliderControls(context: *ui.Frame, key: ui.Key, value: f32, min: f32, max: f3
         .value, .percent => value_typed,
         .percent_of_255 => value_typed / 100.0 * 255.0,
     };
-    return std.math.clamp(raw, min, max);
+    return std.math.clamp(raw, range.min, range.max);
 }
 
 /// `is_row_only` widens it to widgets.rowSelect's floor.

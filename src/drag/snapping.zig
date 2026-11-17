@@ -13,48 +13,61 @@ const slog = log.Scoped("drag");
 
 pub const SnapPosition = snap_math.SnapPosition;
 
-/// For a thumbnail: screen edges, then thumbnail edges, then panel edges, then ghost positions, each snapping the previous result.
-pub fn applySnapping(thumbnail_set: *ThumbnailSet, x: i32, y: i32, width: i32, height: i32, dragging_hwnd: win32.HWND) SnapPosition {
-    const settings = &thumbnail_set.config.snapping;
-    if (!settings.enabled) return .{ .x = x, .y = y };
-    const snapped = snapToEdges(thumbnail_set, settings, x, y, width, height, dragging_hwnd);
-    if (!settings.ghostPositions) return snapped;
-    return applyGhostSnapping(snapped.x, snapped.y, width, height, settings.threshold, dragging_hwnd, thumbnail_set);
-}
-
-/// Like applySnapping for a panel, by the panels' own settings and without ghost positions.
-pub fn applyPanelSnapping(thumbnail_set: *const ThumbnailSet, x: i32, y: i32, width: i32, height: i32, dragging_hwnd: win32.HWND) SnapPosition {
-    const settings = &thumbnail_set.config.panelSnapping;
-    if (!settings.enabled) return .{ .x = x, .y = y };
-    return snapToEdges(thumbnail_set, settings, x, y, width, height, dragging_hwnd);
-}
-
-pub fn applyScreenEdgeSnapping(x: i32, y: i32, width: i32, height: i32, threshold: i32, dragging_hwnd: win32.HWND) SnapPosition {
-    return snap_math.screenEdges(x, y, width, height, threshold, monitors.nearestMonitorBounds(dragging_hwnd).bounds);
-}
-
-/// Screen edges, then thumbnail edges, then panel edges, as `settings` (a SnappingConfig or PanelSnappingConfig) turns each on.
-fn snapToEdges(thumbnail_set: *const ThumbnailSet, settings: anytype, x: i32, y: i32, width: i32, height: i32, dragging_hwnd: win32.HWND) SnapPosition {
-    const threshold = settings.threshold;
-    var result: SnapPosition = .{ .x = x, .y = y };
-    if (settings.screenEdges) result = applyScreenEdgeSnapping(result.x, result.y, width, height, threshold, dragging_hwnd);
-    if (settings.thumbnailEdges) result = applyThumbnailEdgeSnapping(result.x, result.y, width, height, threshold, dragging_hwnd, thumbnail_set);
-    if (settings.panelEdges) result = applyPanelEdgeSnapping(result.x, result.y, width, height, threshold, dragging_hwnd);
-    return result;
-}
-
-fn applyThumbnailEdgeSnapping(
+/// A window being dragged, where it would land unsnapped.
+pub const Drag = struct {
     x: i32,
     y: i32,
     width: i32,
     height: i32,
-    threshold: i32,
-    dragging_hwnd: win32.HWND,
-    thumbnail_set: *const ThumbnailSet,
-) SnapPosition {
-    var snap = snap_math.EdgeSnap.init(x, y, width, height, threshold);
+    /// Never snapped to itself.
+    hwnd: win32.HWND,
+
+    fn movedTo(self: Drag, snapped: SnapPosition) Drag {
+        var moved = self;
+        moved.x = snapped.x;
+        moved.y = snapped.y;
+        return moved;
+    }
+
+    fn position(self: Drag) SnapPosition {
+        return .{ .x = self.x, .y = self.y };
+    }
+};
+
+/// For a thumbnail: screen edges, then thumbnail edges, then panel edges, then ghost positions, each snapping the previous result.
+pub fn applySnapping(thumbnail_set: *ThumbnailSet, drag: Drag) SnapPosition {
+    const settings = &thumbnail_set.config.snapping;
+    if (!settings.enabled) return drag.position();
+    const snapped = snapToEdges(thumbnail_set, settings, drag);
+    if (!settings.ghostPositions) return snapped;
+    return applyGhostSnapping(thumbnail_set, drag.movedTo(snapped), settings.threshold);
+}
+
+/// Like applySnapping for a panel, by the panels' own settings and without ghost positions.
+pub fn applyPanelSnapping(thumbnail_set: *const ThumbnailSet, drag: Drag) SnapPosition {
+    const settings = &thumbnail_set.config.panelSnapping;
+    if (!settings.enabled) return drag.position();
+    return snapToEdges(thumbnail_set, settings, drag);
+}
+
+pub fn applyScreenEdgeSnapping(drag: Drag, threshold: i32) SnapPosition {
+    return snap_math.screenEdges(drag.x, drag.y, drag.width, drag.height, threshold, monitors.nearestMonitorBounds(drag.hwnd).bounds);
+}
+
+/// Screen edges, then thumbnail edges, then panel edges, as `settings` (a SnappingConfig or PanelSnappingConfig) turns each on.
+fn snapToEdges(thumbnail_set: *const ThumbnailSet, settings: anytype, drag: Drag) SnapPosition {
+    const threshold = settings.threshold;
+    var result = drag.position();
+    if (settings.screenEdges) result = applyScreenEdgeSnapping(drag.movedTo(result), threshold);
+    if (settings.thumbnailEdges) result = applyThumbnailEdgeSnapping(thumbnail_set, drag.movedTo(result), threshold);
+    if (settings.panelEdges) result = applyPanelEdgeSnapping(drag.movedTo(result), threshold);
+    return result;
+}
+
+fn applyThumbnailEdgeSnapping(thumbnail_set: *const ThumbnailSet, drag: Drag, threshold: i32) SnapPosition {
+    var snap = snap_math.EdgeSnap.init(drag.x, drag.y, drag.width, drag.height, threshold);
     for (thumbnail_set.thumbnails.items) |thumbnail| {
-        if (thumbnail.hwnd == dragging_hwnd or thumbnail.text_hwnd == dragging_hwnd) continue;
+        if (thumbnail.hwnd == drag.hwnd or thumbnail.text_hwnd == drag.hwnd) continue;
         if (!win32.isWindow(thumbnail.hwnd)) continue;
 
         var other_rect: win32.RECT = undefined;
@@ -69,7 +82,7 @@ fn applyThumbnailEdgeSnapping(
 }
 
 /// Lines up against the visible panels on this thread, which owns every panel and thumbnail.
-fn applyPanelEdgeSnapping(x: i32, y: i32, width: i32, height: i32, threshold: i32, dragging_hwnd: win32.HWND) SnapPosition {
+fn applyPanelEdgeSnapping(drag: Drag, threshold: i32) SnapPosition {
     const Context = struct {
         snap: snap_math.EdgeSnap,
         dragging_hwnd: win32.HWND,
@@ -87,14 +100,14 @@ fn applyPanelEdgeSnapping(x: i32, y: i32, width: i32, height: i32, threshold: i3
         }
     };
 
-    var context: Context = .{ .snap = .init(x, y, width, height, threshold), .dragging_hwnd = dragging_hwnd };
+    var context: Context = .{ .snap = .init(drag.x, drag.y, drag.width, drag.height, threshold), .dragging_hwnd = drag.hwnd };
     _ = win32.EnumThreadWindows(win32.GetCurrentThreadId(), Context.visit, win32.ptrToLparam(&context));
     return context.snap.position();
 }
 
 /// Snaps to a ghost's exact saved position when within `threshold` px (Chebyshev distance), else aligns edges against ghost rects like applyThumbnailEdgeSnapping does for live thumbnails.
-fn applyGhostSnapping(x: i32, y: i32, width: i32, height: i32, threshold: i32, dragging_hwnd: win32.HWND, thumbnail_set: *ThumbnailSet) SnapPosition {
-    const character_name = if (thumbnail_set.getThumbnailByOverlayHwnd(dragging_hwnd)) |t| t.character_name else "";
+fn applyGhostSnapping(thumbnail_set: *ThumbnailSet, drag: Drag, threshold: i32) SnapPosition {
+    const character_name = if (thumbnail_set.getThumbnailByOverlayHwnd(drag.hwnd)) |t| t.character_name else "";
 
     // Reuses GhostOverlay.show's cache; a drag without outlines never shows it, so it gets an uncached copy.
     var owned_fallback: ?[]GhostGroup = null;
@@ -103,16 +116,16 @@ fn applyGhostSnapping(x: i32, y: i32, width: i32, height: i32, threshold: i32, d
     const groups: []const GhostGroup = thumbnail_set.ghost_overlay.groups orelse blk: {
         const fresh = ghost_groups.collect(thumbnail_set.allocator, thumbnail_set.config, character_name) catch |err| {
             slog.warn("Failed to collect ghost positions to snap to: {}", .{err});
-            return .{ .x = x, .y = y };
+            return drag.position();
         };
         owned_fallback = fresh;
         break :blk fresh;
     };
 
-    var dock = snap_math.Dock.init(x, y, threshold);
+    var dock = snap_math.Dock.init(drag.x, drag.y, threshold);
     for (groups) |group| dock.consider(group.rect);
 
-    var snap = snap_math.EdgeSnap.init(dock.position.x, dock.position.y, width, height, threshold);
+    var snap = snap_math.EdgeSnap.init(dock.position.x, dock.position.y, drag.width, drag.height, threshold);
     for (groups) |group| snap.toward(group.rect);
     return snap.position();
 }

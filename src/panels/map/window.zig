@@ -45,6 +45,7 @@ const slog = log.Scoped("map_panel");
 
 /// Granularity of ages baked into the render signature, so they don't redraw every tick.
 const AGE_BUCKET_MS: u64 = 15_000;
+/// The Forge.
 const DEFAULT_REGION_ID = 10000002;
 /// When the screen's refresh rate can't be read.
 const FALLBACK_REFRESH_HZ: u64 = 60;
@@ -276,7 +277,7 @@ pub const MapPanelWindow = struct {
             },
             .kills => self.listKills(scene, capacity),
         };
-        var card: look.IntelCard = .init(areas, top, header_height, row_height, row_count, self.state.is_intel_collapsed);
+        var card: look.IntelCard = .init(areas, .{ .top = top, .header_height = header_height, .row_height = row_height, .row_count = row_count, .is_collapsed = self.state.is_intel_collapsed });
         card.tab = tab;
         if (self.isIntelInside() and self.config.mapPanel.showKills) {
             var left = card.header.left + look.INTEL_PADDING_X;
@@ -299,10 +300,10 @@ pub const MapPanelWindow = struct {
         const top = if (self.state.intel_card) |*intel| intel.box.bottom + look.CARD_GAP else self.columnTop(areas);
         const row_height = look.listRowHeight(fonts.chrome.name_height);
         const bottom = self.timerColumnBottom(areas, fonts);
-        const probe: look.ListCard = .init(areas, top, bottom, look.intelHeaderHeight(areas.card_height), row_height, 0, true);
+        const probe: look.ListCard = .init(areas, .{ .top = top, .header_height = look.intelHeaderHeight(areas.card_height), .row_height = row_height, .is_collapsed = true }, bottom);
         self.state.wormhole_scroll = @min(self.state.wormhole_scroll, wormhole_list.maxScroll(self.state.wormhole_entry_count, probe.visible_count));
         const shown_count = self.state.wormhole_entry_count - self.state.wormhole_scroll;
-        var card: look.ListCard = .init(areas, top, bottom, look.intelHeaderHeight(areas.card_height), row_height, shown_count, self.state.is_wormholes_collapsed);
+        var card: look.ListCard = .init(areas, .{ .top = top, .header_height = look.intelHeaderHeight(areas.card_height), .row_height = row_height, .row_count = shown_count, .is_collapsed = self.state.is_wormholes_collapsed }, bottom);
         var left = card.header.left + look.INTEL_PADDING_X;
         for (std.enums.values(wormholes.Hub), &card.tabs) |each, *box| {
             _ = win32.SelectObject(dc, if (each == hub) fonts.semibold_font else fonts.chrome.name_font);
@@ -355,7 +356,7 @@ pub const MapPanelWindow = struct {
     /// At the head of the right column, as what was asked for last; it stays until its header closes it.
     fn placeRouteCard(self: *const MapPanelWindow, areas: look.Areas, fonts: MapFonts) ?look.ListCard {
         if (self.state.route_count == 0) return null;
-        return .init(areas, areas.intelTop(), areas.sideBottom(), look.intelHeaderHeight(areas.card_height), look.listRowHeight(fonts.chrome.name_height), self.state.route_count, false);
+        return .init(areas, .{ .top = areas.intelTop(), .header_height = look.intelHeaderHeight(areas.card_height), .row_height = look.listRowHeight(fonts.chrome.name_height), .row_count = self.state.route_count }, areas.sideBottom());
     }
 
     /// Where the right column's other cards start: under the route card, or at its top.
@@ -369,7 +370,7 @@ pub const MapPanelWindow = struct {
         if (!self.showsTimerCard()) return null;
         const above = if (self.state.wormhole_card) |*card| card.box else if (self.state.intel_card) |*card| card.box else null;
         const top = if (above) |box| box.bottom + look.CARD_GAP else self.columnTop(areas);
-        return .init(areas, top, areas.sideBottom(), look.intelHeaderHeight(areas.card_height), look.listRowHeight(fonts.chrome.name_height), self.state.timer_entry_count, self.state.is_timers_collapsed);
+        return .init(areas, .{ .top = top, .header_height = look.intelHeaderHeight(areas.card_height), .row_height = look.listRowHeight(fonts.chrome.name_height), .row_count = self.state.timer_entry_count, .is_collapsed = self.state.is_timers_collapsed }, areas.sideBottom());
     }
 
     /// The newest kills in the regions shown, up to `capacity`, into kill_rows; returns how many.
@@ -655,7 +656,8 @@ pub const MapPanelWindow = struct {
         }
         var portal_widths: [layout.MAX_PORTALS]i32 = undefined;
         for (self.state.layout.portals[0..self.state.layout.portal_count], portal_widths[0..self.state.layout.portal_count]) |portal, *width| width.* = panel_chrome.textWidth(dc, text_mod.portalLabel(portal.target));
-        self.state.layout.placeLabels(areas.body, covered, &node_widths, node_shapes[0..node_count], &self.state.label_widths.exits, &portal_widths, loaded.label_height, look.labelClearance(self.state.layout.view.zoom));
+        const sizes: layout.LabelSizes = .{ .nodes = &node_widths, .node_shapes = node_shapes[0..node_count], .exits = &self.state.label_widths.exits, .portals = &portal_widths };
+        self.state.layout.placeLabels(areas.body, covered, sizes, loaded.label_height, look.labelClearance(self.state.layout.view.zoom));
 
         _ = win32.SelectObject(dc, loaded.title_font);
         var region_widths: [layout.MAX_REGIONS]i32 = undefined;

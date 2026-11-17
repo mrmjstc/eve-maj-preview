@@ -174,6 +174,54 @@ pub const LabelShape = struct {
     clearance: i32 = 0,
 };
 
+/// The names placeLabels places: their pixel widths, and how system names sit.
+pub const LabelSizes = struct {
+    /// In `nodes` order.
+    nodes: []const i32,
+    /// In `nodes` order, or empty for one line each.
+    node_shapes: []const LabelShape = &.{},
+    /// In `exits` order.
+    exits: []const i32 = &.{},
+    /// In `portals` order.
+    portals: []const i32 = &.{},
+};
+
+/// The boxes names must keep clear of, inside the area they must keep to.
+pub const Claims = struct {
+    area: Box,
+    /// Borrows the caller's buffer; the first `count` are taken.
+    boxes: []Box,
+    count: usize = 0,
+
+    pub fn add(self: *Claims, box: Box) void {
+        self.boxes[self.count] = box;
+        self.count += 1;
+    }
+
+    pub fn taken(self: *const Claims) []const Box {
+        return self.boxes[0..self.count];
+    }
+
+    /// Takes the first free spot around `x`,`y` at `clearance` from it; null when none is free or inside `area`.
+    pub fn claim(self: *Claims, x: i32, y: i32, width: i32, line_height: i32, clearance: i32) ?Box {
+        const half_width = @divTrunc(width, 2);
+        const half_height = @divTrunc(line_height, 2);
+        const spots = [_]Box{
+            .{ .left = x - half_width, .top = y + clearance, .right = x - half_width + width, .bottom = y + clearance + line_height },
+            .{ .left = x - half_width, .top = y - clearance - line_height, .right = x - half_width + width, .bottom = y - clearance },
+            .{ .left = x + clearance + EXIT_LABEL_GAP, .top = y - half_height, .right = x + clearance + EXIT_LABEL_GAP + width, .bottom = y - half_height + line_height },
+            .{ .left = x - clearance - EXIT_LABEL_GAP - width, .top = y - half_height, .right = x - clearance - EXIT_LABEL_GAP, .bottom = y - half_height + line_height },
+        };
+        for (spots) |spot| {
+            const padded: Box = .{ .left = spot.left - LABEL_SIDE_GAP, .top = spot.top, .right = spot.right + LABEL_SIDE_GAP, .bottom = spot.bottom };
+            if (!self.area.contains(spot) or padded.overlapsAny(self.taken())) continue;
+            self.add(padded);
+            return spot;
+        }
+        return null;
+    }
+};
+
 /// A place to try a region's name, against the box around its systems.
 const RegionLabelSpot = struct {
     side: Side,
@@ -434,15 +482,16 @@ pub const Layout = struct {
         self.sortLabelOrder();
     }
 
-    /// Greedily, the most connected systems first, then exits and portals, `clearance` from their systems, inside `label_area` and clear of `covered`, the first MAX_COVERED of what floats over the map; `node_widths`, `exit_widths` and `portal_widths` are pixel widths in `nodes`, `exits` and `portals` order; `node_shapes` is in `nodes` order, or empty for one line each.
-    pub fn placeLabels(self: *Layout, label_area: Box, covered: []const Box, node_widths: []const i32, node_shapes: []const LabelShape, exit_widths: []const i32, portal_widths: []const i32, line_height: i32, clearance: i32) void {
+    /// Greedily, the most connected systems first, then exits and portals, `clearance` from their systems, inside `label_area` and clear of `covered`, the first MAX_COVERED of what floats over the map.
+    pub fn placeLabels(self: *Layout, label_area: Box, covered: []const Box, sizes: LabelSizes, line_height: i32, clearance: i32) void {
         var taken: [TAKEN_CAPACITY]Box = undefined;
-        var taken_count = takeCovered(&taken, covered);
-        taken_count += self.takeMarkers(taken[taken_count..]);
-        self.labelNodes(label_area, self.label_order[0..self.node_count], node_widths, node_shapes, line_height, clearance, &taken, &taken_count);
-        self.labelExits(label_area, exit_widths, line_height, &taken, &taken_count);
-        for (self.portals[0..self.portal_count], portal_widths[0..self.portal_count]) |*portal, width| {
-            portal.label = claimSpot(label_area, &taken, &taken_count, portal.x, portal.y, width, line_height, NODE_CLEARANCE);
+        var claims: Claims = .{ .area = label_area, .boxes = &taken };
+        takeCovered(&claims, covered);
+        self.takeMarkers(&claims);
+        self.labelNodes(&claims, self.label_order[0..self.node_count], sizes, line_height, clearance);
+        self.labelExits(&claims, sizes.exits, line_height);
+        for (self.portals[0..self.portal_count], sizes.portals[0..self.portal_count]) |*portal, width| {
+            portal.label = claims.claim(portal.x, portal.y, width, line_height, NODE_CLEARANCE);
         }
     }
 
@@ -450,26 +499,21 @@ pub const Layout = struct {
     pub fn placeRegionLabels(self: *Layout, label_area: Box, covered: []const Box, widths: []const i32, line_height: i32) void {
         if (self.regions.count < 2) return;
         var taken: [TAKEN_CAPACITY + MAX_REGIONS]Box = undefined;
-        var taken_count = takeCovered(&taken, covered);
-        taken_count += self.takeMarkers(taken[taken_count..]);
+        var claims: Claims = .{ .area = label_area, .boxes = &taken };
+        takeCovered(&claims, covered);
+        self.takeMarkers(&claims);
         for (self.nodes[0..self.node_count]) |node| {
-            taken[taken_count] = node.label orelse continue;
-            taken_count += 1;
+            claims.add(node.label orelse continue);
         }
         for (self.exits[0..self.exit_count]) |exit| {
-            const label = exit.label orelse continue;
-            taken[taken_count] = chipBox(label);
-            taken_count += 1;
+            claims.add(chipBox(exit.label orelse continue));
         }
         for (self.portals[0..self.portal_count]) |portal| {
-            const label = portal.label orelse continue;
-            taken[taken_count] = chipBox(label);
-            taken_count += 1;
+            claims.add(chipBox(portal.label orelse continue));
         }
         for (self.region_areas[0..self.regions.count], widths[0..self.regions.count], self.region_labels[0..self.regions.count]) |around, width, *region_label| {
-            region_label.* = self.leastCrowdedSpot(label_area, around, width, line_height, taken[0..taken_count]);
-            taken[taken_count] = region_label.* orelse continue;
-            taken_count += 1;
+            region_label.* = self.leastCrowdedSpot(label_area, around, width, line_height, claims.taken());
+            claims.add(region_label.* orelse continue);
         }
     }
 
@@ -522,9 +566,10 @@ pub const Layout = struct {
     /// Like placeLabels inside the area the map fits to, first come first served along `order`, places in `nodes`; a node left out keeps no label.
     pub fn placeLabelsInOrder(self: *Layout, order: []const u16, node_widths: []const i32, exit_widths: []const i32, line_height: i32) void {
         var taken: [TAKEN_CAPACITY]Box = undefined;
-        var taken_count = self.takeMarkers(&taken);
-        self.labelNodes(self.area, order, node_widths, &.{}, line_height, NODE_CLEARANCE, &taken, &taken_count);
-        self.labelExits(self.area, exit_widths, line_height, &taken, &taken_count);
+        var claims: Claims = .{ .area = self.area, .boxes = &taken };
+        self.takeMarkers(&claims);
+        self.labelNodes(&claims, order, .{ .nodes = node_widths }, line_height, NODE_CLEARANCE);
+        self.labelExits(&claims, exit_widths, line_height);
     }
 
     /// The nearest system within reach of the cursor.
@@ -675,35 +720,23 @@ pub const Layout = struct {
         }
     }
 
-    /// Returns how many it took.
-    fn takeMarkers(self: *const Layout, taken: []Box) usize {
-        var taken_count: usize = 0;
-        for (self.nodes[0..self.node_count]) |node| {
-            taken[taken_count] = markerBox(node.x, node.y);
-            taken_count += 1;
-        }
-        for (self.exits[0..self.exit_count]) |exit| {
-            taken[taken_count] = markerBox(exit.x, exit.y);
-            taken_count += 1;
-        }
-        for (self.portals[0..self.portal_count]) |portal| {
-            taken[taken_count] = markerBox(portal.x, portal.y);
-            taken_count += 1;
-        }
-        return taken_count;
+    fn takeMarkers(self: *const Layout, claims: *Claims) void {
+        for (self.nodes[0..self.node_count]) |node| claims.add(markerBox(node.x, node.y));
+        for (self.exits[0..self.exit_count]) |exit| claims.add(markerBox(exit.x, exit.y));
+        for (self.portals[0..self.portal_count]) |portal| claims.add(markerBox(portal.x, portal.y));
     }
 
-    fn labelNodes(self: *Layout, label_area: Box, order: []const u16, node_widths: []const i32, node_shapes: []const LabelShape, line_height: i32, clearance: i32, taken: []Box, taken_count: *usize) void {
+    fn labelNodes(self: *Layout, claims: *Claims, order: []const u16, sizes: LabelSizes, line_height: i32, clearance: i32) void {
         for (order) |index| {
             const node = &self.nodes[index];
-            const shape: LabelShape = if (node_shapes.len == 0) .{} else node_shapes[index];
-            node.label = claimSpot(label_area, taken, taken_count, node.x, node.y, node_widths[index], line_height * shape.line_count, @max(clearance, shape.clearance));
+            const shape: LabelShape = if (sizes.node_shapes.len == 0) .{} else sizes.node_shapes[index];
+            node.label = claims.claim(node.x, node.y, sizes.nodes[index], line_height * shape.line_count, @max(clearance, shape.clearance));
         }
     }
 
-    fn labelExits(self: *Layout, label_area: Box, exit_widths: []const i32, line_height: i32, taken: []Box, taken_count: *usize) void {
+    fn labelExits(self: *Layout, claims: *Claims, exit_widths: []const i32, line_height: i32) void {
         for (self.exits[0..self.exit_count], exit_widths[0..self.exit_count]) |*exit, width| {
-            exit.label = claimSpot(label_area, taken, taken_count, exit.x, exit.y, width, line_height, NODE_CLEARANCE);
+            exit.label = claims.claim(exit.x, exit.y, width, line_height, NODE_CLEARANCE);
         }
     }
 
@@ -875,26 +908,6 @@ const Fit = struct {
     }
 };
 
-/// Takes the first free spot around `x`,`y` at `clearance` from it, adding it to `taken`; null when none is free or inside `area`.
-pub fn claimSpot(area: Box, taken: []Box, taken_count: *usize, x: i32, y: i32, width: i32, line_height: i32, clearance: i32) ?Box {
-    const half_width = @divTrunc(width, 2);
-    const half_height = @divTrunc(line_height, 2);
-    const spots = [_]Box{
-        .{ .left = x - half_width, .top = y + clearance, .right = x - half_width + width, .bottom = y + clearance + line_height },
-        .{ .left = x - half_width, .top = y - clearance - line_height, .right = x - half_width + width, .bottom = y - clearance },
-        .{ .left = x + clearance + EXIT_LABEL_GAP, .top = y - half_height, .right = x + clearance + EXIT_LABEL_GAP + width, .bottom = y - half_height + line_height },
-        .{ .left = x - clearance - EXIT_LABEL_GAP - width, .top = y - half_height, .right = x - clearance - EXIT_LABEL_GAP, .bottom = y - half_height + line_height },
-    };
-    for (spots) |spot| {
-        const padded: Box = .{ .left = spot.left - LABEL_SIDE_GAP, .top = spot.top, .right = spot.right + LABEL_SIDE_GAP, .bottom = spot.bottom };
-        if (!area.contains(spot) or padded.overlapsAny(taken[0..taken_count.*])) continue;
-        taken[taken_count.*] = padded;
-        taken_count.* += 1;
-        return spot;
-    }
-    return null;
-}
-
 /// A name's padded box: a client tag's chip, or the room a system's or exit's name keeps.
 pub fn chipBox(label: Box) Box {
     return .{ .left = label.left - CHIP_PADDING_X, .top = label.top - CHIP_PADDING_Y, .right = label.right + CHIP_PADDING_X, .bottom = label.bottom + CHIP_PADDING_Y };
@@ -961,11 +974,9 @@ fn markerBox(x: i32, y: i32) Box {
     return .{ .left = x - NODE_CLEARANCE, .top = y - NODE_CLEARANCE, .right = x + NODE_CLEARANCE, .bottom = y + NODE_CLEARANCE };
 }
 
-/// The first MAX_COVERED of `covered`, at the start of `taken`.
-fn takeCovered(taken: []Box, covered: []const Box) usize {
-    const count = @min(covered.len, MAX_COVERED);
-    @memcpy(taken[0..count], covered[0..count]);
-    return count;
+/// The first MAX_COVERED of `covered`.
+fn takeCovered(claims: *Claims, covered: []const Box) void {
+    for (covered[0..@min(covered.len, MAX_COVERED)]) |box| claims.add(box);
 }
 
 fn regionLabelSpots() [(2 * REGION_LABEL_STEPS + 2) * 3]RegionLabelSpot {
@@ -1256,14 +1267,14 @@ test "region names stay inside the area and clear of each other, and a lone regi
     var regions: Regions = .one(try regionNamed("Delve"));
     var layout: Layout = .{};
     layout.build(regions, TEST_AREA);
-    layout.placeLabels(TEST_AREA, &.{}, &widths, &.{}, &exit_widths, &.{}, TEST_LINE_HEIGHT, NODE_CLEARANCE);
+    layout.placeLabels(TEST_AREA, &.{}, .{ .nodes = &widths, .exits = &exit_widths }, TEST_LINE_HEIGHT, NODE_CLEARANCE);
     layout.placeRegionLabels(TEST_AREA, &.{}, &region_widths, 24);
     try testing.expect(layout.region_labels[0] == null);
 
     try testing.expect(regions.add(try regionNamed("Fountain")));
     try testing.expect(regions.add(try regionNamed("Querious")));
     layout.build(regions, TEST_AREA);
-    layout.placeLabels(TEST_AREA, &.{}, &widths, &.{}, &exit_widths, &.{}, TEST_LINE_HEIGHT, NODE_CLEARANCE);
+    layout.placeLabels(TEST_AREA, &.{}, .{ .nodes = &widths, .exits = &exit_widths }, TEST_LINE_HEIGHT, NODE_CLEARANCE);
     layout.placeRegionLabels(TEST_AREA, &.{}, &region_widths, 24);
     for (layout.region_labels[0..regions.count], 0..) |region_label, index| {
         const label = region_label.?;
@@ -1316,7 +1327,7 @@ test "placed labels never overlap each other or a marker, and stay inside the ar
     const widths: [universe.MAX_REGION_SYSTEMS]i32 = @splat(TEST_LABEL_WIDTH);
     const exit_widths: [MAX_EXITS]i32 = @splat(TEST_LABEL_WIDTH);
     layout.build(.one(try regionNamed("Domain")), TEST_AREA);
-    layout.placeLabels(TEST_AREA, &.{}, &widths, &.{}, &exit_widths, &.{}, TEST_LINE_HEIGHT, NODE_CLEARANCE);
+    layout.placeLabels(TEST_AREA, &.{}, .{ .nodes = &widths, .exits = &exit_widths }, TEST_LINE_HEIGHT, NODE_CLEARANCE);
 
     var placed_count: usize = 0;
     for (layout.nodes[0..layout.node_count], 0..) |node, index| {
@@ -1338,7 +1349,7 @@ test "a label sits at the clearance it's given" {
     var layout: Layout = .{};
     const widths = [_]i32{TEST_LABEL_WIDTH};
     layout.buildAround(&.{universe.findSystem("Jita").?}, TEST_AREA);
-    layout.placeLabels(TEST_AREA, &.{}, &widths, &.{}, &.{}, &.{}, TEST_LINE_HEIGHT, 20);
+    layout.placeLabels(TEST_AREA, &.{}, .{ .nodes = &widths }, TEST_LINE_HEIGHT, 20);
     try testing.expectEqual(layout.nodes[0].y + 20, layout.nodes[0].label.?.top);
 }
 
@@ -1346,7 +1357,7 @@ test "a label's shape gives it more lines and more room from its system" {
     var layout: Layout = .{};
     const widths = [_]i32{TEST_LABEL_WIDTH};
     layout.buildAround(&.{universe.findSystem("Jita").?}, TEST_AREA);
-    layout.placeLabels(TEST_AREA, &.{}, &widths, &.{.{ .line_count = 2, .clearance = 30 }}, &.{}, &.{}, TEST_LINE_HEIGHT, 20);
+    layout.placeLabels(TEST_AREA, &.{}, .{ .nodes = &widths, .node_shapes = &.{.{ .line_count = 2, .clearance = 30 }} }, TEST_LINE_HEIGHT, 20);
     const label = layout.nodes[0].label.?;
     try testing.expectEqual(layout.nodes[0].y + 30, label.top);
     try testing.expectEqual(2 * TEST_LINE_HEIGHT, label.bottom - label.top);
@@ -1356,9 +1367,9 @@ test "a label keeps clear of what covers the map" {
     var layout: Layout = .{};
     const widths = [_]i32{TEST_LABEL_WIDTH};
     layout.buildAround(&.{universe.findSystem("Jita").?}, TEST_AREA);
-    layout.placeLabels(TEST_AREA, &.{}, &widths, &.{}, &.{}, &.{}, TEST_LINE_HEIGHT, 20);
+    layout.placeLabels(TEST_AREA, &.{}, .{ .nodes = &widths }, TEST_LINE_HEIGHT, 20);
     const first_spot = layout.nodes[0].label.?;
-    layout.placeLabels(TEST_AREA, &.{first_spot}, &widths, &.{}, &.{}, &.{}, TEST_LINE_HEIGHT, 20);
+    layout.placeLabels(TEST_AREA, &.{first_spot}, .{ .nodes = &widths }, TEST_LINE_HEIGHT, 20);
     try testing.expect(!layout.nodes[0].label.?.overlaps(first_spot));
 }
 
@@ -1457,7 +1468,7 @@ test "a system zoomed off the area loses its label" {
     layout.build(.one(try regionNamed("The Forge")), TEST_AREA);
     const widths: [universe.MAX_REGION_SYSTEMS]i32 = @splat(TEST_LABEL_WIDTH);
     const exit_widths: [MAX_EXITS]i32 = @splat(TEST_LABEL_WIDTH);
-    layout.placeLabels(TEST_AREA, &.{}, &widths, &.{}, &exit_widths, &.{}, TEST_LINE_HEIGHT, NODE_CLEARANCE);
+    layout.placeLabels(TEST_AREA, &.{}, .{ .nodes = &widths, .exits = &exit_widths }, TEST_LINE_HEIGHT, NODE_CLEARANCE);
     for (layout.nodes[0..layout.node_count]) |node| {
         if (!TEST_AREA.contains(.{ .left = node.x, .top = node.y, .right = node.x, .bottom = node.y })) try testing.expect(node.label == null);
     }

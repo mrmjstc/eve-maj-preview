@@ -32,6 +32,19 @@ pub const SpaceCell = struct {
 /// Indexed like thumbnailSpaces; null for an inactive space.
 pub const SpaceCells = [spaces.MAX_SPACES]?SpaceCell;
 
+const Axis = enum {
+    x,
+    y,
+
+    /// How the clamp warning names the axis and its two ends.
+    fn words(self: Axis) struct { label: []const u8, low: []const u8, high: []const u8 } {
+        return switch (self) {
+            .x => .{ .label = "X", .low = "left", .high = "right" },
+            .y => .{ .label = "Y", .low = "up", .high = "down" },
+        };
+    }
+};
+
 /// Read-only view over what thumbnail placement depends on: config plus the current thumbnail list (for counts and ranks).
 pub const Layout = struct {
     config: *const config_mod.Config,
@@ -112,8 +125,8 @@ pub const Layout = struct {
         // Keeps a thumbnail from spawning fully off-screen; only bites once rows overflow the screen's height.
         const clamp_margin = 50;
         const monitor_suffix = if (monitor_bounds != null) " for monitor" else "";
-        clampAxisWithWarn(&position.x, bounds.left - clamp_margin, bounds.right - thumbnail_width + clamp_margin, "X", "left", "right", monitor_suffix);
-        clampAxisWithWarn(&position.y, bounds.top - clamp_margin, bounds.bottom - thumbnail_height + clamp_margin, "Y", "up", "down", monitor_suffix);
+        clampAxisWithWarn(&position.x, bounds.left - clamp_margin, bounds.right - thumbnail_width + clamp_margin, .x, monitor_suffix);
+        clampAxisWithWarn(&position.y, bounds.top - clamp_margin, bounds.bottom - thumbnail_height + clamp_margin, .y, monitor_suffix);
 
         return position;
     }
@@ -138,12 +151,14 @@ pub fn cellFor(config: *const config_mod.Config, cells: *const SpaceCells, chara
     return cells[space_index];
 }
 
-fn clampAxisWithWarn(value: *i32, min: i32, max: i32, axis_label: []const u8, low_word: []const u8, high_word: []const u8, context: []const u8) void {
+/// `suffix` ends the warning, as " for monitor".
+fn clampAxisWithWarn(value: *i32, min: i32, max: i32, axis: Axis, suffix: []const u8) void {
+    const words = axis.words();
     if (value.* < min) {
-        slog.warn("Thumbnail {s} position {} too far {s}{s}, clamping to {}", .{ axis_label, value.*, low_word, context, min });
+        slog.warn("Thumbnail {s} position {} too far {s}{s}, clamping to {}", .{ words.label, value.*, words.low, suffix, min });
         value.* = min;
     } else if (value.* > max) {
-        slog.warn("Thumbnail {s} position {} too far {s}{s}, clamping to {}", .{ axis_label, value.*, high_word, context, max });
+        slog.warn("Thumbnail {s} position {} too far {s}{s}, clamping to {}", .{ words.label, value.*, words.high, suffix, max });
         value.* = max;
     }
 }
