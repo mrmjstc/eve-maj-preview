@@ -30,12 +30,6 @@ pub fn nearestMonitorBounds(hwnd: win32.HWND) MonitorBounds {
     return monitorBounds(win32.MonitorFromWindow(hwnd, win32.MONITOR_DEFAULTTONEAREST));
 }
 
-pub fn cursorMonitorBounds() MonitorBounds {
-    var cursor = win32.POINT{ .x = 0, .y = 0 };
-    _ = win32.GetCursorPos(&cursor);
-    return monitorBounds(win32.nearestMonitor(cursor));
-}
-
 /// DPI of whichever monitor a window currently sits on; queried live, nothing to invalidate.
 pub fn getWindowDpi(hwnd: win32.HWND) u32 {
     return win32.GetDpiForWindow(hwnd);

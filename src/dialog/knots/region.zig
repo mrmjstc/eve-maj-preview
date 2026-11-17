@@ -2,7 +2,6 @@
 const std = @import("std");
 const win32 = @import("../../platform/win32.zig");
 const config = @import("../../config.zig");
-const monitors = @import("../../layout/monitors.zig");
 const spaces = @import("../../layout/spaces.zig");
 const region_select = @import("../tools/region_select.zig");
 const session = @import("session.zig");
@@ -49,7 +48,6 @@ pub fn start(space_id: u32, is_editing: bool) void {
     }
 
     if (should_hide) thumbnail_set.hideVisibleThumbnails(g_allocator, &g_hidden);
-    const cursor = monitors.cursorMonitorBounds();
     const text_color = thumbnail_set.config.thumbnail.characterNameColor | 0xFF000000;
     region_select.start(thumbnail_set.instance, .{
         .accent_color = thumbnail_set.config.accentColor,
@@ -64,10 +62,6 @@ pub fn start(space_id: u32, is_editing: bool) void {
         return;
     };
     g_target_space_id = space_id;
-    if (region_select.textFont()) |font| {
-        const line1 = region_select.labelText(if (edit_region != null) &labels.hint_edit else &labels.hint_new);
-        thumbnail_set.hint_box.show(thumbnail_set.instance, font, text_color, line1, region_select.labelText(&labels.hint_confirm), cursor.bounds);
-    }
 }
 
 /// Once the window has closed, so a selection still running doesn't write to the next session.
@@ -123,5 +117,4 @@ fn onFinished() void {
     }
     const thumbnail_set = session.thumbnailSet() orelse return;
     thumbnail_set.showThumbnails(g_hidden.items);
-    thumbnail_set.hint_box.hide();
 }

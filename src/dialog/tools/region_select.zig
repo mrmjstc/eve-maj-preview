@@ -111,6 +111,8 @@ var g_is_dragging = false;
 /// Created on first use, then kept hidden between selections for the rest of the run.
 var g_hwnd: ?win32.HWND = null;
 var g_bitmap: ?gdi_overlay.OverlayBitmap = null;
+/// Like g_hwnd, kept hidden between selections.
+var g_hint_box: gdi_overlay.HintBox = .{};
 var g_virtual_screen: win32.RECT = undefined;
 /// The one monitor a selection is confined to, so it can't spill into the gap between monitors of different sizes.
 var g_bounds: win32.RECT = undefined;
@@ -161,16 +163,6 @@ pub fn fixedText(comptime size: usize, text: []const u8) [size]u8 {
     while (length > 0 and length < text.len and (text[length] & 0xC0) == 0x80) length -= 1;
     @memcpy(out[0..length], text[0..length]);
     return out;
-}
-
-/// The font the overlay's own text is in, for text shown alongside it, e.g. its hint; borrowed, null until start has drawn once.
-pub fn textFont() ?win32.HFONT {
-    return g_text_font;
-}
-
-/// The text in a fixed-size, NUL-padded label buffer.
-pub fn labelText(buf: []const u8) []const u8 {
-    return std.mem.sliceTo(buf, 0);
 }
 
 /// Starts or restarts the overlay; `on_finished` then `on_result` run as it closes, neither if this fails.
@@ -230,6 +222,20 @@ pub fn start(instance: win32.HINSTANCE, options: StartOptions, on_finished: *con
 
     _ = win32.ShowWindow(hwnd, win32.SW_SHOW);
     grabForegroundFocus(hwnd);
+    showHint(instance);
+}
+
+/// Shown after the overlay takes focus, so it sits above it.
+fn showHint(instance: win32.HINSTANCE) void {
+    const font = g_text_font orelse return;
+    const bounds = if (cursorPos()) |point| monitorBoundsAt(point) else g_virtual_screen;
+    const line1 = labelText(if (g_is_edit_mode) &g_labels.hint_edit else &g_labels.hint_new);
+    g_hint_box.show(instance, font, g_label_color, line1, labelText(&g_labels.hint_confirm), bounds);
+}
+
+/// The text in a fixed-size, NUL-padded label buffer.
+fn labelText(buf: []const u8) []const u8 {
+    return std.mem.sliceTo(buf, 0);
 }
 
 fn registerWindowClass(instance: win32.HINSTANCE) !void {
@@ -724,6 +730,7 @@ fn cursorPos() ?win32.POINT {
 fn finish(is_cancelled: bool) void {
     if (is_cancelled) g_field_focus = null else commitField();
     if (g_hwnd) |hwnd| _ = win32.ShowWindow(hwnd, win32.SW_HIDE);
+    g_hint_box.hide();
     g_is_dragging = false;
 
     if (g_bitmap) |bitmap| bitmap.deinit();
