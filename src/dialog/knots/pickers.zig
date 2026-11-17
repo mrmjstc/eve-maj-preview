@@ -3,6 +3,7 @@ const std = @import("std");
 const win32 = @import("../../platform/win32.zig");
 const lang = @import("../../lang/lang.zig");
 const detached = @import("../../util/detached.zig");
+const handoff = @import("../../util/handoff.zig");
 const log = @import("../../log.zig");
 
 const slog = log.Scoped("dialog_knots");
@@ -21,13 +22,15 @@ pub const Target = enum {
     import_file,
 };
 
-/// Sent to the main thread as WM_KNOTS_COMMAND's lParam.
+/// Waits in `takeAll` until the main thread takes it.
 pub const Picked = struct {
     target: Target,
     /// Which item the path is for, e.g. the notification type of a sound.
     index: usize,
     /// Owned; freed by the main thread with `deinit`.
     path: []const u8,
+    /// The next result, linked by handoff.Stack.
+    next: ?*Picked = null,
 
     pub fn deinit(self: *Picked) void {
         g_allocator.free(self.path);
@@ -35,13 +38,21 @@ pub const Picked = struct {
     }
 };
 
+/// Set once by init, before any picker thread starts; read by them too.
 var g_allocator: std.mem.Allocator = undefined;
 /// Set while a picker is open, so a second click doesn't stack another; the main thread sets it and the picker's thread clears it.
 var g_is_busy: std.atomic.Value(bool) = .init(false);
+/// Pushed by picker threads, taken by the main thread.
+var g_results: handoff.Stack(Picked) = .{};
 
 /// Once at startup, since a picker's thread can outlive the window that opened it.
 pub fn init(allocator: std.mem.Allocator) void {
     g_allocator = allocator;
+}
+
+/// Main thread: the paths picked since the last call, oldest first through `next`; the caller deinits each.
+pub fn takeAll() ?*Picked {
+    return g_results.takeAll();
 }
 
 /// `timer_hwnd` receives `command` with the result, unless the user cancels; `title` is in English, and shown translated.
@@ -62,7 +73,7 @@ fn startPicker(target: Target, index: usize, title: []const u8, owner: ?win32.HW
     try detached.spawn(pickerThread, .{ target, index, shown_title, file_type_name, owner, timer_hwnd, command });
 }
 
-/// Owns `title` and `file_type_name`; shares only the allocator and the posted message with the main thread.
+/// Owns `title` and `file_type_name`; shares only the allocator, the results and the posted message with the main thread.
 fn pickerThread(target: Target, index: usize, title: []const u8, file_type_name: []const u8, owner: ?win32.HWND, timer_hwnd: win32.HWND, command: usize) void {
     defer g_is_busy.store(false, .release);
     defer g_allocator.free(title);
@@ -85,9 +96,9 @@ fn pickerThread(target: Target, index: usize, title: []const u8, file_type_name:
         return;
     };
     picked.* = .{ .target = target, .index = index, .path = path };
-    if (!win32.toBool(win32.PostMessageA(timer_hwnd, win32.WM_KNOTS_COMMAND, command, @bitCast(@intFromPtr(picked))))) {
-        slog.err("Failed to pass on the picked path: error {d}", .{win32.GetLastError()});
-        picked.deinit();
+    g_results.push(picked);
+    if (!win32.toBool(win32.PostMessageA(timer_hwnd, win32.WM_KNOTS_COMMAND, command, 0))) {
+        slog.err("Failed to pass on the picked path, it waits for the next pick: error {d}", .{win32.GetLastError()});
     }
 }
 

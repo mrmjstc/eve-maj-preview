@@ -206,7 +206,7 @@ fn loadFromDisk(allocator: std.mem.Allocator, io: std.Io, profile_arg: ?[]const 
     return .{ .global_settings = global_settings, .character_ids = character_ids, .store = store };
 }
 
-/// The instance mutex, for the caller to close at exit; null when another instance is running, which has been asked to open its configuration window instead.
+/// The instance mutex, which the caller closes at exit; null when another instance runs, now asked to open its configuration window.
 fn claimSingleInstance(io: std.Io) !?win32.HANDLE {
     const mutex_name = std.unicode.utf8ToUtf16LeStringLiteral("Global\\EVE-Maj-Preview-SingleInstance");
     const instance_mutex = win32.CreateMutexW(null, win32.TRUE, mutex_name) orelse {
@@ -313,7 +313,8 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
             return 0;
         },
         win32.WM_HOTKEY => {
-            const id: c_int = @intCast(wParam);
+            // Any process can post here; an id out of range is none of ours.
+            const id = std.math.cast(c_int, wParam) orelse return 0;
             if (!focus_grant.handleWmHotkey(id)) {
                 if (app.hotkey_manager) |manager| app.runHotkeyOutcome(manager.handleHotkeyPress(id, lParam, app.thumbnail_set));
             }
@@ -340,7 +341,7 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
             return 0;
         },
         win32.WM_KNOTS_COMMAND => {
-            knots_host.onCommand(wParam, lParam);
+            knots_host.onCommand(wParam);
             return 0;
         },
         win32.WM_ENDSESSION => {

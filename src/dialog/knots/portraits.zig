@@ -8,6 +8,7 @@ const session = @import("session.zig");
 const http_client = @import("../../util/http_client.zig");
 const rgba = @import("../../util/rgba.zig");
 const detached = @import("../../util/detached.zig");
+const handoff = @import("../../util/handoff.zig");
 const log = @import("../../log.zig");
 
 const Image = ui.component.Image;
@@ -22,12 +23,14 @@ pub const CORNER_RADIUS = 6;
 /// A cached file past this isn't a 32px portrait, so it's fetched again.
 const MAX_FILE_BYTES = 256 * 1024;
 
-/// Sent to the main thread as WM_KNOTS_COMMAND's lParam.
+/// Waits in `takeAll` until the main thread takes it.
 pub const Loaded = struct {
     /// Owned; freed in deinit.
     id: []const u8,
     /// Null when it couldn't be read, fetched or decoded; owned, freed in deinit unless taken.
     image: ?wic.Decoded,
+    /// The next result, linked by handoff.Stack.
+    next: ?*Loaded = null,
 
     pub fn deinit(self: *Loaded) void {
         if (self.image) |decoded| decoded.deinit(g_allocator);
@@ -50,13 +53,20 @@ var g_command: usize = 0;
 /// Keyed by character ID. Keys and images owned; freed in deinit.
 var g_entries: std.StringHashMapUnmanaged(Entry) = .empty;
 var g_next_serial: usize = 0;
+/// Pushed by load threads, taken by the main thread.
+var g_results: handoff.Stack(Loaded) = .{};
 
 /// Once at startup, since a load thread can outlive the window that started it.
 pub fn setAllocator(allocator: std.mem.Allocator) void {
     g_allocator = allocator;
 }
 
-/// Each time the window opens: `timer_hwnd` receives `command` with each *Loaded, and portraits that failed are tried again.
+/// Main thread: the portraits loaded since the last call, oldest first through `next`; pass each to `store`.
+pub fn takeAll() ?*Loaded {
+    return g_results.takeAll();
+}
+
+/// Each time the window opens: `timer_hwnd` receives `command` as each portrait loads, and portraits that failed are tried again.
 pub fn init(timer_hwnd: ?win32.HWND, command: usize) void {
     g_timer_hwnd = timer_hwnd;
     g_command = command;
@@ -70,7 +80,7 @@ pub fn init(timer_hwnd: ?win32.HWND, command: usize) void {
     }
 }
 
-/// At app exit; a load still running posts a result nothing reads, which goes with the process.
+/// At app exit; a load still running leaves a result nothing takes, which goes with the process.
 pub fn deinit() void {
     var it = g_entries.iterator();
     while (it.next()) |entry| {
@@ -156,7 +166,7 @@ fn startLoad(id: []const u8) !void {
     try detached.spawn(loadThread, .{ session.appContext().io, timer_hwnd, g_command, owned_id });
 }
 
-/// Takes ownership of `id`; shares only the allocator and the posted message with the main thread.
+/// Takes ownership of `id`; shares only the allocator, the results and the posted message with the main thread.
 fn loadThread(io: std.Io, timer_hwnd: win32.HWND, command: usize, id: []const u8) void {
     const loaded = g_allocator.create(Loaded) catch |err| {
         slog.warn("Failed to load the portrait of character '{s}': {}", .{ id, err });
@@ -167,9 +177,10 @@ fn loadThread(io: std.Io, timer_hwnd: win32.HWND, command: usize, id: []const u8
         slog.warn("Failed to load the portrait of character '{s}': {}", .{ id, err });
         break :blk null;
     } };
-    if (!win32.toBool(win32.PostMessageA(timer_hwnd, win32.WM_KNOTS_COMMAND, command, @bitCast(@intFromPtr(loaded))))) {
-        slog.warn("Failed to pass on the portrait of character '{s}': error {d}", .{ id, win32.GetLastError() });
-        loaded.deinit();
+    g_results.push(loaded);
+    // `id` belongs to the stack now, and the main thread may already have freed it.
+    if (!win32.toBool(win32.PostMessageA(timer_hwnd, win32.WM_KNOTS_COMMAND, command, 0))) {
+        slog.warn("Failed to pass on a character portrait, it waits for the next one: error {d}", .{win32.GetLastError()});
     }
 }
 

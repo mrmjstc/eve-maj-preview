@@ -25,6 +25,37 @@ pub fn Slot(comptime T: type) type {
     };
 }
 
+/// Results from any number of threads, all taken at once by one; `T` has a `next: ?*T` field for the stack's use.
+pub fn Stack(comptime T: type) type {
+    return struct {
+        /// Pushed by any thread, emptied by the taking one; ownership passes with each item.
+        head: std.atomic.Value(?*T) = .init(null),
+
+        const Self = @This();
+
+        /// Any thread; `item` passes to the stack.
+        pub fn push(self: *Self, item: *T) void {
+            var head = self.head.load(.monotonic);
+            while (true) {
+                item.next = head;
+                head = self.head.cmpxchgWeak(head, item, .release, .monotonic) orelse return;
+            }
+        }
+
+        /// Everything pushed so far, oldest first through `next`; the caller owns each item.
+        pub fn takeAll(self: *Self) ?*T {
+            var newest = self.head.swap(null, .acquire);
+            var oldest: ?*T = null;
+            while (newest) |item| {
+                newest = item.next;
+                item.next = oldest;
+                oldest = item;
+            }
+            return oldest;
+        }
+    };
+}
+
 /// One background job at a time, and its newest result.
 pub fn Job(comptime T: type) type {
     return struct {
@@ -79,6 +110,18 @@ pub fn Job(comptime T: type) type {
 
 const testing = std.testing;
 
+const PUSHING_THREAD_COUNT = 4;
+const PUSHES_PER_THREAD = 1000;
+
+const TestNode = struct {
+    value: u32,
+    next: ?*TestNode = null,
+};
+
+fn pushMany(stack: *Stack(TestNode), nodes: []TestNode) void {
+    for (nodes) |*node| stack.push(node);
+}
+
 test "a claimed job can't be claimed again until it finishes" {
     var job: Job(u32) = .{};
     try testing.expect(job.claim());
@@ -97,6 +140,37 @@ test "a delivery hands back the result it replaced, and take empties the slot" {
     try testing.expectEqual(&second, job.take().?);
     try testing.expect(job.take() == null);
     try testing.expect(!job.hasResult());
+}
+
+test "a stack hands back everything pushed, oldest first, and is then empty" {
+    var stack: Stack(TestNode) = .{};
+    var nodes = [_]TestNode{ .{ .value = 1 }, .{ .value = 2 }, .{ .value = 3 } };
+    for (&nodes) |*node| stack.push(node);
+
+    var next = stack.takeAll();
+    for (1..4) |expected| {
+        const node = next orelse return error.TestUnexpectedResult;
+        try testing.expectEqual(@as(u32, @intCast(expected)), node.value);
+        next = node.next;
+    }
+    try testing.expect(next == null);
+    try testing.expect(stack.takeAll() == null);
+}
+
+test "a stack loses nothing pushed from several threads at once" {
+    var stack: Stack(TestNode) = .{};
+    var nodes: [PUSHING_THREAD_COUNT][PUSHES_PER_THREAD]TestNode = undefined;
+    var threads: [PUSHING_THREAD_COUNT]std.Thread = undefined;
+    for (&nodes, &threads) |*thread_nodes, *thread| {
+        for (thread_nodes) |*node| node.* = .{ .value = 0 };
+        thread.* = try std.Thread.spawn(.{}, pushMany, .{ &stack, thread_nodes });
+    }
+    for (threads) |thread| thread.join();
+
+    var count: usize = 0;
+    var next = stack.takeAll();
+    while (next) |node| : (next = node.next) count += 1;
+    try testing.expectEqual(@as(usize, PUSHING_THREAD_COUNT * PUSHES_PER_THREAD), count);
 }
 
 test "a failure is reported once" {

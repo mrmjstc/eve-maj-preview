@@ -4,6 +4,7 @@ const win32 = @import("../../platform/win32.zig");
 const config = @import("../../config.zig");
 const esi_prices = @import("../tools/esi_prices.zig");
 const detached = @import("../../util/detached.zig");
+const handoff = @import("../../util/handoff.zig");
 const log = @import("../../log.zig");
 
 const slog = log.Scoped("dialog_knots");
@@ -15,12 +16,14 @@ pub const NAMES = blk: {
     break :blk names;
 };
 
-/// Sent to the main thread as WM_KNOTS_COMMAND's lParam.
+/// Waits in `takeAll` until the main thread takes it.
 pub const Fetched = struct {
     arena: std.heap.ArenaAllocator,
     /// Borrows from `arena`; empty when the fetch failed.
     prices: []const esi_prices.Price,
     has_failed: bool,
+    /// The next result, linked by handoff.Stack.
+    next: ?*Fetched = null,
 
     pub fn deinit(self: *Fetched) void {
         var arena = self.arena;
@@ -29,13 +32,21 @@ pub const Fetched = struct {
     }
 };
 
+/// Set once by init, before any fetch thread starts; read by them too.
 var g_allocator: std.mem.Allocator = undefined;
 /// Set while a fetch runs, so a second click doesn't start another; the main thread sets it and the fetch's thread clears it.
 var g_is_busy: std.atomic.Value(bool) = .init(false);
+/// Pushed by the fetch's thread, taken by the main thread.
+var g_results: handoff.Stack(Fetched) = .{};
 
 /// Once at startup, since a fetch's thread can outlive the window that started it.
 pub fn init(allocator: std.mem.Allocator) void {
     g_allocator = allocator;
+}
+
+/// Main thread: the fetches finished since the last call, oldest first through `next`; the caller deinits each.
+pub fn takeAll() ?*Fetched {
+    return g_results.takeAll();
 }
 
 pub fn isFetching() bool {
@@ -53,7 +64,7 @@ pub fn fetch(io: std.Io, timer_hwnd: win32.HWND, command: usize) bool {
     return true;
 }
 
-/// The fetch's thread; touches nothing of the main thread's but the allocator and the posted message.
+/// The fetch's thread; touches nothing of the main thread's but the allocator, the results and the posted message.
 fn fetchThread(io: std.Io, timer_hwnd: win32.HWND, command: usize) void {
     defer g_is_busy.store(false, .release);
     const fetched = g_allocator.create(Fetched) catch |err| {
@@ -67,8 +78,8 @@ fn fetchThread(io: std.Io, timer_hwnd: win32.HWND, command: usize) void {
         slog.err("Failed to fetch ore prices: {}", .{err});
         fetched.has_failed = true;
     }
-    if (!win32.toBool(win32.PostMessageA(timer_hwnd, win32.WM_KNOTS_COMMAND, command, @bitCast(@intFromPtr(fetched))))) {
-        slog.err("Failed to pass on the fetched ore prices: error {d}", .{win32.GetLastError()});
-        fetched.deinit();
+    g_results.push(fetched);
+    if (!win32.toBool(win32.PostMessageA(timer_hwnd, win32.WM_KNOTS_COMMAND, command, 0))) {
+        slog.err("Failed to pass on the fetched ore prices, they wait for the next fetch: error {d}", .{win32.GetLastError()});
     }
 }

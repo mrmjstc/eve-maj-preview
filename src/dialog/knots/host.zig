@@ -68,11 +68,11 @@ pub const Command = enum(usize) {
     discard_and_close,
     /// Whatever the header queued in profiles.zig.
     profile_action,
-    /// A picker's result, as a *pickers.Picked in lParam.
+    /// Picker results wait in pickers.takeAll; no command carries a pointer, since any process can post one.
     picked,
-    /// An ore price fetch's result, as a *prices.Fetched in lParam.
+    /// Fetch results wait in prices.takeAll.
     prices_fetched,
-    /// A character portrait's load result, as a *portraits.Loaded in lParam.
+    /// Load results wait in portraits.takeAll.
     portrait_loaded,
     /// Another language was picked: the window takes its width and title.
     fit_language,
@@ -160,7 +160,7 @@ pub fn postCommand(command: Command) void {
 }
 
 /// Main thread, from the timer window's procedure.
-pub fn onCommand(wParam: win32.WPARAM, lParam: win32.LPARAM) void {
+pub fn onCommand(wParam: win32.WPARAM) void {
     const command = std.enums.fromInt(Command, wParam) orelse {
         slog.warn("Failed to run a knots configuration window command: unknown command {d}", .{wParam});
         return;
@@ -172,9 +172,9 @@ pub fn onCommand(wParam: win32.WPARAM, lParam: win32.LPARAM) void {
         .save_and_close => if (save()) closeWithoutAsking(),
         .discard_and_close => if (discard()) closeWithoutAsking(),
         .profile_action => profiles.runPending(),
-        .picked => applyPicked(lParam),
-        .prices_fetched => applyPrices(lParam),
-        .portrait_loaded => applyPortrait(lParam),
+        .picked => applyPicked(),
+        .prices_fetched => applyPrices(),
+        .portrait_loaded => applyPortraits(),
         .fit_language => fitLanguage(),
         .update_checked => {},
     }
@@ -519,11 +519,17 @@ fn scheduleProfileAction() void {
     postCommand(.profile_action);
 }
 
+fn applyPrices() void {
+    var next = prices.takeAll();
+    while (next) |fetched| {
+        next = fetched.next;
+        defer fetched.deinit();
+        useFetched(fetched);
+    }
+}
+
 /// Fetched prices fill in the table, kept until Save.
-fn applyPrices(lParam: win32.LPARAM) void {
-    if (lParam == 0) return;
-    const fetched = win32.lparamToPtr(prices.Fetched, lParam);
-    defer fetched.deinit();
+fn useFetched(fetched: *const prices.Fetched) void {
     // The window may have closed while the fetch ran.
     if (g_state != .open) return;
     if (fetched.has_failed) {
@@ -535,16 +541,25 @@ fn applyPrices(lParam: win32.LPARAM) void {
     status.show(if (fetched.prices.len > 0) .success else .failure, "Updated {fetched} of {total} price(s)", .{ .fetched = fetched.prices.len, .total = prices.NAMES.len });
 }
 
-fn applyPortrait(lParam: win32.LPARAM) void {
-    if (lParam == 0) return;
-    // Stored even once the window has closed, since the cache outlives it.
-    portraits.store(win32.lparamToPtr(portraits.Loaded, lParam));
+/// Stored even once the window has closed, since the cache outlives it.
+fn applyPortraits() void {
+    var next = portraits.takeAll();
+    while (next) |loaded| {
+        next = loaded.next;
+        portraits.store(loaded);
+    }
 }
 
-fn applyPicked(lParam: win32.LPARAM) void {
-    if (lParam == 0) return;
-    const picked = win32.lparamToPtr(pickers.Picked, lParam);
-    defer picked.deinit();
+fn applyPicked() void {
+    var next = pickers.takeAll();
+    while (next) |picked| {
+        next = picked.next;
+        defer picked.deinit();
+        usePicked(picked);
+    }
+}
+
+fn usePicked(picked: *const pickers.Picked) void {
     // The window may have closed while the picker was open.
     if (g_state != .open) return;
     const chatlog = session.global().child("chatlog");

@@ -122,7 +122,7 @@ Throttled work uses `util/schedule.zig`: intervals measure from the tick's start
 | Sound worker | `notifications/sound.zig` (Media Foundation + waveOut) | Fire-and-forget command queue |
 | Update check | `update.zig`, one-shot at startup and each time the config dialog opens | Mutex-guarded `UpdateStatus` |
 | Clipboard upload | `hotkeys/paste_upload.zig`, one per press, at most 4 at once | None; slots claimed through atomics |
-| Dialog helpers | `pickers.zig`, `prices.zig`, `portraits.zig`, one-shot | `WM_KNOTS_COMMAND` |
+| Dialog helpers | `pickers.zig`, `prices.zig`, `portraits.zig`, one-shot | A `util/handoff.zig` `Stack`, then a `WM_KNOTS_COMMAND` carrying no pointer |
 | Map stats | `map/stats_feed.zig`, one-shot every 15 minutes while the Map Panel shows; after the figures, it fetches logos of alliances it hasn't seen | Atomic snapshot and logo colour swaps, taken on the tick |
 | Eve Stars calls | `map/evestars_feed.zig`, one-shot per character list, send, route plan, Ansiblex list, and avoid list read or change, one at a time for each | Atomic reply swap, taken on the tick or the panel's 100ms timer |
 | Eve Stars activity | `map/activity_feed.zig`, one-shot for the span's kill and jump sums every 10 minutes while a span past the hour shows, and for the last two hours' NPC kills every 2 minutes while NPC delta waits for its hour before | Atomic pointer swaps, taken on the tick or the panel's 100ms timer |
