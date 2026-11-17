@@ -602,10 +602,10 @@ fn onSearchKey(window: *MapPanelWindow, context: Context, wParam: win32.WPARAM) 
     const is_ctrl_down = win32.isCtrlPressed();
     const extent: search.Extent = if (win32.isShiftPressed()) .extend else .move;
     switch (wParam) {
-        win32.VK_ESCAPE => closePopup(window, context),
-        win32.VK_RETURN => pickHit(window, context, open.picked_index),
-        win32.VK_UP => open.pickPrevious(),
-        win32.VK_DOWN => open.pickNext(),
+        vk.VK_ESCAPE => closePopup(window, context),
+        vk.VK_RETURN => pickHit(window, context, open.picked_index),
+        vk.VK_UP => open.pickPrevious(),
+        vk.VK_DOWN => open.pickNext(),
         vk.VK_LEFT => open.move(if (is_ctrl_down) .word_left else .left, extent),
         vk.VK_RIGHT => open.move(if (is_ctrl_down) .word_right else .right, extent),
         vk.VK_HOME => open.move(.home, extent),

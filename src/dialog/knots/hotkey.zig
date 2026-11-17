@@ -21,14 +21,6 @@ const Tooltip = ui.component.Tooltip;
 const KeyList = key_list.KeyList;
 const slog = log.Scoped("dialog_knots");
 
-/// Matches writeVirtualKey's order.
-const MODIFIER_ORDER = [_]struct { flag: u32, name: []const u8 }{
-    .{ .flag = vk.MOD_CONTROL, .name = "Ctrl" },
-    .{ .flag = vk.MOD_ALT, .name = "Alt" },
-    .{ .flag = vk.MOD_SHIFT, .name = "Shift" },
-    .{ .flag = vk.MOD_WIN, .name = "Win" },
-};
-
 const SET_KEY = "Set key";
 const ADD_KEY = "Add another key";
 const RECORDING_PROMPT = "Press keys...";
@@ -114,7 +106,7 @@ pub fn onWindowMessage(msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPAR
     switch (msg) {
         win32.WM_KEYDOWN, win32.WM_SYSKEYDOWN => {
             const virtual_key: u32 = @truncate(wParam);
-            if (virtual_key == win32.VK_ESCAPE or recording.captured != null) return true;
+            if (virtual_key == vk.VK_ESCAPE or recording.captured != null) return true;
             if (recording.is_shift_faked and lParam & win32.KEY_EXTENDED_BIT == 0) {
                 if (vk.numpadForNavigation(virtual_key)) |numpad| {
                     capture(numpad, vk.currentModifiers() | vk.MOD_SHIFT);
@@ -136,7 +128,7 @@ pub fn onWindowMessage(msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPAR
         },
         win32.WM_KEYUP, win32.WM_SYSKEYUP => {
             const virtual_key: u32 = @truncate(wParam);
-            if (virtual_key == win32.VK_ESCAPE) {
+            if (virtual_key == vk.VK_ESCAPE) {
                 stopRecording();
                 redraw();
                 return true;
@@ -157,7 +149,7 @@ pub fn onWindowMessage(msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPAR
         },
         win32.WM_XBUTTONUP => {
             const button: u16 = @truncate(wParam >> 16);
-            if (recording.captured == null) capture(if (button == 1) vk.VK_XBUTTON1 else vk.VK_XBUTTON2, vk.currentModifiers());
+            if (recording.captured == null) capture(if (button == win32.XBUTTON1) vk.VK_XBUTTON1 else vk.VK_XBUTTON2, vk.currentModifiers());
             return true;
         },
         win32.WM_MOUSEWHEEL => {
@@ -446,7 +438,7 @@ fn comboCaps(context: *ui.Frame, key: ui.Key, combo: u32, keycaps: *const style.
 /// A cap and a + for each of `modifiers`' MOD_* flags; returns how many parts it keyed, so what follows takes the next.
 fn modifierCaps(context: *ui.Frame, key: ui.Key, modifiers: u32, keycaps: *const style.Keycaps, cap_style: *const ui.Style, text_style: *const ui.Style) !usize {
     var part_index: usize = 0;
-    for (MODIFIER_ORDER) |modifier| {
+    for (vk.MODIFIER_NAMES) |modifier| {
         if (modifiers & modifier.flag == 0) continue;
         try cap(context, key.indexed(KEYCAP_KEY_BASE + part_index), modifier.name, cap_style, text_style);
         try context.e(Text{ .selectable = false, .key = key.indexed(KEYCAP_KEY_BASE + part_index + 1), .content = "+", .style = &keycaps.plus });
@@ -488,7 +480,7 @@ fn comboWidth(context: *ui.Frame, combo: u32, keycaps: *const style.Keycaps) !f3
     const modifiers = vk.extractModifiers(combo);
     var width = 2 * keycaps.size.combo_padding_x + try capWidth(context, try keyCapName(context, combo), keycaps);
     var part_count: usize = 1;
-    for (MODIFIER_ORDER) |modifier| {
+    for (vk.MODIFIER_NAMES) |modifier| {
         if (modifiers & modifier.flag == 0) continue;
         width += try capWidth(context, modifier.name, keycaps) + try widgets.textWidth(context, "+", &keycaps.plus);
         part_count += 2;

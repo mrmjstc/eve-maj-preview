@@ -15,8 +15,6 @@ const Section = draft_mod.Section;
 const SKIPPED_PLACEHOLDER_NOTE = "Skipped {n} placeholder item(s) from EVE-O Preview's default config - not real characters.";
 /// EVE-O Preview's fixed number of cycle groups.
 const CYCLE_GROUP_COUNT = 5;
-/// Right Win, which `vk` has no name for.
-const VK_RWIN = 0x5C;
 
 /// .NET's named colours, the CSS3/X11 set.
 const NAMED_COLORS = [_]struct { []const u8, u24 }{
@@ -134,12 +132,11 @@ fn pair(value: ?Value) ?[2]f64 {
     return .{ @floatFromInt(first), @floatFromInt(second) };
 }
 
-/// WinForms' Keys names the digit row "D0".."D9" and has LWin/RWin keys of its own.
+/// WinForms' Keys names the digit row "D0".."D9" and has LWin/RWin keys of its own, both bound here as VK_LWIN, as the hooks match either Win key.
 fn baseKey(token: []const u8) ?u32 {
     const trimmed = std.mem.trim(u8, token, " \t");
     if (trimmed.len == 2 and (trimmed[0] == 'D' or trimmed[0] == 'd') and std.ascii.isDigit(trimmed[1])) return trimmed[1];
-    if (std.ascii.eqlIgnoreCase(trimmed, "lwin")) return vk.VK_LWIN;
-    if (std.ascii.eqlIgnoreCase(trimmed, "rwin")) return VK_RWIN;
+    if (std.ascii.eqlIgnoreCase(trimmed, "lwin") or std.ascii.eqlIgnoreCase(trimmed, "rwin")) return vk.VK_LWIN;
     return values.legacyBaseKey(trimmed);
 }
 

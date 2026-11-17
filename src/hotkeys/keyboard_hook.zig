@@ -53,16 +53,16 @@ fn releaseAll() void {
 }
 
 fn isWinVk(vk_code: u32) bool {
-    return vk_code == win32.VK_LWIN or vk_code == win32.VK_RWIN;
+    return vk_code == vk.VK_LWIN or vk_code == vk.VK_RWIN;
 }
 
 /// WH_KEYBOARD_LL reports the side-specific vk for Ctrl/Alt/Shift/Win (e.g. VK_LSHIFT), never the generic one.
 fn normalizeModifierVk(raw_vk: u32) u32 {
     return switch (raw_vk) {
-        win32.VK_LSHIFT, win32.VK_RSHIFT => vk.VK_SHIFT,
-        win32.VK_LCONTROL, win32.VK_RCONTROL => vk.VK_CONTROL,
-        win32.VK_LMENU, win32.VK_RMENU => vk.VK_MENU,
-        win32.VK_LWIN, win32.VK_RWIN => vk.VK_LWIN,
+        vk.VK_LSHIFT, vk.VK_RSHIFT => vk.VK_SHIFT,
+        vk.VK_LCONTROL, vk.VK_RCONTROL => vk.VK_CONTROL,
+        vk.VK_LMENU, vk.VK_RMENU => vk.VK_MENU,
+        vk.VK_LWIN, vk.VK_RWIN => vk.VK_LWIN,
         else => raw_vk,
     };
 }
@@ -139,7 +139,7 @@ fn lowLevelKeyboardProc(nCode: c_int, wParam: win32.WPARAM, lParam: win32.LPARAM
                 win32.WM_KEYUP, win32.WM_SYSKEYUP => onKeyUp(vk_code),
                 else => false,
             };
-            const is_shift_release = (wParam == win32.WM_KEYUP or wParam == win32.WM_SYSKEYUP) and (vk_code == win32.VK_LSHIFT or vk_code == win32.VK_RSHIFT);
+            const is_shift_release = (wParam == win32.WM_KEYUP or wParam == win32.WM_SYSKEYUP) and (vk_code == vk.VK_LSHIFT or vk_code == vk.VK_RSHIFT);
             g_shift_release = if (is_shift_release) .{ .timestamp_ms = info.time, .is_extended = info.flags & win32.LLKHF_EXTENDED != 0 } else null;
             if (is_swallowed) return 1;
         }

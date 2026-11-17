@@ -3,6 +3,7 @@ const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const gdi_overlay = @import("../platform/gdi_overlay.zig");
 const panel_window = @import("../platform/panel_window.zig");
+const vk = @import("../platform/virtual_keys.zig");
 const palette = @import("palette.zig");
 const panel_chrome = @import("panel_chrome.zig");
 const panel_menu_look = @import("panel_menu_look.zig");
@@ -290,8 +291,8 @@ pub const PanelMenu = struct {
     /// Closes on a press outside both the menu and its button, or on Escape.
     fn poll(self: *PanelMenu) void {
         if (self.dragged_opacity != null) return;
-        if (win32.isKeyDown(win32.VK_ESCAPE)) return self.close();
-        if (!win32.isKeyDown(win32.VK_LBUTTON) and !win32.isKeyDown(win32.VK_RBUTTON)) return;
+        if (win32.isKeyDown(vk.VK_ESCAPE)) return self.close();
+        if (!win32.isKeyDown(vk.VK_LBUTTON) and !win32.isKeyDown(vk.VK_RBUTTON)) return;
         var cursor: win32.POINT = undefined;
         // Debug, as the poll runs every POLL_INTERVAL_MS; the next one tries again.
         if (!win32.toBool(win32.GetCursorPos(&cursor))) {

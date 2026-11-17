@@ -4,6 +4,7 @@ const ui = @import("ui");
 const win32 = @import("../../platform/win32.zig");
 const gdi_overlay = @import("../../platform/gdi_overlay.zig");
 const fonts = @import("../../platform/fonts.zig");
+const vk = @import("../../platform/virtual_keys.zig");
 const color = @import("../../util/color.zig");
 const region_math = @import("region_math.zig");
 const pixel_buffer = @import("../../util/pixel_buffer.zig");
@@ -553,26 +554,26 @@ fn commitField() void {
 fn handleFieldKey(key: win32.WPARAM) bool {
     const field = g_field_focus orelse return false;
     switch (key) {
-        '0'...'9', win32.VK_NUMPAD0...win32.VK_NUMPAD0 + 9 => {
+        '0'...'9', vk.VK_NUMPAD0...vk.VK_NUMPAD0 + 9 => {
             if (g_is_field_untouched) g_field_digit_count = 0;
             g_is_field_untouched = false;
-            const digit: u8 = @intCast(if (key >= win32.VK_NUMPAD0) key - win32.VK_NUMPAD0 else key - '0');
+            const digit: u8 = @intCast(if (key >= vk.VK_NUMPAD0) key - vk.VK_NUMPAD0 else key - '0');
             if (g_field_digit_count < MAX_FIELD_DIGITS) {
                 g_field_digits[g_field_digit_count] = '0' + digit;
                 g_field_digit_count += 1;
             }
         },
-        win32.VK_BACK => {
+        vk.VK_BACK => {
             g_field_digit_count = if (g_is_field_untouched) 0 else g_field_digit_count -| 1;
             g_is_field_untouched = false;
         },
-        win32.VK_TAB => focusField(switch (field) {
+        vk.VK_TAB => focusField(switch (field) {
             .width => .height,
             .height => .width,
         }),
-        win32.VK_RETURN => commitField(),
+        vk.VK_RETURN => commitField(),
         // Drops the typed value rather than closing the overlay.
-        win32.VK_ESCAPE => g_field_focus = null,
+        vk.VK_ESCAPE => g_field_focus = null,
         else => return false,
     }
     redraw();
@@ -713,12 +714,15 @@ fn maybeRedrawThrottled() void {
 
 fn cursorPos() ?win32.POINT {
     var point: win32.POINT = undefined;
-    if (!win32.toBool(win32.GetCursorPos(&point))) return null;
+    if (!win32.toBool(win32.GetCursorPos(&point))) {
+        slog.debug("Failed to read the cursor position for the region overlay", .{});
+        return null;
+    }
     return point;
 }
 
-fn finish(cancelled: bool) void {
-    if (cancelled) g_field_focus = null else commitField();
+fn finish(is_cancelled: bool) void {
+    if (is_cancelled) g_field_focus = null else commitField();
     if (g_hwnd) |hwnd| _ = win32.ShowWindow(hwnd, win32.SW_HIDE);
     g_is_dragging = false;
 
@@ -728,7 +732,7 @@ fn finish(cancelled: bool) void {
     if (g_on_finished) |callback| callback();
 
     const empty_rect: win32.RECT = .{ .left = 0, .top = 0, .right = 0, .bottom = 0 };
-    if (cancelled) {
+    if (is_cancelled) {
         report(.cancelled, empty_rect);
         return;
     }
@@ -854,15 +858,15 @@ fn wndProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win3
         },
         win32.WM_KEYDOWN => {
             if (g_is_edit_mode and handleFieldKey(wParam)) return 0;
-            if (wParam == win32.VK_TAB and g_is_edit_mode and g_edit_handle == .none) {
+            if (wParam == vk.VK_TAB and g_is_edit_mode and g_edit_handle == .none) {
                 focusField(.width);
                 redraw();
                 return 0;
             }
-            if (wParam == win32.VK_ESCAPE) {
+            if (wParam == vk.VK_ESCAPE) {
                 if (g_is_dragging or g_edit_handle != .none) _ = win32.ReleaseCapture();
                 finish(true);
-            } else if (wParam == win32.VK_RETURN and g_is_edit_mode) {
+            } else if (wParam == vk.VK_RETURN and g_is_edit_mode) {
                 if (g_edit_handle != .none) _ = win32.ReleaseCapture();
                 finish(false);
             }

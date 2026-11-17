@@ -31,10 +31,6 @@ const EVENT_TYPES = [_]struct { []const u8, []const u8 }{
 const SKIPPED_NON_EVE_NOTE = "Skipped {n} non-EVE window item(s) (tracked via EVE-APM's non-EVE window overlay - not real characters).";
 const SUPPORTED_BORDER_STYLE_COUNT = 4;
 
-/// The mouse buttons thumbnails use themselves, which `vk` has no names for.
-const VK_LBUTTON = 0x01;
-const VK_RBUTTON = 0x02;
-
 const Keys = std.array_hash_map.String([]const u8);
 
 const Font = struct { family: ?[]const u8, size: ?f64 };
@@ -246,7 +242,7 @@ fn tupleHotkey(raw: ?[]const u8) ?u32 {
     const tuple = parseTuple(raw) orelse return null;
     if (!tuple.is_enabled) return null;
     const virtual_key = tuple.vk_code orelse return null;
-    if (virtual_key <= 0 or virtual_key > 0xFF or virtual_key == VK_LBUTTON or virtual_key == VK_RBUTTON) return null;
+    if (virtual_key <= 0 or virtual_key > 0xFF or virtual_key == vk.VK_LBUTTON or virtual_key == vk.VK_RBUTTON) return null;
     var modifiers: u32 = 0;
     if (tuple.has_ctrl) modifiers |= vk.MOD_CONTROL;
     if (tuple.has_alt) modifiers |= vk.MOD_ALT;

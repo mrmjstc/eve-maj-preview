@@ -741,28 +741,13 @@ pub const IDM_MINIMIZE_GROUP_BASE = 4000;
 pub const IDI_APPLICATION: LPCSTR = @ptrFromInt(32512);
 pub const IMAGE_ICON = 1;
 
-pub const VK_LBUTTON = 0x01;
-pub const VK_RBUTTON = 0x02;
+// Only the modifiers isCtrlPressed and its siblings read; virtual_keys.zig holds every key code and aliases these.
 pub const VK_SHIFT = 0x10;
 pub const VK_CONTROL = 0x11;
 // Alt
 pub const VK_MENU = 0x12;
 pub const VK_LWIN = 0x5B;
 pub const VK_RWIN = 0x5C;
-pub const VK_ESCAPE = 0x1B;
-pub const VK_RETURN = 0x0D;
-pub const VK_BACK = 0x08;
-pub const VK_TAB = 0x09;
-pub const VK_UP = 0x26;
-pub const VK_DOWN = 0x28;
-pub const VK_NUMPAD0 = 0x60;
-// WH_KEYBOARD_LL reports these side-specific codes for Ctrl/Alt/Shift, never the generic ones above.
-pub const VK_LSHIFT = 0xA0;
-pub const VK_RSHIFT = 0xA1;
-pub const VK_LCONTROL = 0xA2;
-pub const VK_RCONTROL = 0xA3;
-pub const VK_LMENU = 0xA4;
-pub const VK_RMENU = 0xA5;
 
 // The side button, in the high word of WM_XBUTTON*'s wParam or MSLLHOOKSTRUCT's mouseData.
 pub const XBUTTON1: WORD = 0x0001;
@@ -1796,11 +1781,11 @@ pub inline fn lparamToPtr(comptime T: type, lParam: LPARAM) *T {
     return @ptrFromInt(@as(usize, @bitCast(lParam)));
 }
 
-const VK_DOWN_FLAG: c_short = @bitCast(@as(c_ushort, 0x8000));
+const KEY_DOWN_BIT: c_short = @bitCast(@as(c_ushort, 0x8000));
 
 /// Whether `virtual_key`, a key or mouse button, is held now.
 pub inline fn isKeyDown(virtual_key: c_int) bool {
-    return (GetAsyncKeyState(virtual_key) & VK_DOWN_FLAG) != 0;
+    return (GetAsyncKeyState(virtual_key) & KEY_DOWN_BIT) != 0;
 }
 
 pub inline fn isCtrlPressed() bool {

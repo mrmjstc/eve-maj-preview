@@ -13,7 +13,7 @@ pub const VK_KANA: u32 = 0x15;
 pub const VK_KANJI: u32 = 0x19;
 pub const VK_CONVERT: u32 = 0x1C;
 pub const VK_NONCONVERT: u32 = 0x1D;
-pub const VK_SHIFT: u32 = 0x10;
+pub const VK_SHIFT: u32 = win32.VK_SHIFT;
 pub const VK_CONTROL: u32 = win32.VK_CONTROL;
 /// Reserved/unassigned in the Windows VK table, so no physical key generates it.
 pub const VK_FOCUS_GRANT: u32 = 0xE8;
@@ -50,9 +50,20 @@ pub const VK_OEM_7: u32 = 0xDE;
 pub const VK_OEM_8: u32 = 0xDF;
 /// The extra key beside left Shift on ISO keyboards, `<` on most of them.
 pub const VK_OEM_102: u32 = 0xE2;
+pub const VK_ESCAPE: u32 = 0x1B;
+// WH_KEYBOARD_LL reports these side-specific codes for Shift, Ctrl and Alt, never the generic ones.
+pub const VK_LSHIFT: u32 = 0xA0;
+pub const VK_RSHIFT: u32 = 0xA1;
+pub const VK_LCONTROL: u32 = 0xA2;
+pub const VK_RCONTROL: u32 = 0xA3;
+pub const VK_LMENU: u32 = 0xA4;
+pub const VK_RMENU: u32 = 0xA5;
+pub const VK_LBUTTON: u32 = 0x01;
+pub const VK_RBUTTON: u32 = 0x02;
 pub const VK_MBUTTON: u32 = 0x04;
 pub const VK_XBUTTON1: u32 = 0x05;
 pub const VK_XBUTTON2: u32 = 0x06;
+// Reserved in the Windows VK table, so the wheel can be bound like a key.
 pub const VK_WHEELUP: u32 = 0x0A;
 pub const VK_WHEELDOWN: u32 = 0x0B;
 pub const VK_NUMPAD0: u32 = 0x60;
@@ -93,7 +104,7 @@ const SOFT_HYPHEN: u32 = 0xAD;
 const SCAN_SHIFT_ONLY: u16 = 0x01;
 
 /// The prefix each modifier flag is written with, in the order they're written.
-const MODIFIER_NAMES = [_]struct { flag: u32, name: []const u8 }{
+pub const MODIFIER_NAMES = [_]struct { flag: u32, name: []const u8 }{
     .{ .flag = MOD_CONTROL, .name = "Ctrl" },
     .{ .flag = MOD_ALT, .name = "Alt" },
     .{ .flag = MOD_SHIFT, .name = "Shift" },
