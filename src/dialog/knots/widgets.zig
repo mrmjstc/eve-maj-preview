@@ -28,6 +28,8 @@ const ROW_TOOLTIP_INDEX = 12;
 const DIALOG_PANEL_INDEX = 2;
 /// openModal keys its heading as the modal's own key indexed by this, past Dialog's panel.
 const MODAL_HEADING_INDEX = 3;
+/// popoverTitle keys its card as the title's own key indexed by this, past its heading and close button.
+const POPOVER_CARD_INDEX = 3;
 /// Kept between a popover and the window's edges.
 const POPOVER_MARGIN: f32 = 8;
 const POPOVER_GAP: f32 = 8;
@@ -342,8 +344,6 @@ pub const ReorderList = struct {
 const Modes = struct {
     /// Set by useAlignedRows: rows put their label left and their control at the right edge.
     is_aligned: bool = false,
-    /// Set by useCompactRows: half the space around row dividers and between a group's rows.
-    is_compact: bool = false,
     /// Set by useDetailRows: the label column of unaligned rows.
     label_style: *const ui.Style = &style.label,
     /// Set by openFieldGroup: its rows go undivided, with softer labels.
@@ -369,6 +369,15 @@ const Open = struct {
     binding_row: ?BindingRow = null,
     /// Popovers opened and not yet closed, whose rows widen them.
     popover_depth: usize = 0,
+    /// The open popover's card, which closePopover closes; null before popoverTitle opens it.
+    popover_card: ?PopoverCard = null,
+};
+
+/// A popover's card, and the section it was drawn inside, put back when the card closes.
+const PopoverCard = struct {
+    card: Rect,
+    outer_section: ?u64,
+    outer_row_count: usize,
 };
 
 /// Measured by one frame for the next, which beginFrame hands over.
@@ -539,7 +548,7 @@ pub fn openPopover(context: *ui.Frame, key: ui.Key, is_open: *bool, anchor: Box)
     const panel_key = key.indexed(DIALOG_PANEL_INDEX);
     _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, panel_key.hash());
     const panel_box = measuredBox(ui_state, panel_key);
-    const width = std.math.clamp(@ceil(g_carried.popover_width) + 2 * style.popover.padding.?.left(), style.POPOVER_MIN_WIDTH, style.POPOVER_MAX_WIDTH);
+    const width = std.math.clamp(@ceil(g_carried.popover_width) + 2 * style.POPOVER_INSET, style.POPOVER_MIN_WIDTH, style.POPOVER_MAX_WIDTH);
     const panel_size = [2]f32{ width, if (panel_box.h() > 0) panel_box.h() else POPOVER_HEIGHT_GUESS };
 
     const right_of_anchor = anchor.x() + anchor.w() + POPOVER_GAP;
@@ -558,6 +567,13 @@ pub fn openPopover(context: *ui.Frame, key: ui.Key, is_open: *bool, anchor: Box)
 
 /// Closes what openPopover opened; returns how, as Dialog.closeResponse does.
 pub fn closePopover(context: *ui.Frame, dialog: Dialog) !?Dialog.CloseReason {
+    if (g_open.popover_card) |popover| {
+        g_open.popover_card = null;
+        g_open.section = popover.outer_section;
+        g_open.section_row_count = popover.outer_row_count;
+        g_open.last_labelled_row = null;
+        try popover.card.close(context);
+    }
     g_open.popover_depth -|= 1;
     if (g_carried.popover_width_next != g_carried.popover_width) context.requestRedraw();
     return dialog.closeResponse(context);
@@ -572,15 +588,25 @@ pub fn openMenu(context: *ui.Frame, key: ui.Key, is_open: *bool, anchor: Box) !D
     return openPlaced(context, key, is_open, &style.menu, .{ x, anchor.y() + anchor.h() + MENU_GAP });
 }
 
-/// A popover's heading beside its close button; returns whether close was clicked.
+/// Its heading and close button, then the card closePopover closes; returns whether close was clicked.
 pub fn popoverTitle(context: *ui.Frame, key: ui.Key, title: []const u8) !bool {
     const row = Rect{ .key = key, .style = &style.popover_title };
     _ = try row.open(context);
     const shown = lang.text(title);
-    fitPopoverWidth(2 * style.ROW_INSET + try textWidth(context, shown, &style.heading) + style.CONTROL_HEIGHT);
+    fitPopoverWidth(try textWidth(context, shown, &style.heading) + style.CONTROL_HEIGHT);
     try context.e(Text{ .selectable = false, .key = key.indexed(1), .content = shown, .style = &style.heading });
     const is_close_clicked = (try context.interact(Button{ .key = key.indexed(2), .label = "\u{00D7}", .style = &style.popover_close })).clicked;
     try row.close(context);
+
+    if (g_open.popover_card != null) reportMisuse("a popover's card was opened twice");
+    const card_key = key.indexed(POPOVER_CARD_INDEX);
+    const card = Rect{ .key = card_key, .style = &style.section };
+    _ = try card.open(context);
+    // The popover is drawn inside the tab's section, whose rows it mustn't continue, so its first row has no divider.
+    g_open.popover_card = .{ .card = card, .outer_section = g_open.section, .outer_row_count = g_open.section_row_count };
+    g_open.section = card_key.hash();
+    g_open.section_row_count = 0;
+    g_open.last_labelled_row = null;
     return is_close_clicked;
 }
 
@@ -786,13 +812,6 @@ pub fn useAlignedRows(is_aligned: bool) bool {
 
 pub fn isAligned() bool {
     return g_modes.is_aligned;
-}
-
-/// Halves the space between rows, matching a popover's tighter gap; returns the previous setting, for putting back.
-pub fn useCompactRows(is_compact: bool) bool {
-    const previous = g_modes.is_compact;
-    g_modes.is_compact = is_compact;
-    return previous;
 }
 
 /// Drops the dividers above the rows drawn next, e.g. a hotkey's own switches under it; returns the previous setting, for putting back.
@@ -1051,7 +1070,7 @@ pub fn reorderFinish(context: *ui.Frame, base: ui.Key, count: usize) ?Move {
 /// A run of settings that dims, and takes no clicks or keyboard focus, while `is_enabled` is false.
 pub fn openGroup(context: *ui.Frame, key: ui.Key, is_enabled: bool) !Group {
     g_open.last_labelled_row = null;
-    return openAnyGroup(context, key, if (g_modes.is_compact) &style.group_compact else &style.group, is_enabled);
+    return openAnyGroup(context, key, &style.group, is_enabled);
 }
 
 /// Like openGroup, filling the rest of a filling tab's section.
@@ -1504,8 +1523,7 @@ fn nextRowHasDivider() bool {
 fn openSettingsRow(context: *ui.Frame, key: ui.Key, row_style: *const ui.Style, look: RowLook) !Row {
     if (g_open.row_depth > 0) reportMisuse("a settings row was opened inside another");
     g_open.row_depth += 1;
-    const divider_style = if (g_modes.is_compact) &style.row_divider_compact else &style.row_divider;
-    const divider: ?Rect = if (g_modes.is_aligned and nextRowHasDivider()) Rect{ .key = key.indexed(ROW_DIVIDER_INDEX), .style = divider_style } else null;
+    const divider: ?Rect = if (g_modes.is_aligned and nextRowHasDivider()) Rect{ .key = key.indexed(ROW_DIVIDER_INDEX), .style = &style.row_divider } else null;
     if (divider) |rect| _ = try rect.open(context);
 
     // A row without a label leaves nothing for a hint after it to sit on.

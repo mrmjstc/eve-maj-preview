@@ -307,8 +307,6 @@ pub fn showSettings(context: *ui.Frame, comptime chip: Chip, comptime index: usi
 
     const was_aligned = widgets.useAlignedRows(true);
     defer _ = widgets.useAlignedRows(was_aligned);
-    const was_compact = widgets.useCompactRows(true);
-    defer _ = widgets.useCompactRows(was_compact);
     const is_advanced = session.global().get("advancedMode");
     var is_color_disabled = false;
     // Every row after the section's master switch, the chip's show switch or its sub-gate waits on it.

@@ -460,8 +460,6 @@ fn settings(context: *ui.Frame, ref: HistoryRef, part: Part) !bool {
     const is_close_clicked = try widgets.popoverTitle(context, .src(@src()), part.label());
     const was_aligned = widgets.useAlignedRows(true);
     defer _ = widgets.useAlignedRows(was_aligned);
-    const was_compact = widgets.useCompactRows(true);
-    defer _ = widgets.useCompactRows(was_compact);
     switch (part) {
         .filters => {
             try bind.toggle(context, ref, "showCategoryFilters", "Category Filters");

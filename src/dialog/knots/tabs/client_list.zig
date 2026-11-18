@@ -456,8 +456,6 @@ fn settings(context: *ui.Frame, list_view: ListRef, part: Part) !bool {
 
     const was_aligned = widgets.useAlignedRows(true);
     defer _ = widgets.useAlignedRows(was_aligned);
-    const was_compact = widgets.useCompactRows(true);
-    defer _ = widgets.useCompactRows(was_compact);
     const follows_thumbnails = session.showsThumbnails();
     switch (part) {
         .active => {

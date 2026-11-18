@@ -93,6 +93,7 @@ const SECTION_EDGE = 12;
 const SECTION_GAP = 18;
 /// Around a tab's content; the scrollbar draws inside its right side, so cards don't shift when a tab scrolls.
 const CONTENT_MARGIN = 12;
+const CARD_BORDER_WIDTH = 1;
 const SCROLLBAR_THICKNESS = 6;
 /// Just clears the scrollbar, since a pane of rows already sits a row's inset inside them.
 pub const ROW_SCROLLBAR_GUTTER = SCROLLBAR_THICKNESS + 2;
@@ -105,7 +106,7 @@ pub const section: Style = .{
     .gap = 8,
     .padding = .xy(SECTION_EDGE - ROW_INSET, 8),
     .background = .{ .color = PANEL },
-    .border_width = .all(1),
+    .border_width = .all(CARD_BORDER_WIDTH),
     .border_color = .{ .color = CARD_BORDER },
     .radius = .md,
 };
@@ -401,15 +402,11 @@ pub const row_divider: Style = .{
     .border_width = .edges(1, 0, 0, 0),
     .border_color = .{ .color = DIVIDER },
 };
-/// row_divider for widgets.useCompactRows, matching popover's gap.
-pub const row_divider_compact: Style = row_divider.with(.{ .padding = .init(COMPACT_GAP, 0, 0, 0) });
 /// A detail pane's row: label column, then controls straight after.
 pub const binding_row: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 8 };
 /// A row's sides inside its hover highlight, so the label doesn't touch the highlight's edge.
 pub const ROW_INSET = 6;
 const ROW_DIVIDER_SPACE = 8;
-/// Half ROW_DIVIDER_SPACE: a popover's gaps and its rows' divider space.
-const COMPACT_GAP = 4;
 
 /// widgets.toggleSwitch's track; the switch slides its knob across by SWITCH_TRAVEL itself.
 pub const switch_off: Style = .{
@@ -806,27 +803,34 @@ pub const CHIP_OFF_FILL: Color = .{ .value = .{ 0, 0, 0, 0.55 } };
 pub const CHIP_DASH_LENGTH = 3;
 
 /// The widest a popover grows: room for a text overlay's font, size, weight and colour beside their label.
-pub const POPOVER_MAX_WIDTH = 436;
+pub const POPOVER_MAX_WIDTH = 480;
 /// A popover narrower than this would squeeze its title.
 pub const POPOVER_MIN_WIDTH = 260;
-/// A Dialog panel used as a popover beside what it edits; openPopover sets its width.
+/// From a popover's edge to where its rows' hover fill starts.
+pub const POPOVER_INSET = CONTENT_MARGIN + CARD_BORDER_WIDTH + SECTION_EDGE - ROW_INSET;
+/// Laid out like a tab, its heading on BG over a section card; openPopover sets its width.
 pub const popover: Style = .{
     .width = .fixed(POPOVER_MAX_WIDTH),
-    .gap = COMPACT_GAP,
-    .padding = .all(10),
-    .background = .{ .color = PANEL },
+    .gap = 8,
+    .padding = .all(CONTENT_MARGIN),
+    .background = .{ .color = BG },
     .border_color = .{ .color = BORDER_STRONG },
     .radius = .md,
 };
-/// Inset like a row's content, so the title and close button line up with the labels and controls below.
-pub const popover_title: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .justify = .space_between, .padding = .xy(ROW_INSET, 0) };
-pub const popover_close: Style = plain_button.with(.{ .width = .fixed(CONTROL_HEIGHT), .padding = .all(0), .justify = .center });
+/// Flush with the card's edge, like a section's heading.
+pub const popover_title: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .justify = .space_between };
+/// Unboxed, so it reads as part of the heading rather than a setting.
+pub const popover_close: Style = icon_button.with(.{
+    .background = .transparent,
+    .border_color = .transparent,
+    .foreground = .{ .color = MUTED },
+    .font_size = .{ .px = 15 },
+    .hover = &.{ .background = .{ .color = SURFACE }, .border_color = .transparent, .foreground = .{ .color = TEXT }, .state_layer = 0 },
+});
 
 /// openGroup's column.
 pub const group: Style = .{ .width = .grow(), .direction = .column, .gap = 8 };
 pub const group_fill: Style = group.with(.{ .height = .grow() });
-/// openGroup's column under widgets.useCompactRows.
-pub const group_compact: Style = group.with(.{ .gap = COMPACT_GAP });
 /// openInlineGroup's run of controls within a row.
 pub const group_inline: Style = .{ .direction = .row, .@"align" = .center, .gap = 8 };
 /// Strong enough that the controls under the veil read as disabled.
