@@ -445,14 +445,18 @@ fn indicator(context: *ui.Frame, key: ui.Key, color: u32, is_lit: bool, look: *c
 /// Beside the clicked part; a click on another part moves it there.
 fn popover(context: *ui.Frame, list_view: ListRef) !void {
     const dialog = try g_picker.openPopover(context) orelse return;
-    try g_picker.closePopover(context, dialog, try settings(context, list_view, g_picker.selected));
+    // The search's index draws every tab with it, and they bind some of the same fields, so its rows need keys of their own.
+    var popover_ref = list_view;
+    popover_ref.index = 1;
+    try g_picker.closePopover(context, dialog, try settings(context, popover_ref, g_picker.selected));
 }
 
-/// Returns whether close was pressed.
+/// Returns whether close was pressed; the overlays' rows take `list_view`'s index too.
 fn settings(context: *ui.Frame, list_view: ListRef, part: Part) !bool {
     const is_close_clicked = try widgets.popoverTitle(context, .src(@src()), part.label());
     try requirementNotices(context, part);
-    const profile = session.profile();
+    var profile = session.profile();
+    profile.index = list_view.index;
 
     const was_aligned = widgets.useAlignedRows(true);
     defer _ = widgets.useAlignedRows(was_aligned);

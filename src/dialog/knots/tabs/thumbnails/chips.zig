@@ -292,7 +292,9 @@ pub fn offsetRange(comptime chip: Chip) [2]f32 {
 
 /// A chip's popover with its title, notice and fields; returns whether close was pressed.
 pub fn showSettings(context: *ui.Frame, comptime chip: Chip, comptime index: usize) !bool {
-    const ref = refFor(chip.section);
+    // The search's index draws every tab with it, and they bind some of the same fields, so its rows need keys of their own.
+    var ref = refFor(chip.section);
+    ref.index = 1;
     const fields = chip.fields;
     const close_clicked = try widgets.popoverTitle(context, .str("knots.chip.title:" ++ chip.label), chip.label);
 
