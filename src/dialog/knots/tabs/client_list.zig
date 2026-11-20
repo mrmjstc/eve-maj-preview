@@ -166,7 +166,7 @@ pub fn show(context: *ui.Frame) !void {
 }
 
 fn layout(context: *ui.Frame, list_view: ListRef) !void {
-    const section = try widgets.openSection(context, "Layout", "How the list orders and arranges its clients.", &style.section);
+    const section = try widgets.openNamedSection(context, "Layout:list", "Layout", "How the list orders and arranges its clients.", &style.section);
     try bind.segmented(context, list_view, "order", "Order", &ORDER_LABELS);
     try widgets.hintText(context, .src(@src()), "Setup follows the Characters tab; Found is the order clients were found.");
     try bind.toggle(context, list_view, "groupBySystem", "Group by System");

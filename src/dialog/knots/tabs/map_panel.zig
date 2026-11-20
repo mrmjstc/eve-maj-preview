@@ -77,7 +77,7 @@ fn intelPanel(context: *ui.Frame, ref: IntelRef) !void {
 }
 
 fn layout(context: *ui.Frame, ref: MapRef, is_shown: bool) !void {
-    const section = try widgets.openSection(context, "Layout", "The panel's size and font. A bigger panel fits more system names.", &style.section);
+    const section = try widgets.openNamedSection(context, "Layout:map", "Layout", "The panel's size and font. A bigger panel fits more system names.", &style.section);
     const options = try widgets.openGroup(context, .src(@src()), is_shown);
     const size = try widgets.openBinding(context, .src(@src()), "Size");
     try bind.sizeBoxes(context, ref, "width", "height");

@@ -114,7 +114,7 @@ pub fn show(context: *ui.Frame) !void {
 }
 
 fn layout(context: *ui.Frame, ref: HistoryRef, is_shown: bool) !void {
-    const section = try widgets.openSection(context, "Layout", "The panel's size, how many rows it holds, its font, and its filter chips.", &style.section);
+    const section = try widgets.openNamedSection(context, "Layout:history", "Layout", "The panel's size, how many rows it holds, its font, and its filter chips.", &style.section);
     const options = try widgets.openGroup(context, .src(@src()), is_shown);
     const size = try widgets.openBinding(context, .src(@src()), "Size");
     try bind.sizeBoxes(context, ref, "width", "height");
