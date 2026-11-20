@@ -14,7 +14,7 @@ pub const ActivityStats = struct {
     /// Null until the server's first reply, and after a timeout.
     ping_ms: ?u32 = null,
 
-    /// Tells never-reported (show nothing) from a reported null rate (show "??").
+    /// Whether the tracker has reported, so its first report counts as a change.
     has_dps: bool = false,
     has_mining: bool = false,
     has_bounty: bool = false,
@@ -24,25 +24,32 @@ pub const ActivityStats = struct {
     /// Connected to a game server, so there's a ping to show.
     has_ping: bool = false,
 
-    /// Once reported: "??" while the rate is unknown, hidden while it's zero.
-    pub fn showsIncoming(self: *const ActivityStats) bool {
-        return self.has_dps and shown(self.incoming_dps);
+    /// Null, so hidden, while the rate is still being measured or is zero.
+    pub fn shownIncoming(self: *const ActivityStats) ?f32 {
+        return shown(self.incoming_dps);
     }
 
-    pub fn showsOutgoing(self: *const ActivityStats) bool {
-        return self.has_dps and shown(self.outgoing_dps);
+    pub fn shownOutgoing(self: *const ActivityStats) ?f32 {
+        return shown(self.outgoing_dps);
     }
 
-    pub fn showsMining(self: *const ActivityStats) bool {
-        return self.has_mining and shown(self.mining_rate);
+    pub fn shownMining(self: *const ActivityStats) ?f32 {
+        return shown(self.mining_rate);
     }
 
-    pub fn showsBounty(self: *const ActivityStats) bool {
-        return self.has_bounty and shown(self.bounty_isk_rate);
+    /// Only while the mined volume shows too.
+    pub fn shownMiningIsk(self: *const ActivityStats) ?f32 {
+        if (self.shownMining() == null) return null;
+        return shown(self.mining_isk_rate);
     }
 
-    fn shown(rate: ?f32) bool {
-        return rate == null or rate.? > 0;
+    pub fn shownBounty(self: *const ActivityStats) ?f32 {
+        return shown(self.bounty_isk_rate);
+    }
+
+    fn shown(rate: ?f32) ?f32 {
+        const value = rate orelse return null;
+        return if (value > 0) value else null;
     }
 
     /// Each setter returns whether anything shown changed.
@@ -107,24 +114,35 @@ const testing = std.testing;
 
 test "a stat never reported shows nothing" {
     const stats: ActivityStats = .{};
-    try testing.expect(!stats.showsIncoming());
-    try testing.expect(!stats.showsOutgoing());
-    try testing.expect(!stats.showsMining());
-    try testing.expect(!stats.showsBounty());
+    try testing.expectEqual(@as(?f32, null), stats.shownIncoming());
+    try testing.expectEqual(@as(?f32, null), stats.shownOutgoing());
+    try testing.expectEqual(@as(?f32, null), stats.shownMining());
+    try testing.expectEqual(@as(?f32, null), stats.shownBounty());
 }
 
-test "a reported rate shows while unknown, hides at zero, and shows above it" {
+test "a reported rate hides while still being measured and at zero, and shows above it" {
     var stats: ActivityStats = .{};
     _ = stats.setDps(null, 0);
-    try testing.expect(stats.showsIncoming());
-    try testing.expect(!stats.showsOutgoing());
+    try testing.expectEqual(@as(?f32, null), stats.shownIncoming());
+    try testing.expectEqual(@as(?f32, null), stats.shownOutgoing());
     _ = stats.setDps(0, 12.5);
-    try testing.expect(!stats.showsIncoming());
-    try testing.expect(stats.showsOutgoing());
-    _ = stats.setMining(null, 100);
-    try testing.expect(stats.showsMining());
+    try testing.expectEqual(@as(?f32, null), stats.shownIncoming());
+    try testing.expectEqual(@as(?f32, 12.5), stats.shownOutgoing());
+    _ = stats.setBounty(null);
+    try testing.expectEqual(@as(?f32, null), stats.shownBounty());
     _ = stats.setBounty(0);
-    try testing.expect(!stats.showsBounty());
+    try testing.expectEqual(@as(?f32, null), stats.shownBounty());
+}
+
+test "mining ISK shows only with a measured volume beside it" {
+    var stats: ActivityStats = .{};
+    _ = stats.setMining(null, 100);
+    try testing.expectEqual(@as(?f32, null), stats.shownMiningIsk());
+    _ = stats.setMining(4, null);
+    try testing.expectEqual(@as(?f32, 4), stats.shownMining());
+    try testing.expectEqual(@as(?f32, null), stats.shownMiningIsk());
+    _ = stats.setMining(4, 100);
+    try testing.expectEqual(@as(?f32, 100), stats.shownMiningIsk());
 }
 
 test "a setter reports a change on its first report, and then only when a value changes" {

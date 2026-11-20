@@ -81,15 +81,13 @@ pub const STAT_COUNT = std.enums.values(Stat).len;
 /// A rate a row can show under its name, in the order it writes them.
 pub const Stat = enum { incoming_dps, outgoing_dps, mining_rate, bounty_rate };
 
-/// Mining in m3 and bounty in ISK, per `unit`; null while still being measured.
+/// Mining in m3 and bounty in ISK, per `unit`.
 pub const StatReading = struct {
     stat: Stat,
-    value: ?f32,
+    value: f32,
     has_prefix: bool,
     /// Written after the value as " m3/min" or " ISK/hr"; null for DPS.
     unit: ?RateUnit = null,
-    /// A total leaving out rows whose rate is still being measured.
-    is_partial: bool = false,
 };
 
 /// In pixels.
@@ -113,18 +111,12 @@ pub const StatSettings = struct {
 
 /// One stat summed over the rows showing it.
 pub const Total = struct {
-    /// Of the measured rows only.
     sum: f32 = 0,
-    measured_count: usize = 0,
-    unmeasured_count: usize = 0,
+    row_count: usize = 0,
 
-    fn add(self: *Total, value: ?f32) void {
-        if (value) |measured| {
-            self.sum += measured;
-            self.measured_count += 1;
-        } else {
-            self.unmeasured_count += 1;
-        }
+    fn add(self: *Total, value: f32) void {
+        self.sum += value;
+        self.row_count += 1;
     }
 };
 
@@ -261,18 +253,16 @@ pub fn addReadings(totals: *Totals, readings: []const StatReading) void {
     for (readings) |reading| totals[@backingInt(reading.stat)].add(reading.value);
 }
 
-/// Each stat some row reported, in writing order; a value is null until a row's rate is measured.
+/// Each stat some row shows, in writing order.
 pub fn totalReadings(settings: StatSettings, totals: *const Totals, out: *[STAT_COUNT]StatReading) []const StatReading {
     var reading_count: usize = 0;
     for (std.enums.values(Stat), totals) |stat, total| {
-        if (total.measured_count + total.unmeasured_count == 0) continue;
-        const is_measured = total.measured_count > 0;
+        if (total.row_count == 0) continue;
         out[reading_count] = .{
             .stat = stat,
-            .value = if (is_measured) total.sum else null,
+            .value = total.sum,
             .has_prefix = hasPrefix(settings.list_settings, stat),
             .unit = rateUnit(settings, stat),
-            .is_partial = is_measured and total.unmeasured_count > 0,
         };
         reading_count += 1;
     }
@@ -306,19 +296,14 @@ pub fn statColor(list_settings: *const ListViewConfig, stat: Stat) u32 {
     };
 }
 
-/// E.g. "IN:412", "IN:~412" partial or "M:1,284 m3/hr", as the thumbnails write it; overflow is ignored, since a truncated result is still drawn.
+/// E.g. "IN:412" or "M:1,284 m3/hr", as the thumbnails write it; overflow is ignored, since a truncated result is still drawn.
 pub fn writeStat(writer: *std.Io.Writer, reading: StatReading) void {
     if (reading.has_prefix) writer.writeAll(prefix(reading.stat)) catch {};
-    if (reading.is_partial) writer.writeAll("~") catch {};
-    if (reading.value) |value| {
-        var number_buf: [24]u8 = undefined;
-        switch (reading.stat) {
-            .incoming_dps, .outgoing_dps => writer.print("{d:.0}", .{value}) catch {},
-            .mining_rate => writer.writeAll(format.formatMinedVolume(&number_buf, value)) catch {},
-            .bounty_rate => writer.writeAll(format.formatIskAbbreviated(&number_buf, value)) catch {},
-        }
-    } else {
-        writer.writeAll("??") catch {};
+    var number_buf: [24]u8 = undefined;
+    switch (reading.stat) {
+        .incoming_dps, .outgoing_dps => writer.print("{d:.0}", .{reading.value}) catch {},
+        .mining_rate => writer.writeAll(format.formatMinedVolume(&number_buf, reading.value)) catch {},
+        .bounty_rate => writer.writeAll(format.formatIskAbbreviated(&number_buf, reading.value)) catch {},
     }
     if (reading.unit) |unit| writer.print(" {s}/{s}", .{ quantity(reading.stat), unit.suffix() }) catch {};
 }
@@ -393,7 +378,7 @@ test "countText is the bare number" {
     try testing.expectEqualStrings("12", countText(&buffer, 12));
 }
 
-test "writeStat adds the prefix, rounds by stat and marks an unmeasured reading" {
+test "writeStat adds the prefix and rounds by stat" {
     var buffer: [STAT_TEXT_MAX]u8 = undefined;
     var writer: std.Io.Writer = .fixed(&buffer);
     writeStat(&writer, .{ .stat = .incoming_dps, .value = 412.4, .has_prefix = true });
@@ -404,12 +389,8 @@ test "writeStat adds the prefix, rounds by stat and marks an unmeasured reading"
     try testing.expectEqualStrings("M:4.2", writer.buffered());
 
     writer = .fixed(&buffer);
-    writeStat(&writer, .{ .stat = .outgoing_dps, .value = null, .has_prefix = false });
-    try testing.expectEqualStrings("??", writer.buffered());
-
-    writer = .fixed(&buffer);
-    writeStat(&writer, .{ .stat = .incoming_dps, .value = 1240, .has_prefix = true, .is_partial = true });
-    try testing.expectEqualStrings("IN:~1240", writer.buffered());
+    writeStat(&writer, .{ .stat = .outgoing_dps, .value = 87, .has_prefix = false });
+    try testing.expectEqualStrings("87", writer.buffered());
 }
 
 test "writeStat groups mined volume and ends a rate with its period" {
@@ -419,32 +400,20 @@ test "writeStat groups mined volume and ends a rate with its period" {
     try testing.expectEqualStrings("M:1,284 m3/hr", writer.buffered());
 
     writer = .fixed(&buffer);
-    writeStat(&writer, .{ .stat = .bounty_rate, .value = null, .has_prefix = false, .unit = .minute });
-    try testing.expectEqualStrings("?? ISK/min", writer.buffered());
+    writeStat(&writer, .{ .stat = .bounty_rate, .value = 200_000, .has_prefix = false, .unit = .minute });
+    try testing.expectEqualStrings("200k ISK/min", writer.buffered());
 }
 
-test "totalReadings sums measured rows and marks a total missing an unmeasured one" {
+test "totalReadings sums the rows showing each stat, in the overlay's period" {
     var totals: Totals = @splat(.{});
-    addReadings(&totals, &.{ .{ .stat = .incoming_dps, .value = 100, .has_prefix = true }, .{ .stat = .outgoing_dps, .value = 40, .has_prefix = true } });
-    addReadings(&totals, &.{ .{ .stat = .incoming_dps, .value = 25, .has_prefix = true }, .{ .stat = .outgoing_dps, .value = null, .has_prefix = true } });
+    addReadings(&totals, &.{ .{ .stat = .incoming_dps, .value = 100, .has_prefix = true }, .{ .stat = .mining_rate, .value = 40, .has_prefix = true } });
+    addReadings(&totals, &.{.{ .stat = .incoming_dps, .value = 25, .has_prefix = true }});
     var out: [STAT_COUNT]StatReading = undefined;
     const readings = totalReadings(TEST_STAT_SETTINGS, &totals, &out);
     try testing.expectEqual(@as(usize, 2), readings.len);
-    try testing.expectEqual(@as(?f32, 125), readings[0].value);
-    try testing.expect(!readings[0].is_partial);
-    try testing.expectEqual(@as(?f32, 40), readings[1].value);
-    try testing.expect(readings[1].is_partial);
-}
-
-test "totalReadings is unmeasured while no row has a rate yet, in the overlay's period" {
-    var totals: Totals = @splat(.{});
-    addReadings(&totals, &.{.{ .stat = .mining_rate, .value = null, .has_prefix = true }});
-    var out: [STAT_COUNT]StatReading = undefined;
-    const readings = totalReadings(TEST_STAT_SETTINGS, &totals, &out);
-    try testing.expectEqual(@as(usize, 1), readings.len);
-    try testing.expectEqual(@as(?f32, null), readings[0].value);
-    try testing.expect(!readings[0].is_partial);
-    try testing.expectEqual(@as(?RateUnit, TEST_MINING.m3_rate_unit), readings[0].unit);
+    try testing.expectEqual(@as(f32, 125), readings[0].value);
+    try testing.expectEqual(@as(f32, 40), readings[1].value);
+    try testing.expectEqual(@as(?RateUnit, TEST_MINING.m3_rate_unit), readings[1].unit);
 }
 
 test "systemGroupOrder puts the biggest system first and clients without one last" {

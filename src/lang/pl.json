@@ -493,7 +493,7 @@
   "Puts ISK: before the rate so it's easy to tell apart.": "Dodaje ISK: przed tempem, by łatwo je odróżnić.",
   "Totals": "Sumy",
   "Show Totals": "Pokaż sumy",
-  "Adds up the rates the rows show; ~ means some clients are still being measured.": "Sumuje wartości z wierszy; ~ oznacza, że niektóre klienty są jeszcze mierzone.",
+  "Adds up the rates the rows show.": "Sumuje wartości z wierszy.",
   "Needs at least one rate shown on the rows.": "Wymaga co najmniej jednej wartości widocznej w wierszach.",
   "ISK Rate Unit": "Jednostka stawki ISK",
   "Shows ISK earned per minute or per hour.": "Pokazuje zarobione ISK na minutę lub na godzinę.",

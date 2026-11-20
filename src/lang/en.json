@@ -493,7 +493,7 @@
   "Puts ISK: before the rate so it's easy to tell apart.": "Puts ISK: before the rate so it's easy to tell apart.",
   "Totals": "Totals",
   "Show Totals": "Show Totals",
-  "Adds up the rates the rows show; ~ means some clients are still being measured.": "Adds up the rates the rows show; ~ means some clients are still being measured.",
+  "Adds up the rates the rows show.": "Adds up the rates the rows show.",
   "Needs at least one rate shown on the rows.": "Needs at least one rate shown on the rows.",
   "ISK Rate Unit": "ISK Rate Unit",
   "Shows ISK earned per minute or per hour.": "Shows ISK earned per minute or per hour.",

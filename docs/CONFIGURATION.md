@@ -324,7 +324,7 @@ The Client List (`viewMode: ClientList` or `ThumbnailsAndList`): one row per cli
 | `outgoingDpsColor` | colour | `0xFF68CA6B` | | |
 | `miningRateColor` | colour | `0xFF7E98E7` | | |
 | `bountyRateColor` | colour | `0xFFE1C747` | | |
-| `showTotals` | bool | `false` | | A line under the rows adding up their shown rates; `~` marks a total missing clients still being measured. |
+| `showTotals` | bool | `false` | | A line under the rows adding up their shown rates. |
 | `hideWhenNoEveFocus` | bool | `false` | | |
 | `hideDebounceMs` | int | `500` | 0–5000 | |
 
@@ -540,7 +540,7 @@ Incoming/outgoing DPS labels from gamelog `(combat)` lines. Lines with `" from "
 | Key | Type | Default | Range | Notes |
 |---|---|---|---|---|
 | `enabled` | bool | `false` | | |
-| `window_seconds` | int | `60` | 5–600 | **0 = default.** DPS = damage in window ÷ window. Early in a fight, damage after the first second ÷ elapsed; `??` for 3 s. |
+| `window_seconds` | int | `60` | 5–600 | **0 = default.** DPS = damage in window ÷ window. Early in a fight, damage after the first second ÷ elapsed; hidden for the first 3 s. |
 | `update_interval_ms` | int | `1000` | 1000–10000 | Display refresh. Alerts check every second. |
 | `show_incoming`, `show_outgoing` | bool | `true` | | |
 | `incoming_color` | colour | `0xFFE05A4E` | | |

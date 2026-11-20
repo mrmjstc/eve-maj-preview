@@ -352,39 +352,36 @@ fn addStyledText(layout: *Layout, fonts: Fonts, slot: font_cache_mod.FontSlot, t
 fn addCombat(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, stats: *const ActivityStats, settings: RenderSettings) !void {
     const combat = &config.combat;
     if (!combat.enabled) return;
-    if (combat.show_incoming and stats.showsIncoming()) {
+    const incoming = if (combat.show_incoming) stats.shownIncoming() else null;
+    if (incoming) |rate| {
         const font = try fonts.getScaled(.combat, combat.incoming_font_name, combat.incoming_font_size, combat.incoming_font_weight);
-        const text = rateText(layout, if (combat.incoming_show_prefix) "IN: " else "", stats.incoming_dps);
+        const text = layout.print("{s}{d:.0}", .{ if (combat.incoming_show_prefix) "IN: " else "", rate });
         layout.addAt(font, text, layout.measure(font, text), .{ .anchor = combat.incoming_position, .offset_x = combat.incoming_offset_x, .offset_y = combat.incoming_offset_y, .color = combat.incoming_color, .bg_color = settings.combat_incoming_bg_color });
     }
-    if (combat.show_outgoing and stats.showsOutgoing()) {
+    const outgoing = if (combat.show_outgoing) stats.shownOutgoing() else null;
+    if (outgoing) |rate| {
         const font = try fonts.getScaled(.combat_outgoing, combat.outgoing_font_name, combat.outgoing_font_size, combat.outgoing_font_weight);
-        const text = rateText(layout, if (combat.outgoing_show_prefix) "OUT: " else "", stats.outgoing_dps);
+        const text = layout.print("{s}{d:.0}", .{ if (combat.outgoing_show_prefix) "OUT: " else "", rate });
         layout.addAt(font, text, layout.measure(font, text), .{ .anchor = combat.outgoing_position, .offset_x = combat.outgoing_offset_x, .offset_y = combat.outgoing_offset_y, .color = combat.outgoing_color, .bg_color = settings.combat_outgoing_bg_color });
     }
 }
 
-fn rateText(layout: *Layout, prefix: []const u8, rate: ?f32) []const u8 {
-    if (rate) |value| return layout.print("{s}{d:.0}", .{ prefix, value });
-    return layout.print("{s}??", .{prefix});
-}
-
 fn addMining(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, stats: *const ActivityStats, settings: RenderSettings) !void {
     const mining = &config.mining;
-    if (!mining.enabled or !stats.showsMining()) return;
+    if (!mining.enabled) return;
+    const rate = stats.shownMining() orelse return;
     const font = try fonts.getScaled(.mining, mining.font_name, mining.font_size, mining.font_weight);
     const prefix: []const u8 = if (mining.show_prefix) "M: " else "";
 
     var texts: [2][]const u8 = undefined;
     var text_count: usize = 1;
     const unit = mining.m3_rate_unit;
-    texts[0] = if (stats.mining_rate) |rate| blk: {
-        var volume_buf: [24]u8 = undefined;
-        break :blk layout.print("{s}{s} m3/{s}", .{ prefix, format.formatMinedVolume(&volume_buf, rate * unit.seconds()), unit.suffix() });
-    } else layout.print("{s}?? m3/{s}", .{ prefix, unit.suffix() });
+    var volume_buf: [24]u8 = undefined;
+    texts[0] = layout.print("{s}{s} m3/{s}", .{ prefix, format.formatMinedVolume(&volume_buf, rate * unit.seconds()), unit.suffix() });
 
-    if (mining.show_isk_rate) {
-        texts[1] = iskRateText(layout, "", stats.mining_isk_rate, mining.isk_rate_unit);
+    const isk_rate = if (mining.show_isk_rate) stats.shownMiningIsk() else null;
+    if (isk_rate) |isk_per_second| {
+        texts[1] = iskRateText(layout, "", isk_per_second, mining.isk_rate_unit);
         text_count = 2;
     }
     layout.addStack(font, texts[0..text_count], .{ .anchor = mining.position, .offset_x = mining.offset_x, .offset_y = mining.offset_y, .color = mining.color, .bg_color = settings.mining_bg_color });
@@ -392,16 +389,16 @@ fn addMining(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, st
 
 fn addBounty(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, stats: *const ActivityStats, settings: RenderSettings) !void {
     const bounty = &config.bounty;
-    if (!bounty.enabled or !stats.showsBounty()) return;
+    if (!bounty.enabled) return;
+    const isk_per_second = stats.shownBounty() orelse return;
     const font = try fonts.getScaled(.bounty, bounty.font_name, bounty.font_size, bounty.font_weight);
-    const text = iskRateText(layout, if (bounty.show_prefix) "ISK: " else "", stats.bounty_isk_rate, bounty.isk_rate_unit);
+    const text = iskRateText(layout, if (bounty.show_prefix) "ISK: " else "", isk_per_second, bounty.isk_rate_unit);
     layout.addAt(font, text, layout.measure(font, text), .{ .anchor = bounty.position, .offset_x = bounty.offset_x, .offset_y = bounty.offset_y, .color = bounty.color, .bg_color = settings.bounty_bg_color });
 }
 
-fn iskRateText(layout: *Layout, prefix: []const u8, isk_per_second: ?f32, unit: config_mod.RateUnit) []const u8 {
-    const rate = isk_per_second orelse return layout.print("{s}?? ISK/{s}", .{ prefix, unit.suffix() });
+fn iskRateText(layout: *Layout, prefix: []const u8, isk_per_second: f32, unit: config_mod.RateUnit) []const u8 {
     var isk_buf: [16]u8 = undefined;
-    return layout.print("{s}{s} ISK/{s}", .{ prefix, format.formatIskAbbreviated(&isk_buf, rate * unit.seconds()), unit.suffix() });
+    return layout.print("{s}{s} ISK/{s}", .{ prefix, format.formatIskAbbreviated(&isk_buf, isk_per_second * unit.seconds()), unit.suffix() });
 }
 
 fn addResources(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, stats: *const ActivityStats, settings: RenderSettings) !void {

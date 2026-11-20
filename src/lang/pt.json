@@ -493,7 +493,7 @@
   "Puts ISK: before the rate so it's easy to tell apart.": "Coloca ISK: antes da taxa para distingui-la facilmente.",
   "Totals": "Totais",
   "Show Totals": "Mostrar totais",
-  "Adds up the rates the rows show; ~ means some clients are still being measured.": "Soma as taxas das linhas; ~ indica que alguns clientes ainda estão sendo medidos.",
+  "Adds up the rates the rows show.": "Soma as taxas das linhas.",
   "Needs at least one rate shown on the rows.": "Requer pelo menos uma taxa exibida nas linhas.",
   "ISK Rate Unit": "Unidade de Taxa de ISK",
   "Shows ISK earned per minute or per hour.": "Mostra os ISK ganhos por minuto ou por hora.",

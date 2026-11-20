@@ -493,7 +493,7 @@
   "Puts ISK: before the rate so it's easy to tell apart.": "Ставит ISK: перед скоростью, чтобы её было легко отличить.",
   "Totals": "Итоги",
   "Show Totals": "Показывать итоги",
-  "Adds up the rates the rows show; ~ means some clients are still being measured.": "Складывает показатели строк; ~ значит, что некоторые клиенты ещё измеряются.",
+  "Adds up the rates the rows show.": "Складывает показатели строк.",
   "Needs at least one rate shown on the rows.": "Нужен хотя бы один показатель, отображаемый в строках.",
   "ISK Rate Unit": "Единица скорости ISK",
   "Shows ISK earned per minute or per hour.": "Показывает заработанные ISK в минуту или в час.",

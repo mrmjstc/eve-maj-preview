@@ -545,7 +545,7 @@ fn settings(context: *ui.Frame, list_view: ListRef, part: Part) !bool {
         }),
         .totals => {
             try bind.toggle(context, list_view, "showTotals", "Show Totals");
-            try widgets.hintText(context, .src(@src()), "Adds up the rates the rows show; ~ means some clients are still being measured.");
+            try widgets.hintText(context, .src(@src()), "Adds up the rates the rows show.");
         },
     }
     return is_close_clicked;

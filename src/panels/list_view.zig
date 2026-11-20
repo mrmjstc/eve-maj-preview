@@ -402,14 +402,13 @@ pub const ListWindow = struct {
             if (!list_look.showsStat(settings, stat)) continue;
             const unit = list_look.rateUnit(settings, stat);
             const period_seconds: f32 = if (unit) |known| known.seconds() else 1.0;
-            const per_second: ?f32 = switch (stat) {
-                .incoming_dps => if (stats.showsIncoming()) stats.incoming_dps else continue,
-                .outgoing_dps => if (stats.showsOutgoing()) stats.outgoing_dps else continue,
-                .mining_rate => if (stats.showsMining()) stats.mining_rate else continue,
-                .bounty_rate => if (stats.showsBounty()) stats.bounty_isk_rate else continue,
-            };
-            const value: ?f32 = if (per_second) |rate| rate * period_seconds else null;
-            out[reading_count] = .{ .stat = stat, .value = value, .has_prefix = list_look.hasPrefix(&config.listView, stat), .unit = unit };
+            const per_second = switch (stat) {
+                .incoming_dps => stats.shownIncoming(),
+                .outgoing_dps => stats.shownOutgoing(),
+                .mining_rate => stats.shownMining(),
+                .bounty_rate => stats.shownBounty(),
+            } orelse continue;
+            out[reading_count] = .{ .stat = stat, .value = per_second * period_seconds, .has_prefix = list_look.hasPrefix(&config.listView, stat), .unit = unit };
             reading_count += 1;
         }
         return out[0..reading_count];
