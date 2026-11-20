@@ -143,8 +143,8 @@ fn typeRow(context: *ui.Frame, notification_type: NotificationType, is_selected:
         .content = typeShortLabel(notification_type),
         .style = if (is_selected) &style.roster_name_selected else &style.roster_name,
     });
-    if (ref.get("tts_enabled")) try marker(context, ui.Key.str("knots.events.tts").indexed(index), .speech, "Speaks aloud");
-    if (ref.get("sound_enabled")) try marker(context, ui.Key.str("knots.events.sound").indexed(index), .speaker, "Plays a custom sound");
+    if (ref.get("tts_enabled")) try marker(context, ui.Key.str("knots.events.marker.tts").indexed(index), .speech, "Speaks aloud");
+    if (ref.get("sound_enabled")) try marker(context, ui.Key.str("knots.events.marker.sound").indexed(index), .speaker, "Plays a custom sound");
     try row.close(context);
     return is_clicked;
 }
