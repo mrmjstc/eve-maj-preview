@@ -379,6 +379,7 @@ The Map: a schematic of one region, or up to four side by side (Ctrl+click a reg
 | `regionId` | int | `10000002` | | The first region shown, by CCP's ID; The Forge by default. Set by picking a region. |
 | `extraRegionId1` … `3` | int | `0` | | Further regions shown beside it, by CCP's ID; `0` for none. Set by Ctrl+clicking a region or an exit. |
 | `followActive` | bool | `true` | | Open the active client's region when it leaves those shown. Needs log monitoring. |
+| `wheelOpensNewEden` | bool | `true` | | Scrolling out past the fit, after a pause in the wheel, opens New Eden. Off, only the map's title and zoom-out button open it. |
 | `metric` | enum | `Security` | `Security`, `ShipKills`, `PodKills`, `NpcKills`, `NpcDelta`, `Jumps`, `Sovereignty`, `FactionWarfare` | What the markers show. `ShipKills` counts ships only. `NpcDelta` is the change in NPC kills from the hour before, known once the panel has seen two hourly figures, or at once from Eve Stars with `evestarsToken`. `FactionWarfare` colours warzone systems by occupier, stronger the further each is contested. |
 | `trafficSpan` | enum | `Hour` | `Hour`, `Day`, `Week` | How far back ship, pod and NPC kills and jumps reach, from the span bar beside the metric bar. Past `Hour` the figures are Eve Stars' sums, so they need `evestarsToken` and `liveStats`; Eve Stars keeps kills 30 days and jumps 7, and only from 14 November 2026. `NpcDelta` always uses the last hour. |
 | `showCharacterNames` | bool | `true` | | Tag each system with a client in it; more than one shows as a count. |

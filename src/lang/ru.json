@@ -1106,6 +1106,8 @@
   "What the map follows, where its figures come from, and how intel shows.": "За чем следует карта, откуда берутся её данные и как показывается разведка.",
   "Follow Active Client": "Следовать за активным клиентом",
   "Opens a client's region when you switch to it, or when it jumps into another.": "Открывает регион клиента при переключении на него или когда он прыгает в другой регион.",
+  "Scroll Out to New Eden": "Отдаление до Нового Эдема",
+  "Scrolling out past the whole region, after a pause, opens the New Eden map. Off, only the map's title and the zoom-out button open it.": "Отдаление дальше всего региона после паузы открывает карту Нового Эдема. Если выключено, её открывают только заголовок карты и кнопка отдаления.",
   "Show Character Names": "Показывать имена персонажей",
   "Tags each system with a client in it. More than one in a system shows as a count.": "Отмечает каждую систему с клиентом. Несколько клиентов в системе показываются числом.",
   "Live Stats": "Статистика в реальном времени",

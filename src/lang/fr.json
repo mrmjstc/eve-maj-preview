@@ -1106,6 +1106,8 @@
   "What the map follows, where its figures come from, and how intel shows.": "Ce que suit la carte, d'où viennent ses chiffres et comment l'intel s'affiche.",
   "Follow Active Client": "Suivre le client actif",
   "Opens a client's region when you switch to it, or when it jumps into another.": "Ouvre la région d'un client quand vous passez à lui, ou quand il saute dans une autre.",
+  "Scroll Out to New Eden": "Dézoomer vers New Eden",
+  "Scrolling out past the whole region, after a pause, opens the New Eden map. Off, only the map's title and the zoom-out button open it.": "Dézoomer au-delà de toute la région, après une pause, ouvre la carte de New Eden. Désactivé, seuls le titre de la carte et le bouton de dézoom l'ouvrent.",
   "Show Character Names": "Afficher les noms des personnages",
   "Tags each system with a client in it. More than one in a system shows as a count.": "Étiquette chaque système contenant un client. Plusieurs dans un système s'affichent sous forme de nombre.",
   "Live Stats": "Statistiques en direct",

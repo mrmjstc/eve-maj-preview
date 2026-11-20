@@ -28,6 +28,8 @@ const slog = log.Scoped("map_panel");
 
 /// Each wheel notch or zoom button press.
 const ZOOM_STEP: f32 = 1.25;
+/// How long the wheel must rest before scrolling out at the fit opens New Eden, so one flick stops at the fit.
+const WHEEL_PAUSE_MS: u64 = 400;
 /// How far the cursor must move before a press on empty map counts as a drag.
 const PAN_START_DISTANCE: i32 = 3;
 
@@ -179,12 +181,16 @@ fn onWheel(window: *MapPanelWindow, wParam: win32.WPARAM, lParam: win32.LPARAM) 
     const area = window.currentAreas().map;
     if (point.x < area.left or point.x >= area.right or point.y >= area.bottom) return false;
     const notches = @as(f32, @floatFromInt(win32.getWheelDelta(@truncate(wParam)))) / win32.WHEEL_DELTA;
+    const now_ms = win32.Ticks.now().ms;
+    const rested_ms = now_ms -| window.state.last_wheel_ms;
+    window.state.last_wheel_ms = now_ms;
     if (window.state.is_picking_region) {
         if (notches <= 0) return false;
         leaveNewEden(window, window.state.overview.regionAt(point.x, point.y));
         return true;
     }
     if (notches < 0 and window.state.layout.view.isFitted()) {
+        if (!window.config.mapPanel.wheelOpensNewEden or rested_ms < WHEEL_PAUSE_MS) return false;
         openNewEden(window);
         return true;
     }

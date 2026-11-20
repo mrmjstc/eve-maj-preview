@@ -78,6 +78,8 @@ pub const MapState = struct {
     hover: Hover = .{},
     /// Null unless the left button is down on empty map.
     pan: ?MapPan = null,
+    /// In ms since boot, of the last wheel notch over the map.
+    last_wheel_ms: u64 = 0,
     /// Shows New Eden in place of the map.
     is_picking_region: bool = false,
     /// Set by a Ctrl-click in New Eden, which then closes once Ctrl is let go.

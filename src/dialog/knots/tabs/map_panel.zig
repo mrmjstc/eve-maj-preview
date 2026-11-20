@@ -96,6 +96,8 @@ fn behavior(context: *ui.Frame, ref: MapRef, is_shown: bool) !void {
     const options = try widgets.openGroup(context, .src(@src()), is_shown);
     try bind.toggle(context, ref, "followActive", "Follow Active Client");
     try widgets.hintText(context, .src(@src()), "Opens a client's region when you switch to it, or when it jumps into another.");
+    try bind.toggle(context, ref, "wheelOpensNewEden", "Scroll Out to New Eden");
+    try widgets.hintText(context, .src(@src()), "Scrolling out past the whole region, after a pause, opens the New Eden map. Off, only the map's title and the zoom-out button open it.");
     try bind.toggle(context, ref, "showCharacterNames", "Show Character Names");
     try widgets.hintText(context, .src(@src()), "Tags each system with a client in it. More than one in a system shows as a count.");
     try bind.toggle(context, ref, "liveStats", "Live Stats");

@@ -1106,6 +1106,8 @@
   "What the map follows, where its figures come from, and how intel shows.": "Za czym podąża mapa, skąd pochodzą jej dane i jak pokazywany jest intel.",
   "Follow Active Client": "Podążaj za aktywnym klientem",
   "Opens a client's region when you switch to it, or when it jumps into another.": "Otwiera region klienta, gdy się na niego przełączysz lub gdy wskoczy do innego.",
+  "Scroll Out to New Eden": "Oddalanie do New Eden",
+  "Scrolling out past the whole region, after a pause, opens the New Eden map. Off, only the map's title and the zoom-out button open it.": "Oddalenie poza cały region, po chwili przerwy, otwiera mapę New Eden. Wyłączone: otwierają ją tylko tytuł mapy i przycisk oddalania.",
   "Show Character Names": "Pokazuj nazwy postaci",
   "Tags each system with a client in it. More than one in a system shows as a count.": "Oznacza każdy system z klientem. Kilku w jednym systemie pokazuje się jako liczba.",
   "Live Stats": "Statystyki na żywo",

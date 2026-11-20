@@ -1106,6 +1106,8 @@
   "What the map follows, where its figures come from, and how intel shows.": "What the map follows, where its figures come from, and how intel shows.",
   "Follow Active Client": "Follow Active Client",
   "Opens a client's region when you switch to it, or when it jumps into another.": "Opens a client's region when you switch to it, or when it jumps into another.",
+  "Scroll Out to New Eden": "Scroll Out to New Eden",
+  "Scrolling out past the whole region, after a pause, opens the New Eden map. Off, only the map's title and the zoom-out button open it.": "Scrolling out past the whole region, after a pause, opens the New Eden map. Off, only the map's title and the zoom-out button open it.",
   "Show Character Names": "Show Character Names",
   "Tags each system with a client in it. More than one in a system shows as a count.": "Tags each system with a client in it. More than one in a system shows as a count.",
   "Live Stats": "Live Stats",

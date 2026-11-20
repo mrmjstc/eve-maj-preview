@@ -154,6 +154,8 @@ pub const MapPanelConfig = struct {
     extraRegionId3: u32 = 0,
     /// Opens the active client's region whenever it leaves those shown.
     followActive: bool = true,
+    /// Scrolling out past the fit opens New Eden; its title and the zoom-out button do either way.
+    wheelOpensNewEden: bool = true,
     metric: types.MapMetric = .Security,
     /// Eve Stars sums the longer spans; without a token the map shows ESI's last hour whatever this holds.
     trafficSpan: types.TrafficSpan = .Hour,
