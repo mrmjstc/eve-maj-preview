@@ -103,7 +103,7 @@ pub fn build(b: *std.Build) void {
     sim.subsystem = .windows;
     sim.stack_size = 16 * 1024 * 1024;
     for ([_][]const u8{ "c", "user32", "gdi32", "dwmapi", "shell32", "ole32", "advapi32" }) |library| sim.root_module.linkSystemLibrary(library, .{});
-    sim.root_module.addWin32ResourceFile(.{ .file = b.path("app.rc") });
+    sim.root_module.addWin32ResourceFile(.{ .file = b.path("sim.rc") });
     sim.root_module.addImport("knots", knots.module("knots"));
     sim.root_module.addImport("ui", knots.module("ui"));
     b.installArtifact(sim);
