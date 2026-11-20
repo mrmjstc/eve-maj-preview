@@ -124,8 +124,9 @@ pub const App = struct {
         };
     }
 
-    /// Each part goes before what it borrows; safe after a startup that failed partway, and only once background threads have finished.
+    /// Safe after a startup that failed partway, but only once background threads have finished.
     pub fn deinit(self: *App) void {
+        // Each part goes before what it borrows.
         if (self.timer_hwnd) |timer_hwnd| _ = win32.KillTimer(timer_hwnd, TICK_TIMER_ID);
         self.destroyHotkeyManager();
         if (self.tray_icon) |*icon| icon.deinit();
@@ -242,6 +243,7 @@ pub const App = struct {
             .all => thumbnail_set.repositionAllThumbnails(),
         }
         thumbnail_set.refreshAllThumbnailVisuals();
+        if (self.list_window) |*list_window| list_window.redraw();
     }
 
     pub fn tick(self: *App) void {
@@ -301,7 +303,11 @@ pub const App = struct {
         const wanted_interval = self.tickIntervalFor(scout_result.windows.len);
         if (wanted_interval != self.tick_interval_ms) {
             if (self.timer_hwnd) |timer_hwnd| {
-                if (self.setTickInterval(timer_hwnd, wanted_interval)) slog.debug("Tick interval now {} ms", .{wanted_interval});
+                if (self.setTickInterval(timer_hwnd, wanted_interval)) {
+                    slog.debug("Tick interval now {} ms", .{wanted_interval});
+                } else {
+                    slog.warn("Failed to update the timer interval to {} ms, keeping {} ms", .{ wanted_interval, self.tick_interval_ms });
+                }
             }
         }
     }
