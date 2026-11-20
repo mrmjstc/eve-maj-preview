@@ -40,7 +40,8 @@ const FLAGS = [_]Flag{
     .{ .field = "excludeFromCloseAll", .label = "Exclude from Close All", .hint = "The Close All hotkey leaves this client open." },
     .{ .field = "excludeFromAutoMove", .label = "Exclude from Auto-Move", .hint = "Its window is never moved to its saved position." },
     .{ .field = "excludeFromChatAlerts", .label = "Exclude from Chat Alerts", .hint = "This client never receives chat alerts." },
-    .{ .field = "hideThumbnail", .label = "Hide Thumbnail", .hint = "Also hides its row in the client list." },
+    .{ .field = "hideThumbnail", .label = "Hide Thumbnail", .hint = "Its row in the client list still shows." },
+    .{ .field = "hideFromClientList", .label = "Hide from Client List", .hint = "Its thumbnail still shows." },
     .{ .field = "notificationsMuted", .label = "Mute Alerts", .hint = "No alerts for this character at all." },
 };
 
@@ -81,8 +82,8 @@ fn emptyState(context: *ui.Frame, profile: ProfileRef) !void {
     try state.close(context);
 }
 
-/// `lifted_style` while it's being dragged, otherwise the roster's own; `logged_in` borrows positions.openClients' names.
-fn characterRow(context: *ui.Frame, character: *const config.CharacterConfig, index: usize, logged_in: []const []const u8, lifted_style: ?*const ui.Style) !void {
+/// `lifted_style` while it's being dragged, otherwise the roster's own; `logged_in_names` borrows from positions.openClients.
+fn characterRow(context: *ui.Frame, character: *const config.CharacterConfig, index: usize, logged_in_names: []const []const u8, lifted_style: ?*const ui.Style) !void {
     const arena = context.arena();
     const row = try roster_mod.Row.open(context, ROW_KEY.indexed(index), index == g_selected.index, lifted_style);
     if (row.is_picked) g_selected.index = index;
@@ -91,7 +92,7 @@ fn characterRow(context: *ui.Frame, character: *const config.CharacterConfig, in
     const portrait = portraits.image(arena, PORTRAIT_KEY, character.name, &style.roster_portrait) orelse
         images.g_default_portrait.image(ui.Key.str("knots.roster.portrait_default").indexed(index), &style.roster_portrait);
     if (portrait) |image| try context.e(image);
-    if (positions.isListed(logged_in, character.name)) try context.e(Rect{ .key = ui.Key.str("knots.roster.online").indexed(index), .style = &style.roster_online_ring });
+    if (positions.isListed(logged_in_names, character.name)) try context.e(Rect{ .key = ui.Key.str("knots.roster.online").indexed(index), .style = &style.roster_online_ring });
     try portrait_box.close(context);
     var badge: []const u8 = "";
     if (character.hotkey.len > 0) {
@@ -112,15 +113,15 @@ fn rosterName(context: *ui.Frame, index: usize) ![]const u8 {
 fn roster(context: *ui.Frame, profile: ProfileRef) !void {
     const characters = profile.ptr.characters.items;
     const list = try widgets.openRoster(context, .str("knots.characters.roster"), &style.roster, true);
-    const logged_in = try positions.openClients(context.arena());
+    const logged_in_names = try positions.openClients(context.arena());
     var order = widgets.ReorderList.begin(context, ROW_KEY, characters.len, 0);
     for (characters, 0..) |*character, index| {
         try widgets.reorderRow(context, ROW_KEY, index);
-        if (try order.next(context, index)) try characterRow(context, character, index, logged_in, null);
+        if (try order.next(context, index)) try characterRow(context, character, index, logged_in_names, null);
     }
     if (try order.end(context)) |lifted| {
         const lifted_style = try order.liftedStyle(context, list.rowsKey(), roster_mod.rowStyle(lifted == g_selected.index));
-        try characterRow(context, &characters[lifted], lifted, logged_in, lifted_style);
+        try characterRow(context, &characters[lifted], lifted, logged_in_names, lifted_style);
     }
     const action = try list.close(context, .{ .add_label = "Add Character", .has_open_clients = true });
 

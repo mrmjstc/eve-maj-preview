@@ -62,6 +62,7 @@ pub const CharacterConfig = struct {
     excludeFromAutoMove: bool = false,
     excludeFromChatAlerts: bool = false,
     hideThumbnail: bool = false,
+    hideFromClientList: bool = false,
     notificationsMuted: bool = false,
     opacity: ?u8 = null,
     /// The dialog's handle across renames and reorders; 0 until assigned (see config/patch.zig).

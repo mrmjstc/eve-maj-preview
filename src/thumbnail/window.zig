@@ -87,6 +87,7 @@ pub const ThumbnailWindow = struct {
     cached_border_colors: ?config_mod.CharacterBorderColorsConfig = null,
     cached_is_excluded_from_minimize: bool = false,
     cached_is_thumbnail_hidden: bool = false,
+    cached_is_hidden_from_client_list: bool = false,
     cached_thumbnail_size: ?config_mod.CharacterThumbnailSizeConfig = null,
     cached_opacity: u8 = 255,
     /// Owned; the badge-enabled groups this character is in, comma-joined ("1, 3"), or "" for none.
@@ -102,6 +103,7 @@ pub const ThumbnailWindow = struct {
         self.cached_border_colors = if (is_logged_in) auto_colors.characterBorderColors(config, self.character_name) else null;
         self.cached_is_excluded_from_minimize = config.isExcludedFromMinimize(self.character_name);
         self.cached_is_thumbnail_hidden = config.isThumbnailHidden(self.character_name);
+        self.cached_is_hidden_from_client_list = config.isHiddenFromClientList(self.character_name);
         self.cached_thumbnail_size = config.getCharacterSize(self.character_name);
         self.cached_opacity = config.getCharacterOpacity(self.character_name);
     }

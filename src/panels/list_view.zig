@@ -53,9 +53,9 @@ const Line = struct {
     top: i32,
     bottom: i32,
     /// Into `rows`.
-    first_row: usize,
+    first_row_index: usize,
     row_count: usize,
-    /// Over the `row_count` rows from `first_row`, rather than those rows.
+    /// Over the `row_count` rows from `first_row_index`, rather than those rows.
     is_heading: bool = false,
 };
 
@@ -87,7 +87,7 @@ pub const ListWindow = struct {
     host: panel_host.Host,
     instance: win32.HINSTANCE,
     row_input: RowInput,
-    /// Indices into the thumbnails render() was given, one per row in display order; hidden characters get none.
+    /// Indices into the thumbnails render() was given, one per row in display order; characters hidden from the list get none.
     rows: std.ArrayList(usize) = .empty,
     /// Each row's client, for clicks between renders.
     row_source_hwnds: std.ArrayList(win32.HWND) = .empty,
@@ -141,7 +141,7 @@ pub const ListWindow = struct {
         if (line.is_heading) return null;
         const column: usize = @intCast(@max(0, @divTrunc(x, list_look.metrics(list_settings).column_width)));
         if (column >= line.row_count) return null;
-        const index = line.first_row + column;
+        const index = line.first_row_index + column;
         if (index >= self.row_source_hwnds.items.len) return null;
         return self.row_source_hwnds.items[index];
     }
@@ -427,7 +427,7 @@ pub const ListWindow = struct {
         self.rows.clearRetainingCapacity();
         var has_visible_row = false;
         for (thumbnails, 0..) |*thumbnail, i| {
-            if (thumbnail.cached_is_thumbnail_hidden) continue;
+            if (thumbnail.cached_is_hidden_from_client_list) continue;
             try self.rows.append(self.panel.allocator, i);
             if (thumbnail.isShown()) has_visible_row = true;
         }
@@ -478,7 +478,7 @@ pub const ListWindow = struct {
                     self.drawHeading(canvas, dc, thumbnails, line, panel_width);
                     continue;
                 }
-                for (0..line.row_count) |column| self.drawRow(bitmap, &thumbnails[self.rows.items[line.first_row + column]], line, column, sizes.column_width, row_text, active_source_hwnd);
+                for (0..line.row_count) |column| self.drawRow(bitmap, &thumbnails[self.rows.items[line.first_row_index + column]], line, column, sizes.column_width, row_text, active_source_hwnd);
             }
             if (shows_totals) {
                 if (row_text) |text| self.drawTotals(canvas, dc, thumbnails, text, lines_bottom, sizes.footer_height, panel_width);
@@ -534,25 +534,25 @@ pub const ListWindow = struct {
         const shows_stats = list_look.showsAnyStat(self.statSettings());
         self.lines.clearRetainingCapacity();
         var top = sizes.header_height;
-        var first: usize = 0;
-        while (first < rows.len) {
+        var first_index: usize = 0;
+        while (first_index < rows.len) {
             var group_end = rows.len;
             if (self.config.listView.groupBySystem) {
-                const system_name = thumbnails[rows[first]].system_name;
-                group_end = first + 1;
+                const system_name = thumbnails[rows[first_index]].system_name;
+                group_end = first_index + 1;
                 while (group_end < rows.len and std.mem.eql(u8, thumbnails[rows[group_end]].system_name, system_name)) group_end += 1;
-                try self.lines.append(allocator, .{ .top = top, .bottom = top + list_look.GROUP_HEADING_HEIGHT, .first_row = first, .row_count = group_end - first, .is_heading = true });
+                try self.lines.append(allocator, .{ .top = top, .bottom = top + list_look.GROUP_HEADING_HEIGHT, .first_row_index = first_index, .row_count = group_end - first_index, .is_heading = true });
                 top += list_look.GROUP_HEADING_HEIGHT;
             }
-            var line_first = first;
-            while (line_first < group_end) {
-                const line_end = @min(line_first + column_count, group_end);
+            var line_first_index = first_index;
+            while (line_first_index < group_end) {
+                const line_end = @min(line_first_index + column_count, group_end);
                 const height = if (shows_stats) sizes.stats_row_height else sizes.row_height;
-                try self.lines.append(allocator, .{ .top = top, .bottom = top + height, .first_row = line_first, .row_count = line_end - line_first });
+                try self.lines.append(allocator, .{ .top = top, .bottom = top + height, .first_row_index = line_first_index, .row_count = line_end - line_first_index });
                 top += height;
-                line_first = line_end;
+                line_first_index = line_end;
             }
-            first = group_end;
+            first_index = group_end;
         }
         return top;
     }
@@ -564,7 +564,7 @@ pub const ListWindow = struct {
         const text_height = panel_chrome.lineHeight(dc);
         const y = line.top + @divTrunc(line.bottom - line.top - text_height, 2);
         const right = panel_width - list_look.PADDING_X;
-        const system_name = thumbnails[self.rows.items[line.first_row]].system_name;
+        const system_name = thumbnails[self.rows.items[line.first_row_index]].system_name;
         var heading_buffer: [HEADING_TEXT_MAX]u8 = undefined;
         const heading = if (system_name.len == 0) list_look.NO_SYSTEM_TEXT else std.ascii.upperString(&heading_buffer, system_name[0..@min(system_name.len, heading_buffer.len)]);
 

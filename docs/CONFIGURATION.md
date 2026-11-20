@@ -716,7 +716,8 @@ Matched by exact `name`. Positions are saved automatically on drag.
 | `excludeFromCloseAll` | bool | `false` | |
 | `excludeFromAutoMove` | bool | `false` | |
 | `excludeFromChatAlerts` | bool | `false` | This client never receives chat alerts. |
-| `hideThumbnail` | bool | `false` | Hide its thumbnail and list row; takes no space cell. |
+| `hideThumbnail` | bool | `false` | Hide its thumbnail; takes no space cell. |
+| `hideFromClientList` | bool | `false` | Hide its row in the client list. |
 | `notificationsMuted` | bool | `false` | |
 
 ### systemColors

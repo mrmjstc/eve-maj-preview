@@ -300,6 +300,10 @@ pub const Config = struct {
         return self.characterSetting(character_name, "hideThumbnail", false);
     }
 
+    pub fn isHiddenFromClientList(self: *const Config, character_name: []const u8) bool {
+        return self.characterSetting(character_name, "hideFromClientList", false);
+    }
+
     pub fn isExcludedFromAutoMove(self: *const Config, character_name: []const u8) bool {
         return self.characterSetting(character_name, "excludeFromAutoMove", false);
     }
@@ -352,7 +356,7 @@ pub const Config = struct {
         };
     }
 
-    /// The badge-enabled groups `character_name` is in, comma-joined by name or 1-based number ("1, Miners"); "" when none; owned by the caller.
+    /// Its badge-enabled groups by name or 1-based number ("1, Miners"), or "" for none; caller owns it.
     pub fn groupBadgeLabel(self: *const Config, allocator: std.mem.Allocator, character_name: []const u8) ![]const u8 {
         var label: std.Io.Writer.Allocating = .init(allocator);
         errdefer label.deinit();
