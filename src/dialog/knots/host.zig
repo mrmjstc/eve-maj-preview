@@ -40,6 +40,7 @@ const prices = @import("prices.zig");
 const client_windows = @import("tabs/client_windows.zig");
 const client_list = @import("tabs/client_list.zig");
 const notification_history = @import("tabs/notification_history.zig");
+const messages = @import("../../messages.zig");
 const log = @import("../../log.zig");
 
 const GlobalConfig = config.GlobalConfig;
@@ -154,7 +155,7 @@ pub fn postCommand(command: Command) void {
         slog.err("Failed to run a knots configuration window command: the timer window is missing", .{});
         return;
     };
-    if (!win32.toBool(win32.PostMessageA(timer_hwnd, win32.WM_KNOTS_COMMAND, @backingInt(command), 0))) {
+    if (!win32.toBool(win32.PostMessageA(timer_hwnd, messages.WM_KNOTS_COMMAND, @backingInt(command), 0))) {
         slog.err("Failed to run a knots configuration window command: error {d}", .{win32.GetLastError()});
     }
 }
@@ -510,7 +511,7 @@ fn startUpdateCheck() void {
 /// Update check thread only.
 fn checkThenRedraw(allocator: std.mem.Allocator, io: std.Io, timer_hwnd: win32.HWND) void {
     update.checkForUpdatesBackground(allocator, io);
-    if (!win32.toBool(win32.PostMessageA(timer_hwnd, win32.WM_KNOTS_COMMAND, @backingInt(Command.update_checked), 0))) {
+    if (!win32.toBool(win32.PostMessageA(timer_hwnd, messages.WM_KNOTS_COMMAND, @backingInt(Command.update_checked), 0))) {
         slog.warn("Failed to show the update check's result: error {d}", .{win32.GetLastError()});
     }
 }

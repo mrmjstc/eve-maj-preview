@@ -3,13 +3,11 @@ const win32 = @import("../platform/win32.zig");
 const app_mod = @import("../app.zig");
 const scout = @import("../clients/scout.zig");
 const arrange = @import("../thumbnail/arrange.zig");
+const messages = @import("../messages.zig");
 const log = @import("../log.zig");
 
 const App = app_mod.App;
 const slog = log.Scoped("focus");
-
-/// Timer on the app's timer window, beside app.TICK_TIMER_ID, that auto-hides every thumbnail once no EVE window has had focus for hideDebounceMs.
-pub const HIDE_DEBOUNCE_TIMER_ID: usize = 2;
 
 /// App owns it, so a thumbnail set or hotkey manager rebuild keeps it; main thread only.
 pub const FocusTracker = struct {
@@ -34,7 +32,7 @@ pub const FocusTracker = struct {
 
     fn startHideTimer(self: *FocusTracker, timer_hwnd: ?win32.HWND, delay_ms: u32) void {
         const hwnd = timer_hwnd orelse return;
-        if (win32.SetTimer(hwnd, HIDE_DEBOUNCE_TIMER_ID, delay_ms, null) == 0) {
+        if (win32.SetTimer(hwnd, messages.HIDE_DEBOUNCE_TIMER_ID, delay_ms, null) == 0) {
             slog.err("Failed to start hide debounce timer", .{});
             return;
         }
@@ -43,7 +41,7 @@ pub const FocusTracker = struct {
 
     fn cancelHideTimer(self: *FocusTracker, timer_hwnd: ?win32.HWND) void {
         if (!self.is_hide_timer_pending) return;
-        if (timer_hwnd) |hwnd| _ = win32.KillTimer(hwnd, HIDE_DEBOUNCE_TIMER_ID);
+        if (timer_hwnd) |hwnd| _ = win32.KillTimer(hwnd, messages.HIDE_DEBOUNCE_TIMER_ID);
         self.is_hide_timer_pending = false;
     }
 };

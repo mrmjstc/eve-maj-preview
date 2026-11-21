@@ -5,6 +5,7 @@ const ores = @import("../../activity/ores.zig");
 const esi_prices = @import("../tools/esi_prices.zig");
 const detached = @import("../../util/detached.zig");
 const handoff = @import("../../util/handoff.zig");
+const messages = @import("../../messages.zig");
 const log = @import("../../log.zig");
 
 const slog = log.Scoped("dialog_knots");
@@ -79,7 +80,7 @@ fn fetchThread(io: std.Io, timer_hwnd: win32.HWND, command: usize) void {
         fetched.has_failed = true;
     }
     g_results.push(fetched);
-    if (!win32.toBool(win32.PostMessageA(timer_hwnd, win32.WM_KNOTS_COMMAND, command, 0))) {
+    if (!win32.toBool(win32.PostMessageA(timer_hwnd, messages.WM_KNOTS_COMMAND, command, 0))) {
         slog.err("Failed to pass on the fetched ore prices, they wait for the next fetch: error {d}", .{win32.GetLastError()});
     }
 }

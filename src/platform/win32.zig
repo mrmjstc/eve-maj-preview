@@ -91,14 +91,6 @@ pub const WM_DPICHANGED = 0x02E0;
 pub const WM_COPYDATA = 0x004A;
 pub const WM_USER = 0x0400;
 pub const WM_APP = 0x8000;
-pub const WM_TRAYICON = WM_USER + 1;
-pub const WM_SWITCH_PROFILE = WM_APP + 4;
-pub const WM_HOTKEYS_STATE_CHANGED = WM_APP + 12;
-pub const WM_KNOTS_COMMAND = WM_APP + 16;
-/// Posted to the hotkey hook thread, with a request in lParam.
-pub const WM_HOOK_REQUEST = WM_APP + 20;
-/// Posted to the timer window when the config dialog records a bare Win press; wParam holds the other held modifiers.
-pub const WM_WIN_KEY_CAPTURED = WM_APP + 21;
 pub const WM_QUIT = 0x0012;
 pub const WM_COMMAND = 0x0111;
 
@@ -720,24 +712,6 @@ pub const MF_CHECKED = 0x00000008;
 pub const MF_GRAYED = 0x00000001;
 /// IDI_ICON1 in app.rc: the icon built into the exe.
 pub const APP_ICON_ID = 101;
-pub const IDM_EXIT = 1001;
-pub const IDM_UPDATE = 1002;
-pub const IDM_TOGGLE_DRAGGING = 1003;
-pub const IDM_SUSPEND_HOTKEYS = 1004;
-pub const IDM_TOGGLE_AUTO_MINIMIZE = 1005;
-pub const IDM_TOGGLE_VISIBILITY = 1006;
-pub const IDM_OPEN_CONFIG = 1007;
-pub const IDM_CLOSE_ALL_CLIENTS = 1008;
-pub const IDM_TOGGLE_NOTIF_HISTORY = 1009;
-pub const IDM_CLEAR_NOTIF_HISTORY = 1010;
-pub const IDM_TOGGLE_TRAVEL_MODE = 1011;
-pub const IDM_RESTORE_SAVED_POSITIONS = 1012;
-pub const IDM_TOGGLE_ALERT_MUTE = 1013;
-pub const IDM_TOGGLE_MAP_PANEL = 1014;
-pub const IDM_TOGGLE_INTEL_PANEL = 1015;
-pub const IDM_PROFILE_BASE = 2000;
-pub const IDM_CLOSE_GROUP_BASE = 3000;
-pub const IDM_MINIMIZE_GROUP_BASE = 4000;
 
 pub const IDI_APPLICATION: LPCSTR = @ptrFromInt(32512);
 pub const IMAGE_ICON = 1;

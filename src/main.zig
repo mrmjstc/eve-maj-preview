@@ -23,6 +23,7 @@ const update = @import("update.zig");
 const knots_host = @import("dialog/knots/host.zig");
 const lang = @import("lang/lang.zig");
 const detached = @import("util/detached.zig");
+const messages = @import("messages.zig");
 const log = @import("log.zig");
 
 const App = app_mod.App;
@@ -232,7 +233,7 @@ fn setCwdToExecutableDir() bool {
 fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
     const app = app_mod.g_app orelse return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
     switch (msg) {
-        win32.WM_TRAYICON => {
+        messages.WM_TRAYICON => {
             if (app.tray_icon) |*icon| icon.handleTrayMessage(lParam, app);
             return 0;
         },
@@ -241,9 +242,9 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
             return 0;
         },
         win32.WM_TIMER => {
-            if (wParam == app_mod.TICK_TIMER_ID) {
+            if (wParam == messages.TICK_TIMER_ID) {
                 app.tick();
-            } else if (wParam == focus.HIDE_DEBOUNCE_TIMER_ID) {
+            } else if (wParam == messages.HIDE_DEBOUNCE_TIMER_ID) {
                 focus.onHideTimer(app);
             }
             return 0;
@@ -256,13 +257,13 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
             }
             return 0;
         },
-        win32.WM_HOTKEYS_STATE_CHANGED => {
+        messages.WM_HOTKEYS_STATE_CHANGED => {
             if (app.hotkey_manager) |manager| {
                 app.notifier().notifyAll(.{ .notification_type = .HotkeySuspend, .state = if (manager.areHotkeysSuspended()) .suspended else .resumed });
             }
             return 0;
         },
-        win32.WM_SWITCH_PROFILE => {
+        messages.WM_SWITCH_PROFILE => {
             app.runPendingProfileSwitch();
             return 0;
         },
@@ -270,11 +271,11 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
             run.handleCopyData(app, win32.lparamToPtr(win32.COPYDATASTRUCT, lParam));
             return 0;
         },
-        win32.WM_WIN_KEY_CAPTURED => {
+        messages.WM_WIN_KEY_CAPTURED => {
             keyboard_hook.onWinKeyCaptured(wParam);
             return 0;
         },
-        win32.WM_KNOTS_COMMAND => {
+        messages.WM_KNOTS_COMMAND => {
             knots_host.onCommand(wParam);
             return 0;
         },

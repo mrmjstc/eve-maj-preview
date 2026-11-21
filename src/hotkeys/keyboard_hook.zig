@@ -2,6 +2,7 @@
 const win32 = @import("../platform/win32.zig");
 const vk = @import("../platform/virtual_keys.zig");
 const hook_bindings = @import("hook_bindings.zig");
+const messages = @import("../messages.zig");
 
 const HookBindings = hook_bindings.HookBindings;
 
@@ -111,7 +112,7 @@ fn onKeyUp(vk_code: u8) bool {
     // The conduit hotkey only consumes the down; a stray up reaching the new client makes it drop held modifiers.
     if (vk_code == vk.VK_FOCUS_GRANT) return true;
     if (g_hook.is_pinned and isWinVk(vk_code)) {
-        if (g_hook.target_hwnd) |hwnd| _ = win32.PostMessageA(hwnd, win32.WM_WIN_KEY_CAPTURED, vk.currentModifiers() & ~vk.MOD_WIN, 0);
+        if (g_hook.target_hwnd) |hwnd| _ = win32.PostMessageA(hwnd, messages.WM_WIN_KEY_CAPTURED, vk.currentModifiers() & ~vk.MOD_WIN, 0);
     }
     return press == .swallowed;
 }

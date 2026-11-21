@@ -4,6 +4,7 @@ const win32 = @import("../../platform/win32.zig");
 const lang = @import("../../lang/lang.zig");
 const detached = @import("../../util/detached.zig");
 const handoff = @import("../../util/handoff.zig");
+const messages = @import("../../messages.zig");
 const log = @import("../../log.zig");
 
 const slog = log.Scoped("dialog_knots");
@@ -97,7 +98,7 @@ fn pickerThread(target: Target, index: usize, title: []const u8, file_type_name:
     };
     picked.* = .{ .target = target, .index = index, .path = path };
     g_results.push(picked);
-    if (!win32.toBool(win32.PostMessageA(timer_hwnd, win32.WM_KNOTS_COMMAND, command, 0))) {
+    if (!win32.toBool(win32.PostMessageA(timer_hwnd, messages.WM_KNOTS_COMMAND, command, 0))) {
         slog.err("Failed to pass on the picked path, it waits for the next pick: error {d}", .{win32.GetLastError()});
     }
 }

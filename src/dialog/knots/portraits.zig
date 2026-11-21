@@ -9,6 +9,7 @@ const http_client = @import("../../util/http_client.zig");
 const rgba = @import("../../util/rgba.zig");
 const detached = @import("../../util/detached.zig");
 const handoff = @import("../../util/handoff.zig");
+const messages = @import("../../messages.zig");
 const log = @import("../../log.zig");
 
 const Image = ui.component.Image;
@@ -213,7 +214,7 @@ fn loadThread(io: std.Io, timer_hwnd: win32.HWND, command: usize, id: []const u8
     _ = g_load_count.fetchSub(1, .release);
     g_results.push(loaded);
     // `id` belongs to the stack now, and the main thread may already have freed it.
-    if (!win32.toBool(win32.PostMessageA(timer_hwnd, win32.WM_KNOTS_COMMAND, command, 0))) {
+    if (!win32.toBool(win32.PostMessageA(timer_hwnd, messages.WM_KNOTS_COMMAND, command, 0))) {
         slog.warn("Failed to pass on a character portrait, it waits for the next one: error {d}", .{win32.GetLastError()});
     }
 }

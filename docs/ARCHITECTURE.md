@@ -71,7 +71,7 @@ Reload entry points:
 
 ## Main thread messages
 
-`timerWindowProc` (`main.zig`) is the central dispatcher:
+`timerWindowProc` (`main.zig`) is the central dispatcher; the app's own messages and timer IDs are defined in `messages.zig`, which checks they're unique:
 
 | Message | Handler |
 |---|---|
@@ -360,6 +360,7 @@ A second exe, `eve-maj-sim` (`zig build sim`), that stands in for EVE clients so
 |---|---|
 | `log.zig` | Buffered rotating file log, `Scoped(name)`, debug console |
 | `crash.zig` | Exception handlers, panic handler, minidump |
+| `messages.zig` | The app's window messages and the timer window's timer IDs, kept unique; `win32.zig` keeps only Windows' own |
 | `tray.zig` | Tray icon and menu; its toggles run as hotkey actions through `App.commands().runGlobal` |
 | `update.zig` | GitHub release check |
 | `lang/` | UI strings by English key, per-language JSON |

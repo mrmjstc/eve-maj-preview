@@ -1,6 +1,7 @@
 //! The thread the low-level keyboard and mouse hooks run on, so a busy main thread never delays system-wide input or gets the hooks removed by Windows.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
+const messages = @import("../messages.zig");
 const log = @import("../log.zig");
 
 const slog = log.Scoped("hotkeys");
@@ -52,7 +53,8 @@ pub fn stop() void {
     g_done_event = null;
 }
 
-/// Main thread only; false (logged) if the hook thread can't be reached; `func` mustn't log, since waiting on the log lock stalls the hooks and Windows removes a slow hook.
+/// Main thread only; false (logged) if the hook thread can't be reached.
+/// `func` mustn't log: Windows removes a hook stalled on the log lock.
 pub fn call(context: anytype, comptime func: fn (@TypeOf(context)) void) bool {
     const Erased = struct {
         fn run(erased: *anyopaque) void {
@@ -64,7 +66,7 @@ pub fn call(context: anytype, comptime func: fn (@TypeOf(context)) void) bool {
         return true;
     };
     var request: Request = .{ .context = context, .run = Erased.run };
-    if (!win32.toBool(win32.PostThreadMessageA(g_thread_id, win32.WM_HOOK_REQUEST, 0, win32.ptrToLparam(&request)))) {
+    if (!win32.toBool(win32.PostThreadMessageA(g_thread_id, messages.WM_HOOK_REQUEST, 0, win32.ptrToLparam(&request)))) {
         slog.err("Failed to reach the hotkey hook thread: error {d}", .{win32.GetLastError()});
         return false;
     }
@@ -99,7 +101,7 @@ fn threadMain(done_event: win32.HANDLE) void {
             slog.err("Failed to read the hotkey hook thread's messages, stopping it: error {d}", .{win32.GetLastError()});
             break;
         }
-        if (msg.message != win32.WM_HOOK_REQUEST) continue;
+        if (msg.message != messages.WM_HOOK_REQUEST) continue;
         const request = win32.lparamToPtr(Request, msg.lParam);
         request.run(request.context);
         _ = win32.SetEvent(done_event);

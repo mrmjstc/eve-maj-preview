@@ -12,6 +12,7 @@ const bindings = @import("bindings.zig");
 const plan_mod = @import("plan.zig");
 const cycle_order = @import("cycle_order.zig");
 const commands_mod = @import("commands.zig");
+const messages = @import("../messages.zig");
 const log = @import("../log.zig");
 
 const GlobalConfig = config_mod.GlobalConfig;
@@ -214,7 +215,7 @@ pub const HotkeyManager = struct {
                 slog.err("Failed to re-register hotkeys after resuming: {}", .{err});
             };
         }
-        if (!win32.toBool(win32.PostMessageA(hwnd, win32.WM_HOTKEYS_STATE_CHANGED, 0, 0))) {
+        if (!win32.toBool(win32.PostMessageA(hwnd, messages.WM_HOTKEYS_STATE_CHANGED, 0, 0))) {
             slog.warn("Failed to show that hotkeys were {s}: error {d}", .{ state, win32.GetLastError() });
         }
     }

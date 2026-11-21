@@ -8,10 +8,30 @@ const knots_host = @import("dialog/knots/host.zig");
 const scout = @import("clients/scout.zig");
 const alert_effects = @import("notifications/alert_effects.zig");
 const url = @import("protocol/url.zig");
+const messages = @import("messages.zig");
 const log = @import("log.zig");
 
 const App = app_mod.App;
 const slog = log.Scoped("tray");
+
+const IDM_EXIT = 1001;
+const IDM_UPDATE = 1002;
+const IDM_TOGGLE_DRAGGING = 1003;
+const IDM_SUSPEND_HOTKEYS = 1004;
+const IDM_TOGGLE_AUTO_MINIMIZE = 1005;
+const IDM_TOGGLE_VISIBILITY = 1006;
+const IDM_OPEN_CONFIG = 1007;
+const IDM_CLOSE_ALL_CLIENTS = 1008;
+const IDM_TOGGLE_NOTIFICATION_HISTORY = 1009;
+const IDM_CLEAR_NOTIFICATION_HISTORY = 1010;
+const IDM_TOGGLE_TRAVEL_MODE = 1011;
+const IDM_RESTORE_SAVED_POSITIONS = 1012;
+const IDM_TOGGLE_ALERT_MUTE = 1013;
+const IDM_TOGGLE_MAP_PANEL = 1014;
+const IDM_TOGGLE_INTEL_PANEL = 1015;
+const IDM_PROFILE_BASE = 2000;
+const IDM_CLOSE_GROUP_BASE = 3000;
+const IDM_MINIMIZE_GROUP_BASE = 4000;
 
 /// Keeps profile item IDs inside their range above IDM_PROFILE_BASE.
 const MAX_PROFILE_ITEMS = 1000;
@@ -24,26 +44,26 @@ const RETRY_INTERVAL_MS: u64 = 5000;
 
 /// The items that run a global action, as a hotkey or protocol link would; the rest the tray handles itself.
 const MENU_ACTIONS = [_]MenuAction{
-    .{ .id = win32.IDM_TOGGLE_DRAGGING, .action = .toggle_dragging },
-    .{ .id = win32.IDM_TOGGLE_AUTO_MINIMIZE, .action = .toggle_auto_minimize },
-    .{ .id = win32.IDM_TOGGLE_TRAVEL_MODE, .action = .toggle_travel_mode },
-    .{ .id = win32.IDM_TOGGLE_VISIBILITY, .action = .toggle_visibility },
-    .{ .id = win32.IDM_RESTORE_SAVED_POSITIONS, .action = .move_to_saved_positions },
-    .{ .id = win32.IDM_TOGGLE_NOTIF_HISTORY, .action = .toggle_notification_history },
-    .{ .id = win32.IDM_CLEAR_NOTIF_HISTORY, .action = .clear_notification_history },
-    .{ .id = win32.IDM_TOGGLE_MAP_PANEL, .action = .toggle_map_panel },
-    .{ .id = win32.IDM_TOGGLE_INTEL_PANEL, .action = .toggle_intel_panel },
-    .{ .id = win32.IDM_TOGGLE_ALERT_MUTE, .action = .toggle_alert_mute },
-    .{ .id = win32.IDM_SUSPEND_HOTKEYS, .action = .suspend_hotkeys },
-    .{ .id = win32.IDM_CLOSE_ALL_CLIENTS, .action = .close_all },
+    .{ .id = IDM_TOGGLE_DRAGGING, .action = .toggle_dragging },
+    .{ .id = IDM_TOGGLE_AUTO_MINIMIZE, .action = .toggle_auto_minimize },
+    .{ .id = IDM_TOGGLE_TRAVEL_MODE, .action = .toggle_travel_mode },
+    .{ .id = IDM_TOGGLE_VISIBILITY, .action = .toggle_visibility },
+    .{ .id = IDM_RESTORE_SAVED_POSITIONS, .action = .move_to_saved_positions },
+    .{ .id = IDM_TOGGLE_NOTIFICATION_HISTORY, .action = .toggle_notification_history },
+    .{ .id = IDM_CLEAR_NOTIFICATION_HISTORY, .action = .clear_notification_history },
+    .{ .id = IDM_TOGGLE_MAP_PANEL, .action = .toggle_map_panel },
+    .{ .id = IDM_TOGGLE_INTEL_PANEL, .action = .toggle_intel_panel },
+    .{ .id = IDM_TOGGLE_ALERT_MUTE, .action = .toggle_alert_mute },
+    .{ .id = IDM_SUSPEND_HOTKEYS, .action = .suspend_hotkeys },
+    .{ .id = IDM_CLOSE_ALL_CLIENTS, .action = .close_all },
 };
 /// The items handleMenuCommand runs itself, which no menu action may take.
-const OWN_ITEMS = [_]u16{ win32.IDM_EXIT, win32.IDM_OPEN_CONFIG, win32.IDM_UPDATE };
+const OWN_ITEMS = [_]u16{ IDM_EXIT, IDM_OPEN_CONFIG, IDM_UPDATE };
 
 comptime {
     for (MENU_ACTIONS, 0..) |item, index| {
         const id_text = std.fmt.comptimePrint("{d}", .{item.id});
-        if (item.id >= win32.IDM_PROFILE_BASE) @compileError("tray item " ++ id_text ++ " runs into the profile and group submenus' IDs");
+        if (item.id >= IDM_PROFILE_BASE) @compileError("tray item " ++ id_text ++ " runs into the profile and group submenus' IDs");
         if (std.mem.indexOfScalar(u16, &OWN_ITEMS, item.id) != null) @compileError("tray item " ++ id_text ++ " is one the tray handles itself");
         for (MENU_ACTIONS[index + 1 ..]) |other| {
             if (other.id == item.id) @compileError("tray item " ++ id_text ++ " runs two actions");
@@ -90,7 +110,7 @@ pub const TrayIcon = struct {
         tray.icon_data.hWnd = hwnd;
         tray.icon_data.uID = 1;
         tray.icon_data.uFlags = win32.NIF_MESSAGE | win32.NIF_ICON | win32.NIF_TIP;
-        tray.icon_data.uCallbackMessage = win32.WM_TRAYICON;
+        tray.icon_data.uCallbackMessage = messages.WM_TRAYICON;
 
         const app_icon = win32.LoadImageA(win32.GetModuleHandleA(null), @ptrFromInt(win32.APP_ICON_ID), win32.IMAGE_ICON, 16, 16, 0);
         tray.icon_data.hIcon = if (app_icon) |icon| blk: {
@@ -203,45 +223,45 @@ pub const TrayIcon = struct {
         self.appendProfiles(app.io, profile_menu, config.profile_name);
 
         _ = win32.AppendMenuA(menu, win32.MF_POPUP, @intFromPtr(profile_menu), "Load Profile");
-        _ = win32.AppendMenuA(menu, win32.MF_STRING, win32.IDM_OPEN_CONFIG, "Open Configuration...");
+        _ = win32.AppendMenuA(menu, win32.MF_STRING, IDM_OPEN_CONFIG, "Open Configuration...");
         _ = win32.AppendMenuA(menu, win32.MF_SEPARATOR, 0, null);
 
         const thumbnail_set = app.thumbnail_set;
-        appendChecked(menu, config.interaction.enableDragging, win32.IDM_TOGGLE_DRAGGING, "Enable Dragging");
-        appendChecked(menu, app.auto_minimizer.isEnabled(config), win32.IDM_TOGGLE_AUTO_MINIMIZE, "Enable Auto-Minimize");
-        appendChecked(menu, config.travel.enabled, win32.IDM_TOGGLE_TRAVEL_MODE, "Enable Travel Mode");
+        appendChecked(menu, config.interaction.enableDragging, IDM_TOGGLE_DRAGGING, "Enable Dragging");
+        appendChecked(menu, app.auto_minimizer.isEnabled(config), IDM_TOGGLE_AUTO_MINIMIZE, "Enable Auto-Minimize");
+        appendChecked(menu, config.travel.enabled, IDM_TOGGLE_TRAVEL_MODE, "Enable Travel Mode");
         if (config.display.viewMode == .Nothing) {
-            _ = win32.AppendMenuA(menu, win32.MF_STRING | win32.MF_GRAYED, win32.IDM_TOGGLE_VISIBILITY, "Show Thumbnails");
+            _ = win32.AppendMenuA(menu, win32.MF_STRING | win32.MF_GRAYED, IDM_TOGGLE_VISIBILITY, "Show Thumbnails");
         } else {
-            appendChecked(menu, if (thumbnail_set) |p| p.thumbnailsShown() else false, win32.IDM_TOGGLE_VISIBILITY, "Show Thumbnails");
+            appendChecked(menu, if (thumbnail_set) |p| p.thumbnailsShown() else false, IDM_TOGGLE_VISIBILITY, "Show Thumbnails");
         }
-        _ = win32.AppendMenuA(menu, win32.MF_STRING, win32.IDM_RESTORE_SAVED_POSITIONS, "Restore Saved Positions");
+        _ = win32.AppendMenuA(menu, win32.MF_STRING, IDM_RESTORE_SAVED_POSITIONS, "Restore Saved Positions");
         _ = win32.AppendMenuA(menu, win32.MF_SEPARATOR, 0, null);
 
-        appendChecked(menu, app.notifications.panel.isVisible(config, scout.anyCharacterLoggedIn(app.scout.getWindows())), win32.IDM_TOGGLE_NOTIF_HISTORY, "Show Alert History");
-        _ = win32.AppendMenuA(menu, win32.MF_STRING, win32.IDM_CLEAR_NOTIF_HISTORY, "Clear Alert History");
-        appendChecked(menu, app.map_panel.isVisible(config, scout.anyCharacterLoggedIn(app.scout.getWindows())), win32.IDM_TOGGLE_MAP_PANEL, "Show Map");
-        appendChecked(menu, app.isIntelPanelVisible(), win32.IDM_TOGGLE_INTEL_PANEL, "Show Intel Panel");
-        appendChecked(menu, alert_effects.isMuted(), win32.IDM_TOGGLE_ALERT_MUTE, "Mute Audio Alerts");
+        appendChecked(menu, app.notifications.panel.isVisible(config, scout.anyCharacterLoggedIn(app.scout.getWindows())), IDM_TOGGLE_NOTIFICATION_HISTORY, "Show Alert History");
+        _ = win32.AppendMenuA(menu, win32.MF_STRING, IDM_CLEAR_NOTIFICATION_HISTORY, "Clear Alert History");
+        appendChecked(menu, app.map_panel.isVisible(config, scout.anyCharacterLoggedIn(app.scout.getWindows())), IDM_TOGGLE_MAP_PANEL, "Show Map");
+        appendChecked(menu, app.isIntelPanelVisible(), IDM_TOGGLE_INTEL_PANEL, "Show Intel Panel");
+        appendChecked(menu, alert_effects.isMuted(), IDM_TOGGLE_ALERT_MUTE, "Mute Audio Alerts");
         _ = win32.AppendMenuA(menu, win32.MF_SEPARATOR, 0, null);
 
         if (app.hotkey_manager) |manager| {
-            appendChecked(menu, manager.areHotkeysSuspended(), win32.IDM_SUSPEND_HOTKEYS, "Suspend Hotkeys");
+            appendChecked(menu, manager.areHotkeysSuspended(), IDM_SUSPEND_HOTKEYS, "Suspend Hotkeys");
             _ = win32.AppendMenuA(menu, win32.MF_SEPARATOR, 0, null);
         }
 
         if (update.g_update_status.isAvailable(app.io)) {
-            _ = win32.AppendMenuA(menu, win32.MF_STRING, win32.IDM_UPDATE, "Update Available!");
+            _ = win32.AppendMenuA(menu, win32.MF_STRING, IDM_UPDATE, "Update Available!");
             _ = win32.AppendMenuA(menu, win32.MF_SEPARATOR, 0, null);
         }
 
-        _ = win32.AppendMenuA(menu, win32.MF_STRING, win32.IDM_CLOSE_ALL_CLIENTS, "Close All Clients");
+        _ = win32.AppendMenuA(menu, win32.MF_STRING, IDM_CLOSE_ALL_CLIENTS, "Close All Clients");
         // The saved groups, which a group command runs against, as from a hotkey or link.
         const saved_groups = app.store.saved.hotkeyGroups.items;
-        self.appendGroupMenu(menu, saved_groups, win32.IDM_MINIMIZE_GROUP_BASE, "Minimize Group");
-        self.appendGroupMenu(menu, saved_groups, win32.IDM_CLOSE_GROUP_BASE, "Close Group");
+        self.appendGroupMenu(menu, saved_groups, IDM_MINIMIZE_GROUP_BASE, "Minimize Group");
+        self.appendGroupMenu(menu, saved_groups, IDM_CLOSE_GROUP_BASE, "Close Group");
         _ = win32.AppendMenuA(menu, win32.MF_SEPARATOR, 0, null);
-        _ = win32.AppendMenuA(menu, win32.MF_STRING, win32.IDM_EXIT, "Exit");
+        _ = win32.AppendMenuA(menu, win32.MF_STRING, IDM_EXIT, "Exit");
 
         // Without this the menu stays open when clicking elsewhere.
         _ = win32.SetForegroundWindow(self.hwnd);
@@ -267,7 +287,7 @@ pub const TrayIcon = struct {
                 continue;
             };
             defer self.allocator.free(terminated_profile);
-            appendChecked(profile_menu, std.mem.eql(u8, profile, current_profile), win32.IDM_PROFILE_BASE + i, terminated_profile);
+            appendChecked(profile_menu, std.mem.eql(u8, profile, current_profile), IDM_PROFILE_BASE + i, terminated_profile);
         }
     }
 
@@ -295,8 +315,8 @@ pub const TrayIcon = struct {
     }
 
     pub fn handleMenuCommand(self: *const TrayIcon, command_id: u16, app: *App) void {
-        if (command_id >= win32.IDM_PROFILE_BASE and command_id < win32.IDM_PROFILE_BASE + MAX_PROFILE_ITEMS) {
-            const index = command_id - win32.IDM_PROFILE_BASE;
+        if (command_id >= IDM_PROFILE_BASE and command_id < IDM_PROFILE_BASE + MAX_PROFILE_ITEMS) {
+            const index = command_id - IDM_PROFILE_BASE;
             if (index >= self.profiles.items.len) return;
             slog.info("Profile selected from menu: {s}", .{self.profiles.items[index]});
             app.requestProfileSwitch(self.profiles.items[index]);
@@ -315,15 +335,15 @@ pub const TrayIcon = struct {
         }
 
         switch (command_id) {
-            win32.IDM_EXIT => {
+            IDM_EXIT => {
                 slog.info("Exit requested from system tray", .{});
                 app_mod.requestExit();
             },
-            win32.IDM_OPEN_CONFIG => {
+            IDM_OPEN_CONFIG => {
                 slog.info("Opening configuration dialog from system tray", .{});
                 knots_host.open();
             },
-            win32.IDM_UPDATE => {
+            IDM_UPDATE => {
                 slog.info("Opening releases page from tray menu", .{});
                 update.openReleasesPage(app.io);
             },
@@ -342,11 +362,11 @@ fn globalAction(command_id: u16) ?url.GlobalAction {
 
 /// Null when `command_id` is outside both group submenus' ranges.
 fn groupCommand(command_id: u16) ?GroupCommand {
-    if (command_id >= win32.IDM_MINIMIZE_GROUP_BASE and command_id < win32.IDM_MINIMIZE_GROUP_BASE + MAX_GROUP_ITEMS) {
-        return .{ .group_index = command_id - win32.IDM_MINIMIZE_GROUP_BASE, .action = .minimize };
+    if (command_id >= IDM_MINIMIZE_GROUP_BASE and command_id < IDM_MINIMIZE_GROUP_BASE + MAX_GROUP_ITEMS) {
+        return .{ .group_index = command_id - IDM_MINIMIZE_GROUP_BASE, .action = .minimize };
     }
-    if (command_id >= win32.IDM_CLOSE_GROUP_BASE and command_id < win32.IDM_CLOSE_GROUP_BASE + MAX_GROUP_ITEMS) {
-        return .{ .group_index = command_id - win32.IDM_CLOSE_GROUP_BASE, .action = .close };
+    if (command_id >= IDM_CLOSE_GROUP_BASE and command_id < IDM_CLOSE_GROUP_BASE + MAX_GROUP_ITEMS) {
+        return .{ .group_index = command_id - IDM_CLOSE_GROUP_BASE, .action = .close };
     }
     return null;
 }

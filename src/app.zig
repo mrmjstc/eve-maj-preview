@@ -38,6 +38,7 @@ const tray = @import("tray.zig");
 const dialog_host = @import("dialog/dialog_host.zig");
 const registry = @import("protocol/registry.zig");
 const schedule = @import("util/schedule.zig");
+const messages = @import("messages.zig");
 const log = @import("log.zig");
 
 const CharacterIds = character_ids_mod.CharacterIds;
@@ -45,8 +46,6 @@ const ThumbnailSet = set.ThumbnailSet;
 const HotkeyManager = hotkeys.HotkeyManager;
 const slog = log.Scoped("app");
 
-/// Shares the timer window with focus.zig's HIDE_DEBOUNCE_TIMER_ID.
-pub const TICK_TIMER_ID: usize = 1;
 /// Timed, not counted in ticks, so a slower scan interval doesn't stretch it.
 const FORCED_SCAN_INTERVAL_MS: u64 = 1000;
 /// With nothing to draw, the tick only keeps up with the forced scan.
@@ -169,7 +168,7 @@ pub const App = struct {
     /// Safe after a startup that failed partway, but only once background threads have finished.
     pub fn deinit(self: *App) void {
         // Each part goes before what it borrows.
-        if (self.timer_hwnd) |timer_hwnd| _ = win32.KillTimer(timer_hwnd, TICK_TIMER_ID);
+        if (self.timer_hwnd) |timer_hwnd| _ = win32.KillTimer(timer_hwnd, messages.TICK_TIMER_ID);
         self.destroyHotkeyManager();
         if (self.tray_icon) |*icon| icon.deinit();
         self.tray_icon = null;
@@ -250,7 +249,7 @@ pub const App = struct {
         };
         @memcpy(self.pending_profile_buf[0..profile_name.len], profile_name);
         self.pending_profile = self.pending_profile_buf[0..profile_name.len];
-        if (!win32.toBool(win32.PostMessageA(timer_hwnd, win32.WM_SWITCH_PROFILE, 0, 0))) {
+        if (!win32.toBool(win32.PostMessageA(timer_hwnd, messages.WM_SWITCH_PROFILE, 0, 0))) {
             slog.err("Failed to switch to profile '{s}': the switch couldn't be queued", .{profile_name});
             self.pending_profile = null;
         }
@@ -504,7 +503,7 @@ pub const App = struct {
 
     /// Replaces the running timer in place; false on failure.
     fn setTickInterval(self: *App, timer_hwnd: win32.HWND, interval_ms: win32.UINT) bool {
-        if (win32.SetTimer(timer_hwnd, TICK_TIMER_ID, interval_ms, null) == 0) return false;
+        if (win32.SetTimer(timer_hwnd, messages.TICK_TIMER_ID, interval_ms, null) == 0) return false;
         self.tick_interval_ms = interval_ms;
         return true;
     }
