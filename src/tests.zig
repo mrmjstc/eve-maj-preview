@@ -109,9 +109,11 @@ test {
     _ = @import("thumbnail/look.zig");
     _ = @import("thumbnail/state.zig");
     _ = @import("travel/stragglers.zig");
+    _ = @import("util/atomic_file.zig");
     _ = @import("util/color.zig");
     _ = @import("util/fixed_text.zig");
     _ = @import("util/format.zig");
+    _ = @import("util/glob.zig");
     _ = @import("util/handoff.zig");
     _ = @import("util/pixel_buffer.zig");
     _ = @import("util/rgba.zig");

@@ -4,6 +4,7 @@ const color_mod = @import("../util/color.zig");
 const config_mod = @import("../config.zig");
 const wire = @import("../config/wire.zig");
 const files = @import("../config/files.zig");
+const atomic_file = @import("../util/atomic_file.zig");
 const log = @import("../log.zig");
 
 const slog = log.Scoped("auto_colors");
@@ -179,7 +180,7 @@ pub const AutoColorStore = struct {
         };
         defer self.allocator.free(json);
 
-        files.atomicWriteFile(self.allocator, self.io, AUTO_COLORS_FILE, json) catch return;
+        atomic_file.write(self.allocator, self.io, AUTO_COLORS_FILE, json) catch return;
     }
 
     fn entriesToWire(allocator: std.mem.Allocator, store: *const color_mod.AutoColors) ![]const Entry {

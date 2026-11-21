@@ -26,7 +26,7 @@ All relative to the exe folder (`main.zig` sets the cwd there).
 | `logs/eve-maj.log`, `.old` | Log, rotated at 20 MB | `log.zig` |
 | `logs/eve-maj-crash.dmp` | Minidump of the latest crash | `crash.zig` |
 
-`config/files.zig`'s `migrateLegacyLayout` moves files older versions kept beside the exe into `data/` and `logs/`. Every save writes `<file>.<hex>.tmp` and renames it over the file; `sweepTempFiles` deletes the ones a killed process left in `profiles/`, `data/` and `data/portraits/`.
+`config/files.zig`'s `migrateLegacyLayout` moves files older versions kept beside the exe into `data/` and `logs/`. Every save writes `<file>.<hex>.tmp` and renames it over the file (`util/atomic_file.zig`); `sweepTempFiles` deletes the ones a killed process left in `profiles/`, `data/` and `data/portraits/`.
 
 ## Startup (`main.zig`)
 
@@ -368,4 +368,4 @@ A second exe, `eve-maj-sim` (`zig build sim`), that stands in for EVE clients so
 | `platform/run_on_startup.zig` | The Run registry key, set or removed by `app.applyGlobalSettings` at startup and after a Save |
 | `platform/virtual_keys.zig` | VK codes, `KEY_NAMES`, mouse-chord encoding |
 | `platform/wic.zig` | Image decoding (portraits, alliance logos) |
-| `util/` | Colour (OKLab picks), number format, HTTP (WinHTTP, with timeouts), schedule, strings, UTC time to Unix seconds |
+| `util/` | Colour (OKLab picks), number format, HTTP (WinHTTP, with timeouts), schedule, strings, UTC time to Unix seconds, wildcard matching (`glob.zig`), crash-safe writes (`atomic_file.zig`) |

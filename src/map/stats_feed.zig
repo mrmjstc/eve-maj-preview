@@ -8,6 +8,7 @@ const holder_colors = @import("holder_colors.zig");
 const http_client = @import("../util/http_client.zig");
 const detached = @import("../util/detached.zig");
 const handoff = @import("../util/handoff.zig");
+const atomic_file = @import("../util/atomic_file.zig");
 const log = @import("../log.zig");
 
 const LogoColors = holder_colors.LogoColors;
@@ -72,7 +73,7 @@ pub fn destroySnapshot(snapshot: *Snapshot) void {
     allocator.destroy(snapshot);
 }
 
-/// The fetch's thread; touches nothing of the main thread's but the feed's job and logo colours and the allocator, and alone reads and writes the logo colours' file.
+/// Shares only the feed's job, logo colours and allocator with the main thread; alone uses the logo colours' file.
 fn fetchThread(feed: *StatsFeed, allocator: std.mem.Allocator, io: std.Io) void {
     defer feed.job.finish();
     const snapshot = fetchSnapshot(allocator) catch |err| {
@@ -156,7 +157,7 @@ fn saveLogoColors(allocator: std.mem.Allocator, io: std.Io, colors: *const LogoC
         return;
     };
     defer allocator.free(json_text);
-    files.atomicWriteFile(allocator, io, files.LOGO_COLORS_FILE, json_text) catch return;
+    atomic_file.write(allocator, io, files.LOGO_COLORS_FILE, json_text) catch return;
 }
 
 fn publishColors(feed: *StatsFeed, allocator: std.mem.Allocator, colors: *const LogoColors) void {

@@ -10,6 +10,7 @@ const migrate = @import("migrate.zig");
 const types = @import("types.zig");
 const chatlog_mod = @import("chatlog.zig");
 const ores = @import("../activity/ores.zig");
+const atomic_file = @import("../util/atomic_file.zig");
 const log = @import("../log.zig");
 
 const KeyList = key_list.KeyList;
@@ -308,7 +309,7 @@ pub const GlobalConfig = struct {
         var arena_state: std.heap.ArenaAllocator = .init(self.allocator);
         defer arena_state.deinit();
         const json = try self.savedJson(arena_state.allocator());
-        try files.atomicWriteFile(self.allocator, io, files.GLOBAL_SETTINGS_FILE, json);
+        try atomic_file.write(self.allocator, io, files.GLOBAL_SETTINGS_FILE, json);
 
         slog.debug("Saved global settings", .{});
     }

@@ -1,11 +1,11 @@
 //! Which chat messages raise an alert, and for which client; no I/O.
 const std = @import("std");
 const chat_alerts = @import("../config/chat_alerts.zig");
-const system_colors = @import("../config/system_colors.zig");
 const notification = @import("../notifications/notification.zig");
 const universe = @import("../map/universe.zig");
 const nearest = @import("../map/nearest.zig");
 const lines = @import("lines.zig");
+const glob = @import("../util/glob.zig");
 
 const ChatAlertConfig = chat_alerts.ChatAlertConfig;
 const ChatAlertKind = chat_alerts.ChatAlertKind;
@@ -245,7 +245,7 @@ fn matchesChannel(patterns: []const u8, channel: []const u8) bool {
     var parts = termIterator(patterns);
     while (parts.next()) |raw| {
         const pattern = std.mem.trim(u8, raw, " \t");
-        if (pattern.len > 0 and system_colors.globMatch(pattern, channel)) return true;
+        if (pattern.len > 0 and glob.matches(pattern, channel)) return true;
     }
     return false;
 }

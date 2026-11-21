@@ -1,5 +1,6 @@
 //! The process environment and the on-disk layout of the app's profile and data files.
 const std = @import("std");
+const atomic_file = @import("../util/atomic_file.zig");
 const log = @import("../log.zig");
 
 const slog = log.Scoped("config");
@@ -20,13 +21,10 @@ pub const CHARACTER_IDS_FILE = DATA_DIR ++ "/character_ids.json";
 pub const PORTRAITS_DIR = DATA_DIR ++ "/portraits";
 /// The colour picked from each sovereignty-holding alliance's logo, so a logo is fetched once.
 pub const LOGO_COLORS_FILE = DATA_DIR ++ "/logo_colors.json";
-/// The folders atomicWriteFile writes the app's own files into; their subfolders aren't swept.
+/// The folders the app's own files are written into; their subfolders aren't swept.
 const TEMP_FILE_DIRS = [_][]const u8{ PROFILES_DIR, DATA_DIR, PORTRAITS_DIR };
-/// What atomicWriteFile writes in TEMP_FILE_DIRS, so a temp file for anything else isn't the app's.
+/// What the app writes in TEMP_FILE_DIRS, so a temp file for anything else isn't the app's.
 const TEMP_FILE_TARGET_EXTENSIONS = [_][]const u8{ ".json", ".jpg" };
-const TEMP_FILE_EXTENSION = ".tmp";
-/// A u64 in hex, unpadded.
-const TEMP_FILE_MAX_HEX_DIGITS = 16;
 
 const LEGACY_FILES = [_]struct { from: []const u8, to: []const u8 }{
     .{ .from = "eve-maj.log", .to = log.LOG_FILE_NAME },
@@ -125,7 +123,7 @@ pub fn createDirIfMissing(io: std.Io, path: []const u8) !void {
     };
 }
 
-/// A settings file, up to MAX_CONFIG_FILE_SIZE, read again after a short wait while another program holds it; FileNotFound fails at once; caller owns the result and logs.
+/// Up to MAX_CONFIG_FILE_SIZE, retried briefly while another program holds it; caller owns the result and logs.
 pub fn readSettingsFile(allocator: std.mem.Allocator, io: std.Io, path: []const u8) ![]u8 {
     var attempt: usize = 1;
     while (true) : (attempt += 1) {
@@ -136,39 +134,6 @@ pub fn readSettingsFile(allocator: std.mem.Allocator, io: std.Io, path: []const 
             continue;
         };
     }
-}
-
-/// Logs every failure itself.
-pub fn atomicWriteFile(allocator: std.mem.Allocator, io: std.Io, path: []const u8, content: []const u8) !void {
-    // Unique per call so overlapping saves of the same path can't share a temp file.
-    const unique = blk: {
-        var random_bytes: [8]u8 = undefined;
-        io.random(&random_bytes);
-        break :blk std.mem.readInt(u64, &random_bytes, .little);
-    };
-    const temp_path = allocator.print("{s}.{x}" ++ TEMP_FILE_EXTENSION, .{ path, unique }) catch |err| {
-        slog.err("Failed to build a temp file name for '{s}': {}", .{ path, err });
-        return err;
-    };
-    defer allocator.free(temp_path);
-
-    const cwd = std.Io.Dir.cwd();
-    const temp_file = cwd.createFile(io, temp_path, .{}) catch |err| {
-        slog.err("Failed to create temp file '{s}' ({} bytes): {}", .{ temp_path, content.len, err });
-        return err;
-    };
-    writeAndSync(io, temp_file, temp_path, content) catch |err| {
-        temp_file.close(io);
-        deleteTemp(io, temp_path, err);
-        return err;
-    };
-    temp_file.close(io);
-
-    cwd.rename(temp_path, cwd, path, io) catch |err| {
-        slog.err("Failed to rename temp file '{s}' to '{s}' ({} bytes): {}", .{ temp_path, path, content.len, err });
-        deleteTemp(io, temp_path, err);
-        return err;
-    };
 }
 
 /// Caller owns the result.
@@ -216,56 +181,20 @@ pub fn expandEnvironmentVariables(allocator: std.mem.Allocator, path: []const u8
     return result.toOwnedSlice(allocator);
 }
 
-/// Flushed before the rename, so a crash can't leave the renamed file empty; logs its own failures.
-fn writeAndSync(io: std.Io, file: std.Io.File, temp_path: []const u8, content: []const u8) !void {
-    file.writeStreamingAll(io, content) catch |err| {
-        slog.err("Failed to write {} bytes to temp file '{s}': {}", .{ content.len, temp_path, err });
-        return err;
-    };
-    file.sync(io) catch |err| {
-        slog.err("Failed to flush temp file '{s}' to disk: {}", .{ temp_path, err });
-        return err;
-    };
-}
-
-fn deleteTemp(io: std.Io, temp_path: []const u8, original_err: anyerror) void {
-    std.Io.Dir.cwd().deleteFile(io, temp_path) catch |err| {
-        slog.err("Failed to clean up temp file '{s}' (original error: {}): {}", .{ temp_path, original_err, err });
-    };
-}
-
-/// Only atomicWriteFile's exact `<name>.json|.jpg.<lowercase hex>.tmp`, so no file of anyone else's matches.
+/// A temp file atomic_file.write left for one of the app's file types, so no file of anyone else's matches.
 fn isTempFileName(name: []const u8) bool {
-    if (!std.mem.endsWith(u8, name, TEMP_FILE_EXTENSION)) return false;
-    const stem = name[0 .. name.len - TEMP_FILE_EXTENSION.len];
-    const dot_index = std.mem.findScalarLast(u8, stem, '.') orelse return false;
-    const unique = stem[dot_index + 1 ..];
-    if (unique.len == 0 or unique.len > TEMP_FILE_MAX_HEX_DIGITS) return false;
-    for (unique) |char| {
-        if (!std.ascii.isDigit(char) and (char < 'a' or char > 'f')) return false;
-    }
-    const target = stem[0..dot_index];
+    const target = atomic_file.tempTarget(name) orelse return false;
     for (TEMP_FILE_TARGET_EXTENSIONS) |extension| {
         if (target.len > extension.len and std.mem.endsWith(u8, target, extension)) return true;
     }
     return false;
 }
 
-test "a temp file name from atomicWriteFile is recognised" {
+test "a temp file is swept only for the app's file types" {
     try std.testing.expect(isTempFileName("default.json.9862892f425a8fc0.tmp"));
-    try std.testing.expect(isTempFileName("global.settings.json.a.tmp"));
     try std.testing.expect(isTempFileName("2112625428.jpg.0123456789abcdef.tmp"));
-}
-
-test "a .tmp not named exactly as atomicWriteFile names one is left alone" {
-    try std.testing.expect(!isTempFileName("default.json"));
-    try std.testing.expect(!isTempFileName("notes.tmp"));
-    try std.testing.expect(!isTempFileName("default.json..tmp"));
-    try std.testing.expect(!isTempFileName("default.json.notahex.tmp"));
-    try std.testing.expect(!isTempFileName("default.json.9862892F425A8FC0.tmp"));
-    try std.testing.expect(!isTempFileName("default.json.123456789abcdef01.tmp"));
     try std.testing.expect(!isTempFileName("notes.txt.9862892f.tmp"));
     try std.testing.expect(!isTempFileName("default.9862892f.tmp"));
     try std.testing.expect(!isTempFileName(".json.9862892f.tmp"));
-    try std.testing.expect(!isTempFileName("default.json.9862892f.tmp.bak"));
+    try std.testing.expect(!isTempFileName("default.json.notahex.tmp"));
 }

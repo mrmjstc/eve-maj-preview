@@ -1,6 +1,6 @@
 //! Ultra Potato Mode: forces EVE's graphics settings files to their lowest quality, keeping a backup of each.
 const std = @import("std");
-const config = @import("../../config.zig");
+const atomic_file = @import("../../util/atomic_file.zig");
 const log = @import("../../log.zig");
 
 const slog = log.Scoped("ultra_potato");
@@ -160,7 +160,7 @@ fn applyToOneFile(allocator: std.mem.Allocator, io: std.Io, path: []const u8) !A
         return .{ .path = path_copy, .succeeded = true, .changed = false, .error_message = null };
     }
 
-    config.atomicWriteFile(allocator, io, path, outcome.text) catch |err| {
+    atomic_file.write(allocator, io, path, outcome.text) catch |err| {
         return .{ .path = path_copy, .succeeded = false, .changed = false, .error_message = @errorName(err) };
     };
 

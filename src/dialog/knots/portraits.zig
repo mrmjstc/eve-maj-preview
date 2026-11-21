@@ -10,6 +10,7 @@ const rgba = @import("../../util/rgba.zig");
 const detached = @import("../../util/detached.zig");
 const handoff = @import("../../util/handoff.zig");
 const messages = @import("../../messages.zig");
+const atomic_file = @import("../../util/atomic_file.zig");
 const log = @import("../../log.zig");
 
 const Image = ui.component.Image;
@@ -266,5 +267,5 @@ fn save(io: std.Io, path: []const u8, body: []const u8) void {
         slog.warn("Failed to create folder '{s}': {}", .{ files.PORTRAITS_DIR, err });
         return;
     };
-    files.atomicWriteFile(g_allocator, io, path, body) catch return;
+    atomic_file.write(g_allocator, io, path, body) catch return;
 }

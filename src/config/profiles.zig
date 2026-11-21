@@ -2,6 +2,7 @@
 const std = @import("std");
 const files = @import("files.zig");
 const config_mod = @import("../config.zig");
+const atomic_file = @import("../util/atomic_file.zig");
 const log = @import("../log.zig");
 
 const Config = config_mod.Config;
@@ -272,7 +273,7 @@ pub fn save(config: *const Config, allocator: std.mem.Allocator, io: std.Io, fil
     const json = try config.toJsonString(allocator);
     defer allocator.free(json);
 
-    try files.atomicWriteFile(allocator, io, file_path, json);
+    try atomic_file.write(allocator, io, file_path, json);
     slog.info("Saved JSON config to: {s}", .{file_path});
 }
 
