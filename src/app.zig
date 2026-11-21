@@ -229,6 +229,7 @@ pub const App = struct {
 
     /// After a dialog edit to the live profile.
     fn onLiveProfileEdited(self: *App, layout: dialog_host.LiveLayout) void {
+        self.roster.refreshConfig(&self.store.live, &self.auto_colors, .all);
         self.map_panel.sync(self.panelContext());
         self.notifications.sync(self.panelContext());
         const thumbnail_set = self.thumbnail_set orelse return;
@@ -300,7 +301,7 @@ pub const App = struct {
         }
         // After the chatlog's alerts are delivered, so the panel lists them this tick.
         const presence = self.panelPresence();
-        self.map_panel.update(self.allocator, self.io, &self.store.live, presence, self.thumbnail_set);
+        self.map_panel.update(self.allocator, self.io, &self.store.live, presence);
         self.notifications.update(&self.store.live, presence);
 
         self.trackers.tick(&self.store.live, scout_result.windows, tick_start, self.tick_interval_ms, self.thumbnail_set);
@@ -450,6 +451,7 @@ pub const App = struct {
     /// Mirrors `windows` into the roster, and takes the foreground window as its active one.
     pub fn syncRoster(self: *App, windows: []const scout_mod.EveWindow) void {
         self.roster.sync(windows);
+        self.roster.refreshConfig(&self.store.live, &self.auto_colors, .stale);
         self.roster.setActive(win32.GetForegroundWindow());
     }
 
@@ -696,6 +698,7 @@ pub const App = struct {
                 slog.warn("Failed to update global settings: {}", .{err});
             },
             .rescan_windows => restart.eve_windows = self.rescanWindows(),
+            .refresh_roster_config => self.roster.refreshConfig(&self.store.live, &self.auto_colors, .all),
             .build_thumbnail_set => {
                 self.buildThumbnailSet(restart.eve_windows) catch |err| {
                     slog.err("Failed to create thumbnail set: {}", .{err});
@@ -812,7 +815,7 @@ fn runPanelRequest(request: panel_host.Request) void {
     const app = g_app orelse return;
     switch (request) {
         .activate => |hwnd| activation.activate(app, hwnd),
-        .show_system => |system| app.map_panel.showSystem(system, app.thumbnail_set),
+        .show_system => |system| app.map_panel.showSystem(system),
         .suspend_hotkeys => if (app.hotkey_manager) |manager| manager.typingSuspendHotkeys(),
         .resume_hotkeys => {
             const manager = app.hotkey_manager orelse return;

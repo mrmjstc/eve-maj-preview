@@ -21,7 +21,6 @@ const holder_colors = @import("../map/holder_colors.zig");
 const intel_pins = @import("../map/intel_pins.zig");
 const zkill = @import("../map/zkill.zig");
 const zkill_feed = @import("../map/zkill_feed.zig");
-const set = @import("../thumbnail/set.zig");
 const drag = @import("drag.zig");
 const log = @import("../log.zig");
 
@@ -32,7 +31,6 @@ const MapPanelWindow = window_mod.MapPanelWindow;
 const Scene = paint.Scene;
 const Snapshot = stats_mod.Snapshot;
 const SystemIndex = universe.SystemIndex;
-const ThumbnailSet = set.ThumbnailSet;
 const slog = log.Scoped("map_panel");
 
 const MAP_PANEL_WINDOW_CLASS = "EVE_MAP_PANEL_CLASS";
@@ -106,10 +104,10 @@ pub const MapPanel = struct {
     }
 
     /// Selects and ripples `system`, opening its region unless that's shown, for an Intel Panel row.
-    pub fn showSystem(self: *MapPanel, system: SystemIndex, thumbnail_set: ?*const ThumbnailSet) void {
+    pub fn showSystem(self: *MapPanel, system: SystemIndex) void {
         const window = if (self.window) |*w| w else return;
         window.pingSystem(system);
-        self.redraw(thumbnail_set);
+        self.redraw();
     }
 
     /// Keyed on isVisible(), not the window: a visible panel turns off, and a hidden one is forced on even with no character logged in.
@@ -134,7 +132,7 @@ pub const MapPanel = struct {
     }
 
     /// Per tick: takes any new figures, then renders the panel or hides it.
-    pub fn update(self: *MapPanel, allocator: std.mem.Allocator, io: std.Io, config: *const config_mod.Config, presence: panel_look.Presence, thumbnail_set: ?*const ThumbnailSet) void {
+    pub fn update(self: *MapPanel, allocator: std.mem.Allocator, io: std.Io, config: *const config_mod.Config, presence: panel_look.Presence) void {
         self.visibility.note(presence, win32.Ticks.now().ms);
 
         if (self.feed.take()) |fresh| {
@@ -176,7 +174,7 @@ pub const MapPanel = struct {
                 if (self.stats) |snapshot| self.traffic.refreshNpcHours(allocator, window.evestarsToken(), snapshot, now_ms);
             }
         }
-        self.redraw(thumbnail_set);
+        self.redraw();
     }
 
     /// Adds the newest run's kills and names, and drops kills past their lifetime and, past MAX_NAMES, the names they used.
@@ -229,7 +227,7 @@ pub const MapPanel = struct {
     }
 
     /// Also from the window's own input, since the tick can be a second apart with no clients running.
-    fn redraw(self: *MapPanel, thumbnail_set: ?*const ThumbnailSet) void {
+    fn redraw(self: *MapPanel) void {
         const window = if (self.window) |*w| w else return;
         setPumping(window, window.state.isPopupOpen() or self.destinations.isWaiting() or self.traffic.isWaiting() or window.state.is_choosing_regions);
         var scene: Scene = .{ .stats = self.stats, .logo_colors = self.logo_colors, .logo_revision = self.logo_revision, .pins = if (window.config.mapPanel.showIntel) &self.pins else &NO_PINS, .destinations = &self.destinations, .traffic = &self.traffic, .now_seconds = win32.unixSecondsNow() };
@@ -241,7 +239,6 @@ pub const MapPanel = struct {
             scene.clients = roster.clients.items;
             scene.active_source_hwnd = roster.active_hwnd;
         }
-        if (thumbnail_set) |active_set| scene.thumbnails = active_set.thumbnails.items;
         window.render(scene) catch |err| {
             slog.err("Failed to render Map Panel window: {}", .{err});
         };
@@ -249,7 +246,7 @@ pub const MapPanel = struct {
     }
 
     fn redrawAfterInput(self: *MapPanel) void {
-        self.redraw(self.host.thumbnail_set());
+        self.redraw();
     }
 
     /// For input that can come faster than the screen refreshes; a skipped frame waits for FRAME_TIMER_ID.

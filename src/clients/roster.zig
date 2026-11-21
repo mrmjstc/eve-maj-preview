@@ -1,12 +1,24 @@
 //! Each tracked client's record, kept in step with Scout's windows and outliving any thumbnail set; main thread only.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
+const config_mod = @import("../config.zig");
+const auto_colors_mod = @import("auto_colors.zig");
 const scout = @import("scout.zig");
 const stragglers = @import("../travel/stragglers.zig");
 const log = @import("../log.zig");
 
+const Config = config_mod.Config;
+const AutoColorStore = auto_colors_mod.AutoColorStore;
 const EveWindow = scout.EveWindow;
 const slog = log.Scoped("roster");
+
+/// Which clients Roster.refreshConfig reads the profile for.
+pub const Refresh = enum {
+    /// After the profile changes.
+    all,
+    /// Only those added or renamed since the last refresh.
+    stale,
+};
 
 pub const Client = struct {
     hwnd: win32.HWND,
@@ -20,6 +32,13 @@ pub const Client = struct {
     /// YYYYMMDD*1000000+HHMMSS of the event that set system_name; 0 if unreadable, which always applies.
     system_name_event_timestamp: u64 = 0,
     travel: stragglers.LeftBehindState = .{},
+    /// Owned; the profile's display name for the character, else a copy of character_name.
+    display_name: []const u8 = "",
+    /// Null at the login screen or with "Unique Character Name Colors" off; callers fall back to their default.
+    character_color: ?u32 = null,
+    is_excluded_from_minimize: bool = false,
+    /// From joining or a rename until refreshConfig reads the profile for the new name.
+    is_config_stale: bool = true,
     /// Bumped whenever something a view shows changes, so views redraw by comparing it.
     revision: u32 = 0,
 };
@@ -100,6 +119,14 @@ pub const Roster = struct {
         slog.debug("Updated system for {s}: {s}", .{ client.character_name, system_name });
     }
 
+    /// A client whose display name can't be copied stays stale, for the next refresh to retry.
+    pub fn refreshConfig(self: *Roster, config: *const Config, auto_colors: *AutoColorStore, refresh: Refresh) void {
+        for (self.clients.items) |*client| {
+            if (refresh == .stale and !client.is_config_stale) continue;
+            self.refreshClientConfig(client, config, auto_colors);
+        }
+    }
+
     pub fn setActive(self: *Roster, hwnd: ?win32.HWND) void {
         self.active_hwnd = hwnd;
     }
@@ -116,6 +143,25 @@ pub const Roster = struct {
         return null;
     }
 
+    fn refreshClientConfig(self: *Roster, client: *Client, config: *const Config, auto_colors: *AutoColorStore) void {
+        const display_name = config.getDisplayName(client.character_name);
+        const character_color = if (scout.isGenericCharacterName(client.character_name)) null else auto_colors.characterNameColor(config, client.character_name);
+        const is_name_changed = !std.mem.eql(u8, display_name, client.display_name);
+        const is_shown_changed = is_name_changed or !std.meta.eql(character_color, client.character_color);
+        if (is_name_changed) {
+            const copy = self.allocator.dupe(u8, display_name) catch |err| {
+                slog.err("Failed to copy the display name '{s}' for the roster: {}", .{ display_name, err });
+                return;
+            };
+            self.allocator.free(client.display_name);
+            client.display_name = copy;
+        }
+        client.character_color = character_color;
+        client.is_excluded_from_minimize = config.isExcludedFromMinimize(client.character_name);
+        client.is_config_stale = false;
+        if (is_shown_changed) client.revision +%= 1;
+    }
+
     fn clearSystem(self: *Roster, client: *Client) void {
         if (client.system_name.len == 0) return;
         self.allocator.free(client.system_name);
@@ -127,6 +173,7 @@ pub const Roster = struct {
     fn freeClient(self: *const Roster, client: Client) void {
         self.allocator.free(client.character_name);
         self.allocator.free(client.system_name);
+        self.allocator.free(client.display_name);
     }
 
     fn dropMissing(self: *Roster, windows: []const EveWindow) void {
@@ -170,6 +217,7 @@ pub const Roster = struct {
         const is_logout = scout.isGenericCharacterName(name) and !scout.isGenericCharacterName(client.character_name);
         self.allocator.free(client.character_name);
         client.character_name = name;
+        client.is_config_stale = true;
         client.revision +%= 1;
         if (is_logout) self.clearSystem(client);
     }
@@ -223,6 +271,17 @@ test "logging out renames the client to the login screen's name and clears its l
     try testing.expect(scout.isGenericCharacterName(client.character_name));
     try testing.expect(client.logged_in_at.isZero());
     try testing.expectEqualStrings("", client.system_name);
+}
+
+test "a renamed client waits for its profile settings, and an unchanged one doesn't" {
+    var roster: Roster = .init(testing.allocator);
+    defer roster.deinit();
+    roster.sync(&.{ testWindow(1, "EVE", 0), testWindow(2, "Beta", 700) });
+    for (roster.clients.items) |*client| client.is_config_stale = false;
+    roster.sync(&.{ testWindow(1, "Alpha", 900), testWindow(2, "Beta", 700) });
+
+    try testing.expect(roster.clients.items[0].is_config_stale);
+    try testing.expect(!roster.clients.items[1].is_config_stale);
 }
 
 test "a window gone from Scout's list leaves the roster" {

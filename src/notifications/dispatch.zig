@@ -5,7 +5,6 @@ const config_mod = @import("../config.zig");
 const window = @import("../thumbnail/window.zig");
 const auto_colors_mod = @import("../clients/auto_colors.zig");
 const roster = @import("../clients/roster.zig");
-const scout = @import("../clients/scout.zig");
 const history_mod = @import("history.zig");
 const notified_queue_mod = @import("notified_queue.zig");
 const notification_mod = @import("notification.zig");
@@ -98,7 +97,7 @@ pub fn listIntel(context: Context, clients: []const Client, system: universe.Sys
         .character_name = client.character_name,
         .text = text,
         .notification_type = .ChatIntel,
-        .character_color = if (scout.isGenericCharacterName(client.character_name)) null else context.auto_colors.characterNameColor(context.config, client.character_name),
+        .character_color = client.character_color,
         .lead = systemLead(context, notification, text, .known_only),
         .system = system,
         .intel = .{ .jumps = nearest.jumps, .is_clear = is_clear },

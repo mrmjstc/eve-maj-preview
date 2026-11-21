@@ -24,6 +24,8 @@ pub const Step = enum {
     install_profile,
     record_last_used_profile,
     rescan_windows,
+    /// Re-reads each client's display name, character colour and minimize exclusion from the profile now running.
+    refresh_roster_config,
     build_thumbnail_set,
     /// Adds thumbnails for windows the new filters admit, keeping the set.
     populate_thumbnail_set,
@@ -72,6 +74,7 @@ pub const Plan = struct {
         plan.add(.record_last_used_profile);
         // Windows the new filters drop are reported closed, and leave the thumbnail set and chatlog on the next tick.
         plan.add(.rescan_windows);
+        plan.add(.refresh_roster_config);
         plan.add(if (rebuilds_thumbnail_set) .build_thumbnail_set else .populate_thumbnail_set);
         if (!facts.is_chatlog_enabled_next) plan.add(.clear_log_readings);
         if (keeps_monitor) plan.add(.apply_monitor_settings);
@@ -200,7 +203,7 @@ test "monitoring left on clears nothing" {
     try testing.expect(!has(&plan, .clear_log_readings));
 }
 
-test "every plan stops the worker before what it reads changes, and starts it only once wired" {
+test "every plan stops the worker before what it reads changes, starts it only once wired, and refreshes the roster before the set" {
     var bits: u7 = 0;
     while (bits < 1 << 6) : (bits += 1) {
         const plan: Plan = .init(.{
@@ -227,6 +230,8 @@ test "every plan stops the worker before what it reads changes, and starts it on
             try expectBefore(&plan, .apply_monitor_profile, .start_monitor);
         }
         try testing.expect(has(&plan, .build_thumbnail_set) != has(&plan, .populate_thumbnail_set));
+        if (has(&plan, .install_profile)) try expectBefore(&plan, .install_profile, .refresh_roster_config);
+        try expectBefore(&plan, .refresh_roster_config, if (has(&plan, .build_thumbnail_set)) .build_thumbnail_set else .populate_thumbnail_set);
         try expectBefore(&plan, .destroy_hotkey_manager, .create_hotkey_manager);
     }
 }

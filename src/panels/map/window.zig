@@ -433,15 +433,11 @@ pub const MapPanelWindow = struct {
         for (scene.clients) |*client| {
             if (scout.isGenericCharacterName(client.character_name)) continue;
             const system = universe.findSystem(client.system_name) orelse continue;
-            // The thumbnails still cache each character's colour.
-            const color = for (scene.thumbnails) |*thumbnail| {
-                if (thumbnail.source_hwnd == client.hwnd) break thumbnail.cached_character_color;
-            } else null;
             const is_added = self.state.marks.add(.{
                 .system = system,
                 .source_hwnd = client.hwnd,
                 .character_name = client.character_name,
-                .color = color orelse list_look.NAME,
+                .color = client.character_color orelse list_look.NAME,
                 .is_active = client.hwnd == scene.active_source_hwnd,
             });
             if (!is_added) break;
