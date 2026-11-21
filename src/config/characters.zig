@@ -1,6 +1,5 @@
 //! Per-character overrides and the helpers that rank characters by the configured list.
 const std = @import("std");
-const win32 = @import("../platform/win32.zig");
 const types = @import("types.zig");
 const wire = @import("wire.zig");
 const key_list = @import("key_list.zig");
@@ -13,12 +12,6 @@ const ThumbnailConfig = thumbnail.ThumbnailConfig;
 pub const Position = struct {
     x: i32,
     y: i32,
-
-    /// For positions saved by a DPI-unaware process (old saves, EVE-O/EVE-X/EVE-APM imports).
-    pub fn scaleFromLegacyDpiUnaware(self: Position) Position {
-        const scale = win32.dpiToScale(win32.dpiForPoint(.{ .x = self.x, .y = self.y }));
-        return .{ .x = win32.scalePixels(self.x, scale), .y = win32.scalePixels(self.y, scale) };
-    }
 };
 
 pub const WindowSize = struct {

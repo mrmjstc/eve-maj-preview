@@ -10,6 +10,7 @@ const system_colors = @import("config/system_colors.zig");
 const hotkeys_mod = @import("config/hotkeys.zig");
 const spaces = @import("config/spaces.zig");
 const migrate = @import("config/migrate.zig");
+const legacy_dpi = @import("config/legacy_dpi.zig");
 const chatlog = @import("config/chatlog.zig");
 const activity = @import("config/activity.zig");
 const notifications_mod = @import("config/notifications.zig");
@@ -184,7 +185,7 @@ pub const Config = struct {
 
         if (config.formatVersion < migrate.DPI_AWARE_VERSION) {
             for (config.characters.items) |*character| {
-                if (character.position) |position| character.position = position.scaleFromLegacyDpiUnaware();
+                if (character.position) |position| character.position = legacy_dpi.scalePosition(position);
             }
         }
 

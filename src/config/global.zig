@@ -9,7 +9,6 @@ const readable = @import("readable.zig");
 const migrate = @import("migrate.zig");
 const types = @import("types.zig");
 const chatlog_mod = @import("chatlog.zig");
-const ores = @import("../activity/ores.zig");
 const atomic_file = @import("../util/atomic_file.zig");
 const log = @import("../log.zig");
 
@@ -146,15 +145,6 @@ pub const GlobalConfig = struct {
 
     pub fn deinit(self: *GlobalConfig) void {
         wire.deinit(GlobalConfig, self, self.allocator);
-    }
-
-    /// An exact name beats a grade variant; within each, the persisted price override beats the catalogue's snapshot price.
-    pub fn orePrice(self: *const GlobalConfig, name: []const u8) ?f64 {
-        inline for (.{ true, false }) |is_exact| {
-            if (ores.find(self.oreTable.items, name, is_exact)) |entry| return entry.price;
-            if (ores.find(&ores.CATALOG, name, is_exact)) |entry| return entry.price;
-        }
-        return null;
     }
 
     /// Falls back to defaults on a missing, unreadable or malformed file; logs nothing until finishLoading, since the log level isn't set yet.

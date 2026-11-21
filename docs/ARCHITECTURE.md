@@ -310,7 +310,7 @@ WM_HOTKEY -> timerWindowProc -> HotkeyManager.handleHotkeyPress -> Commands.run
 - A feature's behaviour has a section of its own that every view reads (`notifications`, `intel`, `combat`, `mining`, ...); a view keeps only how it draws it (`thumbnail.alertText`, `thumbnail.combatText`, ...).
 - **`wire.zig`**: generates each section's JSON shape and encode/decode/free/clone from its fields (`pub const Wire = wire.Wire(Self)`). Field-name conventions pick the encoding: `*Color` u32 → hex string, `KeyList` → key code(s). `runtime_fields` aren't saved; `wire_defaults` supplies defaults a runtime field can't hold.
 - **`readable.zig`**: lenient load. Drops each field, item or entry that doesn't fit its type, so it falls back to its default alone. Only non-JSON fails (file copied to `profiles/backup/`, defaults used).
-- **`migrate.zig`**: upgrades older profile JSON before parsing (pure, tested).
+- **`migrate.zig`**: upgrades older profile JSON before parsing (pure, tested). `legacy_dpi.zig` scales positions a DPI-unaware process saved, for old profiles and the EVE-O, EVE-X and EVE-APM importers.
 - **`ranges.zig`**: per-type `ranges` tables and `zero_means_default`; every `validate()` is `ranges_mod.clamp(Self, self)`, which recurses into nested sections.
 - **`store.zig`** (`ProfileStore`): the only writer of the running profile.
   - `live`: what the app shows, including unsaved dialog edits. Read by `ThumbnailSet` and panels (as `*const Config`).

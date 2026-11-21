@@ -277,7 +277,7 @@ pub const Interpreter = struct {
             slog.warn("Failed to record mining yield: unknown ore, ice or gas '{s}'", .{parsed.name()});
             return;
         };
-        const price_per_unit = global_settings.orePrice(parsed.name()) orelse 0;
+        const price_per_unit = ores.price(global_settings.oreTable.items, parsed.name()) orelse 0;
         const amount: f32 = @floatFromInt(parsed.amount);
         const m3 = amount * @as(f32, @floatCast(volume_per_unit));
         const isk = amount * @as(f32, @floatCast(price_per_unit));

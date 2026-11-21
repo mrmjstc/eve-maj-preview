@@ -3,6 +3,7 @@ const std = @import("std");
 const values = @import("values.zig");
 const draft_mod = @import("draft.zig");
 const config = @import("../../config.zig");
+const legacy_dpi = @import("../legacy_dpi.zig");
 
 const Value = std.json.Value;
 const Draft = draft_mod.Draft;
@@ -138,7 +139,7 @@ pub fn build(draft: *Draft, root: Value, profile_name: []const u8, chosen: []con
 /// EVE-X ran DPI-unaware, so its positions are in a 96-DPI space Windows scaled for it.
 pub fn putPosition(draft: *Draft, character: *std.json.ObjectMap, x: f64, y: f64) !void {
     const legacy: config.Position = .{ .x = std.math.lossyCast(i32, @round(x)), .y = std.math.lossyCast(i32, @round(y)) };
-    const position = legacy.scaleFromLegacyDpiUnaware();
+    const position = legacy_dpi.scalePosition(legacy);
     try draft.put(character, "position.x", .{ .integer = position.x });
     try draft.put(character, "position.y", .{ .integer = position.y });
 }

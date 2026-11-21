@@ -106,6 +106,16 @@ pub fn volume(name: []const u8) ?f64 {
     return null;
 }
 
+/// An exact name beats a grade variant; within each, a saved price beats the catalogue's snapshot.
+/// `saved`: a slice of anything with `name` and `price`, e.g. GlobalConfig.oreTable's items.
+pub fn price(saved: anytype, name: []const u8) ?f64 {
+    inline for (.{ true, false }) |is_exact| {
+        if (find(saved, name, is_exact)) |entry| return entry.price;
+        if (find(&CATALOG, name, is_exact)) |entry| return entry.price;
+    }
+    return null;
+}
+
 /// `entries` is a slice of anything with a `name` field; past `is_exact`, a grade variant of the name matches too.
 pub fn find(entries: anytype, name: []const u8, comptime is_exact: bool) ?@TypeOf(entries[0]) {
     for (entries) |entry| {
@@ -143,4 +153,14 @@ test "a grade variant has its base ore's volume, and an unknown name none" {
     try testing.expectEqual(@as(?f64, 0.10), volume("Veldspar"));
     try testing.expectEqual(@as(?f64, 0.10), volume("Veldspar II-Grade"));
     try testing.expectEqual(@as(?f64, null), volume("Not An Ore"));
+}
+
+test "a saved price beats the catalogue's, and an exact name beats a grade variant" {
+    const Saved = struct { name: []const u8, price: f64 };
+    const saved = [_]Saved{.{ .name = "Veldspar", .price = 20 }};
+    try testing.expectEqual(@as(?f64, 20), price(&saved, "Veldspar"));
+    try testing.expectEqual(@as(?f64, 20), price(&saved, "Dense Veldspar"));
+    const none: []const Saved = &.{};
+    try testing.expectEqual(@as(?f64, 11.53), price(none, "Veldspar"));
+    try testing.expectEqual(@as(?f64, null), price(&saved, "Unobtainium"));
 }
