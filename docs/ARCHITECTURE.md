@@ -49,7 +49,7 @@ Owns every long-lived subsystem. Main thread only.
 
 | Field | Lifetime |
 |---|---|
-| `store` (`ProfileStore`), `global_settings`, `character_ids`, `scout`, `roster`, `auto_colors` (`AutoColorStore`), `exclusions`, `auto_move` (`AutoMoveVerifier`), `notifications` (`NotificationCenter`), `focus`, `trackers`, tray | Whole run |
+| `store` (`ProfileStore`), `global_settings`, `character_ids`, `scout`, `roster`, `auto_colors` (`AutoColorStore`), `exclusions`, `auto_move` (`AutoMoveVerifier`), `notifications` (`NotificationCenter`), `intel` (`Intel`), `focus`, `trackers`, tray | Whole run |
 | `auto_minimizer` | Whole run; reset when a different profile loads |
 | `thumbnail_set`, `hotkey_manager`, `chatlog_monitor` | Rebuilt on reload; heap pointers |
 | `list_window` | Built and torn down with `thumbnail_set`; `ClientList` and `ThumbnailsAndList` modes only |
@@ -104,7 +104,7 @@ Roster.refreshMinimized               each client's minimized state, skipping th
 ThumbnailSet.update                   create/destroy/rename thumbnails
 ThumbnailSet.checkHoverZoom
 AutoMinimizer.check                   over the roster's clients
-ChatlogMonitor.update + drain         -> deliverChatlogFindings -> Roster (systems), Notifier (alerts, intel), Scout
+ChatlogMonitor.update + drain         -> deliverChatlogFindings -> Roster (systems), Intel (pins), Notifier (alerts, intel list), Scout
 NotificationCenter.update             History Panel
 MapPanel.update                       takes new stats, renders the map
 Trackers.tick                         throttled push of rates/resources onto the Roster; alerts via Notifier
@@ -230,7 +230,7 @@ What it draws from, in `map/`:
 - `stats.zig` + `stats_feed.zig`: ESI figures, with each hour's change in NPC kills carried from the snapshot before; ESI's incursions, sov campaigns and faction warfare through `incursions.zig`, `campaigns.zig` and `faction_warfare.zig`, a running timer's scores refreshed between snapshots by `campaigns_feed.zig`; and EVE-Scout's storms and Thera's and Turnur's connections through `storms.zig` and `wormholes.zig`.
 - `zkill.zig` + `zkill_feed.zig`: zKillboard's live kills, and the names of their ships and victims.
 - `holder_colors.zig`: sovereignty colours; NPC factions' are fixed, alliances' picked from their logos.
-- `intel_pins.zig`: systems named in intel channels.
+- `intel.zig` (`Intel` on `App`, pure, tested): intel's one owner, holding the pins (`intel_pins.zig`, systems named in intel channels) and the report history the Intel Panel and the map's Intel card list. App hands it each sighting; the Map Panel, the Intel Panel and the thumbnails' connection map read it, and the `Notifier` lists each report there, measured from the nearest client.
 - `evestars.zig` + `evestars_feed.zig`: the Eve Stars route API: sends, route plans, the Ansiblex list and the saved avoid list.
 - `activity.zig` + `activity_feed.zig`: Eve Stars' kills and jumps summed over a span, and its NPC kills an hour at a time.
 - `system_links.zig`: a system's pages on the web.
@@ -294,7 +294,7 @@ WM_HOTKEY -> timerWindowProc -> HotkeyManager.handleHotkeyPress -> runAction
 - `notifications/dispatch.zig`: shows a notification on a roster `Client` if `rules.zig` (pure) allows it; adds sound, speech, history and notified-queue entries.
 - `notifications/template.zig`: fills `{name}` placeholders in custom text (pure).
 - `notifications/stack.zig`: a client's on-screen alerts, with throttle timestamps; kept on the roster.
-- `notifications/center.zig` (`NotificationCenter` on `App`): `history.zig` ring buffers (one more for the Intel Panel, fed by every chatlog intel sighting), `notified_queue.zig`, `panels/history_panel.zig`, `panels/intel_panel.zig`. Survives thumbnail set rebuilds.
+- `notifications/center.zig` (`NotificationCenter` on `App`): the `history.zig` ring buffer the History Panel lists, `notified_queue.zig`, `panels/history_panel.zig`, `panels/intel_panel.zig`. Survives thumbnail set rebuilds.
 - `notifications/alert_effects.zig`: speech and sound, plus the session-only audio mute.
 - The chatlog worker queues `Notification` payloads; text is rendered on the main thread.
 - `travel/`: left-behind detection; `stragglers.zig` is pure.

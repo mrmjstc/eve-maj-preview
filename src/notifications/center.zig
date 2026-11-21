@@ -1,4 +1,4 @@
-//! What outlives a notification on its thumbnail: the histories, the cycle-to-notified queue and the panels that list them.
+//! What outlives a notification on its client: the history, the cycle-to-notified queue, and the History and Intel panels.
 const std = @import("std");
 const config_mod = @import("../config.zig");
 const history_mod = @import("history.zig");
@@ -13,8 +13,6 @@ const panel_look = @import("../panels/panel_look.zig");
 pub const NotificationCenter = struct {
     /// What the History Panel lists.
     history: history_mod.NotificationHistory = .{},
-    /// Every intel report, for the Intel Panel to list.
-    intel_history: history_mod.NotificationHistory = .{},
     /// Who the cycle-to-notified hotkey visits.
     notified_queue: notified_queue_mod.NotifiedQueue = .{},
     panel: history_panel.HistoryPanel = .{},
@@ -24,10 +22,10 @@ pub const NotificationCenter = struct {
     /// The latest alert group History listed, so its other copies aren't listed again.
     recorded_alert_group: ?u64 = null,
 
-    /// Creates the panels' windows if the context's profile shows them; in place, as the panels borrow the histories.
-    pub fn start(self: *NotificationCenter, context: panel_host.Context, host: panel_host.Host) void {
+    /// Creates the panels' windows if the context's profile shows them; in place, as the panels borrow the histories. `intel_history` is App's.
+    pub fn start(self: *NotificationCenter, context: panel_host.Context, host: panel_host.Host, intel_history: *const history_mod.NotificationHistory) void {
         self.panel.start(context, .{ .host = host, .history = &self.history });
-        self.intel_panel.start(context, .{ .host = host, .intel_history = &self.intel_history });
+        self.intel_panel.start(context, .{ .host = host, .intel_history = intel_history });
     }
 
     pub fn deinit(self: *NotificationCenter, allocator: std.mem.Allocator) void {
@@ -38,7 +36,7 @@ pub const NotificationCenter = struct {
 
     /// For the thumbnail set to record what it shows; valid as long as the center.
     pub fn records(self: *NotificationCenter) dispatch.Records {
-        return .{ .history = &self.history, .intel_history = &self.intel_history, .notified_queue = &self.notified_queue, .shown_alert_group = &self.shown_alert_group, .recorded_alert_group = &self.recorded_alert_group };
+        return .{ .history = &self.history, .notified_queue = &self.notified_queue, .shown_alert_group = &self.shown_alert_group, .recorded_alert_group = &self.recorded_alert_group };
     }
 
     /// Matches the panels to the profile, after a change made in the config dialog or by a new profile.
@@ -47,14 +45,9 @@ pub const NotificationCenter = struct {
         self.intel_panel.sync(context);
     }
 
-    /// Per tick: redraws the panels from their histories, or hides them.
-    pub fn update(self: *NotificationCenter, config: *const config_mod.Config, presence: panel_look.Presence) void {
+    /// Per tick: redraws the panels from their histories, or hides them; `intel_history` is App's.
+    pub fn update(self: *NotificationCenter, config: *const config_mod.Config, presence: panel_look.Presence, intel_history: *const history_mod.NotificationHistory) void {
         self.panel.update(&self.history, config, presence);
-        self.intel_panel.update(&self.intel_history, config, presence);
-    }
-
-    pub fn clearHistories(self: *NotificationCenter) void {
-        self.history.clear();
-        self.intel_history.clear();
+        self.intel_panel.update(intel_history, config, presence);
     }
 };

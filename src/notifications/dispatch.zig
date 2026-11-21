@@ -24,8 +24,6 @@ pub const Records = struct {
     /// Borrowed from App's NotificationCenter.
     history: *history_mod.NotificationHistory,
     /// Borrowed from App's NotificationCenter.
-    intel_history: *history_mod.NotificationHistory,
-    /// Borrowed from App's NotificationCenter.
     notified_queue: *notified_queue_mod.NotifiedQueue,
     /// Borrowed from App's NotificationCenter.
     shown_alert_group: *?u64,
@@ -77,8 +75,8 @@ pub fn notify(context: Context, client: *Client, notification: notification_mod.
     alert_effects.play(settings, type_config, text, spoken_name, notification_mod.notificationCategory(notification.notification_type) == .Chat);
 }
 
-/// Lists intel for the Intel Panel, shown or not, measured from the nearest client; dropped with no client running.
-pub fn listIntel(context: Context, clients: []const Client, system: universe.SystemIndex, message: []const u8, is_clear: bool) void {
+/// Lists intel in `intel_history`, shown or not, measured from the nearest client; dropped with no client running.
+pub fn listIntel(context: Context, intel_history: *history_mod.NotificationHistory, clients: []const Client, system: universe.SystemIndex, message: []const u8, is_clear: bool) void {
     var distances: universe.Distances = undefined;
     universe.measureDistances(system, universe.UNREACHED - 1, &distances);
     const nearest = nearestClient(clients, &distances) orelse return;
@@ -90,7 +88,7 @@ pub fn listIntel(context: Context, clients: []const Client, system: universe.Sys
     const notification: notification_mod.Notification = .{ .notification_type = .ChatIntel, .target = universe.systemName(system), .message = message, .jumps = jumps };
     var text_buf: [notification_mod.TEXT_MAX]u8 = undefined;
     const text = notification_mod.defaultText(notification, &text_buf);
-    context.records.intel_history.push(.{
+    intel_history.push(.{
         .source_hwnd = client.hwnd,
         .character_name = client.character_name,
         .text = text,

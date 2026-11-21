@@ -19,6 +19,7 @@ const campaigns_feed = @import("../map/campaigns_feed.zig");
 const stats_feed = @import("../map/stats_feed.zig");
 const holder_colors = @import("../map/holder_colors.zig");
 const intel_pins = @import("../map/intel_pins.zig");
+const intel_mod = @import("../map/intel.zig");
 const zkill = @import("../map/zkill.zig");
 const zkill_feed = @import("../map/zkill_feed.zig");
 const drag = @import("drag.zig");
@@ -48,7 +49,7 @@ const NO_PINS: intel_pins.IntelPins = .{};
 
 const Class = gdi_overlay.WindowClass(MAP_PANEL_WINDOW_CLASS, mapPanelWindowProc);
 
-/// Owns the Map Panel window, its figures and its pins: mapPanel.show creates the window, and the stats and pins outlive it.
+/// Owns the Map Panel window and its figures: mapPanel.show creates the window, and the stats outlive it.
 pub const MapPanel = struct {
     /// App's PANEL_HOST.
     host: panel_host.Host,
@@ -63,9 +64,8 @@ pub const MapPanel = struct {
     logo_colors: ?*LogoColors = null,
     /// Changes with each new logo_colors.
     logo_revision: u64 = 0,
-    pins: intel_pins.IntelPins = .{},
-    /// What the Intel Panel lists, drawn here while it's inside the map; borrowed, outlives the panel.
-    intel_history: ?*const history.NotificationHistory = null,
+    /// App's pins, and the reports the Intel Panel lists, drawn here while it's inside the map; borrowed, outlives the panel.
+    intel: ?*const intel_mod.Intel = null,
     /// Holds the Eve Stars token; borrowed, outlives the panel.
     global: ?*const GlobalConfig = null,
     destinations: Destinations = .{},
@@ -77,8 +77,8 @@ pub const MapPanel = struct {
     kill_names: zkill.Names = .{},
 
     /// Creates the window if the context's profile shows it.
-    pub fn start(self: *MapPanel, context: panel_host.Context, intel_history: *const history.NotificationHistory, global: *const GlobalConfig) void {
-        self.intel_history = intel_history;
+    pub fn start(self: *MapPanel, context: panel_host.Context, intel: *const intel_mod.Intel, global: *const GlobalConfig) void {
+        self.intel = intel;
         self.global = global;
         panel_lifecycle.sync(self, context);
     }
@@ -204,7 +204,8 @@ pub const MapPanel = struct {
     /// For panel_lifecycle.
     pub fn createWindow(self: *MapPanel, context: panel_host.Context) void {
         // Linked to the panel rather than the window, as the window's input reaches the panel's feeds.
-        panel_lifecycle.install(MapPanelWindow, &self.window, initWindow(context, self.intel_history, self.global), self, "Map Panel");
+        const intel_history = if (self.intel) |intel| &intel.history else null;
+        panel_lifecycle.install(MapPanelWindow, &self.window, initWindow(context, intel_history, self.global), self, "Map Panel");
     }
 
     /// For panel_lifecycle.
@@ -226,11 +227,17 @@ pub const MapPanel = struct {
         if (window.state.menu != null and window.hasEveStars()) self.destinations.refreshTargets(allocator, window.evestarsToken(), now_ms);
     }
 
+    /// App's, or none before start.
+    fn shownPins(self: *const MapPanel) *const intel_pins.IntelPins {
+        const intel = self.intel orelse return &NO_PINS;
+        return &intel.pins;
+    }
+
     /// Also from the window's own input, since the tick can be a second apart with no clients running.
     fn redraw(self: *MapPanel) void {
         const window = if (self.window) |*w| w else return;
         setPumping(window, window.state.isPopupOpen() or self.destinations.isWaiting() or self.traffic.isWaiting() or window.state.is_choosing_regions);
-        var scene: Scene = .{ .stats = self.stats, .logo_colors = self.logo_colors, .logo_revision = self.logo_revision, .pins = if (window.config.mapPanel.showIntel) &self.pins else &NO_PINS, .destinations = &self.destinations, .traffic = &self.traffic, .now_seconds = win32.unixSecondsNow() };
+        var scene: Scene = .{ .stats = self.stats, .logo_colors = self.logo_colors, .logo_revision = self.logo_revision, .pins = if (window.config.mapPanel.showIntel) self.shownPins() else &NO_PINS, .destinations = &self.destinations, .traffic = &self.traffic, .now_seconds = win32.unixSecondsNow() };
         if (window.config.mapPanel.showKills) {
             scene.kills = &self.kills;
             scene.kill_names = &self.kill_names;

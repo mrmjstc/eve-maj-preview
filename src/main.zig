@@ -127,8 +127,8 @@ fn mainImpl(init: std.process.Init) !void {
 
     app.store.live.logSettings();
 
-    app.notifications.start(app.panelContext(), app_mod.PANEL_HOST);
-    app.map_panel.start(app.panelContext(), &app.notifications.intel_history, &app.global_settings);
+    app.notifications.start(app.panelContext(), app_mod.PANEL_HOST, &app.intel.history);
+    app.map_panel.start(app.panelContext(), &app.intel, &app.global_settings);
 
     if (app.global_settings.autoRegisterProtocol) registry.ensureRegistered();
 

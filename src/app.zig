@@ -21,6 +21,7 @@ const profile_switch = @import("hotkeys/profile_switch.zig");
 const center = @import("notifications/center.zig");
 const alert_effects = @import("notifications/alert_effects.zig");
 const notifier_mod = @import("notifications/notifier.zig");
+const intel_mod = @import("map/intel.zig");
 const list_view = @import("panels/list_view.zig");
 const map_panel_mod = @import("panels/map_panel.zig");
 const panel_host = @import("panels/panel_host.zig");
@@ -90,6 +91,8 @@ pub const App = struct {
     auto_move: auto_move_mod.AutoMoveVerifier,
     /// Kept across a thumbnail set rebuild.
     notifications: center.NotificationCenter = .{},
+    /// The pins and reports the Map Panel, Intel Panel and thumbnails show; kept across a thumbnail set rebuild.
+    intel: intel_mod.Intel = .{},
     /// Kept across a thumbnail set rebuild.
     map_panel: map_panel_mod.MapPanel,
     instance: win32.HINSTANCE,
@@ -167,7 +170,7 @@ pub const App = struct {
 
     /// Shows alerts on the roster's clients, with or without a thumbnail set.
     pub fn notifier(self: *App) notifier_mod.Notifier {
-        return .{ .allocator = self.allocator, .config = &self.store.live, .auto_colors = &self.auto_colors, .records = self.notifications.records(), .roster = &self.roster };
+        return .{ .allocator = self.allocator, .config = &self.store.live, .auto_colors = &self.auto_colors, .records = self.notifications.records(), .roster = &self.roster, .intel = &self.intel };
     }
 
     pub fn panelContext(self: *App) panel_host.Context {
@@ -294,7 +297,7 @@ pub const App = struct {
         const dragged_hwnd = if (self.thumbnail_set) |thumbnail_set| thumbnail_set.draggedSourceHwnd() else null;
         self.roster.refreshMinimized(dragged_hwnd);
         if (self.thumbnail_set) |thumbnail_set| {
-            thumbnail_set.updateConnections(&self.map_panel.pins, tick_start.ms);
+            thumbnail_set.updateConnections(&self.intel.pins, tick_start.ms);
             thumbnail_set.update(scout_result.windows, scout_result.closed_windows.items, scout_result.name_changes.items);
             thumbnail_set.checkHoverZoom();
         }
@@ -316,7 +319,7 @@ pub const App = struct {
         // After the chatlog's alerts are delivered, so the panel lists them this tick.
         const presence = self.panelPresence();
         self.map_panel.update(self.allocator, self.io, &self.store.live, presence);
-        self.notifications.update(&self.store.live, presence);
+        self.notifications.update(&self.store.live, presence, &self.intel.history);
 
         self.trackers.tick(&self.store.live, scout_result.windows, tick_start, self.tick_interval_ms, self.thumbnail_set, &self.notifier());
 
@@ -412,11 +415,8 @@ pub const App = struct {
 
         for (findings.intel_sightings.items) |sighting| {
             if (sighting.is_pinned) {
-                if (!sighting.is_clear) {
-                    self.map_panel.pins.add(sighting.system, sighting.message, now_ms);
-                } else if (self.store.live.mapPanel.intelShowClear) {
-                    self.map_panel.pins.markClear(sighting.system, sighting.message, self.store.live.mapPanel.intelShrinkMs(), now_ms);
-                }
+                const map_settings = &self.store.live.mapPanel;
+                self.intel.pin(sighting.system, sighting.message, sighting.is_clear, .{ .shows_clear = map_settings.intelShowClear, .lifetime_ms = map_settings.intelShrinkMs() }, now_ms);
             }
             if (sighting.is_message_first) {
                 self.notifier().listIntel(sighting.system, sighting.message, sighting.is_clear);
@@ -551,13 +551,19 @@ pub const App = struct {
                 .toggle_dragging => self.toggleDragging(),
                 .toggle_travel_mode => self.toggleTravelMode(),
                 .toggle_notification_history => self.toggleNotificationHistory(),
-                .clear_notification_history => self.notifications.clearHistories(),
+                .clear_notification_history => self.clearNotificationHistories(),
                 .toggle_map_panel => self.toggleMapPanel(),
                 .toggle_intel_panel => self.toggleIntelPanel(),
                 .return_to_last_app => launch.returnToLastApp(&self.focus.last_non_eve_foreground),
                 .exit => requestExit(),
             },
         }
+    }
+
+    /// The History Panel's list and the Intel Panel's.
+    fn clearNotificationHistories(self: *App) void {
+        self.notifications.history.clear();
+        self.intel.history.clear();
     }
 
     fn cycleProfile(self: *App, is_forward: bool) void {
