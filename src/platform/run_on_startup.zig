@@ -1,6 +1,6 @@
 //! Starting the app with Windows, through the current user's Run registry key.
 const std = @import("std");
-const win32 = @import("../platform/win32.zig");
+const win32 = @import("win32.zig");
 const log = @import("../log.zig");
 
 const slog = log.Scoped("run_on_startup");

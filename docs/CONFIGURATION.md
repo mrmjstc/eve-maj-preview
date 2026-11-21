@@ -847,7 +847,7 @@ A window must pass both lists; a filter with both empty matches nothing. Non-EVE
 | `alwaysOnTop` | bool | `true` | Keep the config dialog on top. |
 | `moveOnProfileSwitch` | bool | `false` | On a profile switch, move running clients to the new profile's saved window positions. |
 | `dialogX`, `dialogY` | int? | `null` | Dialog position. Set by the app. |
-| `runOnStartup` | bool | `false` | `HKCU\…\Run` entry, re-applied each launch. |
+| `runOnStartup` | bool | `false` | `HKCU\…\Run` entry, re-applied each launch, and removed while off. |
 | `autoRegisterProtocol` | bool | `true` | Register `evemajpreview://` at startup if missing. |
 | `protocolLinks` | object | | Which closing protocol URLs may run; see [Command line and protocol](#command-line-and-protocol). |
 | `protocolLinks.allowCloseAll` | bool | `false` | Let `hotkey/close_all` URLs run. Off, they're refused and logged, since any web page can open a link. |

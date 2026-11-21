@@ -34,7 +34,7 @@ All relative to the exe folder (`main.zig` sets the cwd there).
 2. Parse arguments (`arguments.zig`: `--profile`/`-p`, `--config`, `--protocol <url>`).
 3. `--protocol`: forward to the running instance over `WM_COPYDATA` and exit. Done before the single-instance check.
 4. Claim the `Global\EVE-Maj-Preview-SingleInstance` mutex. If taken, send `evemajpreview://config` to the running instance and exit.
-5. Sweep leftover temp files, skipped if the working directory couldn't be set to the exe's folder. Load bundled fonts and start the hotkey hook thread, then `GlobalConfig`, `CharacterIds` and the profile into a `ProfileStore`, which `App.init` takes as `App.Loaded`; then set `app.g_app`, start the dialog host and load the language.
+5. Sweep leftover temp files, skipped if the working directory couldn't be set to the exe's folder. Load bundled fonts and start the hotkey hook thread, then `GlobalConfig` (applied at once by `app.applyGlobalSettings`: log level, debug console, Run key, protocol handler, as again after a Save), `CharacterIds` and the profile into a `ProfileStore`, which `App.init` takes as `App.Loaded`; then set `app.g_app`, start the dialog host and load the language.
 6. Build subsystems in dependency order: notification center → `Scout`'s event hooks → `ThumbnailSet` → `ChatlogMonitor` (worker stopped) → activity `Trackers` → start the chatlog worker.
 7. Create the hidden timer window, focus hook, tray icon, update check thread.
 8. Scan windows, populate thumbnails, add characters to the chatlog monitor.
@@ -334,7 +334,6 @@ Immediate-mode (knots on Vulkan), main thread, nested message loop so the tick a
 - `knots/hotkey.zig`: recording field; pauses live hotkeys while recording. Draws its key caps compact when full size would overrun the room `widgets.controlsRoom` reports beside the row's label. Finds conflicting combos and names their holders, using `labels.zig`'s hotkey labels.
 - `tools/region_select.zig`: full-screen overlay for drawing a thumbnail space, with its own hint box; math in `region_math.zig`.
 - `tools/esi_prices.zig`: Jita ore prices. `tools/ultra_potato.zig`: patches EVE's graphics YAML.
-- `run_on_startup.zig`: the Run registry key.
 
 ## Module dependencies
 
@@ -367,6 +366,7 @@ A second exe, `eve-maj-sim` (`zig build sim`), that stands in for EVE clients so
 | `update.zig` | GitHub release check |
 | `lang/` | UI strings by English key, per-language JSON |
 | `platform/fonts.zig` | Bundled Cascadia and Geist, registered process-private; `create` makes every GDI font |
+| `platform/run_on_startup.zig` | The Run registry key, set or removed by `app.applyGlobalSettings` at startup and after a Save |
 | `platform/virtual_keys.zig` | VK codes, `KEY_NAMES`, mouse-chord encoding |
 | `platform/wic.zig` | Image decoding (portraits, alliance logos) |
 | `util/` | Colour (OKLab picks), number format, HTTP (WinHTTP, with timeouts), schedule, strings |

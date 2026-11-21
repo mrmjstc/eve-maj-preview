@@ -19,12 +19,10 @@ const tts = @import("notifications/tts.zig");
 const sound = @import("notifications/sound.zig");
 const tray = @import("tray.zig");
 const ipc = @import("protocol/ipc.zig");
-const registry = @import("protocol/registry.zig");
 const run = @import("protocol/run.zig");
 const url = @import("protocol/url.zig");
 const update = @import("update.zig");
 const knots_host = @import("dialog/knots/host.zig");
-const run_on_startup = @import("dialog/run_on_startup.zig");
 const lang = @import("lang/lang.zig");
 const detached = @import("util/detached.zig");
 const log = @import("log.zig");
@@ -130,12 +128,8 @@ fn mainImpl(init: std.process.Init) !void {
     app.notifications.start(app.panelContext(), app_mod.PANEL_HOST, &app.intel.history);
     app.map_panel.start(app.panelContext(), &app.intel, &app.global_settings);
 
-    if (app.global_settings.autoRegisterProtocol) registry.ensureRegistered();
-
     defer tts.shutdown();
     defer sound.shutdown();
-
-    if (app.global_settings.logLevel == .debug) log.openDebugConsole();
 
     app.scout.listenForEvents();
 
@@ -191,18 +185,16 @@ fn mainImpl(init: std.process.Init) !void {
     }
 }
 
-/// Each after what it needs: the log level before anything else logs, the last used profile before the profile; `profile_arg` is --profile's.
+/// Each after what it needs: the global settings before anything else logs, the last used profile before the profile; `profile_arg` is --profile's.
 fn loadFromDisk(allocator: std.mem.Allocator, io: std.Io, profile_arg: ?[]const u8) !app_mod.Loaded {
     var global_settings: config.GlobalConfig = try .load(allocator, io);
     errdefer global_settings.deinit();
-    log.setLevel(global_settings.logLevel);
+    app_mod.applyGlobalSettings(&global_settings);
     // Before the dump, so it shows any Log Monitoring a profile brings along.
     global_settings.finishLoading(io);
     global_settings.logSettings();
     var character_ids: CharacterIds = .load(allocator, io);
     errdefer character_ids.deinit();
-    // Every launch, since the Run value can be lost or point at a moved exe while the setting stays on.
-    if (global_settings.runOnStartup) run_on_startup.apply(true);
 
     const last_used = global_settings.lastUsedProfile;
     const profile_name = profile_arg orelse if (last_used.len > 0) last_used else config.DEFAULT_PROFILE;

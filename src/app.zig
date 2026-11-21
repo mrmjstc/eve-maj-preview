@@ -1,6 +1,7 @@
 //! The running app: owns every long-lived subsystem, rebuilds them on a profile switch or Save, and runs each tick.
 const std = @import("std");
 const win32 = @import("platform/win32.zig");
+const run_on_startup = @import("platform/run_on_startup.zig");
 const config = @import("config.zig");
 const scout_mod = @import("clients/scout.zig");
 const roster_mod = @import("clients/roster.zig");
@@ -35,7 +36,6 @@ const runtime = @import("activity/runtime.zig");
 const travel_left_behind = @import("travel/left_behind.zig");
 const tray = @import("tray.zig");
 const dialog_host = @import("dialog/dialog_host.zig");
-const run_on_startup = @import("dialog/run_on_startup.zig");
 const registry = @import("protocol/registry.zig");
 const schedule = @import("util/schedule.zig");
 const log = @import("log.zig");
@@ -263,12 +263,8 @@ pub const App = struct {
         try self.restartSubsystems(timer_hwnd, null, if (draft_copy) |*copy| copy else null);
         if (save.global_draft == null) return;
 
-        const settings = &self.global_settings;
-        try settings.save(self.io);
-        log.setLevel(settings.logLevel);
-        if (settings.logLevel == .debug) log.openDebugConsole() else log.closeDebugConsole();
-        run_on_startup.apply(settings.runOnStartup);
-        if (settings.autoRegisterProtocol) registry.ensureRegistered();
+        try self.global_settings.save(self.io);
+        applyGlobalSettings(&self.global_settings);
     }
 
     /// After a dialog edit to the live profile.
@@ -817,6 +813,15 @@ pub fn requestExit() void {
         }
     }
     win32.PostQuitMessage(0);
+}
+
+/// The settings that reach outside the app: the log, the Run key and the protocol handler.
+pub fn applyGlobalSettings(settings: *const config.GlobalConfig) void {
+    log.setLevel(settings.logLevel);
+    if (settings.logLevel == .debug) log.openDebugConsole() else log.closeDebugConsole();
+    // Every launch too, since the Run value can be lost or point at a moved exe while the setting stays on.
+    run_on_startup.apply(settings.runOnStartup);
+    if (settings.autoRegisterProtocol) registry.ensureRegistered();
 }
 
 pub fn addChatlogCharacters(monitor: *chatlog.ChatlogMonitor, windows: []const scout_mod.EveWindow) void {
