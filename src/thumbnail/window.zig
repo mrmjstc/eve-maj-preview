@@ -6,9 +6,9 @@ const config_mod = @import("../config.zig");
 const state = @import("state.zig");
 const activity_stats = @import("activity_stats.zig");
 const overlay = @import("overlay.zig");
-const auto_colors_mod = @import("auto_colors.zig");
 const stack = @import("../notifications/stack.zig");
 const scout = @import("../clients/scout.zig");
+const auto_colors_mod = @import("../clients/auto_colors.zig");
 const connections_mod = @import("../map/connections.zig");
 const log = @import("../log.zig");
 

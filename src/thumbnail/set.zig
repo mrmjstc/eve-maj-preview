@@ -7,6 +7,7 @@ const scout = @import("../clients/scout.zig");
 const actions = @import("../clients/actions.zig");
 const auto_move_mod = @import("../clients/auto_move.zig");
 const exclusions_mod = @import("../clients/exclusions.zig");
+const auto_colors_mod = @import("../clients/auto_colors.zig");
 const drag_overlays_mod = @import("../drag/overlays.zig");
 const spaces = @import("../layout/spaces.zig");
 const monitors = @import("../layout/monitors.zig");
@@ -15,7 +16,6 @@ const window = @import("window.zig");
 const arrange = @import("arrange.zig");
 const renderer_mod = @import("renderer.zig");
 const look = @import("look.zig");
-const auto_colors_mod = @import("auto_colors.zig");
 const dispatch = @import("../notifications/dispatch.zig");
 const notification_mod = @import("../notifications/notification.zig");
 const universe = @import("../map/universe.zig");
@@ -82,8 +82,8 @@ pub const ThumbnailSet = struct {
     drag_overlays: drag_overlays_mod.DragOverlays,
     /// Sole "who's focused" source of truth; write only via reconcileThumbnailStates.
     active_source_hwnd: ?win32.HWND = null,
-    /// Unique system and character colours.
-    auto_colors: AutoColorStore,
+    /// Borrowed from App, which keeps it across a thumbnail set rebuild.
+    auto_colors: *AutoColorStore,
     /// A different mode needs a new ThumbnailSet (see App.onLiveProfileEdited).
     view_mode: types.ViewMode,
 
@@ -117,15 +117,15 @@ pub const ThumbnailSet = struct {
         group_badge_label: []const u8,
     };
 
-    /// Borrows `store`, `exclusions` and `notification_records`, which must outlive the thumbnail set.
-    pub fn init(allocator: std.mem.Allocator, store: *config_mod.ProfileStore, exclusions: *const exclusions_mod.Exclusions, notification_records: dispatch.Records, callbacks: Callbacks) !ThumbnailSet {
+    /// Borrows `store`, `exclusions`, `notification_records` and `auto_colors`, which must outlive the thumbnail set.
+    pub fn init(allocator: std.mem.Allocator, store: *config_mod.ProfileStore, exclusions: *const exclusions_mod.Exclusions, notification_records: dispatch.Records, auto_colors: *AutoColorStore, callbacks: Callbacks) !ThumbnailSet {
         const instance = win32.GetModuleHandleA(null) orelse return error.GetModuleHandleFailed;
         const config = &store.live;
 
         var thumbnail_set: ThumbnailSet = .{
             .allocator = allocator,
             .thumbnails = .empty,
-            .auto_colors = .init(allocator, store.io),
+            .auto_colors = auto_colors,
             .auto_move = .init(allocator),
             .drag_overlays = .init(allocator),
             .renderer = .init(allocator),
@@ -155,7 +155,6 @@ pub const ThumbnailSet = struct {
         for (self.thumbnails.items) |thumbnail| self.destroyThumbnail(thumbnail);
         self.thumbnails.deinit(self.allocator);
         self.auto_move.deinit();
-        self.auto_colors.deinit();
     }
 
     /// Subject to that type's notification settings.
@@ -173,7 +172,7 @@ pub const ThumbnailSet = struct {
     }
 
     /// For the Intel Panel, which lists every report; `message` is copied.
-    pub fn listIntel(self: *ThumbnailSet, system: universe.SystemIndex, message: []const u8, is_clear: bool) void {
+    pub fn listIntel(self: *const ThumbnailSet, system: universe.SystemIndex, message: []const u8, is_clear: bool) void {
         dispatch.listIntel(self.dispatchContext(), self.thumbnails.items, system, message, is_clear);
     }
 
@@ -560,8 +559,8 @@ pub const ThumbnailSet = struct {
         self.store.setCharacterPositions(entries.items);
     }
 
-    fn dispatchContext(self: *ThumbnailSet) dispatch.Context {
-        return .{ .allocator = self.allocator, .config = self.config, .auto_colors = &self.auto_colors, .records = self.notification_records, .active_source_hwnd = self.active_source_hwnd };
+    fn dispatchContext(self: *const ThumbnailSet) dispatch.Context {
+        return .{ .allocator = self.allocator, .config = self.config, .auto_colors = self.auto_colors, .records = self.notification_records, .active_source_hwnd = self.active_source_hwnd };
     }
 
     fn destroyThumbnail(self: *ThumbnailSet, thumbnail: ThumbnailWindow) void {
@@ -579,7 +578,6 @@ pub const ThumbnailSet = struct {
 
     fn removeThumbnailAt(self: *ThumbnailSet, index: usize) void {
         self.destroyThumbnail(self.thumbnails.orderedRemove(index));
-        if (self.thumbnails.items.len == 0) self.auto_colors.flush();
     }
 
     fn indexOfSource(self: *const ThumbnailSet, source_hwnd: win32.HWND) ?usize {
@@ -601,7 +599,7 @@ pub const ThumbnailSet = struct {
     /// Keeps the old name if copying fails.
     fn rename(self: *ThumbnailSet, thumbnail: *ThumbnailWindow, name: []const u8) !void {
         thumbnail.replaceText(self.allocator, .character_name, try self.allocator.dupe(u8, name));
-        thumbnail.refreshConfigCache(self.config, &self.auto_colors);
+        thumbnail.refreshConfigCache(self.config, self.auto_colors);
         self.refreshGroupBadge(thumbnail);
         self.refreshExclusion(thumbnail);
     }
@@ -711,7 +709,7 @@ pub const ThumbnailSet = struct {
             .visibility_state = state.VisibilityState.visible.afterAutoHide(self.focusHide(win32.GetForegroundWindow() == eve_window.hwnd or self.isEveWindowForeground())),
             .is_win32_enabled = is_win32_enabled,
         };
-        thumbnail.refreshConfigCache(self.config, &self.auto_colors);
+        thumbnail.refreshConfigCache(self.config, self.auto_colors);
         self.refreshExclusion(&thumbnail);
         return thumbnail;
     }

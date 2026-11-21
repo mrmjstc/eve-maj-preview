@@ -261,7 +261,7 @@ fn startChatlogMonitoring(monitor: *chatlog.ChatlogMonitor, characters: []const 
 }
 
 /// Past the wait, ending the process is safer than tearing down what a thread still uses.
-fn waitForBackgroundThreads(app: *const App, io: std.Io) void {
+fn waitForBackgroundThreads(app: *App, io: std.Io) void {
     if (detached.waitForAll(io, DETACHED_EXIT_WAIT_MS)) return;
     app.saveBeforeAbruptExit();
     std.process.exit(0);

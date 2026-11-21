@@ -66,7 +66,7 @@ pub fn resizeIfNeeded(thumbnail_set: *ThumbnailSet, thumbnail: *ThumbnailWindow,
 pub fn refreshConfigCaches(thumbnail_set: *ThumbnailSet) void {
     // Every thumbnail, not just is_win32_enabled ones: list_view.zig reads these cache fields directly.
     for (thumbnail_set.thumbnails.items) |*thumbnail| {
-        thumbnail.refreshConfigCache(thumbnail_set.config, &thumbnail_set.auto_colors);
+        thumbnail.refreshConfigCache(thumbnail_set.config, thumbnail_set.auto_colors);
         thumbnail_set.refreshGroupBadge(thumbnail);
         // Measured text sizes are cached by font, not text, so a changed display name would keep the old size.
         thumbnail.render_cache.invalidate();

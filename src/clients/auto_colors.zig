@@ -146,7 +146,7 @@ pub const AutoColorStore = struct {
         }
     }
 
-    /// Deferred to when the last thumbnail closes, and deinit, so a session with EVE open never writes.
+    /// Deferred to when the last client leaves the roster, and deinit, so a session with EVE open never writes.
     pub fn flush(self: *AutoColorStore) void {
         if (!self.system.is_dirty and !self.character.is_dirty) return;
         self.system.is_dirty = false;

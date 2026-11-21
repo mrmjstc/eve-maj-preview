@@ -19,7 +19,7 @@ All relative to the exe folder (`main.zig` sets the cwd there).
 | `profiles/<name>.json` | Per-profile `Config` | `config/profiles.zig` |
 | `profiles/global.settings.json` | `GlobalConfig` | `config/global.zig` |
 | `profiles/backup/` | Profiles deleted, reset, imported over, unreadable or backed up from the Backups tab, `<unix time>_<name>` | `config/profiles.zig` |
-| `data/colors.json` | Generated system/character colours | `thumbnail/auto_colors.zig` |
+| `data/colors.json` | Generated system/character colours | `clients/auto_colors.zig` |
 | `data/character_ids.json` | Character name → EVE ID | `chatlog/character_ids.zig` |
 | `data/portraits/{id}.jpg` | Character portraits | `dialog/knots/portraits.zig` |
 | `data/logo_colors.json` | Colour picked from each sov-holding alliance's logo, at most 200 before it starts again | `map/stats_feed.zig` |
@@ -49,7 +49,7 @@ Owns every long-lived subsystem. Main thread only.
 
 | Field | Lifetime |
 |---|---|
-| `store` (`ProfileStore`), `global_settings`, `character_ids`, `scout`, `roster`, `exclusions`, `notifications` (`NotificationCenter`), `focus`, `trackers`, tray | Whole run |
+| `store` (`ProfileStore`), `global_settings`, `character_ids`, `scout`, `roster`, `auto_colors` (`AutoColorStore`), `exclusions`, `notifications` (`NotificationCenter`), `focus`, `trackers`, tray | Whole run |
 | `auto_minimizer` | Whole run; reset when a different profile loads |
 | `thumbnail_set`, `hotkey_manager`, `chatlog_monitor` | Rebuilt on reload; heap pointers |
 | `list_window` | Built and torn down with `thumbnail_set`; `ClientList` and `ThumbnailsAndList` modes only |
@@ -147,7 +147,7 @@ Cross-thread data:
 
 **`clients/roster.zig`** (`Roster`, pure, tested): one `Client` record per tracked window, kept by App for the whole run. `sync` mirrors Scout's window list once per tick, right after `Scout.update`, and is the only place clients are added or removed. It holds an owned copy of the name, the login time mirrored from Scout, and a `revision` bumped on every change a view shows. Game state is moving onto it from `ThumbnailWindow`; nothing reads it yet.
 
-**`thumbnail/set.zig`** (`ThumbnailSet`): the central mutable state. Owns the `ThumbnailWindow` list (linear search, a few dozen at most), keeps it in step with Scout, dispatches notifications, schedules layout and redraws. Holds the `Renderer`, auto-move verifier, a drag's ghost overlay and hint (`DragOverlays`) and `AutoColorStore`; callers outside `thumbnail/` reach the hover zoom and drag overlays through its methods, not `renderer`.
+**`thumbnail/set.zig`** (`ThumbnailSet`): the central mutable state. Owns the `ThumbnailWindow` list (linear search, a few dozen at most), keeps it in step with Scout, dispatches notifications, schedules layout and redraws. Holds the `Renderer`, auto-move verifier, and a drag's ghost overlay and hint (`DragOverlays`), and borrows App's `AutoColorStore`; callers outside `thumbnail/` reach the hover zoom and drag overlays through its methods, not `renderer`.
 
 **`thumbnail/window.zig`** (`ThumbnailWindow`): one per client, two HWNDs:
 

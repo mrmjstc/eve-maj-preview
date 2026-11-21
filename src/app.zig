@@ -4,6 +4,7 @@ const win32 = @import("platform/win32.zig");
 const config = @import("config.zig");
 const scout_mod = @import("clients/scout.zig");
 const roster_mod = @import("clients/roster.zig");
+const auto_colors_mod = @import("clients/auto_colors.zig");
 const exclusions_mod = @import("clients/exclusions.zig");
 const activation = @import("control/activation.zig");
 const auto_minimize = @import("control/auto_minimize.zig");
@@ -80,6 +81,8 @@ pub const App = struct {
     scout: scout_mod.Scout,
     /// Synced from Scout each tick; kept across a thumbnail set rebuild and a profile switch.
     roster: roster_mod.Roster,
+    /// Unique system and character colours; kept across a thumbnail set rebuild and a profile switch.
+    auto_colors: auto_colors_mod.AutoColorStore,
     /// Kept across a Save or profile switch.
     exclusions: exclusions_mod.Exclusions,
     /// Kept across a thumbnail set rebuild.
@@ -125,6 +128,7 @@ pub const App = struct {
             .trackers = .init(allocator, io),
             .scout = .init(allocator),
             .roster = .init(allocator),
+            .auto_colors = .init(allocator, io),
             .map_panel = .{ .host = PANEL_HOST },
         };
     }
@@ -146,6 +150,7 @@ pub const App = struct {
         self.destroyThumbnailSet();
         self.auto_minimizer.deinit();
         self.exclusions.deinit();
+        self.auto_colors.deinit();
         self.roster.deinit();
         self.scout.deinit();
         self.map_panel.deinit(self.allocator);
@@ -264,6 +269,7 @@ pub const App = struct {
         var scout_result = self.scout.update(should_force_scan, self.store.saved.windowFilters.items);
         defer scout_result.deinit(self.allocator);
         self.roster.sync(scout_result.windows);
+        if (self.roster.clients.items.len == 0) self.auto_colors.flush();
         self.clearLoggedOutExclusions(scout_result.name_changes.items);
         // The Characters tab marks who's logged in, which only a login, logout or closed client changes.
         if (scout_result.name_changes.items.len > 0 or scout_result.closed_windows.items.len > 0) {
@@ -322,8 +328,8 @@ pub const App = struct {
     }
 
     /// Writes what only teardown would, for an exit that skips it: Windows ending the session, or a background thread outlasting the wait at exit.
-    pub fn saveBeforeAbruptExit(self: *const App) void {
-        if (self.thumbnail_set) |thumbnail_set| thumbnail_set.auto_colors.flush();
+    pub fn saveBeforeAbruptExit(self: *App) void {
+        self.auto_colors.flush();
         log.flush();
     }
 
@@ -455,7 +461,7 @@ pub const App = struct {
     pub fn createThumbnailSet(self: *App) !*ThumbnailSet {
         const new_set = try self.allocator.create(ThumbnailSet);
         errdefer self.allocator.destroy(new_set);
-        new_set.* = try ThumbnailSet.init(self.allocator, &self.store, &self.exclusions, self.notifications.records(), .{
+        new_set.* = try ThumbnailSet.init(self.allocator, &self.store, &self.exclusions, self.notifications.records(), &self.auto_colors, .{
             .window_procedures = .{ .thumbnail = thumbnail_input.windowProc, .text = thumbnail_input.textWindowProc },
             .destroy_hook = thumbnail_input.windowDestroyProc,
         });
