@@ -7,7 +7,7 @@ Every setting EVE-Maj Preview reads, by file and JSON key. The config dialog wri
 - [Files](#files)
 - [Loading rules](#loading-rules)
 - [Value formats](#value-formats)
-- [Profile](#profile): [top level](#top-level) · [thumbnail](#thumbnail) · [thumbnail.alertText](#thumbnailalerttext) · [notifications](#notifications) · [timer](#timer) · [display](#display) · [listView](#listview) · [historyPanel](#historypanel) · [mapPanel](#mappanel) · [intelPanel](#intelpanel) · [intel](#intel) · [thumbnailSpaces](#thumbnailspaces) · [snapping](#snapping) · [panelSnapping](#panelsnapping) · [interaction](#interaction) · [exclusion](#exclusion) · [autoMinimize](#autominimize) · [autoMovePosition](#automoveposition) · [closeAll](#closeall) · [combat](#combat) · [mining](#mining) · [bounty](#bounty) · [resources](#resources) · [ping](#ping) · [travel](#travel) · [hotkeys](#hotkeys) · [hotkeyGroups](#hotkeygroups) · [characters](#characters) · [systemColors](#systemcolors) · [chatAlerts](#chatalerts) · [windowFilters](#windowfilters)
+- [Profile](#profile): [top level](#top-level) · [thumbnail](#thumbnail) · [thumbnail.alertText](#thumbnailalerttext) · [thumbnail.combatText](#thumbnailcombattext) · [thumbnail.miningText](#thumbnailminingtext) · [notifications](#notifications) · [timer](#timer) · [display](#display) · [listView](#listview) · [historyPanel](#historypanel) · [mapPanel](#mappanel) · [intelPanel](#intelpanel) · [intel](#intel) · [thumbnailSpaces](#thumbnailspaces) · [snapping](#snapping) · [panelSnapping](#panelsnapping) · [interaction](#interaction) · [exclusion](#exclusion) · [autoMinimize](#autominimize) · [autoMovePosition](#automoveposition) · [closeAll](#closeall) · [combat](#combat) · [mining](#mining) · [bounty](#bounty) · [resources](#resources) · [ping](#ping) · [travel](#travel) · [hotkeys](#hotkeys) · [hotkeyGroups](#hotkeygroups) · [characters](#characters) · [systemColors](#systemcolors) · [chatAlerts](#chatalerts) · [windowFilters](#windowfilters)
 - [Global settings](#global-settings): [chatlog](#chatlog)
 - [Command line and protocol](#command-line-and-protocol)
 
@@ -44,7 +44,7 @@ Profile file names: `<name>.json` with no path separators or `:*?"<>|`, not star
 - `formatVersion` below 5 migrates on load: a `listView.activeColor` or `thumbnail.borderColor` still at the old default `0xFFD9A441` is removed, so it follows `accentColor`.
 - `formatVersion` below 6 migrates on load: `listView.showIncomingDps`/`showOutgoingDps`/`showMiningRate`/`showBountyRate` stay on only where `combat`/`mining`/`bounty.enabled` was on, and are removed otherwise.
 - `formatVersion` below 7 migrates on load: `display.startX`/`startY` are copied into `listView.x`/`y`, which the Client List used to share with the thumbnails' start position.
-- `formatVersion` below 8 migrates on load: `thumbnail.notifications` splits, its `position`/`offset_x`/`offset_y`/`font_name`/`font_size`/`font_weight`/`bg_color` going to `thumbnail.alertText` and the rest to `notifications`; `mapPanel.intelShrinkSec`/`intelShowClear` move to `intel.shrinkSec`/`showClear`, and `historyPanel`'s `fontName`/`fontSize`/`fontWeight`/`showTimestamp`/`mergeEnabled`/`mergeWindowSec` are copied into `intelPanel`; a key already in its new section wins.
+- `formatVersion` below 8 migrates on load: `thumbnail.notifications` splits, its `position`/`offset_x`/`offset_y`/`font_name`/`font_size`/`font_weight`/`bg_color` going to `thumbnail.alertText` and the rest to `notifications`; `combat`'s and `mining`'s text settings move to `thumbnail.combatText` and `thumbnail.miningText`, `enabled` becoming `shown`; `mapPanel.intelShrinkSec`/`intelShowClear` move to `intel.shrinkSec`/`showClear`, and `historyPanel`'s `fontName`/`fontSize`/`fontWeight`/`showTimestamp`/`mergeEnabled`/`mergeWindowSec` are copied into `intelPanel`; a key already in its new section wins.
 - A profile with `thumbnailSpaces` but no `display.placementMode` gets `ThumbnailSpaces` if any space is enabled.
 
 ## Value formats
@@ -199,6 +199,43 @@ Where and how thumbnails draw their alerts; what an alert says and its colour ar
 | `font_size` | int | `12` | font size | |
 | `font_weight` | enum | `Regular` | weight | |
 | `bg_color` | colour | `0xE6000000` | | |
+
+### thumbnail.combatText
+
+The thumbnails' incoming and outgoing DPS texts; what's measured is in [combat](#combat).
+
+| Key | Type | Default | Range | Notes |
+|---|---|---|---|---|
+| `shown` | bool | `false` | | |
+| `show_incoming`, `show_outgoing` | bool | `true` | | |
+| `incoming_color` | colour | `0xFFE05A4E` | | |
+| `outgoing_color` | colour | `0xFF68CA6B` | | |
+| `incoming_bg_color`, `outgoing_bg_color` | colour | `0xE6000000` | | |
+| `incoming_font_name`, `outgoing_font_name` | string | `"Geist"` | | |
+| `incoming_font_size`, `outgoing_font_size` | int | `12` | font size | |
+| `incoming_font_weight`, `outgoing_font_weight` | enum | `Regular` | weight | |
+| `incoming_position` | enum | `TopCenter` | position | |
+| `outgoing_position` | enum | `TopCenter` | position | |
+| `incoming_offset_x`, `incoming_offset_y`, `outgoing_offset_x` | int | `0` | offset | |
+| `outgoing_offset_y` | int | `24` | offset | Below Incoming DPS. |
+| `incoming_show_prefix`, `outgoing_show_prefix` | bool | `true` | | |
+
+### thumbnail.miningText
+
+The thumbnails' mining rate text; what's measured, and the rates' units, are in [mining](#mining).
+
+| Key | Type | Default | Range | Notes |
+|---|---|---|---|---|
+| `shown` | bool | `false` | | |
+| `show_isk_rate` | bool | `true` | | Second line, priced from the [ore table](#global-settings). |
+| `color` | colour | `0xFF7E98E7` | | |
+| `bg_color` | colour | `0xE6000000` | | |
+| `font_name` | string | `"Geist"` | | |
+| `font_size` | int | `12` | font size | |
+| `font_weight` | enum | `Regular` | weight | |
+| `position` | enum | `BottomRight` | position | |
+| `offset_x`, `offset_y` | int | `0` | offset | |
+| `show_prefix` | bool | `true` | | `M:` |
 
 ### notifications
 
@@ -563,48 +600,25 @@ Per-character opt-out: `characters[].excludeFromCloseAll`.
 
 ### combat
 
-Incoming/outgoing DPS labels from gamelog `(combat)` lines. Lines with `" from "` after the amount are incoming, else `" to "` outgoing. `misses you completely` counts as a 0-damage incoming hit. Repairs, boosts, transfers and outgoing misses are ignored.
+Incoming/outgoing DPS from gamelog `(combat)` lines, for [thumbnail.combatText](#thumbnailcombattext) and the Client List; the tracker and its alerts run while either shows the rate. Lines with `" from "` after the amount are incoming, else `" to "` outgoing. `misses you completely` counts as a 0-damage incoming hit. Repairs, boosts, transfers and outgoing misses are ignored.
 
 | Key | Type | Default | Range | Notes |
 |---|---|---|---|---|
-| `enabled` | bool | `false` | | The thumbnails' overlay; its tracker and alerts also run while the shown Client List shows the rate. |
 | `window_seconds` | int | `60` | 5–600 | **0 = default.** DPS = damage in window ÷ window. Early in a fight, damage after the first second ÷ elapsed; hidden for the first 3 s. |
 | `update_interval_ms` | int | `1000` | 1000–10000 | Display refresh. Alerts check every second. |
-| `show_incoming`, `show_outgoing` | bool | `true` | | |
-| `incoming_color` | colour | `0xFFE05A4E` | | |
-| `outgoing_color` | colour | `0xFF68CA6B` | | |
-| `incoming_bg_color`, `outgoing_bg_color` | colour | `0xE6000000` | | |
-| `incoming_font_name`, `outgoing_font_name` | string | `"Geist"` | | |
-| `incoming_font_size`, `outgoing_font_size` | int | `12` | font size | |
-| `incoming_font_weight`, `outgoing_font_weight` | enum | `Regular` | weight | |
-| `incoming_position` | enum | `TopCenter` | position | |
-| `outgoing_position` | enum | `TopCenter` | position | |
-| `incoming_offset_x`, `incoming_offset_y`, `outgoing_offset_x` | int | `0` | offset | |
-| `outgoing_offset_y` | int | `24` | offset | Below Incoming DPS. |
-| `incoming_show_prefix`, `outgoing_show_prefix` | bool | `true` | | |
 | `damage_alert_excluded_weapons` | string | `""` | | Comma-separated, case-insensitive weapon-name substrings that count toward DPS but don't raise `TakingDamage`. |
 
 `TakingDamage` fires on incoming hits, at most once per its `throttle_ms`, and stops when the hits stop.
 
 ### mining
 
-m³/min and ISK rate from gamelog `(mining)` lines (normal and critical yields; residue ignored).
+m³/min and ISK rate from gamelog `(mining)` lines (normal and critical yields; residue ignored), for [thumbnail.miningText](#thumbnailminingtext) and the Client List; the tracker and its alerts run while either shows the rate.
 
 | Key | Type | Default | Range | Notes |
 |---|---|---|---|---|
-| `enabled` | bool | `false` | | The thumbnails' overlay; its tracker and alerts also run while the shown Client List shows the rate. |
 | `window_seconds` | int | `60` | 30–3600 | **0 = default.** Rate = m³ in window ÷ window. Early on, units after the first cycle ÷ time from first to latest yield. |
 | `update_interval_ms` | int | `1000` | 1000–10000 | |
-| `color` | colour | `0xFF7E98E7` | | |
-| `bg_color` | colour | `0xE6000000` | | |
-| `font_name` | string | `"Geist"` | | |
-| `font_size` | int | `12` | font size | |
-| `font_weight` | enum | `Regular` | weight | |
-| `position` | enum | `BottomRight` | position | |
-| `offset_x`, `offset_y` | int | `0` | offset | |
-| `show_prefix` | bool | `true` | | `M:` |
 | `m3_rate_unit` | enum | `hour` | `hour` `minute` | The m3 rate's period, on thumbnails and the Client List. |
-| `show_isk_rate` | bool | `true` | | Second line, priced from the [ore table](#global-settings). |
 | `isk_rate_unit` | enum | `hour` | `hour` `minute` | |
 | `idle_alert_window_seconds` | int | `30` | 30–600 | **0 = default.** `MiningIdle` fires once when events in this window ≤ `idle_alert_threshold`, after mining for a full window; rearms above it. |
 | `idle_alert_threshold` | int | `1` | 0–60 | |

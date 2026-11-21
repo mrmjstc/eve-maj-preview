@@ -211,9 +211,9 @@ pub fn renderSettings(config: *const config_mod.Config, subject: *const Subject)
             .bg_color = resolveTextBgColor(state_config, thumbnail_config.systemNameBgColor, forces_opaque_backgrounds),
         },
         .notifications_bg_color = resolveTextBgColor(state_config, thumbnail_config.alertText.bg_color, forces_opaque_backgrounds),
-        .combat_incoming_bg_color = resolveTextBgColor(state_config, config.combat.incoming_bg_color, forces_opaque_backgrounds),
-        .combat_outgoing_bg_color = resolveTextBgColor(state_config, config.combat.outgoing_bg_color, forces_opaque_backgrounds),
-        .mining_bg_color = resolveTextBgColor(state_config, config.mining.bg_color, forces_opaque_backgrounds),
+        .combat_incoming_bg_color = resolveTextBgColor(state_config, config.thumbnail.combatText.incoming_bg_color, forces_opaque_backgrounds),
+        .combat_outgoing_bg_color = resolveTextBgColor(state_config, config.thumbnail.combatText.outgoing_bg_color, forces_opaque_backgrounds),
+        .mining_bg_color = resolveTextBgColor(state_config, config.thumbnail.miningText.bg_color, forces_opaque_backgrounds),
         .bounty_bg_color = resolveTextBgColor(state_config, config.bounty.bg_color, forces_opaque_backgrounds),
         .resources_bg_color = resolveTextBgColor(state_config, config.resources.bg_color, forces_opaque_backgrounds),
         .ping_bg_color = resolveTextBgColor(state_config, config.ping.bg_color, forces_opaque_backgrounds),
@@ -260,10 +260,10 @@ pub fn renderSettings(config: *const config_mod.Config, subject: *const Subject)
         .overlay_alpha = if (forces_opaque_backgrounds) subject.opacity else OVERLAY_ALPHA,
         .overlay_width = subject.overlay_width,
         .overlay_height = subject.overlay_height,
-        .dps_incoming = if (config.combat.enabled) (stats.incoming_dps orelse -1.0) else 0.0,
-        .dps_outgoing = if (config.combat.enabled) (stats.outgoing_dps orelse -1.0) else 0.0,
-        .mining_rate = if (config.mining.enabled) (stats.mining_rate orelse -1.0) else 0.0,
-        .mining_isk_rate = if (config.mining.enabled and config.mining.show_isk_rate) (stats.mining_isk_rate orelse -1.0) else 0.0,
+        .dps_incoming = if (config.thumbnail.combatText.shown) (stats.incoming_dps orelse -1.0) else 0.0,
+        .dps_outgoing = if (config.thumbnail.combatText.shown) (stats.outgoing_dps orelse -1.0) else 0.0,
+        .mining_rate = if (config.thumbnail.miningText.shown) (stats.mining_rate orelse -1.0) else 0.0,
+        .mining_isk_rate = if (config.thumbnail.miningText.shown and config.thumbnail.miningText.show_isk_rate) (stats.mining_isk_rate orelse -1.0) else 0.0,
         .bounty_isk_rate = if (config.bounty.enabled) (stats.bounty_isk_rate orelse -1.0) else 0.0,
         .resource_cpu_percent = if (config.resources.enabled) stats.cpu_percent else 0.0,
         .resource_ram_mb = if (config.resources.enabled) stats.ram_mb else 0.0,
@@ -619,9 +619,9 @@ test "a rate still being calculated is sent as -1, and one from a disabled track
     const stats: ActivityStats = .{ .has_dps = true };
     var subject = testSubject(.inactive);
     subject.stats = &stats;
-    config.combat.enabled = false;
+    config.thumbnail.combatText.shown = false;
     try testing.expectEqual(@as(f32, 0.0), renderSettings(&config, &subject).dps_incoming);
-    config.combat.enabled = true;
+    config.thumbnail.combatText.shown = true;
     try testing.expectEqual(@as(f32, -1.0), renderSettings(&config, &subject).dps_incoming);
 }
 

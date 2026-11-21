@@ -219,9 +219,9 @@ fn travelTrigger(context: *ui.Frame) !void {
 
 fn miningIdleTrigger(context: *ui.Frame) !void {
     const ref = session.profile().child("mining");
-    try miningNotice(context, ref);
+    try miningNotice(context);
     const group = try widgets.openFieldGroup(context, .str("knots.events.mining_idle"), "Detection");
-    const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
+    const options = try widgets.openGroup(context, .src(@src()), isMiningTracked());
     try bind.number(context, ref, "idle_alert_window_seconds", "Detection Window", .{ .unit = "s" });
     try widgets.hintText(context, .src(@src()), "The time mining cycles are counted over.");
     try bind.number(context, ref, "idle_alert_threshold", "Minimum Cycles", .{ .unit = "cycles", .singular_unit = "cycle" });
@@ -233,9 +233,9 @@ fn miningIdleTrigger(context: *ui.Frame) !void {
 
 fn miningStoppedTrigger(context: *ui.Frame) !void {
     const ref = session.profile().child("mining");
-    try miningNotice(context, ref);
+    try miningNotice(context);
     const group = try widgets.openFieldGroup(context, .str("knots.events.mining_stopped"), "Detection");
-    const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
+    const options = try widgets.openGroup(context, .src(@src()), isMiningTracked());
     try bind.number(context, ref, "stopped_alert_window_seconds", "Silence Window", .{ .unit = "s" });
     try widgets.hintText(context, .src(@src()), "How long without mining before the alert.");
     try options.close(context);
@@ -244,9 +244,14 @@ fn miningStoppedTrigger(context: *ui.Frame) !void {
 }
 
 /// The mining alerts are worked out from the mining rate, so they need it on.
-fn miningNotice(context: *ui.Frame, ref: session.Ref(config.MiningConfig)) !void {
-    if (ref.get("enabled")) return;
+fn miningNotice(context: *ui.Frame) !void {
+    if (isMiningTracked()) return;
     try widgets.notice(context, .src(@src()), "Needs the mining rate switched on, from its text on the thumbnail or client list preview.");
+}
+
+/// The thumbnails' or the client list's mining rate is shown, which is when the tracker behind these alerts runs.
+fn isMiningTracked() bool {
+    return session.profile().ptr.tracksMining();
 }
 
 fn typeLabel(notification_type: NotificationType) []const u8 {

@@ -1,51 +1,25 @@
-//! Combat, mining, bounty, resource and ping overlays, and the travel left-behind check.
+//! What the combat and mining trackers measure, the bounty, resource and ping overlays, and the travel left-behind check.
 const types = @import("types.zig");
 const wire = @import("wire.zig");
 const ranges_mod = @import("ranges.zig");
 
 const UPDATE_INTERVAL_MS = .{ 1000, 10000 };
-// The overlays' and the client list's default rate colours, softened and kept off the accent presets.
+// The thumbnails' and the client list's default rate colours, softened and kept off the accent presets.
 pub const INCOMING_COLOR: u32 = 0xFFE05A4E;
 pub const OUTGOING_COLOR: u32 = 0xFF68CA6B;
 pub const MINING_COLOR: u32 = 0xFF7E98E7;
 pub const BOUNTY_COLOR: u32 = 0xFFE1C747;
 
+/// The tracker runs while the thumbnails or the client list show its rates; see Config.tracksCombat.
 pub const CombatConfig = struct {
-    enabled: bool = false,
     window_seconds: u32 = 60,
-    show_incoming: bool = true,
-    show_outgoing: bool = true,
-    incoming_color: u32 = INCOMING_COLOR,
-    outgoing_color: u32 = OUTGOING_COLOR,
-    incoming_bg_color: u32 = 0xE6000000,
-    outgoing_bg_color: u32 = 0xE6000000,
-    incoming_font_size: i32 = types.DEFAULT_FONT_SIZE,
-    incoming_font_name: []const u8 = types.DEFAULT_FONT,
-    incoming_font_weight: types.FontWeight = .Regular,
-    outgoing_font_size: i32 = types.DEFAULT_FONT_SIZE,
-    outgoing_font_name: []const u8 = types.DEFAULT_FONT,
-    outgoing_font_weight: types.FontWeight = .Regular,
     update_interval_ms: u32 = 1000,
-    incoming_position: types.TextPosition = .TopCenter,
-    outgoing_position: types.TextPosition = .TopCenter,
-    incoming_offset_x: i32 = 0,
-    incoming_offset_y: i32 = 0,
-    outgoing_offset_x: i32 = 0,
-    outgoing_offset_y: i32 = 24,
-    incoming_show_prefix: bool = true,
-    outgoing_show_prefix: bool = true,
     /// Comma-separated, case-insensitive weapon-name substrings whose hits count toward DPS but don't trigger the Taking Damage alert.
     damage_alert_excluded_weapons: []const u8 = "",
 
     pub const ranges = .{
         .window_seconds = .{ 5, 600 },
-        .incoming_font_size = ranges_mod.FONT_SIZE,
-        .outgoing_font_size = ranges_mod.FONT_SIZE,
         .update_interval_ms = UPDATE_INTERVAL_MS,
-        .incoming_offset_x = ranges_mod.TEXT_OFFSET,
-        .incoming_offset_y = ranges_mod.TEXT_OFFSET,
-        .outgoing_offset_x = ranges_mod.TEXT_OFFSET,
-        .outgoing_offset_y = ranges_mod.TEXT_OFFSET,
     };
     pub const zero_means_default = .{"window_seconds"};
 
@@ -76,35 +50,22 @@ pub const RateUnit = enum {
     }
 };
 
+/// The tracker, and with it the Mining Idle and Stopped alerts, runs while the thumbnails or the client list show its rate; see Config.tracksMining.
 pub const MiningConfig = struct {
-    enabled: bool = false,
     window_seconds: u32 = 60,
-    color: u32 = MINING_COLOR,
-    bg_color: u32 = 0xE6000000,
-    font_size: i32 = types.DEFAULT_FONT_SIZE,
-    font_name: []const u8 = types.DEFAULT_FONT,
-    font_weight: types.FontWeight = .Regular,
     update_interval_ms: u32 = 1000,
-    position: types.TextPosition = .BottomRight,
-    offset_x: i32 = 0,
-    offset_y: i32 = 0,
     idle_alert_window_seconds: u32 = 30,
     idle_alert_threshold: u32 = 1,
     stopped_alert_window_seconds: u32 = 60,
     /// The m3 rate's period; isk_rate_unit is the ISK rate's.
     m3_rate_unit: RateUnit = .hour,
-    show_isk_rate: bool = true,
     isk_rate_unit: RateUnit = .hour,
-    show_prefix: bool = true,
 
     pub const ranges = .{
         .window_seconds = .{ 30, 3600 },
-        .font_size = ranges_mod.FONT_SIZE,
         .update_interval_ms = UPDATE_INTERVAL_MS,
         .idle_alert_window_seconds = .{ 30, 600 },
         .stopped_alert_window_seconds = .{ 30, 3600 },
-        .offset_x = ranges_mod.TEXT_OFFSET,
-        .offset_y = ranges_mod.TEXT_OFFSET,
         .idle_alert_threshold = .{ 0, 60 },
     };
     pub const zero_means_default = .{ "window_seconds", "idle_alert_window_seconds", "stopped_alert_window_seconds" };

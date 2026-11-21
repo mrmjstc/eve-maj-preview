@@ -132,7 +132,7 @@ const Look = struct {
     }
 };
 
-/// The list's own prefix and colour fields for one rate, then its overlay's settings shared with the thumbnails.
+/// The list's own prefix and colour fields for one rate, then its tracker's settings shared with the thumbnails.
 const StatRows = struct {
     /// Keys its rows apart from the other rates'.
     show_field: []const u8,
@@ -140,8 +140,8 @@ const StatRows = struct {
     prefix_label: []const u8,
     prefix_hint: []const u8,
     color_field: []const u8,
-    /// The profile section of the rate's overlay.
-    overlay: []const u8,
+    /// The rate's tracker section, whose settings the Text Overlays preview edits too.
+    tracker: []const u8,
     /// Null for DPS, always per second.
     unit: ?struct { field: []const u8, label: []const u8, hint: []const u8 } = null,
     /// Incoming DPS's only, as on the thumbnail preview.
@@ -553,7 +553,7 @@ fn settings(context: *ui.Frame, list_view: ListRef, part: Part) !void {
             .prefix_label = "Show IN: Prefix",
             .prefix_hint = "Puts IN: before the number so it's easy to tell apart.",
             .color_field = "incomingDpsColor",
-            .overlay = "combat",
+            .tracker = "combat",
             .has_excluded_weapons = true,
         }),
         .outgoing_dps => try statSettings(context, list_view, .{
@@ -562,7 +562,7 @@ fn settings(context: *ui.Frame, list_view: ListRef, part: Part) !void {
             .prefix_label = "Show OUT: Prefix",
             .prefix_hint = "Puts OUT: before the number so it's easy to tell apart.",
             .color_field = "outgoingDpsColor",
-            .overlay = "combat",
+            .tracker = "combat",
         }),
         .mining_rate => try statSettings(context, list_view, .{
             .show_field = "showMiningRate",
@@ -570,7 +570,7 @@ fn settings(context: *ui.Frame, list_view: ListRef, part: Part) !void {
             .prefix_label = "Show M: Prefix",
             .prefix_hint = "Puts M: before the rate so it's easy to tell apart.",
             .color_field = "miningRateColor",
-            .overlay = "mining",
+            .tracker = "mining",
             .unit = .{ .field = "m3_rate_unit", .label = "m3 Per", .hint = "Shows m3 mined per minute or per hour." },
         }),
         .bounty_rate => try statSettings(context, list_view, .{
@@ -579,7 +579,7 @@ fn settings(context: *ui.Frame, list_view: ListRef, part: Part) !void {
             .prefix_label = "Show ISK: Prefix",
             .prefix_hint = "Puts ISK: before the rate so it's easy to tell apart.",
             .color_field = "bountyRateColor",
-            .overlay = "bounty",
+            .tracker = "bounty",
             .unit = .{ .field = "isk_rate_unit", .label = "ISK Per", .hint = "Shows ISK earned per minute or per hour." },
         }),
         .totals => try widgets.paragraph(context, .src(@src()), "Adds up the rates the rows show."),
@@ -612,20 +612,20 @@ fn statSettings(context: *ui.Frame, list_view: ListRef, comptime rows: StatRows)
 
 /// The same fields the Text Overlays preview edits for the rate.
 fn sharedSettings(context: *ui.Frame, list_index: usize, comptime rows: StatRows) !void {
-    var overlay = session.profile().child(rows.overlay);
+    var tracker = session.profile().child(rows.tracker);
     // The Text Overlays preview binds these fields at the list's index.
-    overlay.index = list_index + 1;
+    tracker.index = list_index + 1;
     const key = "knots.client_list.shared:" ++ rows.show_field;
-    try bind.number(context, overlay, "window_seconds", "Averaging Window", .{ .unit = "s" });
+    try bind.number(context, tracker, "window_seconds", "Averaging Window", .{ .unit = "s" });
     try widgets.hintText(context, .str(key ++ ":window"), "The rate is averaged over this time.");
-    try bind.number(context, overlay, "update_interval_ms", "Update Interval", .{ .unit = "s", .shows_seconds = true });
+    try bind.number(context, tracker, "update_interval_ms", "Update Interval", .{ .unit = "s", .shows_seconds = true });
     try widgets.hintText(context, .str(key ++ ":interval"), "How often the number changes.");
     if (rows.unit) |unit| {
-        try bind.segmented(context, overlay, unit.field, unit.label, &.{ "Minute", "Hour" });
+        try bind.segmented(context, tracker, unit.field, unit.label, &.{ "Minute", "Hour" });
         try widgets.hintText(context, .str(key ++ ":unit"), unit.hint);
     }
     if (rows.has_excluded_weapons) {
-        try bind.text(context, overlay, "damage_alert_excluded_weapons", "Exclude Weapons", "e.g. Smartbomb, Warp Scrambler");
+        try bind.text(context, tracker, "damage_alert_excluded_weapons", "Exclude Weapons", "e.g. Smartbomb, Warp Scrambler");
         try widgets.hintText(context, .str(key ++ ":weapons"), "Weapon names to ignore, separated by commas. Stops only the Taking Damage alert; the damage still counts.");
     }
 }

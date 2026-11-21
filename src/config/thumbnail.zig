@@ -2,8 +2,9 @@
 const types = @import("types.zig");
 const wire = @import("wire.zig");
 const ranges_mod = @import("ranges.zig");
+const activity = @import("activity.zig");
 const connections = @import("../map/connections.zig");
-const color = @import("../util/color.zig");
+const color_mod = @import("../util/color.zig");
 
 const BORDER_WIDTH = .{ 1, 50 };
 /// How much of the border colour a blankDimsBorder fill keeps over black.
@@ -30,6 +31,74 @@ pub const AlertTextStyle = struct {
     }
 
     pub const Wire = wire.Wire(AlertTextStyle);
+};
+
+/// The incoming and outgoing DPS texts; combat holds what the tracker measures.
+pub const CombatTextStyle = struct {
+    shown: bool = false,
+    show_incoming: bool = true,
+    show_outgoing: bool = true,
+    incoming_color: u32 = activity.INCOMING_COLOR,
+    outgoing_color: u32 = activity.OUTGOING_COLOR,
+    incoming_bg_color: u32 = 0xE6000000,
+    outgoing_bg_color: u32 = 0xE6000000,
+    incoming_font_size: i32 = types.DEFAULT_FONT_SIZE,
+    incoming_font_name: []const u8 = types.DEFAULT_FONT,
+    incoming_font_weight: types.FontWeight = .Regular,
+    outgoing_font_size: i32 = types.DEFAULT_FONT_SIZE,
+    outgoing_font_name: []const u8 = types.DEFAULT_FONT,
+    outgoing_font_weight: types.FontWeight = .Regular,
+    incoming_position: types.TextPosition = .TopCenter,
+    outgoing_position: types.TextPosition = .TopCenter,
+    incoming_offset_x: i32 = 0,
+    incoming_offset_y: i32 = 0,
+    outgoing_offset_x: i32 = 0,
+    outgoing_offset_y: i32 = 24,
+    incoming_show_prefix: bool = true,
+    outgoing_show_prefix: bool = true,
+
+    pub const ranges = .{
+        .incoming_font_size = ranges_mod.FONT_SIZE,
+        .outgoing_font_size = ranges_mod.FONT_SIZE,
+        .incoming_offset_x = ranges_mod.TEXT_OFFSET,
+        .incoming_offset_y = ranges_mod.TEXT_OFFSET,
+        .outgoing_offset_x = ranges_mod.TEXT_OFFSET,
+        .outgoing_offset_y = ranges_mod.TEXT_OFFSET,
+    };
+
+    pub fn validate(self: *CombatTextStyle) void {
+        ranges_mod.clamp(CombatTextStyle, self);
+    }
+
+    pub const Wire = wire.Wire(CombatTextStyle);
+};
+
+/// The mining rate text; mining holds what the tracker measures and the rates' units.
+pub const MiningTextStyle = struct {
+    shown: bool = false,
+    /// A second line, priced from the ore table.
+    show_isk_rate: bool = true,
+    color: u32 = activity.MINING_COLOR,
+    bg_color: u32 = 0xE6000000,
+    font_size: i32 = types.DEFAULT_FONT_SIZE,
+    font_name: []const u8 = types.DEFAULT_FONT,
+    font_weight: types.FontWeight = .Regular,
+    position: types.TextPosition = .BottomRight,
+    offset_x: i32 = 0,
+    offset_y: i32 = 0,
+    show_prefix: bool = true,
+
+    pub const ranges = .{
+        .font_size = ranges_mod.FONT_SIZE,
+        .offset_x = ranges_mod.TEXT_OFFSET,
+        .offset_y = ranges_mod.TEXT_OFFSET,
+    };
+
+    pub fn validate(self: *MiningTextStyle) void {
+        ranges_mod.clamp(MiningTextStyle, self);
+    }
+
+    pub const Wire = wire.Wire(MiningTextStyle);
 };
 
 /// Decided live by ThumbnailWindow.effectiveRenderState, never saved.
@@ -129,6 +198,8 @@ pub const ThumbnailConfig = struct {
     exclusionOverlayStyle: types.ExclusionOverlayStyle = .X,
     exclusionOverlayColor: u32 = 0x33A62222,
     alertText: AlertTextStyle = .{},
+    combatText: CombatTextStyle = .{},
+    miningText: MiningTextStyle = .{},
     thumbnailOpacity: u8 = 255,
     applyOpacityToOverlayTexts: bool = true,
     activeThumbnailHidden: bool = false,
@@ -145,7 +216,7 @@ pub const ThumbnailConfig = struct {
     /// A blank thumbnail's fill when its character has no colour of its own.
     pub fn blankFill(self: *const ThumbnailConfig, active_border_color: u32) u32 {
         if (!self.blankDimsBorder) return self.blankThumbnailColor;
-        return color.mix(active_border_color, 0xFF000000, BLANK_BORDER_PERCENT);
+        return color_mod.mix(active_border_color, 0xFF000000, BLANK_BORDER_PERCENT);
     }
 
     pub fn getStateConfig(self: *const ThumbnailConfig, state: ThumbnailState) StateVisualConfig {

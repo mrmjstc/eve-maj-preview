@@ -15,8 +15,8 @@ const Fields = overlay_text.Fields;
 
 const STYLE_ROWS = [_]Row{ .{ .heading = "Style" }, .sync, .font, .background };
 const WINDOW_HINT = "The rate is averaged over this time.";
-const UPDATE_INTERVAL: Row = .{ .number = .{ .field = "update_interval_ms", .label = "Update Interval", .unit = "s", .shows_seconds = true, .hint = "How often the number changes." } };
-const RATE_WINDOW: Row = .{ .number = .{ .field = "window_seconds", .label = "Averaging Window", .unit = "s", .hint = WINDOW_HINT } };
+const UPDATE_INTERVAL: Row = .{ .number = .{ .field = "update_interval_ms", .label = "Update Interval", .unit = "s", .shows_seconds = true, .hint = "How often the number changes.", .tracks = true } };
+const RATE_WINDOW: Row = .{ .number = .{ .field = "window_seconds", .label = "Averaging Window", .unit = "s", .hint = WINDOW_HINT, .tracks = true } };
 const NEEDS_LOGS = "Requires Log Monitoring to be enabled.";
 const ALERTS_NEED_LOGS = "Without Log Monitoring, only alerts for your own actions, like Profile Switch, are shown.";
 
@@ -94,15 +94,16 @@ pub const CHIPS = [_]Chip{
     .{
         .label = "Incoming DPS",
         .sample = "IN: 412",
-        .section = .combat,
+        .section = .combat_text,
+        .tracking_section = .combat,
         .fields = .snakeCase("incoming_", true),
         .show_field = "show_incoming",
         .needs_show_text = true,
-        .enabled_field = "enabled",
+        .enabled_field = "shown",
         .chatlog_notice = NEEDS_LOGS,
         .rows = &([_]Row{
             .{ .heading = "Content" },
-            .{ .toggle = .{ .field = "enabled", .label = "Enable Combat Overlays", .hint = "Turns on both incoming and outgoing damage." } },
+            .{ .toggle = .{ .field = "shown", .label = "Enable Combat Overlays", .hint = "Turns on both incoming and outgoing damage." } },
             .{ .toggle = .{ .field = "incoming_show_prefix", .label = "Show IN: Prefix", .hint = "Puts IN: before the number so it's easy to tell apart." } },
         } ++ STYLE_ROWS ++ [_]Row{
             .{ .heading = "Data" },
@@ -113,21 +114,23 @@ pub const CHIPS = [_]Chip{
                 .label = "Exclude Weapons",
                 .placeholder = "e.g. Smartbomb, Warp Scrambler",
                 .hint = "Weapon names to ignore, separated by commas. Stops only the Taking Damage alert; the damage still counts.",
+                .tracks = true,
             } },
         }),
     },
     .{
         .label = "Outgoing DPS",
         .sample = "OUT: 980",
-        .section = .combat,
+        .section = .combat_text,
+        .tracking_section = .combat,
         .fields = .snakeCase("outgoing_", true),
         .show_field = "show_outgoing",
         .needs_show_text = true,
-        .enabled_field = "enabled",
+        .enabled_field = "shown",
         .chatlog_notice = NEEDS_LOGS,
         .rows = &([_]Row{
             .{ .heading = "Content" },
-            .{ .toggle = .{ .field = "enabled", .label = "Enable Combat Overlays", .hint = "Turns on both incoming and outgoing damage." } },
+            .{ .toggle = .{ .field = "shown", .label = "Enable Combat Overlays", .hint = "Turns on both incoming and outgoing damage." } },
             .{ .toggle = .{ .field = "outgoing_show_prefix", .label = "Show OUT: Prefix", .hint = "Puts OUT: before the number so it's easy to tell apart." } },
         } ++ STYLE_ROWS ++ [_]Row{
             .{ .heading = "Data" },
@@ -138,9 +141,10 @@ pub const CHIPS = [_]Chip{
     .{
         .label = "Mining Rate",
         .sample = "M: 1,284 m3/hr",
-        .section = .mining,
+        .section = .mining_text,
+        .tracking_section = .mining,
         .fields = .snakeCase("", true),
-        .show_field = "enabled",
+        .show_field = "shown",
         .needs_show_text = true,
         .sub_gate_field = "show_isk_rate",
         .chatlog_notice = NEEDS_LOGS,
@@ -151,10 +155,10 @@ pub const CHIPS = [_]Chip{
             .{ .heading = "Data" },
             RATE_WINDOW,
             UPDATE_INTERVAL,
-            .{ .segmented = .{ .field = "m3_rate_unit", .label = "m3 Per", .options = &.{ "Minute", "Hour" }, .hint = "Shows m3 mined per minute or per hour." } },
+            .{ .segmented = .{ .field = "m3_rate_unit", .label = "m3 Per", .options = &.{ "Minute", "Hour" }, .hint = "Shows m3 mined per minute or per hour.", .tracks = true } },
             .{ .heading = "ISK Rate" },
             .{ .toggle = .{ .field = "show_isk_rate", .label = "Show ISK Rate", .hint = "Uses the Mining tab's ore prices; fetch or enter them first." } },
-            .{ .segmented = .{ .field = "isk_rate_unit", .label = "ISK Per", .options = &.{ "Minute", "Hour" }, .hint = "Shows ISK earned per minute or per hour." } },
+            .{ .segmented = .{ .field = "isk_rate_unit", .label = "ISK Per", .options = &.{ "Minute", "Hour" }, .hint = "Shows ISK earned per minute or per hour.", .tracks = true } },
         }),
     },
     .{
@@ -172,7 +176,7 @@ pub const CHIPS = [_]Chip{
             .{ .heading = "Data" },
             RATE_WINDOW,
             UPDATE_INTERVAL,
-            .{ .segmented = .{ .field = "isk_rate_unit", .label = "ISK Per", .options = &.{ "Minute", "Hour" }, .hint = "Shows ISK earned per minute or per hour." } },
+            .{ .segmented = .{ .field = "isk_rate_unit", .label = "ISK Per", .options = &.{ "Minute", "Hour" }, .hint = "Shows ISK earned per minute or per hour.", .tracks = true } },
         }),
     },
     .{
@@ -230,18 +234,18 @@ pub const Part = enum(u8) {
 };
 
 /// The settings struct a chip's fields live in.
-pub const Section = enum { thumbnail, notifications, alert_text, combat, mining, bounty, resources, ping };
+pub const Section = enum { thumbnail, notifications, alert_text, combat, combat_text, mining, mining_text, bounty, resources, ping };
 
-/// One row of a text's settings; a `hint` is a tooltip on the label.
+/// One row of a text's settings; a `hint` is a tooltip on the label, and a row that `tracks` binds the chip's tracking_section.
 pub const Row = union(enum) {
     /// Starts a group of rows.
     heading: []const u8,
     /// A setting of the chip's section; `disables_color` greys out the colour row while it's on.
     toggle: struct { field: []const u8, label: []const u8, disables_color: bool = false, hint: ?[]const u8 = null },
-    number: struct { field: []const u8, label: []const u8, unit: []const u8, singular_unit: ?[]const u8 = null, shows_seconds: bool = false, hint: ?[]const u8 = null },
+    number: struct { field: []const u8, label: []const u8, unit: []const u8, singular_unit: ?[]const u8 = null, shows_seconds: bool = false, hint: ?[]const u8 = null, tracks: bool = false },
     /// `options` names each tag in declaration order.
-    segmented: struct { field: []const u8, label: []const u8, options: []const []const u8, hint: ?[]const u8 = null },
-    text: struct { field: []const u8, label: []const u8, placeholder: []const u8, hint: ?[]const u8 = null },
+    segmented: struct { field: []const u8, label: []const u8, options: []const []const u8, hint: ?[]const u8 = null, tracks: bool = false },
+    text: struct { field: []const u8, label: []const u8, placeholder: []const u8, hint: ?[]const u8 = null, tracks: bool = false },
     /// Same for All Texts, which copies font and background changes to every text.
     sync,
     /// Name and size, then weight, then text colour, each on a row so they fit beside the preview.
@@ -257,6 +261,8 @@ pub const Chip = struct {
     section: Section,
     /// Where show_field and the text colour are kept, when not in `section`.
     switch_section: ?Section = null,
+    /// Where rows marked `tracks` are kept, when not in `section`.
+    tracking_section: ?Section = null,
     fields: Fields,
     /// The switch at the top of its settings.
     show_field: []const u8,
@@ -349,6 +355,8 @@ pub fn showSettings(context: *ui.Frame, comptime chip: Chip, comptime index: usi
     ref.index = 1;
     var switch_ref = switchRef(chip);
     switch_ref.index = 1;
+    var tracking_ref = refFor(chip.tracking_section orelse chip.section);
+    tracking_ref.index = 1;
     const fields = chip.fields;
     const title = try panel_preview.openInspectorTitle(context, .str("knots.chip.title:" ++ chip.label), chip.label);
     try bind.toggle(context, switch_ref, chip.show_field, "");
@@ -376,15 +384,15 @@ pub fn showSettings(context: *ui.Frame, comptime chip: Chip, comptime index: usi
                 if (comptime isSubGate(chip, toggle.field)) gate = try widgets.openGroup(context, .str("knots.chip.gate:" ++ chip.label), ref.get(toggle.field));
             },
             .number => |number| {
-                try bind.number(context, ref, number.field, number.label, .{ .unit = number.unit, .singular_unit = number.singular_unit, .shows_seconds = number.shows_seconds });
+                try bind.number(context, if (comptime number.tracks) tracking_ref else ref, number.field, number.label, .{ .unit = number.unit, .singular_unit = number.singular_unit, .shows_seconds = number.shows_seconds });
                 if (number.hint) |hint| try widgets.hintText(context, .str("knots.chip.hint:" ++ chip.label ++ ":" ++ number.field), hint);
             },
             .segmented => |segmented| {
-                try bind.segmented(context, ref, segmented.field, segmented.label, segmented.options);
+                try bind.segmented(context, if (comptime segmented.tracks) tracking_ref else ref, segmented.field, segmented.label, segmented.options);
                 if (segmented.hint) |hint| try widgets.hintText(context, .str("knots.chip.hint:" ++ chip.label ++ ":" ++ segmented.field), hint);
             },
             .text => |text| {
-                try bind.text(context, ref, text.field, text.label, text.placeholder);
+                try bind.text(context, if (comptime text.tracks) tracking_ref else ref, text.field, text.label, text.placeholder);
                 if (text.hint) |hint| try widgets.hintText(context, .str("knots.chip.hint:" ++ chip.label ++ ":" ++ text.field), hint);
             },
             .sync => {
@@ -425,7 +433,9 @@ fn SectionType(comptime section: Section) type {
         .notifications => config.NotificationConfig,
         .alert_text => config.AlertTextStyle,
         .combat => config.CombatConfig,
+        .combat_text => config.CombatTextStyle,
         .mining => config.MiningConfig,
+        .mining_text => config.MiningTextStyle,
         .bounty => config.BountyConfig,
         .resources => config.ResourcesConfig,
         .ping => config.PingConfig,
@@ -439,7 +449,9 @@ fn refFor(comptime section: Section) session.Ref(SectionType(section)) {
         .notifications => profile.child("notifications"),
         .alert_text => profile.child("thumbnail").child("alertText"),
         .combat => profile.child("combat"),
+        .combat_text => profile.child("thumbnail").child("combatText"),
         .mining => profile.child("mining"),
+        .mining_text => profile.child("thumbnail").child("miningText"),
         .bounty => profile.child("bounty"),
         .resources => profile.child("resources"),
         .ping => profile.child("ping"),

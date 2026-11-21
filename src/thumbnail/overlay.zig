@@ -351,8 +351,8 @@ fn addStyledText(layout: *Layout, fonts: Fonts, slot: font_cache_mod.FontSlot, t
 }
 
 fn addCombat(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, stats: *const ActivityStats, settings: RenderSettings) !void {
-    const combat = &config.combat;
-    if (!combat.enabled) return;
+    const combat = &config.thumbnail.combatText;
+    if (!combat.shown) return;
     const incoming = if (combat.show_incoming) stats.shownIncoming() else null;
     if (incoming) |rate| {
         const font = try fonts.getScaled(.combat, combat.incoming_font_name, combat.incoming_font_size, combat.incoming_font_weight);
@@ -368,21 +368,21 @@ fn addCombat(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, st
 }
 
 fn addMining(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, stats: *const ActivityStats, settings: RenderSettings) !void {
-    const mining = &config.mining;
-    if (!mining.enabled) return;
+    const mining = &config.thumbnail.miningText;
+    if (!mining.shown) return;
     const rate = stats.shownMining() orelse return;
     const font = try fonts.getScaled(.mining, mining.font_name, mining.font_size, mining.font_weight);
     const prefix: []const u8 = if (mining.show_prefix) "M: " else "";
 
     var texts: [2][]const u8 = undefined;
     var text_count: usize = 1;
-    const unit = mining.m3_rate_unit;
+    const unit = config.mining.m3_rate_unit;
     var volume_buf: [24]u8 = undefined;
     texts[0] = layout.print("{s}{s} m3/{s}", .{ prefix, format.formatMinedVolume(&volume_buf, rate * unit.seconds()), unit.suffix() });
 
     const isk_rate = if (mining.show_isk_rate) stats.shownMiningIsk() else null;
     if (isk_rate) |isk_per_second| {
-        texts[1] = iskRateText(layout, "", isk_per_second, mining.isk_rate_unit);
+        texts[1] = iskRateText(layout, "", isk_per_second, config.mining.isk_rate_unit);
         text_count = 2;
     }
     layout.addStack(font, texts[0..text_count], .{ .anchor = mining.position, .offset_x = mining.offset_x, .offset_y = mining.offset_y, .color = mining.color, .bg_color = settings.mining_bg_color });

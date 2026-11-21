@@ -18,7 +18,7 @@ const FOLLOWS_ACCENT_VERSION = 5;
 const LIST_RATES_VERSION = 6;
 /// Profiles from before this kept the client list's position in display.startX/startY, the unplaced thumbnails' start.
 pub const LIST_POSITION_VERSION = 7;
-/// Profiles from before this kept alerts under thumbnail, intel's pins in mapPanel, and the Intel Panel's list settings in historyPanel.
+/// Profiles from before this kept settings with the view that first showed them; see regroupFromViews.
 const REGROUP_VERSION = 8;
 
 /// The amber both colours defaulted to before FOLLOWS_ACCENT_VERSION.
@@ -40,11 +40,19 @@ const LIST_RATES = [_]struct { key: []const u8, overlay: []const u8 }{
 /// The thumbnail.notifications keys that only style the thumbnail's alert text, which go to thumbnail.alertText; the rest go to notifications.
 const ALERT_TEXT_KEYS = [_][]const u8{ "position", "offset_x", "offset_y", "font_name", "font_size", "font_weight", "bg_color" };
 
+/// A tracker's section whose keys, all but `tracking`, move to thumbnail.`text`, its `enabled` as `shown`.
+const TEXT_SPLITS = [_]TextSplit{
+    .{ .section = "combat", .text = "combatText", .tracking = &.{ "window_seconds", "update_interval_ms", "damage_alert_excluded_weapons" } },
+    .{ .section = "mining", .text = "miningText", .tracking = &.{ "window_seconds", "update_interval_ms", "idle_alert_window_seconds", "idle_alert_threshold", "stopped_alert_window_seconds", "m3_rate_unit", "isk_rate_unit" } },
+};
+
 /// The History Panel's settings the Intel Panel used to follow, copied so it keeps looking the same.
 const INTEL_LIST_KEYS = [_][]const u8{ "fontName", "fontSize", "fontWeight", "showTimestamp", "mergeEnabled", "mergeWindowSec" };
 
 /// A display setting that moved into its own section under a new name.
 const Move = struct { old: []const u8, section: []const u8, new: []const u8 };
+
+const TextSplit = struct { section: []const u8, text: []const u8, tracking: []const []const u8 };
 
 /// A setting that moved from one section to another under a new name.
 const SectionMove = struct { from: []const u8, old: []const u8, to: []const u8, new: []const u8 };
@@ -236,6 +244,7 @@ fn regroupFromViews(arena: std.mem.Allocator, root: *Value) !void {
     const version = values.integerAt(root.*, "formatVersion") orelse 1;
     if (version >= REGROUP_VERSION) return;
     try alertsFromThumbnail(arena, root);
+    for (TEXT_SPLITS) |split| try textFromTracker(arena, root, split);
     for (REGROUP_MOVES) |move| {
         const value = values.get(root.object.get(move.from), move.old) orelse continue;
         const section = try sectionObject(arena, root, move.to) orelse continue;
@@ -269,7 +278,33 @@ fn alertsFromThumbnail(arena: std.mem.Allocator, root: *Value) !void {
 }
 
 fn isAlertTextKey(key: []const u8) bool {
-    for (ALERT_TEXT_KEYS) |listed| {
+    return isListed(&ALERT_TEXT_KEYS, key);
+}
+
+/// Moves a rate text's keys out of its tracker's section into thumbnail; a key already there wins.
+fn textFromTracker(arena: std.mem.Allocator, root: *Value, split: TextSplit) !void {
+    const tracker = root.object.getPtr(split.section) orelse return;
+    if (tracker.* != .object) return;
+    var moved: std.ArrayList([]const u8) = .empty;
+    var it = tracker.object.iterator();
+    while (it.next()) |entry| {
+        if (!isListed(split.tracking, entry.key_ptr.*)) try moved.append(arena, entry.key_ptr.*);
+    }
+    if (moved.items.len == 0) return;
+    // Copied out first, as making the thumbnail section can move the tracker's.
+    const old = tracker.*;
+    const thumbnail = try sectionObject(arena, root, "thumbnail") orelse return;
+    const text = try objectIn(arena, thumbnail, split.text) orelse return;
+    for (moved.items) |key| {
+        const new_key = if (std.mem.eql(u8, key, "enabled")) "shown" else key;
+        if (text.get(new_key) == null) try text.put(arena, new_key, old.object.get(key).?);
+    }
+    const section = root.object.getPtr(split.section) orelse return;
+    for (moved.items) |key| _ = section.object.orderedRemove(key);
+}
+
+fn isListed(list: []const []const u8, key: []const u8) bool {
+    for (list) |listed| {
         if (std.mem.eql(u8, listed, key)) return true;
     }
     return false;
@@ -574,6 +609,41 @@ test "an alert setting already in its new section wins, and a regrouped profile'
         \\{"formatVersion":8,"thumbnail":{"notifications":{"tts_volume":40}}}
     );
     try testing.expect(current.object.get("notifications") == null);
+}
+
+test "an old profile's combat and mining texts move to thumbnail, enabled as shown, and the tracking stays" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const root = try migrated(arena.allocator(),
+        \\{"formatVersion":7,"combat":{"enabled":true,"window_seconds":30,"incoming_font_size":16,"damage_alert_excluded_weapons":"Smartbomb"},
+        \\"mining":{"enabled":true,"show_isk_rate":false,"m3_rate_unit":"minute","idle_alert_threshold":3,"offset_x":12}}
+    );
+    const thumbnail = root.object.get("thumbnail").?;
+    const combat_text = values.get(thumbnail, "combatText").?;
+    try testing.expectEqual(true, values.boolAt(combat_text, "shown").?);
+    try testing.expectEqual(@as(i64, 16), values.integerAt(combat_text, "incoming_font_size").?);
+    const combat = root.object.get("combat").?;
+    try testing.expect(values.get(combat, "enabled") == null);
+    try testing.expect(values.get(combat, "incoming_font_size") == null);
+    try testing.expectEqual(@as(i64, 30), values.integerAt(combat, "window_seconds").?);
+    try testing.expectEqualStrings("Smartbomb", values.stringAt(combat, "damage_alert_excluded_weapons").?);
+    const mining_text = values.get(thumbnail, "miningText").?;
+    try testing.expectEqual(false, values.boolAt(mining_text, "show_isk_rate").?);
+    try testing.expectEqual(@as(i64, 12), values.integerAt(mining_text, "offset_x").?);
+    const mining = root.object.get("mining").?;
+    try testing.expectEqualStrings("minute", values.stringAt(mining, "m3_rate_unit").?);
+    try testing.expectEqual(@as(i64, 3), values.integerAt(mining, "idle_alert_threshold").?);
+    try testing.expect(values.get(mining, "show_isk_rate") == null);
+}
+
+test "a rate text setting already in thumbnail wins over its tracker's" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const root = try migrated(arena.allocator(),
+        \\{"formatVersion":7,"combat":{"enabled":true},"thumbnail":{"combatText":{"shown":false}}}
+    );
+    try testing.expectEqual(false, values.boolAt(values.get(root.object.get("thumbnail"), "combatText"), "shown").?);
+    try testing.expect(values.get(root.object.get("combat"), "enabled") == null);
 }
 
 test "an old profile's intel pin settings move out of mapPanel, and a value already in intel wins" {

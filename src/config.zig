@@ -85,6 +85,8 @@ pub const StateVisualConfig = thumbnail_mod.StateVisualConfig;
 pub const ThumbnailState = thumbnail_mod.ThumbnailState;
 pub const ThumbnailConfig = thumbnail_mod.ThumbnailConfig;
 pub const AlertTextStyle = thumbnail_mod.AlertTextStyle;
+pub const CombatTextStyle = thumbnail_mod.CombatTextStyle;
+pub const MiningTextStyle = thumbnail_mod.MiningTextStyle;
 pub const DisplayConfig = display_mod.DisplayConfig;
 pub const ListViewConfig = panels.ListViewConfig;
 pub const HistoryPanelConfig = panels.HistoryPanelConfig;
@@ -368,11 +370,11 @@ pub const Config = struct {
     /// The thumbnails' overlay or the shown client list wants damage, so its tracker runs.
     pub fn tracksCombat(self: *const Config) bool {
         const list_view = &self.listView;
-        return self.combat.enabled or (self.display.viewMode.showsClientList() and (list_view.showIncomingDps or list_view.showOutgoingDps));
+        return self.thumbnail.combatText.shown or (self.display.viewMode.showsClientList() and (list_view.showIncomingDps or list_view.showOutgoingDps));
     }
 
     pub fn tracksMining(self: *const Config) bool {
-        return self.mining.enabled or (self.display.viewMode.showsClientList() and self.listView.showMiningRate);
+        return self.thumbnail.miningText.shown or (self.display.viewMode.showsClientList() and self.listView.showMiningRate);
     }
 
     pub fn tracksBounty(self: *const Config) bool {
@@ -517,7 +519,7 @@ test "a tracker runs for the shown client list's rate without the thumbnails' ov
     try testing.expect(!config.tracksCombat());
     config.display.viewMode = .Thumbnails;
     try testing.expect(!config.tracksMining());
-    config.mining.enabled = true;
+    config.thumbnail.miningText.shown = true;
     try testing.expect(config.tracksMining());
 }
 
