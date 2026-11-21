@@ -1,4 +1,4 @@
-//! The Appearance tab's thumbnail preview: drawn from the edited settings at its real size, its texts dragged into place and clicked to edit in a popover; main thread only.
+//! The Text Overlays section's thumbnail preview: drawn from the edited settings at its real size on a bench, its texts dragged into place and clicked to edit beside it; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const config = @import("../../../../config.zig");
@@ -10,6 +10,7 @@ const widgets = @import("../../widgets.zig");
 const color_convert = @import("../../color_convert.zig");
 const chips = @import("chips.zig");
 const images = @import("../../images.zig");
+const panel_preview = @import("../panel_preview.zig");
 
 const Rect = ui.component.Rect;
 const Text = ui.component.Text;
@@ -19,11 +20,10 @@ const Tooltip = ui.component.Tooltip;
 const Box = widgets.Box;
 const measuredBox = widgets.measuredBox;
 
-const STAGE_ROW_KEY: ui.Key = .str("knots.stage.row");
+const BENCH_KEY: ui.Key = .str("knots.stage.bench");
 /// Within this many stage pixels a dragged chip locks flush to its anchor.
 const SNAP_DISTANCE: f32 = 5;
 const CLIENT_BACKGROUND = 0xFF2A3240;
-const POPOVER_KEY: ui.Key = .str("knots.stage.popover");
 
 const Drag = struct {
     index: usize,
@@ -38,26 +38,22 @@ const Drag = struct {
 const Drop = struct { anchor: types.TextPosition, offset: [2]i32 };
 
 var g_drag: ?Drag = null;
-var g_selected_index: usize = 0;
-var g_is_popover_open: bool = false;
+var g_picker: panel_preview.Picker(chips.Part) = .{ .part_key = .str("knots.stage.chip"), .selected = .character_name };
 
-/// At the thumbnail's size, shrunk only to fit the section.
+/// At the thumbnail's size, shrunk only to fit the stage, with the selected text's settings beside it or under it.
 pub fn show(context: *ui.Frame) !void {
     const thumbnail = &session.profile().ptr.thumbnail;
     const width: f32 = @floatFromInt(@max(thumbnail.width, 1));
     const height: f32 = @floatFromInt(@max(thumbnail.height, 1));
     const arena = context.arena();
     const ui_state = context.ui();
-    _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, STAGE_ROW_KEY.hash());
-    const available_width = measuredBox(ui_state, STAGE_ROW_KEY).w();
-    // Not laid out yet, so draw once more knowing the room there is.
-    if (available_width == 0) context.requestRedraw();
     // The frame's 1px border on each side.
-    const scale = if (available_width > 2 and width > available_width - 2) (available_width - 2) / width else 1;
+    var bench = try panel_preview.Bench.open(context, BENCH_KEY, width + 2);
+    const room = bench.available_width;
+    const scale = if (room > 2 and width > room - 2) (room - 2) / width else 1;
     const stage_size = [2]f32{ @round(width * scale), @round(height * scale) };
 
-    const row = Rect{ .key = STAGE_ROW_KEY, .style = &style.stage_row };
-    _ = try row.open(context);
+    try bench.openStage(context, scale, &g_picker.shows_off);
     const frame = Rect{ .key = .src(@src()), .style = &style.stage_frame };
     _ = try frame.open(context);
 
@@ -85,50 +81,40 @@ pub fn show(context: *ui.Frame) !void {
 
     try stage.close(context);
     try frame.close(context);
-    try row.close(context);
-    try popover(context);
-}
-
-/// Beside the selected chip, on whichever side has room; a click outside closes it.
-fn popover(context: *ui.Frame) !void {
-    if (!g_is_popover_open) return;
-    const ui_state = context.ui();
-    const dialog = try widgets.openPopover(context, POPOVER_KEY, &g_is_popover_open, measuredBox(ui_state, chipKey(g_selected_index)));
+    try bench.closeStage(context);
+    try g_picker.partBar(context, BENCH_KEY.indexed(10), &partChips());
+    try bench.openInspector(context);
     inline for (chips.CHIPS, 0..) |chip, index| {
-        if (index == g_selected_index) {
-            if (try chips.showSettings(context, chip, index)) {
-                g_is_popover_open = false;
-                context.requestRedraw();
-            }
-        }
+        if (index == @backingInt(g_picker.selected)) try chips.showSettings(context, chip, index);
     }
-    const reason = try widgets.closePopover(context, dialog);
-    if (reason != .backdrop) return;
-    const mouse = ui_state.input.mouse_pos;
-    const point = [2]f32{ @floatCast(mouse[0]), @floatCast(mouse[1]) };
-    inline for (chips.CHIPS, 0..) |_, index| {
-        if (index != g_selected_index and measuredBox(ui_state, chipKey(index)).contains(point)) {
-            g_selected_index = index;
-            g_is_popover_open = true;
-        }
-    }
+    try bench.close(context);
 }
 
-fn chipKey(index: usize) ui.Key {
-    return ui.Key.str("knots.stage.chip").indexed(index);
+/// Every text's chip for the part bar, its dot in the text's colour.
+fn partChips() [chips.CHIPS.len]panel_preview.Picker(chips.Part).Chip {
+    var part_chips: [chips.CHIPS.len]panel_preview.Picker(chips.Part).Chip = undefined;
+    inline for (chips.CHIPS, 0..) |chip, index| {
+        const part: chips.Part = @fromBackingInt(index);
+        const look = chips.look(chip);
+        part_chips[index] = .{ .part = part, .label = chip.label, .is_shown = look.off_switch == null, .color = look.color, .starts_group = part.startsGroup() };
+    }
+    return part_chips;
 }
 
-/// With its sample text, outlined, and a tooltip saying how to use it; a ghost with a dashed outline while off.
+/// With its sample text and a tooltip saying how to use it; skipped while hidden, a dashed ghost while otherwise off.
 fn showChip(context: *ui.Frame, comptime chip: chips.Chip, comptime index: usize, stage_box: Box, stage_size: [2]f32, scale: f32) !void {
     const ui_state = context.ui();
-    const key = chipKey(index);
+    const part: chips.Part = @fromBackingInt(index);
+    const key = g_picker.keyOf(part);
     const id = key.hash();
+    const look = chips.look(chip);
+    const state = g_picker.stateOf(part, look.off_switch == null);
+    if (state.isHidden()) return;
     _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, id);
     const box = measuredBox(ui_state, key);
     // First frame: not laid out yet, so draw once more with its real size.
     if (box.w() == 0) context.requestRedraw();
     const chip_size = [2]f32{ box.w(), box.h() };
-    const look = chips.look(chip);
     const range = chips.offsetRange(chip);
 
     const mouse = ui_state.input.mouse_pos;
@@ -152,17 +138,15 @@ fn showChip(context: *ui.Frame, comptime chip: chips.Chip, comptime index: usize
                 const drop = dropResult(drag.position, chip_size, stage_size, scale, range);
                 chips.place(chip, drop.anchor, drop.offset[0], drop.offset[1]);
                 position = drag.position;
-            } else {
-                g_is_popover_open = true;
             }
-            g_selected_index = index;
+            g_picker.select(context, part);
             g_drag = null;
             context.requestRedraw();
         }
     };
 
-    const is_selected = g_is_popover_open and index == g_selected_index;
-    const is_shown = look.off_switch == null;
+    const is_outlined = state.is_selected or state.is_lit;
+    const is_shown = state.is_shown;
     const arena = context.arena();
     const trigger_style = try arena.create(ui.Style);
     trigger_style.* = style.overlay_text_trigger.with(.{ .offset = position });
@@ -173,7 +157,7 @@ fn showChip(context: *ui.Frame, comptime chip: chips.Chip, comptime index: usize
     chip_style.* = style.overlay_text.with(.{
         .padding = .xy(padding[0], padding[1]),
         .background = if (is_shown) .{ .color = color_convert.fromArgb(look.background_color) } else .{ .color = style.CHIP_OFF_FILL },
-        .border_color = if (is_selected) .accent else if (is_shown) .{ .color = style.CHIP_OUTLINE } else .{ .color = .transparent },
+        .border_color = if (is_outlined) .accent else .{ .color = .transparent },
     });
     const button = Button{ .key = key, .style = chip_style };
     const is_hovered = (try button.openResponse(context)).hovered;
@@ -188,8 +172,8 @@ fn showChip(context: *ui.Frame, comptime chip: chips.Chip, comptime index: usize
         .foreground = if (is_shown) color_convert.solid(look.color) else .{ .color = style.TEXT },
     };
     try context.e(Text{ .selectable = false, .key = key.indexed(1), .content = chip.sample, .style = text_style });
-    // Hover and selection draw the accent outline instead.
-    if (!is_shown and !is_hovered and !is_selected) try widgets.dashedOutline(context, key.indexed(3), chip_size, padding);
+    // Hover, light and selection draw the accent outline instead.
+    if (!is_shown and !is_hovered and !is_outlined) try widgets.dashedOutline(context, key.indexed(3), chip_size, padding);
     try button.close(context);
     try tip.close(context);
 }

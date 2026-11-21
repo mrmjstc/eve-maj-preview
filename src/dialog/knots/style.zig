@@ -328,7 +328,7 @@ pub const path_input: Style = text_input.with(.{ .width = .fixed(320) });
 /// A row label's tooltip: wider than knots' 260, and on PANEL like every menu and tooltip, set here since `.elevated` darkens inside a popover.
 pub const row_tooltip: Style = .{
     .width = .{ .kind = .fit, .max = 360 },
-    // Above the modal layer, like color_popup, or a disabled group's veil in a popover covers it.
+    // Above the modal layer, like color_popup, or a disabled group's veil in a modal covers it.
     .layer = ui.Layer.fromIndex(ui.Layer.modal.z + 1),
     .background = .{ .color = PANEL },
     .border_color = .{ .color = BORDER_STRONG },
@@ -795,38 +795,10 @@ pub const muted_text: Style = .{ .foreground = .{ .color = MUTED } };
 pub const UNIQUE_SAMPLE: u32 = 0xFF5EC9C9;
 /// How faded a preview's text is while it's turned off, so it can still be clicked to turn it back on.
 pub const OFF_TEXT_OPACITY = 0.35;
-/// An overlay text chip's outline at rest, so it reads as something to grab.
-pub const CHIP_OUTLINE: Color = .{ .value = .{ 1, 1, 1, 0.3 } };
 /// Behind a turned-off chip's text, so it reads over the preview image.
 pub const CHIP_OFF_FILL: Color = .{ .value = .{ 0, 0, 0, 0.55 } };
 /// The dashes of a turned-off chip's outline.
 pub const CHIP_DASH_LENGTH = 3;
-
-/// The widest a popover grows: room for a text overlay's font, size, weight and colour beside their label.
-pub const POPOVER_MAX_WIDTH = 480;
-/// A popover narrower than this would squeeze its title.
-pub const POPOVER_MIN_WIDTH = 260;
-/// From a popover's edge to where its rows' hover fill starts.
-pub const POPOVER_INSET = CONTENT_MARGIN + CARD_BORDER_WIDTH + SECTION_EDGE - ROW_INSET;
-/// Laid out like a tab, its heading on BG over a section card; openPopover sets its width.
-pub const popover: Style = .{
-    .width = .fixed(POPOVER_MAX_WIDTH),
-    .gap = 8,
-    .padding = .all(CONTENT_MARGIN),
-    .background = .{ .color = BG },
-    .border_color = .{ .color = BORDER_STRONG },
-    .radius = .md,
-};
-/// Flush with the card's edge, like a section's heading.
-pub const popover_title: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .justify = .space_between };
-/// Unboxed, so it reads as part of the heading rather than a setting.
-pub const popover_close: Style = icon_button.with(.{
-    .background = .transparent,
-    .border_color = .transparent,
-    .foreground = .{ .color = MUTED },
-    .font_size = .{ .px = 15 },
-    .hover = &.{ .background = .{ .color = SURFACE }, .border_color = .transparent, .foreground = .{ .color = TEXT }, .state_layer = 0 },
-});
 
 /// openGroup's column.
 pub const group: Style = .{ .width = .grow(), .direction = .column, .gap = 8 };
@@ -884,6 +856,113 @@ pub const stage_frame: Style = .{
     .overflow = .hidden,
 };
 pub const stage_row: Style = .{ .width = .grow(), .justify = .center };
+
+/// A section card holding a preview bench, which pads its own parts.
+pub const bench_section: Style = section.with(.{ .padding = .all(0), .gap = 0, .overflow = .hidden });
+/// Settings above a bench, e.g. a master switch, padded like a section's rows and ruled off from the bench.
+pub const bench_intro: Style = .{
+    .width = .grow(),
+    .direction = .column,
+    .gap = 8,
+    .padding = .xy(SECTION_EDGE - ROW_INSET, 8),
+    .border_width = .edges(0, 0, 1, 0),
+    .border_color = .{ .color = CARD_BORDER },
+};
+/// The stage and part bar beside the inspector; stretched, so the rule between them runs the bench's height.
+pub const bench_side: Style = .{ .width = .grow(), .direction = .row, .@"align" = .stretch };
+/// The stage and part bar over the inspector.
+pub const bench_stacked: Style = .{ .width = .grow(), .direction = .column };
+/// The stage and part bar's column; side by side, panel_preview sets its width.
+pub const bench_left: Style = .{
+    .direction = .column,
+    .border_width = .edges(0, 1, 0, 0),
+    .border_color = .{ .color = CARD_BORDER },
+};
+pub const bench_top: Style = .{
+    .width = .grow(),
+    .direction = .column,
+    .border_width = .edges(0, 0, 1, 0),
+    .border_color = .{ .color = CARD_BORDER },
+};
+/// Recessed in CHROME, so every preview sits on the same ground.
+pub const bench_stage: Style = .{
+    .width = .grow(),
+    .direction = .column,
+    .gap = 10,
+    .padding = .init(6, 12, 16, 12),
+    .background = .{ .color = CHROME },
+};
+pub const bench_tools: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 6 };
+pub const bench_tools_text: Style = .{ .width = .grow(), .font_size = .xs, .foreground = .{ .color = MUTED } };
+/// The stage's Show Off switch: unboxed until hovered or on.
+pub const bench_eye: Style = .{
+    .height = .fixed(22),
+    .direction = .row,
+    .@"align" = .center,
+    .gap = 5,
+    .padding = .xy(7, 0),
+    .background = .transparent,
+    .border_width = .all(1),
+    .border_color = .transparent,
+    .foreground = .{ .color = MUTED },
+    .font_size = .xs,
+    .radius = .sm,
+    .hover = &.{ .border_color = .{ .color = BORDER }, .foreground = .{ .color = TEXT_SECONDARY }, .state_layer = 0 },
+    .active = &.{ .state_layer = 0 },
+};
+pub const bench_eye_on: Style = bench_eye.with(.{ .background = .{ .color = PANEL }, .border_color = .{ .color = BORDER }, .foreground = .{ .color = TEXT } });
+pub const bench_eye_glyph: Style = .{ .width = .fixed(glyphs.TAB_SIZE), .height = .fixed(glyphs.TAB_SIZE) };
+/// The part bar's lines of chips.
+pub const part_bar: Style = .{ .width = .grow(), .direction = .column, .gap = 6, .padding = .xy(10, 10) };
+pub const part_bar_line: Style = .{ .direction = .row, .@"align" = .center, .gap = PART_CHIP_GAP };
+/// Between the chips of two groups of parts.
+pub const part_bar_divider: Style = .{ .width = .fixed(1), .height = .fixed(14), .background = .{ .color = DIVIDER } };
+pub const PART_CHIP_GAP = 6;
+pub const PART_CHIP_HEIGHT = 24;
+/// A part's chip, after the Alert History panel's category chips.
+pub const part_chip: Style = .{
+    .height = .fixed(PART_CHIP_HEIGHT),
+    .direction = .row,
+    .@"align" = .center,
+    .gap = 6,
+    .padding = .xy(9, 0),
+    .background = .{ .color = PANEL },
+    .border_width = .all(1),
+    .border_color = .{ .color = CARD_BORDER },
+    .radius = .{ .fixed = PART_CHIP_HEIGHT / 2 },
+    .hover = &.{ .border_color = .{ .color = BORDER_STRONG }, .state_layer = 0 },
+    .active = &.{ .state_layer = 0 },
+};
+pub const part_chip_selected: Style = part_chip.with(.{
+    .background = .{ .color = SURFACE },
+    .border_color = .accent,
+    .hover = &.{ .border_color = .accent, .state_layer = 0 },
+});
+pub const part_chip_label: Style = .{ .font_size = .xs, .foreground = .{ .color = TEXT_SECONDARY } };
+pub const part_chip_label_off: Style = part_chip_label.with(.{ .foreground = .{ .color = MUTED } });
+pub const part_chip_label_selected: Style = part_chip_label.with(.{ .foreground = .{ .color = TEXT } });
+pub const PART_DOT_SIZE = 7;
+/// A shown part's dot; panel_preview fills it with the part's colour.
+pub const part_dot: Style = .{ .width = .fixed(PART_DOT_SIZE), .height = .fixed(PART_DOT_SIZE), .radius = .{ .fixed = @as(f32, PART_DOT_SIZE) / 2 } };
+/// An off part's dot, hollow.
+pub const part_dot_off: Style = part_dot.with(.{ .border_width = .all(1), .border_color = .{ .color = BORDER_STRONG } });
+/// The selected part's settings, beside or under the stage; padded like a section card.
+pub const bench_inspector: Style = .{
+    .width = .grow(),
+    .direction = .column,
+    .gap = 8,
+    .padding = .init(10, SECTION_EDGE - ROW_INSET, 12, SECTION_EDGE - ROW_INSET),
+};
+/// The inspector's heading: the part's name, and its on switch at the right.
+pub const inspector_title: Style = .{
+    .width = .grow(),
+    .height = .{ .kind = .fit, .min = CONTROL_HEIGHT },
+    .direction = .row,
+    .@"align" = .center,
+    .gap = 8,
+    .padding = .xy(ROW_INSET, 0),
+};
+pub const inspector_title_text: Style = heading.with(.{ .width = .grow() });
 
 /// A thumbnail space's colour in the roster; the roster sets its colour.
 pub const SPACE_DOT_SIZE = 10;

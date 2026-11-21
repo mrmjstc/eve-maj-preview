@@ -28,17 +28,12 @@ const ROW_TOOLTIP_INDEX = 12;
 const DIALOG_PANEL_INDEX = 2;
 /// openModal keys its heading as the modal's own key indexed by this, past Dialog's panel.
 const MODAL_HEADING_INDEX = 3;
-/// popoverTitle keys its card as the title's own key indexed by this, past its heading and close button.
-const POPOVER_CARD_INDEX = 3;
-/// Kept between a popover and the window's edges.
+/// Kept between a menu and the window's edges.
 const POPOVER_MARGIN: f32 = 8;
-const POPOVER_GAP: f32 = 8;
 /// Between a menu and the button it drops from.
 const MENU_GAP: f32 = 4;
 /// accentChoices keys each preset as its own key indexed past this, clear of its other parts.
 const ACCENT_PRESET_INDEX = 10;
-/// Until the popover has been laid out once.
-const POPOVER_HEIGHT_GUESS: f32 = 480;
 /// Movement under this is a click, not a drag; matches knots' own click slop (press_drag_threshold_sq).
 pub const DRAG_THRESHOLD = 8;
 /// How long a confirm button waits for its second click.
@@ -135,11 +130,8 @@ pub const Row = struct {
     is_clicked: bool,
     /// openWrappingBinding's box around the controls, measured to choose their line.
     controls: ?Rect = null,
-    /// Translated, with its style; set by the bindings, so a popover can fit the row.
-    label: ?RowLabel = null,
 
     pub fn close(self: Row, context: *ui.Frame) !void {
-        if (g_open.popover_depth > 0) try self.fitPopover(context);
         g_open.row_depth -|= 1;
         g_open.is_row_lit = false;
         g_open.is_row_click_pending = false;
@@ -148,25 +140,6 @@ pub const Row = struct {
         try self.rect.close(context);
         if (self.divider) |divider| try divider.close(context);
     }
-
-    /// Widens the open popover, from the next frame, to the row's label and controls side by side; measured last frame.
-    fn fitPopover(self: Row, context: *ui.Frame) !void {
-        const label = self.label orelse return;
-        const ui_state = context.ui();
-        const row_width = measuredBox(ui_state, self.rect.key).w();
-        if (row_width == 0) return;
-        const gap = style.aligned_row.gap.?;
-        // The label grows into the spare width, so the controls are what's left of the row; wrapped, they have their own box.
-        const controls_width = if (self.controls) |controls| measuredBox(ui_state, controls.key).w() else row_width - 2 * style.ROW_INSET - measuredBox(ui_state, self.rect.key.indexed(1)).w() - gap;
-        fitPopoverWidth(2 * style.ROW_INSET + try textWidth(context, label.text, label.label_style) + gap + controls_width);
-    }
-};
-
-/// A row's label, for fitting a popover to it.
-const RowLabel = struct {
-    /// Translated; borrowed for the frame.
-    text: []const u8,
-    label_style: *const ui.Style,
 };
 
 pub const LinkedSwitch = struct { is_flipped: bool, is_link_clicked: bool };
@@ -267,7 +240,13 @@ pub const RosterAction = enum { none, add, add_open_clients };
 pub const RowSettings = struct { is_aligned: bool, label_style: *const ui.Style };
 
 /// Shown faded rather than hidden, so a preview's text that's turned off can still be clicked to turn it back on.
-pub const TextOptions = struct { is_grown: bool = false, is_shown: bool = true, is_bold: bool = false };
+pub const TextOptions = struct {
+    is_grown: bool = false,
+    is_shown: bool = true,
+    is_bold: bool = false,
+    /// Overrides is_shown's, e.g. for a preview part's text, which the part's own opacity doesn't reach.
+    opacity: ?f32 = null,
+};
 
 /// What an optional colour row changed to.
 pub const ColorChange = union(enum) { cleared, set: u32 };
@@ -367,17 +346,6 @@ const Open = struct {
     is_row_click_pending: bool = false,
     /// The open binding row, for controlsRoom; null outside one.
     binding_row: ?BindingRow = null,
-    /// Popovers opened and not yet closed, whose rows widen them.
-    popover_depth: usize = 0,
-    /// The open popover's card, which closePopover closes; null before popoverTitle opens it.
-    popover_card: ?PopoverCard = null,
-};
-
-/// A popover's card, and the section it was drawn inside, put back when the card closes.
-const PopoverCard = struct {
-    card: Rect,
-    outer_section: ?u64,
-    outer_row_count: usize,
 };
 
 /// Measured by one frame for the next, which beginFrame hands over.
@@ -393,9 +361,6 @@ const Carried = struct {
     /// Every master list's width this frame: wide enough for last frame's widest footer and row names.
     roster_width: f32 = style.ROSTER_WIDTH,
     roster_width_next: f32 = style.ROSTER_WIDTH,
-    /// The open popover's width this frame: what last frame's widest row in it needed.
-    popover_width: f32 = style.POPOVER_MIN_WIDTH,
-    popover_width_next: f32 = style.POPOVER_MIN_WIDTH,
 };
 
 /// A row being dragged to a new place in its list.
@@ -444,7 +409,6 @@ pub fn beginFrame() void {
         .row_hints_before = previous.row_hints,
         .detail_column = previous.detail_column_next,
         .roster_width = previous.roster_width_next,
-        .popover_width = previous.popover_width_next,
     };
 }
 
@@ -488,9 +452,7 @@ pub fn openBinding(context: *ui.Frame, key: ui.Key, label: []const u8) !Row {
     const room = measuredBox(context.ui(), key).w() - 2 * style.ROW_INSET;
     g_open.binding_row = if (room > 0) .{ .room = room, .label = shown, .label_style = label_style } else null;
     try rowLabel(context, key, key.indexed(1), shown, label_style);
-    var labelled = row;
-    labelled.label = .{ .text = shown, .label_style = label_style };
-    return labelled;
+    return row;
 }
 
 /// openBinding whose controls drop under the label when they don't fit beside it; aligned rows only, elsewhere it's openBinding.
@@ -516,7 +478,6 @@ pub fn openWrappingBinding(context: *ui.Frame, key: ui.Key, label: []const u8) !
     const controls = Rect{ .key = controls_key, .style = &style.row_controls };
     _ = try controls.open(context);
     row.controls = controls;
-    row.label = .{ .text = shown, .label_style = label_style };
     return row;
 }
 
@@ -540,45 +501,6 @@ pub fn openModal(context: *ui.Frame, key: ui.Key, is_open: *bool, panel_style: *
     return dialog;
 }
 
-/// On whichever side of `anchor` has room; close it with closePopover, whose `.backdrop` is a click outside.
-pub fn openPopover(context: *ui.Frame, key: ui.Key, is_open: *bool, anchor: Box) !Dialog {
-    const ui_state = context.ui();
-    const extent = context.input().logical_extent;
-    const viewport = [2]f32{ @floatFromInt(extent.width), @floatFromInt(extent.height) };
-    const panel_key = key.indexed(DIALOG_PANEL_INDEX);
-    _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, panel_key.hash());
-    const panel_box = measuredBox(ui_state, panel_key);
-    const width = std.math.clamp(@ceil(g_carried.popover_width) + 2 * style.POPOVER_INSET, style.POPOVER_MIN_WIDTH, style.POPOVER_MAX_WIDTH);
-    const panel_size = [2]f32{ width, if (panel_box.h() > 0) panel_box.h() else POPOVER_HEIGHT_GUESS };
-
-    const right_of_anchor = anchor.x() + anchor.w() + POPOVER_GAP;
-    const x = if (right_of_anchor + panel_size[0] + POPOVER_MARGIN <= viewport[0])
-        right_of_anchor
-    else
-        @max(POPOVER_MARGIN, anchor.x() - POPOVER_GAP - panel_size[0]);
-    const y = std.math.clamp(anchor.y(), POPOVER_MARGIN, @max(POPOVER_MARGIN, viewport[1] - panel_size[1] - POPOVER_MARGIN));
-    const panel_style = try context.arena().create(ui.Style);
-    panel_style.* = style.popover.with(.{ .width = .fixed(width) });
-    g_open.popover_depth += 1;
-    // What fits it is measured afresh each frame, so a row it no longer has doesn't keep it wide.
-    g_carried.popover_width_next = 0;
-    return openPlaced(context, key, is_open, panel_style, .{ x, y });
-}
-
-/// Closes what openPopover opened; returns how, as Dialog.closeResponse does.
-pub fn closePopover(context: *ui.Frame, dialog: Dialog) !?Dialog.CloseReason {
-    if (g_open.popover_card) |popover| {
-        g_open.popover_card = null;
-        g_open.section = popover.outer_section;
-        g_open.section_row_count = popover.outer_row_count;
-        g_open.last_labelled_row = null;
-        try popover.card.close(context);
-    }
-    g_open.popover_depth -|= 1;
-    if (g_carried.popover_width_next != g_carried.popover_width) context.requestRedraw();
-    return dialog.closeResponse(context);
-}
-
 /// Aligned to `anchor`'s left edge, or its right where there's no room; the caller fills and closes it.
 pub fn openMenu(context: *ui.Frame, key: ui.Key, is_open: *bool, anchor: Box) !Dialog {
     const viewport_width: f32 = @floatFromInt(context.input().logical_extent.width);
@@ -586,28 +508,6 @@ pub fn openMenu(context: *ui.Frame, key: ui.Key, is_open: *bool, anchor: Box) !D
     const left_aligned = anchor.x();
     const x = std.math.clamp(if (left_aligned <= max_x) left_aligned else anchor.x() + anchor.w() - style.MENU_WIDTH, POPOVER_MARGIN, max_x);
     return openPlaced(context, key, is_open, &style.menu, .{ x, anchor.y() + anchor.h() + MENU_GAP });
-}
-
-/// Its heading and close button, then the card closePopover closes; returns whether close was clicked.
-pub fn popoverTitle(context: *ui.Frame, key: ui.Key, title: []const u8) !bool {
-    const row = Rect{ .key = key, .style = &style.popover_title };
-    _ = try row.open(context);
-    const shown = lang.text(title);
-    fitPopoverWidth(try textWidth(context, shown, &style.heading) + style.CONTROL_HEIGHT);
-    try context.e(Text{ .selectable = false, .key = key.indexed(1), .content = shown, .style = &style.heading });
-    const is_close_clicked = (try context.interact(Button{ .key = key.indexed(2), .label = "\u{00D7}", .style = &style.popover_close })).clicked;
-    try row.close(context);
-
-    if (g_open.popover_card != null) reportMisuse("a popover's card was opened twice");
-    const card_key = key.indexed(POPOVER_CARD_INDEX);
-    const card = Rect{ .key = card_key, .style = &style.section };
-    _ = try card.open(context);
-    // The popover is drawn inside the tab's section, whose rows it mustn't continue, so its first row has no divider.
-    g_open.popover_card = .{ .card = card, .outer_section = g_open.section, .outer_row_count = g_open.section_row_count };
-    g_open.section = card_key.hash();
-    g_open.section_row_count = 0;
-    g_open.last_labelled_row = null;
-    return is_close_clicked;
 }
 
 /// Zero until `key` has been laid out with a measured state.
@@ -1262,7 +1162,7 @@ pub fn textStyle(arena: std.mem.Allocator, color: u32, size: f32, options: TextO
         .foreground = color_convert.solid(color),
         .font = if (options.is_bold) style.FONT_SEMIBOLD else null,
         .font_size = .{ .px = size },
-        .opacity = if (options.is_shown) 1 else style.OFF_TEXT_OPACITY,
+        .opacity = options.opacity orelse if (options.is_shown) 1 else style.OFF_TEXT_OPACITY,
     };
     if (options.is_grown) text_style.width = .grow();
     return text_style;
@@ -1500,11 +1400,6 @@ fn alignedLabelStyle(context: *ui.Frame, shown: []const u8) !*const ui.Style {
     const fitted = try context.arena().create(ui.Style);
     fitted.* = base.with(.{ .width = .{ .kind = .grow, .min = @ceil(widest) } });
     return fitted;
-}
-
-/// Widens the open popover, from the next frame, to `needed`.
-fn fitPopoverWidth(needed: f32) void {
-    g_carried.popover_width_next = @max(g_carried.popover_width_next, @ceil(needed));
 }
 
 fn reportMisuse(problem: []const u8) void {

@@ -1,4 +1,4 @@
-//! The Appearance tab's Client List sections: a preview of the panel whose parts are clicked to edit them in a popover, then the panel's other settings; main thread only.
+//! The Appearance tab's Client List sections: a preview of the panel whose parts are clicked to edit them beside it, then where the panel shows; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const config = @import("../../../config.zig");
@@ -6,6 +6,7 @@ const types = @import("../../../config/types.zig");
 const list_look = @import("../../../panels/list_look.zig");
 const map_look = @import("../../../panels/map/look.zig");
 const map_text = @import("../../../panels/map/text.zig");
+const palette = @import("../../../panels/palette.zig");
 const panel_menu_look = @import("../../../panels/panel_menu_look.zig");
 const session = @import("../session.zig");
 const bind = @import("../bind.zig");
@@ -22,7 +23,7 @@ const PART_PADDING = panel_preview.PART_PADDING;
 
 const ROW_KEY: ui.Key = .str("knots.client_list.row");
 const LINE_KEY: ui.Key = .str("knots.client_list.line");
-const STAGE_KEY: ui.Key = .str("knots.client_list.stage");
+const BENCH_KEY: ui.Key = .str("knots.client_list.bench");
 const TOTALS_KEY: ui.Key = .str("knots.client_list.totals");
 /// The panel menu's own words, so the two name each order alike.
 const ORDER_LABELS = blk: {
@@ -30,6 +31,7 @@ const ORDER_LABELS = blk: {
     for (panel_menu_look.ORDER_OPTIONS, &labels) |order, *label| label.* = panel_menu_look.orderLabel(order);
     break :blk labels;
 };
+const PART_COUNT = std.enums.values(Part).len;
 /// One line of sample rows, one per column.
 const SAMPLE_LINE: ui.Style = .{ .width = .grow(), .direction = .row };
 
@@ -37,8 +39,6 @@ const SAMPLE_LINE: ui.Style = .{ .width = .grow(), .direction = .row };
 const SAMPLE_VALUES = [list_look.STAT_COUNT]f32{ 412, 980, 21.4, 38_200_000 };
 /// Drawn in Fleet Invite's own colour, or the list's notification colour when it has none.
 const SAMPLE_NOTIFICATION = "Fleet Invite";
-/// Under a setting the thumbnails' overlay shares with the list.
-const SHARED_HINT = "The thumbnails use the same setting.";
 /// Two rates to a stats row, so each fits a column.
 const SAMPLES = [_]Sample{
     .{ .name = "Pilot Alpha", .state = .active, .system = "Jita", .security_tenths = 9 },
@@ -49,8 +49,9 @@ const SAMPLES = [_]Sample{
     .{ .name = "Pilot Charlie", .state = .excluded },
 };
 
-/// What a click on the preview opens: one per text, as on the thumbnail preview.
+/// What a click on the preview selects: the panel itself, then one per text, as on the thumbnail preview.
 const Part = enum {
+    panel,
     active,
     names,
     systems,
@@ -63,6 +64,7 @@ const Part = enum {
 
     fn label(self: Part) []const u8 {
         return switch (self) {
+            .panel => "Panel",
             .active => "Active Client",
             .names => "Character Names",
             .systems => "System Names",
@@ -130,11 +132,10 @@ const Look = struct {
     }
 };
 
-/// The list's own show, prefix and colour fields for one rate, then its overlay's settings shared with the thumbnails.
+/// The list's own prefix and colour fields for one rate, then its overlay's settings shared with the thumbnails.
 const StatRows = struct {
+    /// Keys its rows apart from the other rates'.
     show_field: []const u8,
-    show_label: []const u8,
-    show_hint: []const u8,
     prefix_field: []const u8,
     prefix_label: []const u8,
     prefix_hint: []const u8,
@@ -147,30 +148,69 @@ const StatRows = struct {
     has_excluded_weapons: bool = false,
 };
 
-var g_picker: panel_preview.Picker(Part) = .{ .part_key = .str("knots.client_list.part"), .popover_key = .str("knots.client_list.popover"), .selected = .names };
+const INITIAL_PICKER: panel_preview.Picker(Part) = .{ .part_key = .str("knots.client_list.part"), .selected = .panel };
+
+var g_picker: panel_preview.Picker(Part) = INITIAL_PICKER;
 
 /// Once the window has closed.
 pub fn reset() void {
-    g_picker.is_open = false;
+    g_picker = INITIAL_PICKER;
 }
 
 pub fn show(context: *ui.Frame) !void {
     const list_view = session.profile().child("listView");
-    const section = try widgets.openSection(context, "Client List", "A compact panel of client names. Click a part of the preview to change it.", &style.section);
-    const stage = try panel_preview.Stage.open(context, STAGE_KEY);
-    const look = try lookOf(context.arena(), session.profile().ptr, stage);
-    try preview(context, &session.profile().ptr.listView, &look);
-    try stage.close(context, look.scale, "Shrunk to fit; the list itself is wider.");
+    const profile = session.profile().ptr;
+    const section = try widgets.openSection(context, "Client List", "A compact panel of client names. Click a part to edit it.", &style.bench_section);
+    const sizes = list_look.metrics(&profile.listView);
+    const column_count: i32 = list_look.effectiveColumns(profile.listView.columns, SAMPLES.len);
+    var bench = try panel_preview.Bench.open(context, BENCH_KEY, @floatFromInt(sizes.column_width * column_count));
+    const look = try lookOf(context.arena(), profile, &bench);
+    try bench.openStage(context, look.scale, &g_picker.shows_off);
+    try preview(context, &profile.listView, &look);
+    try bench.closeStage(context);
+    try g_picker.partBar(context, BENCH_KEY.indexed(10), &partChips(&look));
+    try bench.openInspector(context);
+    // The search's index draws every tab with it, and they bind some of the same fields, so the inspector's rows need keys of their own.
+    var inspector_ref = list_view;
+    inspector_ref.index = 1;
+    try settings(context, inspector_ref, g_picker.selected);
+    try bench.close(context);
     try section.close(context);
 
-    try layout(context, list_view);
     // Beside thumbnails, the list hides with them.
     try panel_settings.visibility(context, list_view, .list, .{ .has_auto_hide = !session.showsThumbnails() });
-    try popover(context, list_view);
 }
 
+/// Every part's chip for the part bar, its dot in the part's colour.
+fn partChips(look: *const Look) [PART_COUNT]panel_preview.Picker(Part).Chip {
+    var part_chips: [PART_COUNT]panel_preview.Picker(Part).Chip = undefined;
+    for (std.enums.values(Part), &part_chips) |part, *part_chip| {
+        const is_shown, const color = switch (part) {
+            .panel => .{ true, palette.TEXT_SECONDARY },
+            .active => .{ true, look.active_color },
+            .names => .{ true, look.name_color },
+            .systems => .{ look.shows_systems, look.system_color },
+            .notifications => .{ look.shows_notifications, list_look.BADGE_ALERT },
+            .incoming_dps => statChip(look, .incoming_dps),
+            .outgoing_dps => statChip(look, .outgoing_dps),
+            .mining_rate => statChip(look, .mining_rate),
+            .bounty_rate => statChip(look, .bounty_rate),
+            .totals => .{ look.shows_totals, list_look.MUTED },
+        };
+        part_chip.* = .{ .part = part, .label = part.label(), .is_shown = is_shown, .color = color, .starts_group = part == .active or part == .incoming_dps };
+    }
+    return part_chips;
+}
+
+/// Whether the rate shows, and its colour.
+fn statChip(look: *const Look, stat: list_look.Stat) struct { bool, u32 } {
+    const label = look.stat_labels[@backingInt(stat)];
+    return .{ label.is_shown, label.color };
+}
+
+/// The Panel part's settings: how the list orders and arranges its clients, and its font.
 fn layout(context: *ui.Frame, list_view: ListRef) !void {
-    const section = try widgets.openNamedSection(context, "Layout:list", "Layout", "How the list orders and arranges its clients.", &style.section);
+    try widgets.subheading(context, .src(@src()), "Layout");
     try bind.segmented(context, list_view, "order", "Order", &ORDER_LABELS);
     try widgets.hintText(context, .src(@src()), "Setup follows the Characters tab; Found is the order clients were found.");
     try bind.toggle(context, list_view, "groupBySystem", "Group by System");
@@ -181,11 +221,12 @@ fn layout(context: *ui.Frame, list_view: ListRef) !void {
     try widgets.hintText(context, .src(@src()), "Long names are cut short to fit.");
     try bind.segmented(context, list_view, "indicatorStyle", "Indicator", &.{ "Dot", "Square", "None" });
     try widgets.hintText(context, .src(@src()), "The mark beside each client that shows its state.");
-    const font = try widgets.openBinding(context, .src(@src()), "Font");
-    try bind.fontBoxes(context, list_view, "fontName", "fontSize", "fontWeight");
+    try widgets.subheading(context, .src(@src()), "Style");
+    const font = try widgets.openWrappingBinding(context, .src(@src()), "Font");
+    try bind.fontNameSize(context, list_view, "fontName", "fontSize");
     try font.close(context);
     try widgets.hintText(context, .src(@src()), "Used for names; other text is drawn a little smaller.");
-    try section.close(context);
+    try bind.choice(context, list_view, "fontWeight", "Weight");
 }
 
 /// The panel in list_look's look, with sample clients, at `look.scale`.
@@ -199,7 +240,9 @@ fn preview(context: *ui.Frame, list_settings: *const config.ListViewConfig, look
     const panel = Rect{ .key = .src(@src()), .style = panel_style };
     _ = try panel.open(context);
     const count_text = list_look.countText(try arena.create([list_look.COUNT_TEXT_MAX]u8), SAMPLES.len);
+    const header_part = try g_picker.openPart(context, .{ .width = .grow(), .padding = .all(1), .background = .transparent }, .{ 1, 1 }, .panel, true);
     try panel_preview.header(context, .src(@src()), list_look.HEADER_TEXT, count_text, look.scale);
+    try header_part.close(context);
 
     // Row by row across the columns, as the panel lays its rows out; a short last line keeps its cells' width.
     var first: usize = 0;
@@ -239,10 +282,11 @@ fn totalsFooter(context: *ui.Frame, look: *const Look) !void {
     const footer = Rect{ .key = TOTALS_KEY, .style = footer_style };
     _ = try footer.open(context);
     const part = try openPart(context, look, .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = look.scaled(list_look.STAT_GAP) }, list_look.PANEL, .totals, look.shows_totals);
-    try context.e(Text{ .selectable = false, .key = TOTALS_KEY.indexed(1), .content = list_look.TOTALS_TEXT, .style = try widgets.textStyle(arena, list_look.MUTED, look.small_size, .{ .is_shown = look.shows_totals, .is_bold = true }) });
+    const opacity = g_picker.contentOpacity(.totals, look.shows_totals);
+    try context.e(Text{ .selectable = false, .key = TOTALS_KEY.indexed(1), .content = list_look.TOTALS_TEXT, .style = try widgets.textStyle(arena, list_look.MUTED, look.small_size, .{ .opacity = opacity, .is_bold = true }) });
     for (look.stat_labels, 2..) |label, index| {
         if (!label.is_shown) continue;
-        try context.e(Text{ .selectable = false, .key = TOTALS_KEY.indexed(index), .content = label.text, .style = try widgets.textStyle(arena, label.color, look.small_size, .{ .is_shown = look.shows_totals }) });
+        try context.e(Text{ .selectable = false, .key = TOTALS_KEY.indexed(index), .content = label.text, .style = try widgets.textStyle(arena, label.color, look.small_size, .{ .opacity = opacity }) });
     }
     try part.close(context);
     try footer.close(context);
@@ -326,14 +370,15 @@ fn systemSlot(context: *ui.Frame, sample: Sample, key: ui.Key, look: *const Look
     const arena = context.arena();
     const group = Rect{ .key = key, .style = try groupStyle(arena, look.scaled(list_look.SECURITY_GAP)) };
     _ = try group.open(context);
-    const system_style = try widgets.textStyle(arena, look.system_color, look.small_size, .{ .is_shown = look.shows_systems, .is_bold = true });
+    const opacity = g_picker.contentOpacity(.systems, look.shows_systems);
+    const system_style = try widgets.textStyle(arena, look.system_color, look.small_size, .{ .opacity = opacity, .is_bold = true });
     if (sample.is_system_part) {
         try textPart(context, .systems, key.indexed(1), sample.system, system_style, look.shows_systems, look);
     } else {
         try context.e(Text{ .selectable = false, .key = key.indexed(1), .content = sample.system, .style = system_style });
     }
     const security = map_text.securityText(try arena.create([map_text.SECURITY_TEXT_MAX]u8), sample.security_tenths);
-    if (look.shows_security) try context.e(Text{ .selectable = false, .key = key.indexed(2), .content = security, .style = try widgets.textStyle(arena, map_look.securityTextColor(sample.security_tenths), look.small_size, .{ .is_shown = look.shows_systems, .is_bold = true }) });
+    if (look.shows_security) try context.e(Text{ .selectable = false, .key = key.indexed(2), .content = security, .style = try widgets.textStyle(arena, map_look.securityTextColor(sample.security_tenths), look.small_size, .{ .opacity = opacity, .is_bold = true }) });
     try group.close(context);
 }
 
@@ -341,6 +386,7 @@ fn systemSlot(context: *ui.Frame, sample: Sample, key: ui.Key, look: *const Look
 fn pillPart(context: *ui.Frame, key: ui.Key, look: *const Look) !void {
     const arena = context.arena();
     const part = try openPart(context, look, .{}, list_look.PANEL, .notifications, look.shows_notifications);
+    const opacity = g_picker.contentOpacity(.notifications, look.shows_notifications);
     const pill_style = try arena.create(ui.Style);
     pill_style.* = .{
         .background = color_convert.solid(list_look.pillFill(list_look.BADGE_ALERT)),
@@ -348,10 +394,11 @@ fn pillPart(context: *ui.Frame, key: ui.Key, look: *const Look) !void {
         .border_color = color_convert.solid(list_look.pillBorder(list_look.BADGE_ALERT)),
         .radius = .{ .fixed = look.scaled(@intCast(list_look.PILL_RADIUS)) },
         .padding = .xy(look.scaled(list_look.PILL_PADDING_X - 1), 0),
+        .opacity = opacity,
     };
     const pill = Rect{ .key = key, .style = pill_style };
     _ = try pill.open(context);
-    try context.e(Text{ .selectable = false, .key = key.indexed(1), .content = SAMPLE_NOTIFICATION, .style = try widgets.textStyle(arena, look.notification_color, look.small_size, .{ .is_shown = look.shows_notifications, .is_bold = true }) });
+    try context.e(Text{ .selectable = false, .key = key.indexed(1), .content = SAMPLE_NOTIFICATION, .style = try widgets.textStyle(arena, look.notification_color, look.small_size, .{ .opacity = opacity, .is_bold = true }) });
     try pill.close(context);
     try part.close(context);
 }
@@ -363,7 +410,8 @@ fn statsLine(context: *ui.Frame, stats: []const list_look.Stat, key: ui.Key, loo
     _ = try group.open(context);
     for (stats, 1..) |stat, index| {
         const label = look.stat_labels[@backingInt(stat)];
-        try textPart(context, .ofStat(stat), key.indexed(index), label.text, try widgets.textStyle(arena, label.color, look.small_size, .{ .is_shown = label.is_shown }), label.is_shown, look);
+        const opacity = g_picker.contentOpacity(.ofStat(stat), label.is_shown);
+        try textPart(context, .ofStat(stat), key.indexed(index), label.text, try widgets.textStyle(arena, label.color, look.small_size, .{ .opacity = opacity }), label.is_shown, look);
     }
     try group.close(context);
 }
@@ -376,11 +424,11 @@ fn textPart(context: *ui.Frame, part: Part, key: ui.Key, content: []const u8, te
 }
 
 /// A unique colour varies per character or system, so a sample stands in for it.
-fn lookOf(arena: std.mem.Allocator, profile: *const config.Config, stage: panel_preview.Stage) !Look {
+fn lookOf(arena: std.mem.Allocator, profile: *const config.Config, bench: *const panel_preview.Bench) !Look {
     const list_settings = &profile.listView;
     const sizes = list_look.metrics(list_settings);
     const column_count: usize = @intCast(list_look.effectiveColumns(list_settings.columns, SAMPLES.len));
-    const scale = stage.scaleFor(@floatFromInt(sizes.column_width * @as(i32, @intCast(column_count))));
+    const scale = bench.scaleFor(@floatFromInt(sizes.column_width * @as(i32, @intCast(column_count))));
     const shown = profile.shownColors();
     const active_color = if (shown.uses_unique_border_colors) style.UNIQUE_SAMPLE else shown.active_color;
     const uses_unique_names = list_settings.useUniqueCharacterNameColors;
@@ -446,30 +494,29 @@ fn indicator(context: *ui.Frame, key: ui.Key, color: u32, is_lit: bool, look: *c
     try slot.close(context);
 }
 
-/// Beside the clicked part; a click on another part moves it there.
-fn popover(context: *ui.Frame, list_view: ListRef) !void {
-    const dialog = try g_picker.openPopover(context) orelse return;
-    // The search's index draws every tab with it, and they bind some of the same fields, so its rows need keys of their own.
-    var popover_ref = list_view;
-    popover_ref.index = 1;
-    try g_picker.closePopover(context, dialog, try settings(context, popover_ref, g_picker.selected));
-}
-
-/// Returns whether close was pressed.
-fn settings(context: *ui.Frame, list_view: ListRef, part: Part) !bool {
-    const is_close_clicked = try widgets.popoverTitle(context, .src(@src()), part.label());
+/// The selected part's name, with its on switch where it has one, then its settings.
+fn settings(context: *ui.Frame, list_view: ListRef, part: Part) !void {
+    const title = try panel_preview.openInspectorTitle(context, .src(@src()), part.label());
+    switch (part) {
+        .panel, .active, .names => {},
+        .systems => try bind.toggle(context, list_view, "showSystemName", ""),
+        .notifications => try bind.toggle(context, list_view, "showNotifications", ""),
+        .incoming_dps => try bind.toggle(context, list_view, "showIncomingDps", ""),
+        .outgoing_dps => try bind.toggle(context, list_view, "showOutgoingDps", ""),
+        .mining_rate => try bind.toggle(context, list_view, "showMiningRate", ""),
+        .bounty_rate => try bind.toggle(context, list_view, "showBountyRate", ""),
+        .totals => try bind.toggle(context, list_view, "showTotals", ""),
+    }
+    try title.close(context);
     try requirementNotices(context, part);
 
-    const was_aligned = widgets.useAlignedRows(true);
-    defer _ = widgets.useAlignedRows(was_aligned);
     const follows_thumbnails = session.showsThumbnails();
     switch (part) {
+        .panel => try layout(context, list_view),
         .active => {
-            if (follows_thumbnails) {
-                try widgets.notice(context, .src(@src()), "Follows the thumbnails' active border color.");
-                return is_close_clicked;
-            }
-            try bind.toggle(context, list_view, "useUniqueActiveColors", "Unique Character Active Colors");
+            if (follows_thumbnails) return widgets.notice(context, .src(@src()), "Follows the thumbnails' active border color.");
+            try widgets.subheading(context, .src(@src()), "Color");
+            try bind.toggle(context, list_view, "useUniqueActiveColors", "Unique Colors");
             try widgets.hintText(context, .src(@src()), "Each character's mark gets its own color.");
             const group = try widgets.openGroup(context, .src(@src()), !list_view.get("useUniqueActiveColors"));
             try bind.optionalColor(context, list_view, "activeColor", "Active Color", session.profile().ptr.accentColor);
@@ -478,41 +525,30 @@ fn settings(context: *ui.Frame, list_view: ListRef, part: Part) !bool {
         },
         // The list's own in every view mode, unlike its other colors.
         .names => {
-            try bind.toggle(context, list_view, "useUniqueCharacterNameColors", "Unique Character Name Colors");
+            try widgets.subheading(context, .src(@src()), "Color");
+            try bind.toggle(context, list_view, "useUniqueCharacterNameColors", "Unique Colors");
             try widgets.hintText(context, .src(@src()), "Each character's name gets its own color.");
         },
         .systems => {
-            try bind.toggle(context, list_view, "showSystemName", "Show System Name");
-            try widgets.hintText(context, .src(@src()), "Needs Log Monitoring to know where each character is.");
-            const security = try widgets.openGroup(context, .src(@src()), list_view.get("showSystemName"));
+            try widgets.subheading(context, .src(@src()), "Content");
             try bind.toggle(context, list_view, "showSystemSecurity", "Show Security Status");
             try widgets.hintText(context, .src(@src()), "Beside the system's name, in the game's colors.");
-            try security.close(context);
-            if (follows_thumbnails) {
-                try widgets.notice(context, .src(@src()), "Colors follow the thumbnails' system name settings.");
-                return is_close_clicked;
-            }
-            const shown = try widgets.openGroup(context, .src(@src()), list_view.get("showSystemName"));
-            try bind.toggle(context, list_view, "useUniqueSystemColors", "Unique System Colors");
+            if (follows_thumbnails) return widgets.notice(context, .src(@src()), "Colors follow the thumbnails' system name settings.");
+            try widgets.subheading(context, .src(@src()), "Color");
+            try bind.toggle(context, list_view, "useUniqueSystemColors", "Unique Colors");
             try widgets.hintText(context, .src(@src()), "Each system gets its own color; System Colors overrides it.");
             const group = try widgets.openGroup(context, .src(@src()), !list_view.get("useUniqueSystemColors"));
             try bind.rgb(context, list_view, "systemNameColor", "Text Color");
             try widgets.hintText(context, .src(@src()), "Used while unique colors are off.");
             try group.close(context);
-            try shown.close(context);
         },
         .notifications => {
-            try bind.toggle(context, list_view, "showNotifications", "Show Alerts");
-            try widgets.hintText(context, .src(@src()), "Shows alert text, like Fleet Invite, in the list.");
-            const shown = try widgets.openGroup(context, .src(@src()), list_view.get("showNotifications"));
+            try widgets.subheading(context, .src(@src()), "Color");
             try bind.rgb(context, list_view, "notificationColor", "Text Color");
-            try widgets.hintText(context, .src(@src()), "The color of this text.");
-            try shown.close(context);
+            try widgets.hintText(context, .src(@src()), "Used when the alert type has no color of its own.");
         },
         .incoming_dps => try statSettings(context, list_view, .{
             .show_field = "showIncomingDps",
-            .show_label = "Show Incoming Damage",
-            .show_hint = "Damage the character is taking per second.",
             .prefix_field = "showIncomingPrefix",
             .prefix_label = "Show IN: Prefix",
             .prefix_hint = "Puts IN: before the number so it's easy to tell apart.",
@@ -522,8 +558,6 @@ fn settings(context: *ui.Frame, list_view: ListRef, part: Part) !bool {
         }),
         .outgoing_dps => try statSettings(context, list_view, .{
             .show_field = "showOutgoingDps",
-            .show_label = "Show Outgoing Damage",
-            .show_hint = "Damage the character is dealing per second.",
             .prefix_field = "showOutgoingPrefix",
             .prefix_label = "Show OUT: Prefix",
             .prefix_hint = "Puts OUT: before the number so it's easy to tell apart.",
@@ -532,8 +566,6 @@ fn settings(context: *ui.Frame, list_view: ListRef, part: Part) !bool {
         }),
         .mining_rate => try statSettings(context, list_view, .{
             .show_field = "showMiningRate",
-            .show_label = "Show Mining Rate",
-            .show_hint = "How much the character mines.",
             .prefix_field = "showMiningPrefix",
             .prefix_label = "Show M: Prefix",
             .prefix_hint = "Puts M: before the rate so it's easy to tell apart.",
@@ -543,8 +575,6 @@ fn settings(context: *ui.Frame, list_view: ListRef, part: Part) !bool {
         }),
         .bounty_rate => try statSettings(context, list_view, .{
             .show_field = "showBountyRate",
-            .show_label = "Show Bounty Rate",
-            .show_hint = "ISK the character earns from bounties.",
             .prefix_field = "showBountyPrefix",
             .prefix_label = "Show ISK: Prefix",
             .prefix_hint = "Puts ISK: before the rate so it's easy to tell apart.",
@@ -552,20 +582,16 @@ fn settings(context: *ui.Frame, list_view: ListRef, part: Part) !bool {
             .overlay = "bounty",
             .unit = .{ .field = "isk_rate_unit", .label = "ISK Per", .hint = "Shows ISK earned per minute or per hour." },
         }),
-        .totals => {
-            try bind.toggle(context, list_view, "showTotals", "Show Totals");
-            try widgets.hintText(context, .src(@src()), "Adds up the rates the rows show.");
-        },
+        .totals => try widgets.paragraph(context, .src(@src()), "Adds up the rates the rows show."),
     }
-    return is_close_clicked;
 }
 
-/// What else has to be on for the part's text to show, as the thumbnail preview's popovers say.
+/// What else has to be on for the part's text to show, as the Text Overlays preview says.
 fn requirementNotices(context: *ui.Frame, part: Part) !void {
     const profile = session.profile().ptr;
     const is_monitoring = session.global().ptr.chatlog.enabled;
     const needs_chatlog = switch (part) {
-        .active, .names, .notifications => false,
+        .panel, .active, .names, .notifications => false,
         .systems, .incoming_dps, .outgoing_dps, .mining_rate, .bounty_rate, .totals => true,
     };
     if (needs_chatlog and !is_monitoring) try widgets.notice(context, .src(@src()), "Requires Log Monitoring to be enabled.");
@@ -576,37 +602,30 @@ fn requirementNotices(context: *ui.Frame, part: Part) !void {
 }
 
 fn statSettings(context: *ui.Frame, list_view: ListRef, comptime rows: StatRows) !void {
-    try bind.toggle(context, list_view, rows.show_field, rows.show_label);
-    try widgets.hintText(context, .str("knots.client_list.shown.hint:" ++ rows.show_field), rows.show_hint);
-    const shown = try widgets.openGroup(context, .str("knots.client_list.shown:" ++ rows.show_field), list_view.get(rows.show_field));
+    try widgets.subheading(context, .str("knots.client_list.content:" ++ rows.show_field), "Content");
     try bind.toggle(context, list_view, rows.prefix_field, rows.prefix_label);
     try widgets.hintText(context, .str("knots.client_list.prefix.hint:" ++ rows.show_field), rows.prefix_hint);
     try bind.rgb(context, list_view, rows.color_field, "Text Color");
-    try widgets.hintText(context, .str("knots.client_list.color.hint:" ++ rows.show_field), "The color of this text.");
+    try widgets.subheading(context, .str("knots.client_list.shared_heading:" ++ rows.show_field), "Shared With Thumbnails");
     try sharedSettings(context, list_view.index, rows);
-    try shown.close(context);
 }
 
-/// The same fields the thumbnail preview's popover edits for the rate.
+/// The same fields the Text Overlays preview edits for the rate.
 fn sharedSettings(context: *ui.Frame, list_index: usize, comptime rows: StatRows) !void {
     var overlay = session.profile().child(rows.overlay);
-    // The thumbnail preview's popover binds these fields at the list's index.
+    // The Text Overlays preview binds these fields at the list's index.
     overlay.index = list_index + 1;
     const key = "knots.client_list.shared:" ++ rows.show_field;
     try bind.number(context, overlay, "window_seconds", "Averaging Window", .{ .unit = "s" });
     try widgets.hintText(context, .str(key ++ ":window"), "The rate is averaged over this time.");
-    try widgets.hintText(context, .str(key ++ ":window.shared"), SHARED_HINT);
     try bind.number(context, overlay, "update_interval_ms", "Update Interval", .{ .unit = "s", .shows_seconds = true });
     try widgets.hintText(context, .str(key ++ ":interval"), "How often the number changes.");
-    try widgets.hintText(context, .str(key ++ ":interval.shared"), SHARED_HINT);
     if (rows.unit) |unit| {
         try bind.segmented(context, overlay, unit.field, unit.label, &.{ "Minute", "Hour" });
         try widgets.hintText(context, .str(key ++ ":unit"), unit.hint);
-        try widgets.hintText(context, .str(key ++ ":unit.shared"), SHARED_HINT);
     }
     if (rows.has_excluded_weapons) {
         try bind.text(context, overlay, "damage_alert_excluded_weapons", "Exclude Weapons", "e.g. Smartbomb, Warp Scrambler");
         try widgets.hintText(context, .str(key ++ ":weapons"), "Weapon names to ignore, separated by commas. Stops only the Taking Damage alert; the damage still counts.");
-        try widgets.hintText(context, .str(key ++ ":weapons.shared"), SHARED_HINT);
     }
 }

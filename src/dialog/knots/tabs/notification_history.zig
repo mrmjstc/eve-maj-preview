@@ -1,4 +1,4 @@
-//! The configuration window's Alert History tab: a preview of the panel of recent alerts, then its settings; main thread only.
+//! The configuration window's Alert History section: a preview of the panel of recent alerts whose parts are clicked to edit them beside it, then where the panel shows; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const config = @import("../../../config.zig");
@@ -21,12 +21,13 @@ const Text = ui.component.Text;
 const HistoryRef = session.Ref(config.HistoryPanelConfig);
 const PART_PADDING = panel_preview.PART_PADDING;
 
-const STAGE_KEY: ui.Key = .str("knots.notification_history.stage");
+const BENCH_KEY: ui.Key = .str("knots.notification_history.bench");
 const ROW_KEY: ui.Key = .str("knots.notification_history.row");
 const FILTER_KEY: ui.Key = .str("knots.notification_history.filter");
 const CHIP_LINE_KEY: ui.Key = .str("knots.notification_history.chip_line");
 /// A chip's width before it's been laid out once.
 const UNMEASURED_CHIP_WIDTH: i32 = 60;
+const PART_COUNT = std.enums.values(Part).len;
 
 /// Newest first, one per category and a merged one; the first two not yet looked at.
 const SAMPLES = [_]Sample{
@@ -69,106 +70,129 @@ const Look = struct {
     }
 };
 
-/// What a click on the preview opens.
+/// What a click on the preview selects.
 const Part = enum {
+    panel,
     filters,
     timestamp,
     merged,
 
     fn label(self: Part) []const u8 {
         return switch (self) {
+            .panel => "Panel",
             .filters => "Category Filters",
-            .timestamp => "Relative Timestamps",
+            .timestamp => "Timestamps",
             .merged => "Merge Repeats",
         };
     }
 };
 
-var g_picker: panel_preview.Picker(Part) = .{ .part_key = .str("knots.notification_history.part"), .popover_key = .str("knots.notification_history.popover"), .selected = .filters };
+const INITIAL_PICKER: panel_preview.Picker(Part) = .{ .part_key = .str("knots.notification_history.part"), .selected = .panel };
+
+var g_picker: panel_preview.Picker(Part) = INITIAL_PICKER;
 
 /// Once the window has closed.
 pub fn reset() void {
-    g_picker.is_open = false;
+    g_picker = INITIAL_PICKER;
 }
 
 pub fn show(context: *ui.Frame) !void {
-    const are_alerts_on = session.profile().ptr.thumbnail.notifications.enabled;
+    const profile = session.profile().ptr;
+    const are_alerts_on = profile.thumbnail.notifications.enabled;
     if (!are_alerts_on) try widgets.noticeWithButton(context, .src(@src()), "Alert History requires alerts switched on in the Alert Options tab.", "Go to Alert Options", .notifications);
     const ref = session.profile().child("historyPanel");
 
-    const section = try widgets.openSection(context, "Alert History", "A panel of recent alerts. Click a part of the preview to change it.", &style.section);
+    const section = try widgets.openSection(context, "Alert History", "A panel of recent alerts. Click a part to edit it.", &style.bench_section);
+    const intro = Rect{ .key = .src(@src()), .style = &style.bench_intro };
+    _ = try intro.open(context);
     const alerts = try widgets.openGroup(context, .src(@src()), are_alerts_on);
     try bind.toggle(context, ref, "show", "Enable Alert History");
-    const shown = try widgets.openGroup(context, .src(@src()), ref.get("show"));
-    try preview(context, session.profile().ptr);
-    try shown.close(context);
     try alerts.close(context);
-    try section.close(context);
-    try popover(context, ref);
-
-    // Laid out like the Client List's own sections, which set up the same kind of panel.
+    try intro.close(context);
     const is_shown = are_alerts_on and ref.get("show");
-    try layout(context, ref, is_shown);
-    try panel_settings.visibility(context, ref, .history, .{ .is_shown = is_shown });
-    try rowSettings(context, ref, is_shown);
-}
-
-fn layout(context: *ui.Frame, ref: HistoryRef, is_shown: bool) !void {
-    const section = try widgets.openNamedSection(context, "Layout:history", "Layout", "The panel's size, how many rows it holds, its font, and its filter chips.", &style.section);
-    const options = try widgets.openGroup(context, .src(@src()), is_shown);
-    const size = try widgets.openBinding(context, .src(@src()), "Size");
-    try bind.sizeBoxes(context, ref, "width", "height");
-    try size.close(context);
-    try widgets.hintText(context, .src(@src()), "You can also drag the panel's edges to resize it.");
-    try bind.number(context, ref, "maxRows", "Max Rows", .{ .unit = "rows", .singular_unit = "row" });
-    try widgets.hintText(context, .src(@src()), "Older alerts drop off past this.");
-    const font = try widgets.openBinding(context, .src(@src()), "Font");
-    try bind.fontBoxes(context, ref, "fontName", "fontSize", "fontWeight");
-    try font.close(context);
-    try widgets.hintText(context, .src(@src()), "Used for every row's text.");
-    try bind.toggle(context, ref, "showCategoryFilters", "Category Filters");
-    try widgets.hintText(context, .src(@src()), "Adds chips above the rows to filter the panel by type.");
-    try options.close(context);
-    try section.close(context);
-}
-
-fn rowSettings(context: *ui.Frame, ref: HistoryRef, is_shown: bool) !void {
-    const section = try widgets.openSection(context, "Rows", "How each alert is shown in the panel.", &style.section);
-    const options = try widgets.openGroup(context, .src(@src()), is_shown);
-    try timestampRow(context, ref);
-    try mergeRows(context, ref);
-    try options.close(context);
-    try section.close(context);
-}
-
-/// In the Rows section and the popover, which tell their keys apart by `ref`'s index.
-fn timestampRow(context: *ui.Frame, ref: HistoryRef) !void {
-    try bind.toggle(context, ref, "showTimestamp", "Relative Timestamps");
-    try widgets.hintText(context, ui.Key.src(@src()).indexed(ref.index), "Shows times like \"5m ago\" instead of a fixed clock time.");
-}
-
-/// As timestampRow.
-fn mergeRows(context: *ui.Frame, ref: HistoryRef) !void {
-    try bind.toggle(context, ref, "mergeEnabled", "Merge Repeats");
-    try widgets.hintText(context, ui.Key.src(@src()).indexed(ref.index), "Repeats share one row with a count; click it to expand.");
-    const merge = try widgets.openGroup(context, ui.Key.src(@src()).indexed(ref.index), ref.get("mergeEnabled"));
-    try bind.number(context, ref, "mergeWindowSec", "Merge Window", .{ .unit = "s" });
-    try widgets.hintText(context, ui.Key.src(@src()).indexed(ref.index), "Repeats this close together share a row.");
-    try merge.close(context);
-}
-
-/// The panel in history_look's look, with sample notifications, shrunk to fit the section.
-fn preview(context: *ui.Frame, profile: *const config.Config) !void {
-    const stage = try panel_preview.Stage.open(context, STAGE_KEY);
-    const look = lookOf(profile, stage);
+    const shown = try widgets.openGroup(context, .src(@src()), is_shown);
+    var bench = try panel_preview.Bench.open(context, BENCH_KEY, @floatFromInt(profile.historyPanel.width));
+    const look = lookOf(profile, &bench);
+    try bench.openStage(context, look.scale, &g_picker.shows_off);
     try panel(context, profile, look);
-    try stage.close(context, look.scale, "Shrunk to fit; the panel itself is wider.");
+    try bench.closeStage(context);
+    try g_picker.partBar(context, BENCH_KEY.indexed(10), &partChips(&profile.historyPanel));
+    try bench.openInspector(context);
+    // The search's index draws every tab with it, and they bind some of the same fields, so the inspector's rows need keys of their own.
+    var inspector_ref = ref;
+    inspector_ref.index = 1;
+    try settings(context, inspector_ref, g_picker.selected);
+    try bench.close(context);
+    try shown.close(context);
+    try section.close(context);
+
+    try panel_settings.visibility(context, ref, .history, .{ .is_shown = is_shown });
+}
+
+/// Every part's chip for the part bar.
+fn partChips(history_settings: *const config.HistoryPanelConfig) [PART_COUNT]panel_preview.Picker(Part).Chip {
+    var part_chips: [PART_COUNT]panel_preview.Picker(Part).Chip = undefined;
+    for (std.enums.values(Part), &part_chips) |part, *part_chip| {
+        const is_shown = switch (part) {
+            .panel => true,
+            .filters => history_settings.showCategoryFilters,
+            .timestamp => history_settings.showTimestamp,
+            .merged => history_settings.mergeEnabled,
+        };
+        part_chip.* = .{ .part = part, .label = part.label(), .is_shown = is_shown, .color = palette.TEXT_SECONDARY, .starts_group = part == .filters };
+    }
+    return part_chips;
+}
+
+/// The selected part's name, with its on switch where it has one, then its settings.
+fn settings(context: *ui.Frame, ref: HistoryRef, part: Part) !void {
+    const title = try panel_preview.openInspectorTitle(context, .src(@src()), part.label());
+    switch (part) {
+        .panel => {},
+        .filters => try bind.toggle(context, ref, "showCategoryFilters", ""),
+        .timestamp => try bind.toggle(context, ref, "showTimestamp", ""),
+        .merged => try bind.toggle(context, ref, "mergeEnabled", ""),
+    }
+    try title.close(context);
+    switch (part) {
+        .panel => {
+            try widgets.subheading(context, .src(@src()), "Layout");
+            const size = try widgets.openBinding(context, .src(@src()), "Size");
+            try bind.sizeBoxes(context, ref, "width", "height");
+            try size.close(context);
+            try widgets.hintText(context, .src(@src()), "You can also drag the panel's edges to resize it.");
+            try bind.number(context, ref, "maxRows", "Max Rows", .{ .unit = "rows", .singular_unit = "row" });
+            try widgets.hintText(context, .src(@src()), "Older alerts drop off past this.");
+            try widgets.subheading(context, .src(@src()), "Style");
+            const font = try widgets.openWrappingBinding(context, .src(@src()), "Font");
+            try bind.fontNameSize(context, ref, "fontName", "fontSize");
+            try font.close(context);
+            try widgets.hintText(context, .src(@src()), "Used for every row's text.");
+            try bind.choice(context, ref, "fontWeight", "Weight");
+        },
+        .filters => {
+            try widgets.subheading(context, .src(@src()), "Categories");
+            try bind.toggle(context, ref, "showFleet", "Fleet");
+            try bind.toggle(context, ref, "showMining", "Mining");
+            try bind.toggle(context, ref, "showCombat", "Combat");
+            try bind.toggle(context, ref, "showNavigation", "Navigation");
+            try bind.toggle(context, ref, "showChat", "Chat");
+            try bind.toggle(context, ref, "showGeneral", "General");
+            try widgets.paragraph(context, .src(@src()), "The categories the panel lists; clicking a chip on the panel switches its category too.");
+        },
+        .timestamp => try widgets.paragraph(context, .src(@src()), "Shows times like \"5m ago\" instead of a fixed clock time."),
+        .merged => {
+            try widgets.subheading(context, .src(@src()), "Content");
+            try bind.number(context, ref, "mergeWindowSec", "Merge Window", .{ .unit = "s" });
+            try widgets.hintText(context, .src(@src()), "Repeats this close together share a row with a count; click it to expand.");
+        },
+    }
 }
 
 /// A unique name colour varies per character, so a sample stands in for it.
-fn lookOf(profile: *const config.Config, stage: panel_preview.Stage) Look {
+fn lookOf(profile: *const config.Config, bench: *const panel_preview.Bench) Look {
     const history_settings = &profile.historyPanel;
-    const scale = stage.scaleFor(@floatFromInt(history_settings.width));
+    const scale = bench.scaleFor(@floatFromInt(history_settings.width));
     const uses_unique_names = profile.shownColors().uses_unique_name_colors;
     return .{
         .name_color = if (uses_unique_names) style.UNIQUE_SAMPLE else list_look.NAME,
@@ -239,7 +263,9 @@ fn panel(context: *ui.Frame, profile: *const config.Config, look: Look) !void {
     });
     const frame = Rect{ .key = .src(@src()), .style = panel_style };
     _ = try frame.open(context);
+    const header_part = try g_picker.openPart(context, .{ .width = .grow(), .padding = .all(1), .background = .transparent }, .{ 1, 1 }, .panel, true);
     try panel_preview.header(context, .src(@src()), history_look.HEADER_TEXT, "", look.scale);
+    try header_part.close(context);
     try chips(context, history_settings, &chip_layout, look);
     try rows(context, profile, shown, look);
     try frame.close(context);
@@ -263,9 +289,9 @@ fn chips(context: *ui.Frame, history_settings: *const config.HistoryPanelConfig,
     _ = try bar.open(context);
     const is_shown = history_settings.showCategoryFilters;
     const part = try g_picker.openPart(context, .{ .width = .grow(), .padding = .all(padding), .background = color_convert.solid(list_look.PANEL) }, .{ padding, padding }, .filters, is_shown);
-    // Faded apart from the part, so its dashed outline isn't.
+    const opacity = g_picker.contentOpacity(.filters, is_shown);
     const lines_style = try arena.create(ui.Style);
-    lines_style.* = .{ .width = .grow(), .direction = .column, .gap = look.scaled(history_look.CHIP_GAP), .opacity = if (is_shown) 1 else style.OFF_TEXT_OPACITY };
+    lines_style.* = .{ .width = .grow(), .direction = .column, .gap = look.scaled(history_look.CHIP_GAP) };
     const lines = Rect{ .key = .src(@src()), .style = lines_style };
     _ = try lines.open(context);
     const line_style = try arena.create(ui.Style);
@@ -276,7 +302,7 @@ fn chips(context: *ui.Frame, history_settings: *const config.HistoryPanelConfig,
         while (last < history_look.CATEGORY_COUNT and chip_layout.boxes[last].top == chip_layout.boxes[first].top) last += 1;
         const line = Rect{ .key = CHIP_LINE_KEY.indexed(first), .style = line_style };
         _ = try line.open(context);
-        for (first..last) |index| try chip(context, history_look.CATEGORY_ORDER[index], index, history_look.isCategoryEnabled(history_settings, history_look.CATEGORY_ORDER[index]), look);
+        for (first..last) |index| try chip(context, history_look.CATEGORY_ORDER[index], index, history_look.isCategoryEnabled(history_settings, history_look.CATEGORY_ORDER[index]), opacity, look);
         try line.close(context);
         first = last;
     }
@@ -285,7 +311,8 @@ fn chips(context: *ui.Frame, history_settings: *const config.HistoryPanelConfig,
     try bar.close(context);
 }
 
-fn chip(context: *ui.Frame, category: notification.NotificationCategory, index: usize, is_on: bool, look: Look) !void {
+/// `opacity` is the Category Filters part's, which its chips take since it doesn't reach them.
+fn chip(context: *ui.Frame, category: notification.NotificationCategory, index: usize, is_on: bool, opacity: f32, look: Look) !void {
     const arena = context.arena();
     const key = FILTER_KEY.indexed(index);
     const fill = if (is_on) palette.PANEL else list_look.PANEL;
@@ -301,16 +328,17 @@ fn chip(context: *ui.Frame, category: notification.NotificationCategory, index: 
         .background = color_convert.solid(fill),
         .border_width = .all(1),
         .border_color = color_convert.solid(if (is_on) palette.BORDER else palette.DIVIDER),
+        .opacity = opacity,
     };
     const chip_rect = Rect{ .key = key, .style = chip_style };
     _ = try chip_rect.open(context);
     const diameter = look.scaled(2 * history_look.CHIP_DOT_RADIUS);
     const dot_style = try arena.create(ui.Style);
-    dot_style.* = .{ .width = .fixed(diameter), .height = .fixed(diameter), .radius = .{ .fixed = diameter / 2 }, .background = color_convert.solid(if (is_on) history_look.categoryColor(category) else palette.BORDER) };
+    dot_style.* = .{ .width = .fixed(diameter), .height = .fixed(diameter), .radius = .{ .fixed = diameter / 2 }, .background = color_convert.solid(if (is_on) history_look.categoryColor(category) else palette.BORDER), .opacity = opacity };
     try context.e(Rect{ .key = key.indexed(1), .style = dot_style });
-    try context.e(Text{ .selectable = false, .key = key.indexed(2), .content = history_look.categoryLabel(category), .style = try widgets.textStyle(arena, label_color, look.chip_size, .{}) });
+    try context.e(Text{ .selectable = false, .key = key.indexed(2), .content = history_look.categoryLabel(category), .style = try widgets.textStyle(arena, label_color, look.chip_size, .{ .opacity = opacity }) });
     const count = try std.fmt.allocPrint(arena, "{d}", .{sampleCount(category)});
-    try context.e(Text{ .selectable = false, .key = key.indexed(3), .content = count, .style = try widgets.textStyle(arena, history_look.chipCountColor(label_color, fill), look.chip_size, .{}) });
+    try context.e(Text{ .selectable = false, .key = key.indexed(3), .content = count, .style = try widgets.textStyle(arena, history_look.chipCountColor(label_color, fill), look.chip_size, .{ .opacity = opacity }) });
     try chip_rect.close(context);
 }
 
@@ -410,12 +438,12 @@ fn sampleRow(context: *ui.Frame, profile: *const config.Config, sample: Sample, 
             .background = color_convert.solid(palette.SURFACE),
             .radius = .{ .fixed = look.scaled(@intCast(history_look.MERGED_RADIUS)) },
             .padding = .xy(look.scaled(history_look.MERGED_PADDING_X), 0),
-            .opacity = if (merges) 1 else style.OFF_TEXT_OPACITY,
+            .opacity = g_picker.contentOpacity(.merged, merges),
         };
         const pill = Rect{ .key = key.indexed(5), .style = pill_style };
         _ = try pill.open(context);
         const merged = history_look.mergedText(try arena.create([history_look.COUNT_TEXT_MAX]u8), sample.merged_count);
-        try context.e(Text{ .selectable = false, .key = key.indexed(6), .content = merged, .style = try widgets.textStyle(arena, palette.TEXT_SECONDARY, look.small_size, .{}) });
+        try context.e(Text{ .selectable = false, .key = key.indexed(6), .content = merged, .style = try widgets.textStyle(arena, palette.TEXT_SECONDARY, look.small_size, .{ .opacity = g_picker.contentOpacity(.merged, merges) }) });
         try pill.close(context);
         try part.close(context);
     }
@@ -423,7 +451,8 @@ fn sampleRow(context: *ui.Frame, profile: *const config.Config, sample: Sample, 
     const shows_timestamp = history_settings.showTimestamp;
     if (shows_timestamp or is_first) {
         const time_text = panel_look.relativeTime(try arena.create([panel_look.TIME_TEXT_MAX]u8), sample.age_ms);
-        const time = Text{ .selectable = false, .key = key.indexed(8), .content = time_text, .style = try widgets.textStyle(arena, list_look.MUTED, look.small_size, .{ .is_shown = shows_timestamp }) };
+        const opacity: f32 = if (is_first) g_picker.contentOpacity(.timestamp, shows_timestamp) else 1;
+        const time = Text{ .selectable = false, .key = key.indexed(8), .content = time_text, .style = try widgets.textStyle(arena, list_look.MUTED, look.small_size, .{ .opacity = opacity }) };
         if (is_first) {
             const part = try g_picker.openPart(context, .{ .padding = .xy(padding, 0), .background = color_convert.solid(list_look.PANEL) }, .{ padding, 0 }, .timestamp, shows_timestamp);
             try context.e(time);
@@ -444,40 +473,6 @@ fn messageRoom(context: *ui.Frame, key: ui.Key, sample: Sample, look: Look) !f32
     var room = widgets.measuredBox(ui_state, middle_key).w();
     if (sample.merged_count > 1) room -= widgets.measuredBox(ui_state, g_picker.keyOf(.merged)).w() + look.scaled(history_look.TEXT_GAP);
     return room;
-}
-
-/// Beside the clicked part; a click on another part moves it there.
-fn popover(context: *ui.Frame, ref: HistoryRef) !void {
-    const dialog = try g_picker.openPopover(context) orelse return;
-    // The sections below bind the same fields, so the popover's rows need keys of their own.
-    var popover_ref = ref;
-    popover_ref.index = 1;
-    try g_picker.closePopover(context, dialog, try settings(context, popover_ref, g_picker.selected));
-}
-
-/// Returns whether close was pressed.
-fn settings(context: *ui.Frame, ref: HistoryRef, part: Part) !bool {
-    const is_close_clicked = try widgets.popoverTitle(context, .src(@src()), part.label());
-    const was_aligned = widgets.useAlignedRows(true);
-    defer _ = widgets.useAlignedRows(was_aligned);
-    switch (part) {
-        .filters => {
-            try bind.toggle(context, ref, "showCategoryFilters", "Category Filters");
-            try widgets.hintText(context, .src(@src()), "Adds chips above the rows to filter the panel by type.");
-            const filters = try widgets.openGroup(context, .src(@src()), ref.get("showCategoryFilters"));
-            try bind.toggle(context, ref, "showFleet", "Fleet");
-            try bind.toggle(context, ref, "showMining", "Mining");
-            try bind.toggle(context, ref, "showCombat", "Combat");
-            try bind.toggle(context, ref, "showNavigation", "Navigation");
-            try bind.toggle(context, ref, "showChat", "Chat");
-            try bind.toggle(context, ref, "showGeneral", "General");
-            try widgets.hintText(context, .src(@src()), "The categories the panel lists; clicking a chip on the panel switches its category too.");
-            try filters.close(context);
-        },
-        .timestamp => try timestampRow(context, ref),
-        .merged => try mergeRows(context, ref),
-    }
-    return is_close_clicked;
 }
 
 /// The divider between the new rows and the rest.

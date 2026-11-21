@@ -245,6 +245,10 @@ const INFO = [_]Stroke{
     dot(.{ 8, 5.25 }, 1),
     line(&.{ .{ 8, 7.5 }, .{ 8, 11 } }),
 };
+const EYE = [_]Stroke{
+    line(&.{ .{ 1.5, 8 }, .{ 4, 5 }, .{ 8, 3.75 }, .{ 12, 5 }, .{ 14.5, 8 }, .{ 12, 11 }, .{ 8, 12.25 }, .{ 4, 11 }, .{ 1.5, 8 } }),
+    line(&arc(CENTER, 2, 0, 360)),
+};
 
 /// Ships by their overview bracket, then actions and controls, then what a row is.
 pub const Glyph = enum {
@@ -299,6 +303,7 @@ pub const Glyph = enum {
     grip,
     check,
     info,
+    eye,
 };
 
 /// A point on the 16-unit grid, x then y, from its corner.
@@ -392,6 +397,7 @@ fn strokesOf(glyph: Glyph) []const Stroke {
         .grip => &GRIP,
         .check => &CHECK,
         .info => &INFO,
+        .eye => &EYE,
     };
 }
 

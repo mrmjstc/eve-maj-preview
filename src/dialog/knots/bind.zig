@@ -180,9 +180,15 @@ pub fn fontBoxes(context: *ui.Frame, ref: anytype, comptime name_field: []const 
     try choiceBox(context, ref, weight_field);
 }
 
-/// An optional text field is unset when left empty.
+/// Font and size in px boxes, for a row the caller opens.
+pub fn fontNameSize(context: *ui.Frame, ref: anytype, comptime name_field: []const u8, comptime size_field: []const u8) !void {
+    try fontBox(context, ref, name_field);
+    try unitNumberBox(context, ref, size_field, "px", .{});
+}
+
+/// An optional text field is unset when left empty; its box drops under the label where it doesn't fit beside it.
 pub fn text(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8, placeholder: []const u8) !void {
-    const row = try widgets.openBinding(context, fieldKey(ref, field), label);
+    const row = try widgets.openWrappingBinding(context, fieldKey(ref, field), label);
     try styledTextBox(context, ref, field, placeholder, if (widgets.isAligned()) &style.text_input_aligned else &style.text_input);
     try row.close(context);
 }
@@ -341,10 +347,10 @@ pub fn alphaSlider(context: *ui.Frame, ref: anytype, comptime field: []const u8,
     try row.close(context);
 }
 
-/// alphaSlider with rgb's picker after its % box, on one row.
+/// alphaSlider with rgb's picker after its % box, on one row; they drop under the label where they don't fit beside it.
 pub fn rgbAlpha(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8) !void {
     const key = fieldKey(ref, field).indexed(11);
-    const row = try widgets.openBinding(context, key, label);
+    const row = try widgets.openWrappingBinding(context, key, label);
     // Fixed even in a field group, to leave room for the swatch.
     try alphaControls(context, ref, field, key, &style.slider_box_aligned);
     try rgbBox(context, ref, field);

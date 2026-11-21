@@ -1,4 +1,4 @@
-//! What the panels' previews share: the stage that shrinks a preview to fit, the parts clicked to edit it, and the frame and header every panel draws; main thread only.
+//! What the previews share: the bench holding a preview, its part bar and the selected part's settings, the parts clicked to select them, and the frame and header every panel draws; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const list_look = @import("../../../panels/list_look.zig");
@@ -8,10 +8,10 @@ const glyphs = @import("../glyphs.zig");
 const style = @import("../style.zig");
 const widgets = @import("../widgets.zig");
 const color_convert = @import("../color_convert.zig");
+const lang = @import("../../../lang/lang.zig");
 
 const Button = ui.component.Button;
 const Canvas = ui.component.Canvas;
-const Dialog = ui.component.Dialog;
 const Rect = ui.component.Rect;
 const Text = ui.component.Text;
 
@@ -21,37 +21,85 @@ const HEADER_GAP: i32 = 6;
 /// How much a part's outline pads what it holds, in real pixels.
 pub const PART_PADDING: i32 = 3;
 const PART_RADIUS: f32 = 3;
+/// The inspector goes under the stage when it would be narrower than this beside it.
+const INSPECTOR_MIN_WIDTH: f32 = 300;
+/// Side by side, the stage's column is at least this wide, so the part bar isn't one chip a line.
+const BENCH_MIN_LEFT_WIDTH: f32 = 260;
+/// style.bench_stage's padding either side of the preview.
+const STAGE_PADDING_X: f32 = 12;
+/// style.part_bar's padding either side of its lines.
+const PART_BAR_PADDING_X: f32 = 10;
+/// Under the part keys, so a chip's key can't meet a part's.
+const CHIP_KEY_INDEX = 1000;
 
-/// The row a preview is centred in, measured so the preview can shrink to fit it; the caller closes it.
-pub const Stage = struct {
-    rect: Rect,
-    /// 0 until the stage has been laid out once.
+/// A preview's stage and part bar, then the selected part's settings beside them or under them; the caller fills it in that order and closes it.
+pub const Bench = struct {
+    key: ui.Key,
+    outer: Rect,
+    left: Rect,
+    stage: ?Rect = null,
+    preview_row: ?Rect = null,
+    inspector: ?Rect = null,
+    is_side: bool,
+    /// The room the stage gives its preview; 0 until laid out.
     available_width: f32,
 
-    pub fn open(context: *ui.Frame, key: ui.Key) !Stage {
+    /// `preview_width` at real size decides whether the inspector fits beside the stage.
+    pub fn open(context: *ui.Frame, key: ui.Key, preview_width: f32) !Bench {
         const ui_state = context.ui();
         _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, key.hash());
-        const available_width = widgets.measuredBox(ui_state, key).w();
+        const width = widgets.measuredBox(ui_state, key).w();
         // Not laid out yet, so draw once more knowing the room there is.
-        if (available_width == 0) context.requestRedraw();
-        const rect = Rect{ .key = key, .style = &style.stage_row };
-        _ = try rect.open(context);
-        return .{ .rect = rect, .available_width = available_width };
+        if (width == 0) context.requestRedraw();
+        const left_width = @max(BENCH_MIN_LEFT_WIDTH, preview_width + 2 * STAGE_PADDING_X);
+        const is_side = width > 0 and width - left_width >= INSPECTOR_MIN_WIDTH;
+        const outer = Rect{ .key = key, .style = if (is_side) &style.bench_side else &style.bench_stacked };
+        _ = try outer.open(context);
+        const left_style = if (is_side) try widgets.withWidth(context, &style.bench_left, left_width) else &style.bench_top;
+        const left = Rect{ .key = key.indexed(1), .style = left_style };
+        _ = try left.open(context);
+        const stage_width = if (is_side) left_width else width;
+        return .{ .key = key, .outer = outer, .left = left, .is_side = is_side, .available_width = @max(0, stage_width - 2 * STAGE_PADDING_X) };
     }
 
-    /// How much a preview `panel_width` wide shrinks to fit; 1 at real size.
-    pub fn scaleFor(self: Stage, panel_width: f32) f32 {
+    /// How much a preview `panel_width` wide shrinks to fit the stage; 1 at real size.
+    pub fn scaleFor(self: *const Bench, panel_width: f32) f32 {
         return if (self.available_width > 0 and panel_width > self.available_width) self.available_width / panel_width else 1;
     }
 
-    /// `shrunk_note` says so under the preview while `scale` is below 1.
-    pub fn close(self: Stage, context: *ui.Frame, scale: f32, shrunk_note: []const u8) !void {
-        try self.rect.close(context);
-        if (scale < 1) try widgets.paragraph(context, self.rect.key.indexed(1), shrunk_note);
+    /// The stage's tools, then a row the caller centres its preview in and ends with closeStage.
+    pub fn openStage(self: *Bench, context: *ui.Frame, scale: f32, shows_off: *bool) !void {
+        const stage = Rect{ .key = self.key.indexed(2), .style = &style.bench_stage };
+        _ = try stage.open(context);
+        try stageTools(context, self.key.indexed(3), scale, shows_off);
+        const row = Rect{ .key = self.key.indexed(4), .style = &style.stage_row };
+        _ = try row.open(context);
+        self.stage = stage;
+        self.preview_row = row;
+    }
+
+    pub fn closeStage(self: *Bench, context: *ui.Frame) !void {
+        if (self.preview_row) |row| try row.close(context);
+        if (self.stage) |stage| try stage.close(context);
+        self.preview_row = null;
+        self.stage = null;
+    }
+
+    /// Ends the stage's column after its part bar, and starts the column the caller fills with the selected part's settings.
+    pub fn openInspector(self: *Bench, context: *ui.Frame) !void {
+        try self.left.close(context);
+        const inspector = Rect{ .key = self.key.indexed(5), .style = &style.bench_inspector };
+        _ = try inspector.open(context);
+        self.inspector = inspector;
+    }
+
+    pub fn close(self: *const Bench, context: *ui.Frame) !void {
+        if (self.inspector) |inspector| try inspector.close(context);
+        try self.outer.close(context);
     }
 };
 
-/// A preview part clicked to edit it: solid while shown, dashed while off, accent while hovered or open; the caller closes it.
+/// A preview part clicked to select it; while off it's a ghost or keeps its room unseen, as State says. The caller closes it.
 pub const Part = struct {
     button: Button,
     state: State,
@@ -62,32 +110,49 @@ pub const Part = struct {
     pub const State = struct {
         /// Whether the panel draws it with the current settings.
         is_shown: bool,
-        /// Its popover is open.
         is_selected: bool,
+        /// Its chip in the part bar is hovered.
+        is_lit: bool,
+        /// The stage's Show Off is on.
+        shows_off: bool,
+
+        /// Off, unselected and not asked for: drawn unseen, keeping its room.
+        pub fn isHidden(self: State) bool {
+            return !self.is_shown and !self.is_selected and !self.shows_off;
+        }
+
+        /// For what the part holds, which the part's own opacity doesn't reach: none while hidden, faded while off.
+        pub fn contentOpacity(self: State) f32 {
+            if (self.isHidden()) return 0;
+            return if (self.is_shown) 1 else style.OFF_TEXT_OPACITY;
+        }
     };
 
     /// `base` sets the part's layout, background and padding; `inset` is that padding's left and top, where its absolute children start.
     pub fn open(context: *ui.Frame, key: ui.Key, base: ui.Style, inset: [2]f32, state: State) !Part {
         const ui_state = context.ui();
         _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, key.hash());
+        const is_hidden = state.isHidden();
         const part_style = try context.arena().create(ui.Style);
         part_style.* = base.with(.{
             // A Button centres its content, which pushes a row with a growing name off its right edge.
             .justify = .start,
             .border_width = .all(1),
-            .border_color = if (state.is_selected) .accent else if (state.is_shown) .{ .color = style.CHIP_OUTLINE } else .transparent,
+            .border_color = if (state.is_selected or state.is_lit) .accent else .transparent,
             .radius = .{ .fixed = PART_RADIUS },
-            .hover = &.{ .border_color = .accent, .state_layer = 0 },
+            .opacity = if (is_hidden) 0 else 1,
+            .hover = if (is_hidden) &.{ .state_layer = 0 } else &.{ .border_color = .accent, .state_layer = 0 },
             .active = &.{ .state_layer = 0 },
         });
         const button = Button{ .key = key, .style = part_style };
         const response = try button.openResponse(context);
-        if (response.hovered) ui_state.requestCursor(.pointer);
+        if (response.hovered and !is_hidden) ui_state.requestCursor(.pointer);
         return .{ .button = button, .state = state, .inset = inset, .is_hovered = response.hovered, .is_clicked = response.clicked };
     }
 
     pub fn close(self: Part, context: *ui.Frame) !void {
-        if (!self.state.is_shown and !self.is_hovered and !self.state.is_selected) {
+        const is_outlined = self.is_hovered or self.state.is_selected or self.state.is_lit;
+        if (!self.state.is_shown and !self.state.isHidden() and !is_outlined) {
             const box = widgets.measuredBox(context.ui(), self.button.key);
             // First frame: not laid out yet, so draw once more with its real size.
             if (box.w() == 0) {
@@ -100,55 +165,133 @@ pub const Part = struct {
     }
 };
 
-/// Which of a preview's parts has its settings popover open; `Kind` is the tab's enum of parts.
+/// Which of a preview's parts is selected, and the part bar that picks one; `Kind` is the tab's enum of parts.
 pub fn Picker(comptime Kind: type) type {
     return struct {
         part_key: ui.Key,
-        popover_key: ui.Key,
         selected: Kind,
-        is_open: bool = false,
+        /// The stage's Show Off: off parts are drawn as ghosts.
+        shows_off: bool = false,
+        /// The part whose chip was hovered last frame, lit on the preview.
+        lit: ?Kind = null,
 
         const Self = @This();
 
-        /// As Part.open, keyed for `part`; a click opens its popover.
+        /// One part's chip in the part bar.
+        pub const Chip = struct {
+            part: Kind,
+            /// English; translated when drawn.
+            label: []const u8,
+            is_shown: bool,
+            /// The dot's, e.g. the part's text colour.
+            color: u32,
+            /// A divider goes before it.
+            starts_group: bool = false,
+        };
+
+        /// As Part.open, keyed for `part`; a click selects it.
         pub fn openPart(self: *Self, context: *ui.Frame, base: ui.Style, inset: [2]f32, part: Kind, is_shown: bool) !Part {
-            const open = try Part.open(context, self.keyOf(part), base, inset, .{ .is_shown = is_shown, .is_selected = self.is_open and self.selected == part });
+            const open = try Part.open(context, self.keyOf(part), base, inset, self.stateOf(part, is_shown));
             if (open.is_clicked) self.select(context, part);
             return open;
+        }
+
+        pub fn stateOf(self: *const Self, part: Kind, is_shown: bool) Part.State {
+            return .{ .is_shown = is_shown, .is_selected = self.selected == part, .is_lit = self.lit == part, .shows_off = self.shows_off };
+        }
+
+        /// State.contentOpacity for `part`.
+        pub fn contentOpacity(self: *const Self, part: Kind, is_shown: bool) f32 {
+            return self.stateOf(part, is_shown).contentOpacity();
         }
 
         pub fn keyOf(self: *const Self, part: Kind) ui.Key {
             return self.part_key.indexed(@backingInt(part));
         }
 
-        /// Beside the selected part, or null while closed; the caller fills it and passes it to closePopover.
-        pub fn openPopover(self: *Self, context: *ui.Frame) !?Dialog {
-            if (!self.is_open) return null;
-            return try widgets.openPopover(context, self.popover_key, &self.is_open, widgets.measuredBox(context.ui(), self.keyOf(self.selected)));
-        }
-
-        /// A click outside it on another part moves it there.
-        pub fn closePopover(self: *Self, context: *ui.Frame, dialog: Dialog, is_close_clicked: bool) !void {
-            if (is_close_clicked) {
-                self.is_open = false;
-                context.requestRedraw();
-            }
-            const reason = try widgets.closePopover(context, dialog);
-            if (reason != .backdrop) return;
-            const ui_state = context.ui();
-            const mouse = ui_state.input.mouse_pos;
-            const point = [2]f32{ @floatCast(mouse[0]), @floatCast(mouse[1]) };
-            for (std.enums.values(Kind)) |part| {
-                if (part != self.selected and widgets.measuredBox(ui_state, self.keyOf(part)).contains(point)) self.select(context, part);
-            }
-        }
-
-        fn select(self: *Self, context: *ui.Frame, part: Kind) void {
+        pub fn select(self: *Self, context: *ui.Frame, part: Kind) void {
+            if (self.selected == part) return;
             self.selected = part;
-            self.is_open = true;
             context.requestRedraw();
         }
+
+        /// `chips` in lines no wider than the bar, by last frame's widths.
+        pub fn partBar(self: *Self, context: *ui.Frame, key: ui.Key, chips: []const Chip) !void {
+            const ui_state = context.ui();
+            _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, key.hash());
+            const room = widgets.measuredBox(ui_state, key).w() - 2 * PART_BAR_PADDING_X;
+            const bar = Rect{ .key = key, .style = &style.part_bar };
+            _ = try bar.open(context);
+            var hovered: ?Kind = null;
+            var first: usize = 0;
+            var line_index: usize = 0;
+            while (first < chips.len) : (line_index += 1) {
+                const end = try self.lineEnd(context, chips, first, room);
+                const line = Rect{ .key = key.indexed(1).indexed(line_index), .style = &style.part_bar_line };
+                _ = try line.open(context);
+                for (chips[first..end], first..) |chip, index| {
+                    if (index > first and chip.starts_group) try context.e(Rect{ .key = key.indexed(2).indexed(index), .style = &style.part_bar_divider });
+                    if (try self.drawChip(context, chip)) hovered = chip.part;
+                }
+                try line.close(context);
+                first = end;
+            }
+            try bar.close(context);
+            if (hovered != self.lit) {
+                self.lit = hovered;
+                context.requestRedraw();
+            }
+        }
+
+        /// Past the last chip from `first` that fits in `room`; at least one, and every one while unmeasured.
+        fn lineEnd(self: *const Self, context: *ui.Frame, chips: []const Chip, first: usize, room: f32) !usize {
+            const ui_state = context.ui();
+            var width: f32 = 0;
+            var end = first;
+            while (end < chips.len) : (end += 1) {
+                const chip_key = self.chipKey(chips[end].part);
+                _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, chip_key.hash());
+                const chip_width = widgets.measuredBox(ui_state, chip_key).w();
+                if (chip_width == 0) context.requestRedraw();
+                var needed = chip_width;
+                if (end > first) needed += style.PART_CHIP_GAP;
+                if (end > first and chips[end].starts_group) needed += 1 + style.PART_CHIP_GAP;
+                if (end > first and room > 0 and width + needed > room) break;
+                width += needed;
+            }
+            return end;
+        }
+
+        /// Returns whether it's hovered.
+        fn drawChip(self: *Self, context: *ui.Frame, chip: Chip) !bool {
+            const arena = context.arena();
+            const key = self.chipKey(chip.part);
+            const is_selected = self.selected == chip.part;
+            const button = Button{ .key = key, .style = if (is_selected) &style.part_chip_selected else &style.part_chip };
+            const response = try button.openResponse(context);
+            if (response.hovered) context.ui().requestCursor(.pointer);
+            const dot = try arena.create(ui.Style);
+            dot.* = if (chip.is_shown) style.part_dot.with(.{ .background = color_convert.solid(chip.color) }) else style.part_dot_off;
+            try context.e(Rect{ .key = key.indexed(1), .style = dot });
+            const label_style = if (is_selected) &style.part_chip_label_selected else if (chip.is_shown) &style.part_chip_label else &style.part_chip_label_off;
+            try context.e(Text{ .selectable = false, .key = key.indexed(2), .content = lang.text(chip.label), .style = label_style });
+            try button.close(context);
+            if (response.clicked) self.select(context, chip.part);
+            return response.hovered;
+        }
+
+        fn chipKey(self: *const Self, part: Kind) ui.Key {
+            return self.part_key.indexed(CHIP_KEY_INDEX).indexed(@backingInt(part));
+        }
     };
+}
+
+/// The inspector's heading row with the part's `title`; the caller may add the part's on switch, then closes it.
+pub fn openInspectorTitle(context: *ui.Frame, key: ui.Key, title: []const u8) !Rect {
+    const row = Rect{ .key = key, .style = &style.inspector_title };
+    _ = try row.open(context);
+    try context.e(Text{ .selectable = false, .key = key.indexed(1), .content = lang.text(title), .style = &style.inspector_title_text });
+    return row;
 }
 
 /// `pixels` real pixels at `scale`.
@@ -207,4 +350,28 @@ pub fn panelGlyph(context: *ui.Frame, key: ui.Key, glyph: glyphs.Glyph, size: i3
     const glyph_style = try arena.create(ui.Style);
     glyph_style.* = .{ .width = .fixed(side), .height = .fixed(side) };
     try context.e(Canvas{ .key = key, .commands = try glyphs.commands(arena, glyph, side, try glyphs.snapOffset(context, key), color_convert.fromArgb(argb).value), .style = glyph_style });
+}
+
+/// "Preview" and the scale on the left, Show Off at the right.
+fn stageTools(context: *ui.Frame, key: ui.Key, scale: f32, shows_off: *bool) !void {
+    const arena = context.arena();
+    const row = Rect{ .key = key, .style = &style.bench_tools };
+    _ = try row.open(context);
+    const percent: u32 = @intFromFloat(@round(scale * 100));
+    const caption = try std.fmt.allocPrint(arena, "{s} \u{00B7} {d}%", .{ lang.text("Preview"), percent });
+    try context.e(Text{ .selectable = false, .key = key.indexed(1), .content = caption, .style = &style.bench_tools_text });
+    const button = Button{ .key = key.indexed(2), .style = if (shows_off.*) &style.bench_eye_on else &style.bench_eye };
+    const response = try button.openResponse(context);
+    const glyph_key = key.indexed(3);
+    try context.e(Canvas{
+        .key = glyph_key,
+        .commands = try glyphs.commands(arena, .eye, glyphs.TAB_SIZE, try glyphs.snapOffset(context, glyph_key), (if (shows_off.*) style.TEXT else style.MUTED).value),
+        .style = &style.bench_eye_glyph,
+    });
+    try context.e(Text{ .selectable = false, .key = key.indexed(4), .content = lang.text("Show Off") });
+    try button.close(context);
+    try row.close(context);
+    if (!response.clicked) return;
+    shows_off.* = !shows_off.*;
+    context.requestRedraw();
 }
