@@ -29,6 +29,7 @@ const wormhole_list = @import("wormhole_list.zig");
 const wormholes = @import("../../map/wormholes.zig");
 const scout = @import("../../clients/scout.zig");
 const fixed_text = @import("../../util/fixed_text.zig");
+const security = @import("../../map/security.zig");
 const log = @import("../../log.zig");
 
 const Box = layout.Box;
@@ -545,8 +546,8 @@ pub const MapPanelWindow = struct {
         const widths = &self.state.label_widths;
         for (self.state.layout.nodes[0..self.state.layout.node_count], 0..) |node, index| {
             widths.names[index] = panel_chrome.textWidth(dc, universe.systemName(node.system));
-            var buffer: [text_mod.SECURITY_TEXT_MAX]u8 = undefined;
-            widths.securities[index] = panel_chrome.textWidth(dc, text_mod.securityText(&buffer, universe.systemInfo(node.system).security_tenths));
+            var buffer: [security.SECURITY_TEXT_MAX]u8 = undefined;
+            widths.securities[index] = panel_chrome.textWidth(dc, security.securityText(&buffer, universe.systemInfo(node.system).security_tenths));
         }
         for (self.state.layout.exits[0..self.state.layout.exit_count], widths.exits[0..self.state.layout.exit_count]) |exit, *width| {
             width.* = panel_chrome.textWidth(dc, text_mod.exitLabel(exit).slice());

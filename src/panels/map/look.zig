@@ -8,7 +8,6 @@ const popup_look = @import("../popup_look.zig");
 const segmented = @import("../segmented.zig");
 const glyphs = @import("../glyphs.zig");
 const metric_segments = @import("metric_segments.zig");
-const universe = @import("../../map/universe.zig");
 const storms = @import("../../map/storms.zig");
 const layout = @import("../../map/layout.zig");
 const holder_colors = @import("../../map/holder_colors.zig");
@@ -16,6 +15,8 @@ const faction_warfare = @import("../../map/faction_warfare.zig");
 const wormholes = @import("../../map/wormholes.zig");
 const color = @import("../../util/color.zig");
 const pixel_buffer = @import("../../util/pixel_buffer.zig");
+const security = @import("../../map/security.zig");
+const markers = @import("../../map/markers.zig");
 
 const Box = layout.Box;
 const MetricSegment = metric_segments.MetricSegment;
@@ -87,7 +88,6 @@ pub const INTEL_PADDING_X: i32 = palette.PADDING_X;
 /// What a card header's chevron or cross takes from its right, which its title keeps clear of.
 pub const HEADER_GLYPH_ROOM: i32 = CHEVRON_SIZE + @divTrunc(glyphs.SIZE, 2) + INTEL_PADDING_X;
 pub const INTEL_PADDING_Y: i32 = 8;
-const NODE_RADIUS: f32 = 3.5;
 /// The dark edge that lifts a marker off the gates running into it.
 const MARKER_RIM: f32 = 1.5;
 /// Markers grow more slowly than the map, and stop at this.
@@ -134,24 +134,16 @@ const CLIENT_TAG_STEPS = 3;
 const CLIENT_TAG_LEAD = 4;
 /// How much bigger the busiest system's marker is than a quiet one's; kept small so a selected ring stays off its name.
 const HEAT_RADIUS_GROWTH: f32 = 1.5;
-/// Just outside a client's ring, so neither hides the other; before the marker scale.
-const INTEL_HALO_RADIUS: f32 = 11;
-/// Before the marker scale.
-const INTEL_HALO_PEAK_RADIUS: f32 = 20;
 /// How long a ripple's one ring takes to spread and fade, for a new pin, a kill or a ping.
 const RIPPLE_MS: u64 = 600;
 /// Before the marker scale; the ring starts inside the new halo and ends well past it.
 const RIPPLE_START_RADIUS: f32 = 10;
 const RIPPLE_END_RADIUS: f32 = 52;
 const RIPPLE_THICKNESS: f32 = 2;
-/// Around a marked system's marker.
-pub const RING_GAP: f32 = 3;
-pub const RING_THICKNESS: f32 = 1.5;
 /// The selected system's ring, heavier than a hover's so the two read apart.
 pub const FOCUS_RING_THICKNESS: f32 = 2.5;
 /// Around the selected system's ring.
 pub const FOCUS_OUTLINE_THICKNESS: f32 = 3;
-const EXIT_RADIUS: f32 = 2;
 /// From a system to the middle of its kill mark, up and to the right, before the marker scale.
 const KILL_MARK_OFFSET: f32 = 8;
 /// Half the kill mark's height, before the marker scale.
@@ -165,8 +157,6 @@ const PORTAL_DASHES = 3;
 const PORTAL_RING_RADIUS: f32 = 3;
 /// Half the width of the cross over an avoided system.
 const AVOID_MARK_SIZE: i32 = 5;
-/// Lifts -1.0 from 1.7:1 to 4.3:1 against a popup's fill.
-const SECURITY_TEXT_LIGHTEN_PERCENT = 40;
 
 // The colours below are 0xAARRGGBB, not premultiplied; the greys come from the palette, so the map stays as warm as the cards over it.
 pub const BACKGROUND: u32 = palette.BG;
@@ -175,17 +165,10 @@ const GRID_DOT: u32 = palette.PANEL;
 pub const REGION_NAME: u32 = palette.BORDER_STRONG;
 /// A name with nothing happening at it, a step below the bright NAME those with something do.
 pub const LABEL: u32 = palette.HINT_TEXT;
-pub const EDGE_LOCAL: u32 = color.mix(palette.BORDER_STRONG, palette.BORDER, 60);
-const EDGE_CROSS: u32 = 0xFF6E5A7A;
 pub const EDGE_HOVER: u32 = color.mix(palette.TEXT, palette.TEXT_SECONDARY, 50);
-/// Pale sand, kept off the accent's amber.
-pub const EXIT: u32 = 0xFFD3C49C;
-pub const INTEL: u32 = 0xFFFF4B3E;
-const INTEL_CLEAR: u32 = 0xFFFFD23F;
 /// Reads through every marker colour, and is apart from intel's red and yellow.
 const AVOID: u32 = 0xFFFFFFFF;
 pub const PING: u32 = 0xFFFFFFFF;
-pub const FOCUS: u32 = palette.TEXT;
 /// Fills the selected system's disc.
 const FOCUS_MARK: u32 = color.mix(palette.BORDER, palette.CARD_BORDER, 50);
 pub const FOCUS_NAME: u32 = 0xFFFFFFFF;
@@ -234,10 +217,6 @@ const BRIDGE_SAMPLES = 64;
 pub const HEAT_NONE: u32 = color.mix(palette.MUTED, palette.BORDER_STRONG, 50);
 const HEAT_LOW: u32 = palette.CAUTION;
 const HEAT_HIGH: u32 = 0xFFFF3B30;
-/// EVE's own colours, by shown security in tenths from 0 up.
-const SECURITY_COLORS = [_]u32{ 0xFFF00000, 0xFFD73000, 0xFFF04800, 0xFFF06000, 0xFFD77700, 0xFFEFEF00, 0xFF8FEF2F, 0xFF00F000, 0xFF00EF47, 0xFF48F0C0, 0xFF2FEFEF };
-/// Where null security ends at -1.0, a darker red than 0.0's: EVE paints it all one red, which says nothing across a null region.
-const DEEPEST_NULL: u32 = 0xFF8E0A12;
 /// From -1.0 up to 1.0, in tenths.
 const SECURITY_SCALE_STEPS = 21;
 /// From -1.0 up to 1.0.
@@ -652,7 +631,7 @@ pub fn stormColor(kind: storms.Kind) u32 {
 
 pub fn stormEdgeColor(mark: storms.EdgeMark) u32 {
     const shade = stormColor(mark.kind);
-    return if (mark.is_core) shade else color.mix(shade, EDGE_LOCAL, STORM_PERIPHERY_PERCENT);
+    return if (mark.is_core) shade else color.mix(shade, markers.EDGE_LOCAL, STORM_PERIPHERY_PERCENT);
 }
 
 /// Its occupier's colour, the stronger the further it's contested; HEAT_NONE outside a warzone.
@@ -668,19 +647,6 @@ pub fn factionColorOf(place: u8) u32 {
     return holder_colors.factionColor(faction_warfare.faction(place).id) orelse list_look.MUTED;
 }
 
-/// EVE's scale from 0.0 up, carried on through null security so a region's depths show.
-pub fn securityColor(security_tenths: i8) u32 {
-    if (security_tenths >= 0) return SECURITY_COLORS[@intCast(@min(security_tenths, SECURITY_COLORS.len - 1))];
-    const depth: u32 = @min(@abs(@as(i32, security_tenths)), 10);
-    return color.mix(DEEPEST_NULL, SECURITY_COLORS[0], depth * 10);
-}
-
-/// For text on the dark panels: `securityColor`, lightened below high security, whose reds and oranges are too dark to read.
-pub fn securityTextColor(security_tenths: i8) u32 {
-    const shade = securityColor(security_tenths);
-    return if (security_tenths >= universe.HIGH_SECURITY_TENTHS) shade else color.lighten(shade, SECURITY_TEXT_LIGHTEN_PERCENT);
-}
-
 /// How much bigger a zoom makes a marker.
 pub fn markerScale(zoom: f32) f32 {
     return @min(MAX_MARKER_SCALE, @sqrt(zoom));
@@ -688,7 +654,7 @@ pub fn markerScale(zoom: f32) f32 {
 
 /// How far a system's name sits from it, moving out as the marker grows so selecting a system never needs to move it.
 pub fn labelClearance(zoom: f32) i32 {
-    return layout.NODE_CLEARANCE + @as(i32, @intFromFloat(@ceil(NODE_RADIUS * (markerScale(zoom) - 1))));
+    return layout.NODE_CLEARANCE + @as(i32, @intFromFloat(@ceil(markers.NODE_RADIUS * (markerScale(zoom) - 1))));
 }
 
 /// From a system with a sov timer to where its name may start, past the timer's square.
@@ -896,15 +862,8 @@ pub fn deltaColor(delta: i32, peak: u32) u32 {
 }
 
 pub fn markerRadius(value: u32, peak: u32) f32 {
-    if (value == 0 or peak == 0) return NODE_RADIUS;
-    return NODE_RADIUS + heatShare(value, peak) * HEAT_RADIUS_GROWTH;
-}
-
-/// At its largest when new, shrinking evenly to its resting size over `shrink_ms`.
-pub fn intelHaloRadius(age_ms: u64, shrink_ms: u64) f32 {
-    if (age_ms >= shrink_ms) return INTEL_HALO_RADIUS;
-    const share_left = @as(f32, @floatFromInt(shrink_ms - age_ms)) / @as(f32, @floatFromInt(shrink_ms));
-    return INTEL_HALO_RADIUS + (INTEL_HALO_PEAK_RADIUS - INTEL_HALO_RADIUS) * share_left;
+    if (value == 0 or peak == 0) return markers.NODE_RADIUS;
+    return markers.NODE_RADIUS + heatShare(value, peak) * HEAT_RADIUS_GROWTH;
 }
 
 /// Null once `age_ms` reaches RIPPLE_MS; eased out, so the ring slows as it fades.
@@ -933,30 +892,6 @@ pub fn drawRipple(canvas: pixel_buffer.Canvas, x: i32, y: i32, ripple: Ripple, s
     pixel_buffer.drawRing(canvas, x, y, ripple.radius * scale, RIPPLE_THICKNESS, color.withAlpha(ring_color, ripple.alpha));
 }
 
-pub fn intelColor(is_clear: bool) u32 {
-    return if (is_clear) INTEL_CLEAR else INTEL;
-}
-
-pub fn drawIntelHalo(canvas: pixel_buffer.Canvas, x: i32, y: i32, radius: f32, is_clear: bool, freshness_percent: u64) void {
-    pixel_buffer.fillCircle(canvas, x, y, radius, intelHaloColor(is_clear, freshness_percent));
-    pixel_buffer.drawRing(canvas, x, y, radius, RING_THICKNESS, intelRimColor(is_clear, freshness_percent));
-}
-
-/// A gate between regions takes an exit's colour, as it's the same gate with both ends shown.
-pub fn edgeColor(kind: layout.GateKind) u32 {
-    return switch (kind) {
-        .within_constellation => EDGE_LOCAL,
-        .within_region => EDGE_CROSS,
-        .between_regions => EXIT,
-    };
-}
-
-/// The stub from a system to where its gate to a region not shown points.
-pub fn drawExit(canvas: pixel_buffer.Canvas, node: layout.Node, exit: layout.Exit, exit_color: u32) void {
-    pixel_buffer.drawLine(canvas, node.x, node.y, exit.x, exit.y, exit_color);
-    pixel_buffer.fillCircle(canvas, exit.x, exit.y, EXIT_RADIUS, exit_color);
-}
-
 /// Dashed, so it doesn't read as a gate, ending in a ring for the wormhole.
 pub fn drawPortal(canvas: pixel_buffer.Canvas, node: layout.Node, portal: layout.Portal, portal_color: u32) void {
     const delta_x: f32 = @floatFromInt(portal.x - node.x);
@@ -966,7 +901,7 @@ pub fn drawPortal(canvas: pixel_buffer.Canvas, node: layout.Node, portal: layout
         const end: f32 = @as(f32, @floatFromInt(2 * dash + 1)) / (2 * PORTAL_DASHES - 1);
         pixel_buffer.drawLine(canvas, node.x + @as(i32, @intFromFloat(@round(delta_x * start))), node.y + @as(i32, @intFromFloat(@round(delta_y * start))), node.x + @as(i32, @intFromFloat(@round(delta_x * end))), node.y + @as(i32, @intFromFloat(@round(delta_y * end))), portal_color);
     }
-    pixel_buffer.drawRing(canvas, portal.x, portal.y, PORTAL_RING_RADIUS, RING_THICKNESS, portal_color);
+    pixel_buffer.drawRing(canvas, portal.x, portal.y, PORTAL_RING_RADIUS, markers.RING_THICKNESS, portal_color);
 }
 
 /// An Ansiblex gate between two systems shown, arched off the gates' straight lines and dashed; one gate each way draws the same arc.
@@ -1105,23 +1040,11 @@ fn drawGlyphAt(canvas: pixel_buffer.Canvas, glyph: glyphs.Glyph, x: i32, y: i32,
     glyphs.draw(canvas, glyph, x - @divTrunc(glyphs.SIZE, 2), y - @divTrunc(glyphs.SIZE, 2), glyph_color);
 }
 
-/// A pin's halo fill, fainter as it ages; kept faint so lines and names read through it.
-fn intelHaloColor(is_clear: bool, freshness_percent: u64) u32 {
-    const alpha: u8 = @intCast(15 + freshness_percent * 30 / 100);
-    return color.withAlpha(intelColor(is_clear), alpha);
-}
-
-/// The rim that makes a pin's halo stand out, fainter as it ages.
-fn intelRimColor(is_clear: bool, freshness_percent: u64) u32 {
-    const alpha: u8 = @intCast(60 + freshness_percent * 195 / 100);
-    return color.withAlpha(intelColor(is_clear), alpha);
-}
-
 fn securityScale() [SECURITY_SCALE_STEPS]u32 {
     var scale: [SECURITY_SCALE_STEPS]u32 = undefined;
     for (&scale, 0..) |*shade, index| {
         const tenths: i8 = @as(i8, @intCast(index)) - SECURITY_SCALE_STEPS / 2;
-        shade.* = securityColor(tenths);
+        shade.* = security.securityColor(tenths);
     }
     return scale;
 }
@@ -1312,31 +1235,10 @@ test "the bottom bars keep to the left until centring both clears the legends" {
     try testing.expectEqual(CARD_MARGIN, crowded.toggle_bar.left);
 }
 
-test "securityColor keeps EVE's scale from 0.0 up" {
-    try testing.expectEqual(SECURITY_COLORS[0], securityColor(0));
-    try testing.expectEqual(SECURITY_COLORS[5], securityColor(5));
-    try testing.expectEqual(SECURITY_COLORS[10], securityColor(10));
-    try testing.expectEqual(SECURITY_COLORS[10], securityColor(14));
-}
-
-test "securityColor tells null security's depths apart" {
-    try testing.expectEqual(DEEPEST_NULL | 0xFF000000, securityColor(-10));
-    try testing.expect(securityColor(-1) != securityColor(-5));
-    try testing.expect(securityColor(-5) != securityColor(-10));
-    try testing.expectEqual(securityColor(-10), securityColor(-12));
-}
-
-test "security text lightens only what's below high security" {
-    try testing.expectEqual(securityColor(5), securityTextColor(5));
-    try testing.expectEqual(securityColor(9), securityTextColor(9));
-    try testing.expect(securityTextColor(4) != securityColor(4));
-    try testing.expect(securityTextColor(-10) != securityColor(-10));
-}
-
 test "the security scale runs from -1.0 to 1.0" {
-    try testing.expectEqual(securityColor(-10), SECURITY_SCALE[0]);
-    try testing.expectEqual(securityColor(0), SECURITY_SCALE[10]);
-    try testing.expectEqual(securityColor(10), SECURITY_SCALE[20]);
+    try testing.expectEqual(security.securityColor(-10), SECURITY_SCALE[0]);
+    try testing.expectEqual(security.securityColor(0), SECURITY_SCALE[10]);
+    try testing.expectEqual(security.securityColor(10), SECURITY_SCALE[20]);
 }
 
 test "markers grow slower than the map, and stop" {
@@ -1398,16 +1300,7 @@ test "heat grows with the value and rests on the quiet colour at zero" {
     try testing.expectEqual(HEAT_NONE, heatColor(0, 0));
     try testing.expectEqual(HEAT_HIGH | 0xFF000000, heatColor(100, 100));
     try testing.expect(markerRadius(100, 100) > markerRadius(1, 100));
-    try testing.expectEqual(NODE_RADIUS, markerRadius(0, 100));
-}
-
-test "an intel halo shrinks from its peak and then rests" {
-    try testing.expectEqual(INTEL_HALO_PEAK_RADIUS, intelHaloRadius(0, 60_000));
-    const halfway = intelHaloRadius(30_000, 60_000);
-    try testing.expectApproxEqAbs((INTEL_HALO_PEAK_RADIUS + INTEL_HALO_RADIUS) / 2, halfway, 0.01);
-    try testing.expectEqual(INTEL_HALO_RADIUS, intelHaloRadius(60_000, 60_000));
-    try testing.expectEqual(INTEL_HALO_RADIUS, intelHaloRadius(120_000, 60_000));
-    try testing.expectEqual(INTEL_HALO_RADIUS, intelHaloRadius(0, 0));
+    try testing.expectEqual(markers.NODE_RADIUS, markerRadius(0, 100));
 }
 
 test "a new pin's ripple spreads and fades once, then is gone" {

@@ -1,12 +1,11 @@
 //! The Map Panel's search: what's typed and selected, what it finds, and the result picked; no I/O.
 const std = @import("std");
 const list_look = @import("../list_look.zig");
-const look = @import("look.zig");
-const text_mod = @import("text.zig");
 const popup_look = @import("../popup_look.zig");
 const search = @import("../../map/search.zig");
 const universe = @import("../../map/universe.zig");
 const fixed_text = @import("../../util/fixed_text.zig");
+const security_mod = @import("../../map/security.zig");
 
 const FixedText = fixed_text.FixedText;
 const PopupRow = popup_look.PopupRow;
@@ -233,12 +232,12 @@ fn hitLabel(hit: search.Hit) HitLabel {
     };
     const info = universe.systemInfo(system);
     const name = universe.systemName(system);
-    var security_buf: [text_mod.SECURITY_TEXT_MAX]u8 = undefined;
-    const security = text_mod.securityText(&security_buf, info.security_tenths);
+    var security_buf: [security_mod.SECURITY_TEXT_MAX]u8 = undefined;
+    const security = security_mod.securityText(&security_buf, info.security_tenths);
     const start = name.len + popup_look.POPUP_PART_GAP.len;
     return .{
         .text = .print("{s}" ++ popup_look.POPUP_PART_GAP ++ "{s}" ++ popup_look.POPUP_PART_GAP ++ "{s}", .{ name, security, universe.regionName(info.region) }),
-        .security = .{ .start = start, .end = start + security.len, .color = look.securityTextColor(info.security_tenths) },
+        .security = .{ .start = start, .end = start + security.len, .color = security_mod.securityTextColor(info.security_tenths) },
     };
 }
 
@@ -364,7 +363,7 @@ test "a search result's accent covers its security alone" {
     const hit = hitLabel(.{ .system = universe.findSystem("Jita").? });
     const accent = hit.security.?;
     try testing.expectEqualStrings("0.9", hit.text.slice()[accent.start..accent.end]);
-    try testing.expectEqual(look.securityColor(9), accent.color);
+    try testing.expectEqual(security_mod.securityColor(9), accent.color);
 }
 
 test "a region's search result says it's a region" {

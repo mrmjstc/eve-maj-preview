@@ -4,8 +4,6 @@ const ui = @import("ui");
 const config = @import("../../../config.zig");
 const types = @import("../../../config/types.zig");
 const list_look = @import("../../../panels/list_look.zig");
-const map_look = @import("../../../panels/map/look.zig");
-const map_text = @import("../../../panels/map/text.zig");
 const palette = @import("../../../panels/palette.zig");
 const panel_menu_look = @import("../../../panels/panel_menu_look.zig");
 const session = @import("../session.zig");
@@ -15,6 +13,7 @@ const widgets = @import("../widgets.zig");
 const color_convert = @import("../color_convert.zig");
 const panel_preview = @import("panel_preview.zig");
 const panel_settings = @import("panel_settings.zig");
+const security_mod = @import("../../../map/security.zig");
 
 const Rect = ui.component.Rect;
 const Text = ui.component.Text;
@@ -375,8 +374,8 @@ fn systemSlot(context: *ui.Frame, sample: Sample, key: ui.Key, look: *const Look
     } else {
         try context.e(Text{ .selectable = false, .key = key.indexed(1), .content = sample.system, .style = system_style });
     }
-    const security = map_text.securityText(try arena.create([map_text.SECURITY_TEXT_MAX]u8), sample.security_tenths);
-    if (look.shows_security) try context.e(Text{ .selectable = false, .key = key.indexed(2), .content = security, .style = try widgets.textStyle(arena, map_look.securityTextColor(sample.security_tenths), look.small_size, .{ .opacity = opacity, .is_bold = true }) });
+    const security = security_mod.securityText(try arena.create([security_mod.SECURITY_TEXT_MAX]u8), sample.security_tenths);
+    if (look.shows_security) try context.e(Text{ .selectable = false, .key = key.indexed(2), .content = security, .style = try widgets.textStyle(arena, security_mod.securityTextColor(sample.security_tenths), look.small_size, .{ .opacity = opacity, .is_bold = true }) });
     try group.close(context);
 }
 

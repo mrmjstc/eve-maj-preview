@@ -64,9 +64,11 @@ test {
     _ = @import("map/intel_pins.zig");
     _ = @import("map/jump_range.zig");
     _ = @import("map/layout.zig");
+    _ = @import("map/markers.zig");
     _ = @import("map/nearest.zig");
     _ = @import("map/overview.zig");
     _ = @import("map/search.zig");
+    _ = @import("map/security.zig");
     _ = @import("map/stats.zig");
     _ = @import("map/storms.zig");
     _ = @import("map/system_links.zig");

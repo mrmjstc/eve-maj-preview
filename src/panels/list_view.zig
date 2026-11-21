@@ -6,8 +6,6 @@ const panel_window = @import("../platform/panel_window.zig");
 const config_mod = @import("../config.zig");
 const types = @import("../config/types.zig");
 const list_look = @import("list_look.zig");
-const map_look = @import("map/look.zig");
-const map_text = @import("map/text.zig");
 const universe = @import("../map/universe.zig");
 const window = @import("../thumbnail/window.zig");
 const state = @import("../thumbnail/state.zig");
@@ -27,6 +25,7 @@ const stack = @import("../notifications/stack.zig");
 const roster_mod = @import("../clients/roster.zig");
 const box = @import("../util/box.zig");
 const pixel_buffer = @import("../util/pixel_buffer.zig");
+const security = @import("../map/security.zig");
 const log = @import("../log.zig");
 
 const PanelWindow = panel_window.PanelWindow;
@@ -548,9 +547,9 @@ pub const ListWindow = struct {
         if (self.config.listView.showSystemSecurity) security: {
             const system = universe.findSystem(system_name) orelse break :security;
             const security_tenths = universe.systemInfo(system).security_tenths;
-            var security_buffer: [map_text.SECURITY_TEXT_MAX]u8 = undefined;
+            var security_buffer: [security.SECURITY_TEXT_MAX]u8 = undefined;
             x += list_look.SECURITY_GAP;
-            if (x < text_right) x += panel_chrome.drawFitted(dc, map_text.securityText(&security_buffer, security_tenths), x, y, map_look.securityTextColor(security_tenths), text_right - x);
+            if (x < text_right) x += panel_chrome.drawFitted(dc, security.securityText(&security_buffer, security_tenths), x, y, security.securityTextColor(security_tenths), text_right - x);
         }
         const rule_left = x + list_look.GROUP_HEADING_GAP;
         if (rule_left < text_right) pixel_buffer.fillRect(canvas, @intCast(rule_left), @intCast(line.top + @divTrunc(line.bottom - line.top, 2)), @intCast(text_right - rule_left), 1, list_look.DIVIDER);
@@ -658,8 +657,8 @@ pub const ListWindow = struct {
         if (list_settings.showSystemSecurity) security: {
             const system = universe.findSystem(client.system_name) orelse break :security;
             const security_tenths = universe.systemInfo(system).security_tenths;
-            var security_buffer: [map_text.SECURITY_TEXT_MAX]u8 = undefined;
-            system_slot.right = drawRightAligned(dc, slot, map_text.securityText(&security_buffer, security_tenths), map_look.securityTextColor(security_tenths)) - list_look.SECURITY_GAP;
+            var security_buffer: [security.SECURITY_TEXT_MAX]u8 = undefined;
+            system_slot.right = drawRightAligned(dc, slot, security.securityText(&security_buffer, security_tenths), security.securityTextColor(security_tenths)) - list_look.SECURITY_GAP;
         }
         return drawRightAligned(dc, system_slot, client.system_name, look.system_color);
     }

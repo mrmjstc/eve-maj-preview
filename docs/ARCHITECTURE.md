@@ -209,7 +209,7 @@ The panel's own files in `panels/map/`:
 - `menu.zig` (pure, tested): the right-click menus on a system and on a region, and the Layers checklist; their rows and what each press asks for.
 - `search.zig` (pure, tested): the search's query, its cursor and selection, and its results.
 - `marks.zig` (pure, tested): the clients on the map.
-- `look.zig`: sizes, colours, markers and the panel's `Areas`.
+- `look.zig`: sizes, colours, the panel's own markers (heat, kills, timers, portals, bridges) and its `Areas`.
 - `metric_segments.zig` (pure, tested): which metrics each metric bar segment shows, and the value a metric reads from a system.
 - `ownership.zig` (pure, tested): who holds the shown systems and regions, ranked, and each holder's colour.
 - `text.zig`: tooltips, legends and titles.
@@ -223,6 +223,8 @@ What it draws from, in `map/`:
 - `universe.zig`: the embedded map, built by `.claude/tools/build_universe.py`.
 - `layout.zig`: positions on CCP's flattened map, with up to four regions packed side by side and the gates between them bent around systems; exits, and portals (stubs to Thera, Turnur or an Ansiblex gate's far end, set each time those change); zoom and pan; label placement.
 - `overview.zig`: New Eden as bubbles, for picking a region.
+- `markers.zig` (tested): the marks the Map Panel and the thumbnails' connection map draw alike: system markers, rings, gate colours, exits and intel halos.
+- `security.zig` (pure, tested): a system's security as the game shows it, colour and text, for the map, the client list, its dialog preview and the thumbnails.
 - `search.zig`: names in the embedded map.
 - `jump_range.zig`: ship ranges and the systems in reach, by the embedded map's true 3D positions.
 - `stats.zig` + `stats_feed.zig`: ESI figures, with each hour's change in NPC kills carried from the snapshot before; ESI's incursions, sov campaigns and faction warfare through `incursions.zig`, `campaigns.zig` and `faction_warfare.zig`, a running timer's scores refreshed between snapshots by `campaigns_feed.zig`; and EVE-Scout's storms and Thera's and Turnur's connections through `storms.zig` and `wormholes.zig`.

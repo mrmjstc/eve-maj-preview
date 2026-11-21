@@ -38,6 +38,8 @@ const intel_pins = @import("../../map/intel_pins.zig");
 const roster = @import("../../clients/roster.zig");
 const fixed_text = @import("../../util/fixed_text.zig");
 const pixel_buffer = @import("../../util/pixel_buffer.zig");
+const security = @import("../../map/security.zig");
+const markers = @import("../../map/markers.zig");
 const log = @import("../../log.zig");
 
 const Activity = activity_mod.Activity;
@@ -431,7 +433,7 @@ pub const Painter = struct {
         panel_chrome.drawLine(dc, row.detail, right - detail_width, top, row.detail_color);
         const system_name = universe.systemName(row.system);
         const is_lit = self.state.focus_system == row.system;
-        panel_chrome.drawLine(dc, system_name, left, top, if (is_lit) list_look.NAME else look.securityTextColor(universe.systemInfo(row.system).security_tenths));
+        panel_chrome.drawLine(dc, system_name, left, top, if (is_lit) list_look.NAME else security.securityTextColor(universe.systemInfo(row.system).security_tenths));
         const place_left = left + panel_chrome.textWidth(dc, system_name) + look.LABEL_SUFFIX_GAP * 2;
         _ = panel_chrome.drawFitted(dc, row.place, place_left, top, list_look.MUTED, right - detail_width - look.LEGEND_VALUE_GAP - place_left);
     }
@@ -459,7 +461,7 @@ pub const Painter = struct {
             const age_width = panel_chrome.textWidth(dc, age);
             panel_chrome.drawLine(dc, age, right - age_width, second_top, list_look.MUTED);
             const system_name = universe.systemName(kill.system);
-            panel_chrome.drawLine(dc, system_name, left, second_top, look.securityTextColor(universe.systemInfo(kill.system).security_tenths));
+            panel_chrome.drawLine(dc, system_name, left, second_top, security.securityTextColor(universe.systemInfo(kill.system).security_tenths));
             const victim_left = left + panel_chrome.textWidth(dc, system_name) + look.LABEL_SUFFIX_GAP * 2;
             _ = panel_chrome.drawFitted(dc, text_mod.killVictimName(scene.kill_names, kill), victim_left, second_top, list_look.MUTED, right - age_width - look.LEGEND_VALUE_GAP - victim_left);
         }
@@ -516,7 +518,7 @@ pub const Painter = struct {
         for (overview.links[0..overview.link_count]) |link| {
             const first = overview.bubbles[link.first];
             const second = overview.bubbles[link.second];
-            pixel_buffer.drawLine(canvas, first.x, first.y, second.x, second.y, look.EDGE_LOCAL);
+            pixel_buffer.drawLine(canvas, first.x, first.y, second.x, second.y, markers.EDGE_LOCAL);
         }
 
         var totals: [universe.REGION_COUNT]u32 = @splat(0);
@@ -544,16 +546,16 @@ pub const Painter = struct {
             const region: RegionIndex = @intCast(index);
             const metric_color = switch (metric) {
                 .Sovereignty => ranks.colorOf(region_holders[region]),
-                .FactionWarfare => if (region_occupiers[region] == faction_warfare.NO_FACTION) look.securityColor(bubble.security_tenths) else look.factionColorOf(region_occupiers[region]),
-                .Security, .ShipKills, .PodKills, .NpcKills, .NpcDelta, .Jumps => if (peak > 0) look.heatColor(total, peak) else look.securityColor(bubble.security_tenths),
+                .FactionWarfare => if (region_occupiers[region] == faction_warfare.NO_FACTION) security.securityColor(bubble.security_tenths) else look.factionColorOf(region_occupiers[region]),
+                .Security, .ShipKills, .PodKills, .NpcKills, .NpcDelta, .Jumps => if (peak > 0) look.heatColor(total, peak) else security.securityColor(bubble.security_tenths),
             };
             const bubble_color = if (self.state.reach) |*reach| look.regionRangeColor(reach.region_counts[region]) else metric_color;
             look.drawMarker(canvas, bubble.x, bubble.y, bubble.radius, bubble_color);
             const is_hovered = self.state.hover.kind == .region and self.state.hover.index == region;
             // A picked region's ring is heavier than a hover's, so the picks stay visible while pointing elsewhere.
-            const ring_thickness = if (self.state.ringedRegions().contains(region)) look.FOCUS_RING_THICKNESS else if (is_hovered) look.RING_THICKNESS else null;
-            if (ring_thickness) |thickness| pixel_buffer.drawRing(canvas, bubble.x, bubble.y, bubble.radius + look.RING_GAP, thickness, look.FOCUS);
-            if (self.state.marks.countIn(region) > 0) pixel_buffer.drawRing(canvas, bubble.x, bubble.y, bubble.radius + 2 * look.RING_GAP, look.RING_THICKNESS, self.config.listActiveColor());
+            const ring_thickness = if (self.state.ringedRegions().contains(region)) look.FOCUS_RING_THICKNESS else if (is_hovered) markers.RING_THICKNESS else null;
+            if (ring_thickness) |thickness| pixel_buffer.drawRing(canvas, bubble.x, bubble.y, bubble.radius + markers.RING_GAP, thickness, markers.FOCUS);
+            if (self.state.marks.countIn(region) > 0) pixel_buffer.drawRing(canvas, bubble.x, bubble.y, bubble.radius + 2 * markers.RING_GAP, markers.RING_THICKNESS, self.config.listActiveColor());
         }
         // Outside those rings, stepping out as a region can hold more than one storm or incursion.
         var ring_gaps: [universe.REGION_COUNT]f32 = @splat(3);
@@ -569,7 +571,7 @@ pub const Painter = struct {
     fn drawRegionRing(self: *const Painter, canvas: pixel_buffer.Canvas, system: SystemIndex, ring_color: u32, ring_gaps: *[universe.REGION_COUNT]f32) void {
         const region = universe.systemInfo(system).region;
         const bubble = self.state.overview.bubbles[region];
-        pixel_buffer.drawRing(canvas, bubble.x, bubble.y, bubble.radius + ring_gaps[region] * look.RING_GAP, look.RING_THICKNESS, ring_color);
+        pixel_buffer.drawRing(canvas, bubble.x, bubble.y, bubble.radius + ring_gaps[region] * markers.RING_GAP, markers.RING_THICKNESS, ring_color);
         ring_gaps[region] += 1;
     }
 
@@ -717,18 +719,18 @@ pub const Painter = struct {
     /// The selected system's disc, out past its ring.
     fn focusRadius(self: *const Painter, paint: *const MapPaint, system: SystemIndex) f32 {
         const value = if (paint.traffic) |traffic| metric_segments.metricValue(paint.metric, traffic[system]) else 0;
-        return look.markerRadius(value, paint.peak) * look.markerScale(self.state.layout.view.zoom) + look.RING_GAP + look.FOCUS_OUTLINE_THICKNESS;
+        return look.markerRadius(value, paint.peak) * look.markerScale(self.state.layout.view.zoom) + markers.RING_GAP + look.FOCUS_OUTLINE_THICKNESS;
     }
 
     /// How far the rings around a client's marker go: the selected system's disc, else the client's ring.
     fn markReach(self: *const Painter, paint: *const MapPaint, system: SystemIndex) f32 {
         if (self.state.focus_system == system) return self.focusRadius(paint, system);
-        return self.markRingRadius() + look.RING_THICKNESS;
+        return self.markRingRadius() + markers.RING_THICKNESS;
     }
 
     /// Kept to a resting marker's size, so a busy system's ring doesn't jump as its traffic changes.
     fn markRingRadius(self: *const Painter) f32 {
-        return look.markerRadius(0, 0) * look.markerScale(self.state.layout.view.zoom) + 2 * look.RING_GAP;
+        return look.markerRadius(0, 0) * look.markerScale(self.state.layout.view.zoom) + 2 * markers.RING_GAP;
     }
 
     fn markColor(self: *const Painter, mark: marks.Mark) u32 {
@@ -737,11 +739,11 @@ pub const Painter = struct {
 
     /// The colour of the client whose tag names the selected system, else FOCUS.
     fn focusRingColor(self: *const Painter) u32 {
-        const system = self.state.focus_system orelse return look.FOCUS;
+        const system = self.state.focus_system orelse return markers.FOCUS;
         for (self.state.marks.slice(), 0..) |mark, index| {
             if (mark.system == system and self.state.marks.leadsSystem(index)) return self.markColor(mark);
         }
-        return look.FOCUS;
+        return markers.FOCUS;
     }
 
     fn haloRadius(self: *const Painter, pin: *const intel_pins.Pin, now_ms: u64) f32 {
@@ -756,8 +758,8 @@ pub const Painter = struct {
         // Under everything else, so a new halo doesn't hide the systems around it.
         for (layout.nodes[0..layout.node_count]) |node| {
             const pin = scene.pins.find(node.system, lifetime_ms, now_ms) orelse continue;
-            look.drawIntelHalo(canvas, node.x, node.y, self.haloRadius(pin, now_ms), pin.is_clear, pin.freshnessPercent(lifetime_ms, now_ms));
-            if (look.rippleAt(now_ms -| pin.seen_ms)) |ripple| look.drawRipple(canvas, node.x, node.y, ripple, scale, look.intelColor(pin.is_clear));
+            markers.drawIntelHalo(canvas, node.x, node.y, self.haloRadius(pin, now_ms), pin.is_clear, pin.freshnessPercent(lifetime_ms, now_ms));
+            if (look.rippleAt(now_ms -| pin.seen_ms)) |ripple| look.drawRipple(canvas, node.x, node.y, ripple, scale, markers.intelColor(pin.is_clear));
         }
         if (self.state.ping) |ping| {
             if (layout.nodeOf(ping.system)) |node_index| {
@@ -774,7 +776,7 @@ pub const Painter = struct {
             const first = layout.nodes[edge.first_index];
             const second = layout.nodes[edge.second_index];
             const is_lit = hovered_node == edge.first_index or hovered_node == edge.second_index or focus_node_index == edge.first_index or focus_node_index == edge.second_index;
-            const plain_color = look.edgeColor(edge.kind);
+            const plain_color = markers.edgeColor(edge.kind);
             const edge_color = if (is_lit) look.EDGE_HOVER else stormEdgeColor(storms, first.system, second.system) orelse incursionEdgeColor(incursions, first.system, second.system) orelse holderEdgeColor(scene, paint, first.system, second.system) orelse plain_color;
             var point_buffer: [layout_mod.CURVE_SEGMENTS + 1]layout_mod.PixelPoint = undefined;
             const points = layout.edgePoints(edge, &point_buffer);
@@ -782,7 +784,7 @@ pub const Painter = struct {
         }
         for (layout.exits[0..layout.exit_count], 0..) |exit, index| {
             const is_hovered = self.state.hover.kind == .exit and self.state.hover.index == index;
-            look.drawExit(canvas, layout.nodes[exit.from_index], exit, if (is_hovered) look.EDGE_HOVER else look.EXIT);
+            markers.drawExit(canvas, layout.nodes[exit.from_index], exit, if (is_hovered) look.EDGE_HOVER else markers.EXIT);
         }
         if (shownBridges(self.config, self.has_eve_stars, scene)) |bridges| {
             for (bridges.slice()) |bridge| {
@@ -800,14 +802,14 @@ pub const Painter = struct {
         for (layout.nodes[0..layout.node_count], 0..) |node, index| {
             const value = if (paint.traffic) |traffic| metric_segments.metricValue(paint.metric, traffic[node.system]) else 0;
             const radius = look.markerRadius(value, paint.peak) * scale;
-            const ring_radius = radius + look.RING_GAP;
+            const ring_radius = radius + markers.RING_GAP;
             const is_focus = self.state.focus_system == node.system;
             look.drawMarker(canvas, node.x, node.y, radius, if (self.state.isOutOfRange(node.system)) look.OUT_OF_RANGE else markerColor(scene, paint, node.system, value));
             const is_hovered = if (hovered_node) |hovered| hovered == index else false;
             if (is_focus) {
                 pixel_buffer.drawRing(canvas, node.x, node.y, ring_radius, look.FOCUS_RING_THICKNESS, focus_ring_color);
             } else if (is_hovered) {
-                pixel_buffer.drawRing(canvas, node.x, node.y, ring_radius, look.RING_THICKNESS, look.FOCUS);
+                pixel_buffer.drawRing(canvas, node.x, node.y, ring_radius, markers.RING_THICKNESS, markers.FOCUS);
             }
         }
 
@@ -817,19 +819,19 @@ pub const Painter = struct {
             if (self.state.focus_system == mark.system) continue;
             const index = layout.nodeOf(mark.system) orelse continue;
             const node = layout.nodes[index];
-            pixel_buffer.drawRing(canvas, node.x, node.y, self.markRingRadius(), look.RING_THICKNESS, self.markColor(mark));
+            pixel_buffer.drawRing(canvas, node.x, node.y, self.markRingRadius(), markers.RING_THICKNESS, self.markColor(mark));
         }
         if (self.state.reach) |*reach| {
             for (layout.nodes[0..layout.node_count]) |node| {
                 if (reach.includes(node.system)) look.drawRangeMark(canvas, node.x, node.y, scale);
             }
             // Outside a client's ring, as the origin is often where one sits.
-            if (layout.nodeOf(reach.origin)) |index| pixel_buffer.drawRing(canvas, layout.nodes[index].x, layout.nodes[index].y, resting_radius + 3 * look.RING_GAP, look.RING_THICKNESS, look.RANGE);
+            if (layout.nodeOf(reach.origin)) |index| pixel_buffer.drawRing(canvas, layout.nodes[index].x, layout.nodes[index].y, resting_radius + 3 * markers.RING_GAP, markers.RING_THICKNESS, look.RANGE);
         }
         // Outside a client's ring and the jump range's origin, as Turnur is the hub itself.
         if (shownWormholes(self.config, scene) != null) {
             if (universe.findSystemById(wormholes.TURNUR_ID)) |turnur| {
-                if (layout.nodeOf(turnur)) |index| pixel_buffer.drawRing(canvas, layout.nodes[index].x, layout.nodes[index].y, resting_radius + 4 * look.RING_GAP, look.RING_THICKNESS, look.WORMHOLE);
+                if (layout.nodeOf(turnur)) |index| pixel_buffer.drawRing(canvas, layout.nodes[index].x, layout.nodes[index].y, resting_radius + 4 * markers.RING_GAP, markers.RING_THICKNESS, look.WORMHOLE);
             }
         }
         if (shownCampaigns(self.config, scene)) |campaigns| {
@@ -998,7 +1000,7 @@ pub const Painter = struct {
             const plain_color = if (self.state.isNoteworthy(node.system)) list_look.NAME else look.LABEL;
             const label_color = if (self.state.focus_system == node.system) look.FOCUS_NAME else if (scene.pins.find(node.system, self.config.intel.shrinkMs(), now_ms) != null) list_look.NAME else stormCenterColor(storms, node.system) orelse incursionStagingColor(incursions, node.system) orelse plain_color;
             drawHaloText(dc, universe.systemName(node.system), label.left, label.top, label_color, outline);
-            var suffix_buffer: [text_mod.SECURITY_TEXT_MAX]u8 = undefined;
+            var suffix_buffer: [security.SECURITY_TEXT_MAX]u8 = undefined;
             if (self.labelSuffix(node.system, &suffix_buffer)) |suffix| {
                 drawHaloText(dc, suffix.text, label.left + self.state.label_widths.names[index] + look.LABEL_SUFFIX_GAP, label.top, suffix.color, outline);
             }
@@ -1010,7 +1012,7 @@ pub const Painter = struct {
         for (layout.exits[0..layout.exit_count], 0..) |exit, index| {
             const label = exit.label orelse continue;
             const is_hovered = self.state.hover.kind == .exit and self.state.hover.index == index;
-            drawHaloText(dc, text_mod.exitLabel(exit).slice(), label.left, label.top, if (is_hovered) look.EDGE_HOVER else look.EXIT, outline);
+            drawHaloText(dc, text_mod.exitLabel(exit).slice(), label.left, label.top, if (is_hovered) look.EDGE_HOVER else markers.EXIT, outline);
         }
         for (layout.portals[0..layout.portal_count], 0..) |portal, index| {
             const label = portal.label orelse continue;
@@ -1019,10 +1021,10 @@ pub const Painter = struct {
     }
 
     /// The security once zoomed in enough; null before that.
-    fn labelSuffix(self: *const Painter, system: SystemIndex, buffer: *[text_mod.SECURITY_TEXT_MAX]u8) ?LabelSuffix {
+    fn labelSuffix(self: *const Painter, system: SystemIndex, buffer: *[security.SECURITY_TEXT_MAX]u8) ?LabelSuffix {
         if (!look.showsSecurityLabel(self.state.layout.view.zoom)) return null;
         const security_tenths = universe.systemInfo(system).security_tenths;
-        return .{ .text = text_mod.securityText(buffer, security_tenths), .color = look.securityTextColor(security_tenths) };
+        return .{ .text = security.securityText(buffer, security_tenths), .color = security.securityTextColor(security_tenths) };
     }
 
     fn tooltipFor(self: *const Painter, scene: Scene, now_ms: u64) ?text_mod.Tooltip {
@@ -1186,7 +1188,7 @@ pub fn titleText(state: *const MapState) FixedText {
 
 /// `scale` is the zoom's marker scale.
 pub fn intelHaloRadius(intel_settings: *const config_mod.IntelConfig, pin: *const intel_pins.Pin, scale: f32, now_ms: u64) f32 {
-    return look.intelHaloRadius(now_ms -| pin.seen_ms, intel_settings.shrinkMs()) * scale;
+    return markers.intelHaloRadius(now_ms -| pin.seen_ms, intel_settings.shrinkMs()) * scale;
 }
 
 /// Searched linearly, as a route asks this once a jump.
@@ -1499,7 +1501,7 @@ fn incursionStagingColor(incursions: ?*const Incursions, system: SystemIndex) ?u
 
 fn markerColor(scene: Scene, paint: *const MapPaint, system: SystemIndex, value: u32) u32 {
     return switch (paint.metric) {
-        .Security => look.securityColor(universe.systemInfo(system).security_tenths),
+        .Security => security.securityColor(universe.systemInfo(system).security_tenths),
         .ShipKills, .PodKills, .NpcKills, .Jumps => look.heatColor(value, paint.peak),
         .NpcDelta => if (scene.stats) |stats| look.deltaColor(stats.systems[system].npc_delta, paint.peak) else look.HEAT_NONE,
         .Sovereignty => paint.holders.colorOf(if (scene.stats) |stats| stats.systems[system].holder else stats_mod.NO_HOLDER),

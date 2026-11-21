@@ -16,7 +16,8 @@ const pixel_buffer = @import("../util/pixel_buffer.zig");
 const universe = @import("../map/universe.zig");
 const layout_mod = @import("../map/layout.zig");
 const connections_mod = @import("../map/connections.zig");
-const map_look = @import("../panels/map/look.zig");
+const security = @import("../map/security.zig");
+const markers = @import("../map/markers.zig");
 const log = @import("../log.zig");
 
 const ThumbnailWindow = window.ThumbnailWindow;
@@ -484,14 +485,14 @@ fn exitLabel(exit: layout_mod.Exit, settings: RenderSettings) []const u8 {
 
 fn labelColor(connection: ?connections_mod.Connection, plain_color: u32) u32 {
     const marked = connection orelse return plain_color;
-    return if (marked.intel_freshness_percent > 0) map_look.intelColor(marked.is_clear) else plain_color;
+    return if (marked.intel_freshness_percent > 0) markers.intelColor(marked.is_clear) else plain_color;
 }
 
 fn drawIntelHalo(canvas: pixel_buffer.Canvas, x: i32, y: i32, connection: ?connections_mod.Connection) void {
     const marked = connection orelse return;
     if (marked.intel_freshness_percent == 0) return;
-    const halo_radius = map_look.intelHaloRadius(marked.intel_shrink_percent, 100) * CONNECTION_HALO_SCALE;
-    map_look.drawIntelHalo(canvas, x, y, halo_radius, marked.is_clear, marked.intel_freshness_percent);
+    const halo_radius = markers.intelHaloRadius(marked.intel_shrink_percent, 100) * CONNECTION_HALO_SCALE;
+    markers.drawIntelHalo(canvas, x, y, halo_radius, marked.is_clear, marked.intel_freshness_percent);
 }
 
 /// Layered like the Map Panel: halos, gates, then systems; no background, so the client shows through.
@@ -503,14 +504,14 @@ fn drawConnectionMap(canvas: pixel_buffer.Canvas, map: *const layout_mod.Layout,
     for (map.edges[0..map.edge_count]) |edge| {
         const first = nodes[edge.first_index];
         const second = nodes[edge.second_index];
-        pixel_buffer.drawLine(canvas, first.x, first.y, second.x, second.y, map_look.edgeColor(edge.kind));
+        pixel_buffer.drawLine(canvas, first.x, first.y, second.x, second.y, markers.edgeColor(edge.kind));
     }
-    for (exits) |exit| map_look.drawExit(canvas, nodes[exit.from_index], exit, map_look.EXIT);
-    const marker_radius = map_look.markerRadius(0, 0);
+    for (exits) |exit| markers.drawExit(canvas, nodes[exit.from_index], exit, markers.EXIT);
+    const marker_radius = markers.NODE_RADIUS;
     for (nodes) |node| {
-        pixel_buffer.fillCircle(canvas, node.x, node.y, marker_radius, map_look.securityColor(universe.systemInfo(node.system).security_tenths));
+        pixel_buffer.fillCircle(canvas, node.x, node.y, marker_radius, security.securityColor(universe.systemInfo(node.system).security_tenths));
     }
-    pixel_buffer.drawRing(canvas, nodes[0].x, nodes[0].y, marker_radius + map_look.RING_GAP, map_look.RING_THICKNESS, map_look.FOCUS);
+    pixel_buffer.drawRing(canvas, nodes[0].x, nodes[0].y, marker_radius + markers.RING_GAP, markers.RING_THICKNESS, markers.FOCUS);
 }
 
 /// In the font already selected into `dc`; the character's own system keeps its colour unless intel names it.
@@ -522,7 +523,7 @@ fn renderConnectionLabels(dc: win32.HDC, map: *const layout_mod.Layout, settings
     }
     for (map.exits[0..map.exit_count]) |exit| {
         const label = exit.label orelse continue;
-        draw.renderText(dc, exitLabel(exit, settings), label.left - draw.TEXT_PADDING_X, label.top - draw.TEXT_PADDING_Y, labelColor(settings.connections.find(exit.destination), map_look.EXIT));
+        draw.renderText(dc, exitLabel(exit, settings), label.left - draw.TEXT_PADDING_X, label.top - draw.TEXT_PADDING_Y, labelColor(settings.connections.find(exit.destination), markers.EXIT));
     }
 }
 

@@ -19,6 +19,8 @@ const activity_mod = @import("../../map/activity.zig");
 const evestars = @import("../../map/evestars.zig");
 const fixed_text = @import("../../util/fixed_text.zig");
 const utf8 = @import("../../util/utf8.zig");
+const security = @import("../../map/security.zig");
+const markers = @import("../../map/markers.zig");
 
 const Activity = activity_mod.Activity;
 const Campaign = campaigns_mod.Campaign;
@@ -46,8 +48,6 @@ const LEGEND_MAX_ROWS = 6;
 const RANGE_LEGEND_REGIONS = LEGEND_MAX_ROWS - 2;
 /// Past this, a line of who's in a system stops naming them.
 const MAX_CHARACTERS_NAMED = 4;
-/// Fits securityText's longest result.
-pub const SECURITY_TEXT_MAX = 8;
 /// A count of systems, in a legend or a tooltip.
 const SYSTEMS_FORMAT = "{d} systems";
 /// The widest a sov timer's text under a name gets, for the room names keep for it.
@@ -242,9 +242,9 @@ pub fn systemTooltip(facts: SystemFacts) Tooltip {
     var tooltip: Tooltip = .{};
     const info = universe.systemInfo(facts.system);
     tooltip.add("{s}", .{universe.systemName(facts.system)});
-    var security_buffer: [SECURITY_TEXT_MAX]u8 = undefined;
-    tooltip.accent = .print("{s}", .{securityText(&security_buffer, info.security_tenths)});
-    tooltip.accent_color = look.securityTextColor(info.security_tenths);
+    var security_buffer: [security.SECURITY_TEXT_MAX]u8 = undefined;
+    tooltip.accent = .print("{s}", .{security.securityText(&security_buffer, info.security_tenths)});
+    tooltip.accent_color = security.securityTextColor(info.security_tenths);
     tooltip.aside = .print("{s}", .{universe.regionName(info.region)});
     tooltip.addRow("Constellation", "{s}", .{universe.constellationName(info.constellation)});
 
@@ -271,7 +271,7 @@ pub fn systemTooltip(facts: SystemFacts) Tooltip {
     addCharacters(&tooltip, facts.characters);
     if (facts.intel_message) |message| {
         var age_buffer: [panel_look.TIME_TEXT_MAX]u8 = undefined;
-        tooltip.addColoredRow("Intel", look.intelColor(facts.is_intel_clear), "{s}: {s}", .{ panel_look.relativeTime(&age_buffer, facts.intel_age_ms), message });
+        tooltip.addColoredRow("Intel", markers.intelColor(facts.is_intel_clear), "{s}: {s}", .{ panel_look.relativeTime(&age_buffer, facts.intel_age_ms), message });
     }
     return tooltip;
 }
@@ -449,13 +449,6 @@ pub fn clientTagText(name: []const u8, other_count: usize) FixedText {
     return if (other_count > 0) .print("{s} +{d}", .{ name, other_count }) else .print("{s}", .{name});
 }
 
-/// As the game shows it, e.g. "0.5" or "-0.4"; `buffer` holds what's returned.
-pub fn securityText(buffer: *[SECURITY_TEXT_MAX]u8, security_tenths: i8) []const u8 {
-    const magnitude = @abs(security_tenths);
-    const sign = if (security_tenths < 0) "-" else "";
-    return std.fmt.bufPrint(buffer, "{s}{d}.{d}", .{ sign, magnitude / 10, magnitude % 10 }) catch unreachable;
-}
-
 /// The system a gate to a region not shown leads to, and the region it's in.
 pub fn exitLabel(exit: layout.Exit) FixedText {
     return .print("{s} - {s}", .{ universe.systemName(exit.destination), universe.regionName(exit.region) });
@@ -486,7 +479,7 @@ pub fn mapControlTooltip(control: look.MapControl, is_always_on_top: bool) Toolt
 }
 
 pub fn noticeTooltip(notice: *const evestars.Notice) Tooltip {
-    var tooltip: Tooltip = .{ .title_color = if (notice.is_failure) look.INTEL else list_look.NAME };
+    var tooltip: Tooltip = .{ .title_color = if (notice.is_failure) markers.INTEL else list_look.NAME };
     for (0..notice.line_count) |index| tooltip.add("{s}", .{notice.line(index)});
     return tooltip;
 }
@@ -1030,11 +1023,4 @@ test "a long intel line is cut to its buffer" {
     const message: [TOOLTIP_LINE_MAX * 2]u8 = @splat('x');
     const tooltip = systemTooltip(.{ .system = universe.findSystem("Jita").?, .intel_message = &message });
     try testing.expectEqual(TOOLTIP_LINE_MAX - 1, tooltip.line(tooltip.line_count - 1).len);
-}
-
-test "securityText reads as the game shows it" {
-    var buffer: [SECURITY_TEXT_MAX]u8 = undefined;
-    try testing.expectEqualStrings("0.5", securityText(&buffer, 5));
-    try testing.expectEqualStrings("1.0", securityText(&buffer, 10));
-    try testing.expectEqualStrings("-0.4", securityText(&buffer, -4));
 }
