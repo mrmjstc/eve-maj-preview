@@ -15,6 +15,9 @@ const restart_plan = @import("control/restart_plan.zig");
 const thumbnail_input = @import("control/thumbnail_input.zig");
 const set = @import("thumbnail/set.zig");
 const hotkeys = @import("hotkeys/manager.zig");
+const commands_mod = @import("hotkeys/commands.zig");
+const cycling = @import("hotkeys/cycling.zig");
+const membership = @import("hotkeys/membership.zig");
 const hook_bindings = @import("hotkeys/hook_bindings.zig");
 const launch = @import("hotkeys/launch.zig");
 const profile_switch = @import("hotkeys/profile_switch.zig");
@@ -98,6 +101,8 @@ pub const App = struct {
     instance: win32.HINSTANCE,
     /// Kept across a thumbnail set rebuild, and reset when another profile is loaded.
     auto_minimizer: auto_minimize.AutoMinimizer,
+    /// Each cycle command's position; reset whenever the hotkey manager is recreated, after a Save or profile switch.
+    cycle: cycling.CycleState = .{},
     focus: focus_mod.FocusTracker = .{},
     trackers: runtime.Trackers,
     /// Rebuilt on reload, so never cached elsewhere: read it from here each time.
@@ -156,6 +161,7 @@ pub const App = struct {
         self.trackers.deinit();
         self.destroyThumbnailSet();
         self.auto_minimizer.deinit();
+        self.cycle.deinit(self.allocator);
         self.auto_move.deinit();
         self.exclusions.deinit();
         self.auto_colors.deinit();
@@ -171,6 +177,29 @@ pub const App = struct {
     /// Shows alerts on the roster's clients, with or without a thumbnail set.
     pub fn notifier(self: *App) notifier_mod.Notifier {
         return .{ .allocator = self.allocator, .config = &self.store.live, .auto_colors = &self.auto_colors, .records = self.notifications.records(), .roster = &self.roster, .intel = &self.intel };
+    }
+
+    /// What every user command, from a hotkey, the tray or a protocol link, runs through; needs no hotkey manager.
+    pub fn commands(self: *App) commands_mod.Commands {
+        return .{
+            .allocator = self.allocator,
+            .config = &self.store.saved,
+            .store = &self.store,
+            .global_settings = &self.global_settings,
+            .live_global = if (self.dialog) |dialog| dialog.live_global() else &self.global_settings,
+            .scout = &self.scout,
+            .exclusions = &self.exclusions,
+            .notified_queue = &self.notifications.notified_queue,
+            .notifier = self.notifier(),
+            .roster = &self.roster,
+            .cycle = &self.cycle,
+        };
+    }
+
+    /// After a client was focused by hand: every cycle continues from it.
+    pub fn syncCyclesToFocused(self: *App, character_name: []const u8, hwnd: win32.HWND) void {
+        if (!cycling.syncToFocusedCharacter(&self.commands(), character_name, hwnd)) return;
+        if (self.hotkey_manager) |manager| manager.syncCharacterCursors(character_name);
     }
 
     pub fn panelContext(self: *App) panel_host.Context {
@@ -434,12 +463,11 @@ pub const App = struct {
         }
     }
 
-    fn clearLoggedOutExclusions(self: *const App, name_changes: []const scout_mod.NameChange) void {
+    fn clearLoggedOutExclusions(self: *App, name_changes: []const scout_mod.NameChange) void {
         if (!self.store.live.exclusion.logoutClearsExclusion) return;
-        const manager = self.hotkey_manager orelse return;
         for (name_changes) |change| {
             if (scout_mod.isGenericCharacterName(change.new_name) and !scout_mod.isGenericCharacterName(change.old_name)) {
-                manager.clearLoggedOutExclusion(change.old_name);
+                membership.clearLoggedOutExclusion(&self.commands(), change.old_name);
             }
         }
     }
@@ -516,18 +544,12 @@ pub const App = struct {
 
     /// A hotkey registration failure is logged, not fatal.
     pub fn createHotkeyManager(self: *App, timer_hwnd: win32.HWND) !void {
-        const dialog = self.dialog orelse return error.MissingDialogHooks;
+        // Before anything can fail, so group cycling always matches the saved groups.
+        self.cycle.reset(self.allocator, self.store.saved.hotkeyGroups.items.len);
         const manager = try self.allocator.create(HotkeyManager);
-        errdefer self.allocator.destroy(manager);
-        manager.* = try HotkeyManager.init(self.allocator, .{
+        manager.* = .init(self.allocator, .{
             .store = &self.store,
             .global_settings = &self.global_settings,
-            .live_global = dialog.live_global,
-            .scout = &self.scout,
-            .exclusions = &self.exclusions,
-            .notified_queue = &self.notifications.notified_queue,
-            .notifier = self.notifier(),
-            .roster = &self.roster,
             .timer_hwnd = timer_hwnd,
         });
         self.hotkey_manager = manager;
@@ -538,8 +560,8 @@ pub const App = struct {
         manager.syncFocusFilter(self.scout.getWindows());
     }
 
-    /// What a hotkey or one of its actions left for App, run once the manager has returned.
-    pub fn runHotkeyOutcome(self: *App, outcome: hotkeys.Outcome) void {
+    /// What a command left for App, run once it has returned.
+    pub fn runHotkeyOutcome(self: *App, outcome: commands_mod.Outcome) void {
         switch (outcome) {
             .none => {},
             .activate => |hwnd| activation.activate(self, hwnd),
@@ -555,6 +577,13 @@ pub const App = struct {
                 .toggle_map_panel => self.toggleMapPanel(),
                 .toggle_intel_panel => self.toggleIntelPanel(),
                 .return_to_last_app => launch.returnToLastApp(&self.focus.last_non_eve_foreground),
+                .suspend_hotkeys => {
+                    const manager = self.hotkey_manager orelse {
+                        slog.warn("Failed to suspend or resume hotkeys: the hotkey manager is being rebuilt", .{});
+                        return;
+                    };
+                    manager.toggleSuspend();
+                },
                 .exit => requestExit(),
             },
         }

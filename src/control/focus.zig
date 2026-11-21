@@ -61,7 +61,7 @@ pub fn onClientFocused(app: *App, hwnd: win32.HWND) bool {
     app.roster.setActive(hwnd);
     if (app.thumbnail_set) |thumbnail_set| thumbnail_set.reconcileThumbnailStates();
     if (app.roster.isEveClient(hwnd)) app.auto_minimizer.recordFocus(hwnd);
-    syncHotkeys(app, hwnd);
+    syncCycles(app, hwnd);
     return true;
 }
 
@@ -78,7 +78,7 @@ pub fn afterActiveRefresh(app: *App, name_changes: []const scout.NameChange) voi
     const was_renamed = for (name_changes) |change| {
         if (change.hwnd == active) break true;
     } else false;
-    if (was_renamed or app.focus.synced_hwnd != active) syncHotkeys(app, active);
+    if (was_renamed or app.focus.synced_hwnd != active) syncCycles(app, active);
 }
 
 /// The hide debounce timer fired, so no EVE window has had focus for hideDebounceMs.
@@ -89,11 +89,11 @@ pub fn onHideTimer(app: *App) void {
 }
 
 /// Keeps cycle positions in step with the focused client.
-fn syncHotkeys(app: *App, hwnd: win32.HWND) void {
+fn syncCycles(app: *App, hwnd: win32.HWND) void {
     const client = app.roster.byHwnd(hwnd) orelse return;
     app.focus.synced_hwnd = hwnd;
     slog.debug("Tracked window focused: {s}", .{client.character_name});
-    if (app.hotkey_manager) |manager| manager.updateFocusedCharacter(client.character_name, hwnd);
+    app.syncCyclesToFocused(client.character_name, hwnd);
 }
 
 fn foregroundProc(_: win32.HANDLE, _: win32.DWORD, hwnd: win32.HWND, _: win32.LONG, _: win32.LONG, _: win32.DWORD, _: win32.DWORD) callconv(.c) void {

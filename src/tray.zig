@@ -200,7 +200,7 @@ pub const TrayIcon = struct {
         }
 
         _ = win32.AppendMenuA(menu, win32.MF_STRING, win32.IDM_CLOSE_ALL_CLIENTS, "Close All Clients");
-        // The saved groups, which the hotkey manager runs a group command against, as it does for a hotkey or link.
+        // The saved groups, which a group command runs against, as from a hotkey or link.
         const saved_groups = app.store.saved.hotkeyGroups.items;
         self.appendGroupMenu(menu, saved_groups, win32.IDM_MINIMIZE_GROUP_BASE, "Minimize Group");
         self.appendGroupMenu(menu, saved_groups, win32.IDM_CLOSE_GROUP_BASE, "Close Group");
@@ -268,21 +268,13 @@ pub const TrayIcon = struct {
         }
         if (groupCommand(command_id)) |command| {
             slog.info("Group {s} requested from system tray", .{@tagName(command.action)});
-            const manager = app.hotkey_manager orelse {
-                slog.err("Failed to {s} the group from the system tray: the hotkey manager isn't ready", .{@tagName(command.action)});
-                return;
-            };
-            app.runHotkeyOutcome(manager.runGroupActionAt(command.action, command.group_index, app.thumbnail_set));
+            app.runHotkeyOutcome(app.commands().runGroupAt(command.action, command.group_index, app.thumbnail_set));
             return;
         }
 
         if (globalAction(command_id)) |action| {
             slog.info("Running {s} from the system tray", .{@tagName(action)});
-            const manager = app.hotkey_manager orelse {
-                slog.err("Failed to run {s} from the system tray: the hotkey manager isn't ready", .{@tagName(action)});
-                return;
-            };
-            app.runHotkeyOutcome(manager.runGlobalAction(action, app.thumbnail_set));
+            app.runHotkeyOutcome(app.commands().runGlobal(action, app.thumbnail_set));
             return;
         }
 

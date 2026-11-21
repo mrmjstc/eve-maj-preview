@@ -58,7 +58,7 @@ Rules:
 
 - Rebuilt subsystems are read from `App` each time, never cached elsewhere.
 - State that must survive a rebuild lives on `App` (exclusions, notification history, auto-minimize toggle).
-- `HotkeyManager` borrows only what `hotkeys.Borrowed` lists; each press or action is handed App's current thumbnail set, and the manager hands back an `Outcome` for what only App can do (activate a client, switch profile, toggle a panel, return to the last app), which `App.runHotkeyOutcome` runs. `ThumbnailSet` borrows only the store, exclusions and the notification center's history and notified queue (`dispatch.Records`). App passes in its window procs and destroy hook, so `thumbnail/` imports no input or panel code.
+- Every user command, from a hotkey, the tray or a protocol link, runs through `App.commands()`, a `hotkeys/commands.zig` `Commands` of pointers into App, so none waits on the `HotkeyManager` App rebuilds on each Save and profile switch. Each is handed App's current thumbnail set, and hands back an `Outcome` for what only App can do (activate a client, switch profile, toggle a panel, return to the last app), which `App.runHotkeyOutcome` runs. `ThumbnailSet` borrows only the store, exclusions and the notification center's history and notified queue (`dispatch.Records`). App passes in its window procs and destroy hook, so `thumbnail/` imports no input or panel code.
 
 Reload entry points:
 
@@ -79,7 +79,7 @@ Reload entry points:
 |---|---|
 | `WM_TIMER` `TICK_TIMER_ID` | `App.tick` |
 | `WM_TIMER` `HIDE_DEBOUNCE_TIMER_ID` | `focus.onHideTimer` |
-| `WM_HOTKEY` | `focus_grant.handleWmHotkey`, else `HotkeyManager.handleHotkeyPress`, whose outcome goes to `App.runHotkeyOutcome` |
+| `WM_HOTKEY` | `focus_grant.handleWmHotkey`, else `HotkeyManager.handleHotkeyPress`, which gates it and runs it through `Commands`; the outcome goes to `App.runHotkeyOutcome` |
 | `WM_TRAYICON`, `WM_COMMAND` | `TrayIcon` |
 | `TaskbarCreated` (registered) | `TrayIcon.handleTaskbarCreated`: re-adds the icon after Explorer restarts; the tick also retries a missing one every 5 s |
 | `WM_COPYDATA` | `protocol/run.handleCopyData`: protocol URLs from a second process |
@@ -253,7 +253,8 @@ Drawing and input:
 
 - **Hotkeys** go through `WH_KEYBOARD_LL`/`WH_MOUSE_LL` (`hotkeys/keyboard_hook.zig`, `mouse_hook.zig`, shared `hook_bindings.zig`; `hooks.zig` routes each binding to its hook), not `RegisterHotKey`, so bare modifiers and mouse buttons bind. Matches are posted as `WM_HOTKEY`. The hooks run on their own thread, so a busy main thread never delays input or gets them removed by Windows. Each key or button press is decided at its first down: a swallowed press has its repeats and release swallowed too, so a client never sees a key-up without its down, which holding Ctrl through a cycle depends on. With `requireEveFocus`, a bound key pressed outside a tracked window passes through untouched. With NumLock on, Windows sends Shift+Numpad as a fake Shift release then a navigation key; the hook and the config dialog's recorder read it back as Shift+Numpad.
 - **IDs** (`hotkeys/bindings.zig`): bands of 1000 per kind (cycle group 0, global action 1000, per-character 2000, profile switch 3000, assign group 4000, app 5000, URL 6000, close group 7000, minimize group 8000). `GLOBAL_BINDINGS` maps global actions to config fields and protocol actions.
-- **`hotkeys/manager.zig`** (`HotkeyManager`): registration, suspend and dialog-recording pause, and `runAction`, the one switch on `HotkeyAction`. Bindings come from `store.saved`; other settings from `store.live`.
+- **`hotkeys/manager.zig`** (`HotkeyManager`): registration, the press gate (repeat, suspend, EVE focus), suspend and the dialog-recording pause, and the per-character hotkeys' cursors in its key map. Bindings come from `store.saved`; other settings from `store.live`.
+- **`hotkeys/commands.zig`** (`Commands`): `run`, the one switch on `HotkeyAction`, and `runGlobal`/`runGroup`/`runGroupAt` for the tray and protocol links. The cycle cursors it moves are App's `cycle`, reset whenever the hotkey manager is recreated.
 - **`hotkeys/plan.zig`** (pure, tested): which hotkeys a profile binds, with their IDs, actions and descriptions in registration order (globals first), and `pressVerdict`, whether a press runs. The registered `Plan` owns the actions' index slices until `unregisterAll`.
 - **`hotkeys/cycling.zig`**: every cycle hotkey, each returning the client to activate. Decisions are in `cycle_order.zig` (pure, tested).
 - **`control/activation.zig`** (`activate`): where every click, cycle and protocol switch ends. Restore, foreground, reconcile thumbnail states, dismiss click-suppressed notifications, sync cycle cursors.
@@ -268,7 +269,7 @@ Drawing and input:
 Hotkey press → character switch:
 
 ```
-WM_HOTKEY -> timerWindowProc -> HotkeyManager.handleHotkeyPress -> runAction
+WM_HOTKEY -> timerWindowProc -> HotkeyManager.handleHotkeyPress -> Commands.run
   -> cycling.* -> Scout.getHwndByName, returned as Outcome.activate
   -> App.runHotkeyOutcome -> activation.activate -> focus_grant.forceSetForegroundWindow
 ```
@@ -360,7 +361,7 @@ A second exe, `eve-maj-sim` (`zig build sim`), that stands in for EVE clients so
 |---|---|
 | `log.zig` | Buffered rotating file log, `Scoped(name)`, debug console |
 | `crash.zig` | Exception handlers, panic handler, minidump |
-| `tray.zig` | Tray icon and menu; its toggles run as hotkey actions through `HotkeyManager.runGlobalAction` |
+| `tray.zig` | Tray icon and menu; its toggles run as hotkey actions through `App.commands().runGlobal` |
 | `update.zig` | GitHub release check |
 | `lang/` | UI strings by English key, per-language JSON |
 | `platform/fonts.zig` | Bundled Cascadia and Geist, registered process-private; `create` makes every GDI font |

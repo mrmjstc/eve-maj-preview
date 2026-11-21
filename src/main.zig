@@ -320,7 +320,7 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
             // Any process can post here; an id out of range is none of ours.
             const id = std.math.cast(c_int, wParam) orelse return 0;
             if (!focus_grant.handleWmHotkey(id)) {
-                if (app.hotkey_manager) |manager| app.runHotkeyOutcome(manager.handleHotkeyPress(id, lParam, app.thumbnail_set));
+                if (app.hotkey_manager) |manager| app.runHotkeyOutcome(manager.handleHotkeyPress(id, lParam, &app.commands(), app.thumbnail_set));
             }
             return 0;
         },

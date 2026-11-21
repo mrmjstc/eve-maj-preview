@@ -4,15 +4,15 @@ const animation = @import("../clients/animation.zig");
 const scout = @import("../clients/scout.zig");
 const config = @import("../config.zig");
 const set = @import("../thumbnail/set.zig");
-const manager_mod = @import("manager.zig");
+const commands_mod = @import("commands.zig");
 const log = @import("../log.zig");
 
-const HotkeyManager = manager_mod.HotkeyManager;
+const Commands = commands_mod.Commands;
 const ThumbnailSet = set.ThumbnailSet;
 const slog = log.Scoped("hotkeys");
 
-pub fn toggleExclusion(manager: *HotkeyManager, source_hwnd: win32.HWND) void {
-    const client = manager.roster.byHwnd(source_hwnd) orelse return;
+pub fn toggleExclusion(commands: *const Commands, source_hwnd: win32.HWND) void {
+    const client = commands.roster.byHwnd(source_hwnd) orelse return;
     const character_name = client.character_name;
 
     // Exclusions are by name, and every login-screen window shares "EVE", so one toggle would hit them all.
@@ -21,19 +21,19 @@ pub fn toggleExclusion(manager: *HotkeyManager, source_hwnd: win32.HWND) void {
         return;
     }
 
-    const is_excluded = manager.exclusions.toggle(character_name) catch |err| {
+    const is_excluded = commands.exclusions.toggle(character_name) catch |err| {
         slog.err("Failed to toggle exclusion for '{s}': {}", .{ character_name, err });
         return;
     };
     // The excluded list's order changed, so its cycle position no longer means anything.
-    manager.cycle.excluded_index = null;
-    manager.roster.bumpByName(character_name);
+    commands.cycle.excluded_index = null;
+    commands.roster.bumpByName(character_name);
 
-    if (is_excluded and manager.live().exclusion.autoMinimizeExcluded) {
-        animation.showClient(manager.live(), source_hwnd, win32.SW_FORCEMINIMIZE);
+    if (is_excluded and commands.live().exclusion.autoMinimizeExcluded) {
+        animation.showClient(commands.live(), source_hwnd, win32.SW_FORCEMINIMIZE);
     }
 
-    manager.notifier.notify(source_hwnd, .{ .notification_type = .CycleExclusion, .state = if (is_excluded) .excluded else .included });
+    commands.notifier.notify(source_hwnd, .{ .notification_type = .CycleExclusion, .state = if (is_excluded) .excluded else .included });
 
     slog.info("Toggled cycle exclusion for {s}: {s}", .{
         character_name,
@@ -41,15 +41,15 @@ pub fn toggleExclusion(manager: *HotkeyManager, source_hwnd: win32.HWND) void {
     });
 }
 
-pub fn clearLoggedOutExclusion(manager: *HotkeyManager, character_name: []const u8) void {
-    if (!manager.exclusions.remove(character_name)) return;
-    manager.cycle.excluded_index = null;
+pub fn clearLoggedOutExclusion(commands: *const Commands, character_name: []const u8) void {
+    if (!commands.exclusions.remove(character_name)) return;
+    commands.cycle.excluded_index = null;
     slog.info("Cleared cycle exclusion for {s} on logout", .{character_name});
 }
 
 /// No-op if nothing's hovered.
-pub fn assignHoveredToGroup(manager: *HotkeyManager, thumbnail_set: *ThumbnailSet, group_index: usize) void {
-    if (group_index >= manager.config.hotkeyGroups.items.len) {
+pub fn assignHoveredToGroup(commands: *const Commands, thumbnail_set: *ThumbnailSet, group_index: usize) void {
+    if (group_index >= commands.config.hotkeyGroups.items.len) {
         slog.err("Failed to assign to group: index {} is out of range", .{group_index});
         return;
     }
@@ -59,10 +59,10 @@ pub fn assignHoveredToGroup(manager: *HotkeyManager, thumbnail_set: *ThumbnailSe
         return;
     };
 
-    const group = &manager.config.hotkeyGroups.items[group_index];
+    const group = &commands.config.hotkeyGroups.items[group_index];
     const character_name = thumbnail.character_name;
 
-    const added = manager.store.toggleGroupMember(group_index, character_name) catch |err| {
+    const added = commands.store.toggleGroupMember(group_index, character_name) catch |err| {
         slog.err("Failed to toggle '{s}' in group {} '{s}': {}", .{ character_name, group_index, group.name, err });
         return;
     };
@@ -73,7 +73,7 @@ pub fn assignHoveredToGroup(manager: *HotkeyManager, thumbnail_set: *ThumbnailSe
     }
 
     // The old index may now point at a shifted member.
-    manager.cycle.group_cursors[group_index] = null;
+    if (group_index < commands.cycle.group_cursors.items.len) commands.cycle.group_cursors.items[group_index] = null;
 
     // Before the reflow, so the reflow's render already has the new label.
     thumbnail_set.refreshGroupBadge(thumbnail);
@@ -85,5 +85,5 @@ pub fn assignHoveredToGroup(manager: *HotkeyManager, thumbnail_set: *ThumbnailSe
 
     var group_label_buf: [config.HotkeyGroupConfig.DISPLAY_NAME_SIZE]u8 = undefined;
     const group_label = group.displayName(&group_label_buf, group_index);
-    manager.notifier.notify(thumbnail.source_hwnd, .{ .notification_type = .GroupMembership, .state = if (added) .added else .removed, .target = group_label });
+    commands.notifier.notify(thumbnail.source_hwnd, .{ .notification_type = .GroupMembership, .state = if (added) .added else .removed, .target = group_label });
 }

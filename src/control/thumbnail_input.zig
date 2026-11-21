@@ -133,8 +133,7 @@ fn handleThumbnailShiftClick(running: *app.App, source_hwnd: win32.HWND) void {
         return;
     }
 
-    const manager = running.hotkey_manager orelse return;
-    membership.toggleExclusion(manager, source_hwnd);
+    membership.toggleExclusion(&running.commands(), source_hwnd);
     // Now rather than on the next tick, so the exclusion shows at once.
     thumbnail_set.renderDirtyThumbnails(null);
 }
