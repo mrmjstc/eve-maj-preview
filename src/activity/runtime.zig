@@ -6,6 +6,7 @@ const set = @import("../thumbnail/set.zig");
 const activity_stats = @import("../thumbnail/activity_stats.zig");
 const scout = @import("../clients/scout.zig");
 const chatlog = @import("../chatlog.zig");
+const notifier_mod = @import("../notifications/notifier.zig");
 const tracker_mod = @import("tracker.zig");
 const resources_mod = @import("resources.zig");
 const ping_mod = @import("ping.zig");
@@ -15,6 +16,7 @@ const log = @import("../log.zig");
 const ThumbnailSet = set.ThumbnailSet;
 const ActivityStats = activity_stats.ActivityStats;
 const Config = config_mod.Config;
+const Notifier = notifier_mod.Notifier;
 const slog = log.Scoped("activity");
 
 /// Independent of the overlay refresh, and also the cap when an alert's throttle is 0.
@@ -123,7 +125,7 @@ pub const Trackers = struct {
     }
 
     /// `now` is the tick's start, so the schedule holds however long the work takes.
-    pub fn tick(self: *Trackers, config: *const Config, windows: []const scout.EveWindow, now: win32.Ticks, tick_interval_ms: u64, thumbnail_set: ?*ThumbnailSet) void {
+    pub fn tick(self: *Trackers, config: *const Config, windows: []const scout.EveWindow, now: win32.Ticks, tick_interval_ms: u64, thumbnail_set: ?*ThumbnailSet, notifier: *const Notifier) void {
         const context: TickContext = .{ .thumbnail_set = thumbnail_set, .windows = windows, .now = now, .tick_interval_ms = tick_interval_ms };
         if (self.combat) |t| pushThrottled(tracker_mod.CombatTracker, pushDps, t, context, &self.last_dps_update, config.combat.update_interval_ms);
         if (self.mining) |t| pushThrottled(tracker_mod.MiningTracker, pushMining, t, context, &self.last_mining_update, config.mining.update_interval_ms);
@@ -131,7 +133,7 @@ pub const Trackers = struct {
 
         if (schedule.isDue(now.elapsedSince(self.last_alert_check), ALERT_CHECK_INTERVAL_MS, tick_interval_ms)) {
             self.last_alert_check = now;
-            if (thumbnail_set) |active_set| self.checkAlerts(active_set, config, windows, now);
+            self.checkAlerts(notifier, config, windows, now);
         }
 
         self.setupSampler(resources_mod.ResourceTracker, &self.resources, config.resources.enabled, "Resource usage");
@@ -156,19 +158,19 @@ pub const Trackers = struct {
         if (thumbnail_set) |active_set| active_set.renderDirtyThumbnails(null);
     }
 
-    fn checkAlerts(self: *const Trackers, thumbnail_set: *ThumbnailSet, config: *const Config, windows: []const scout.EveWindow, now: win32.Ticks) void {
+    fn checkAlerts(self: *const Trackers, notifier: *const Notifier, config: *const Config, windows: []const scout.EveWindow, now: win32.Ticks) void {
         const idle_window_ms: u64 = @as(u64, config.mining.idle_alert_window_seconds) * std.time.ms_per_s;
         const stopped_window_ms: u64 = @as(u64, config.mining.stopped_alert_window_seconds) * std.time.ms_per_s;
         for (windows) |eve_window| {
             if (self.combat) |combat| {
-                if (combat.query(eve_window.character_name, tracker_mod.CombatWindow.checkDamageAlert, .{}, false)) thumbnail_set.notify(eve_window.hwnd, .{ .notification_type = .TakingDamage });
+                if (combat.query(eve_window.character_name, tracker_mod.CombatWindow.checkDamageAlert, .{}, false)) notifier.notify(eve_window.hwnd, .{ .notification_type = .TakingDamage });
             }
             if (self.mining) |mining| {
                 if (mining.query(eve_window.character_name, tracker_mod.MiningWindow.checkIdleAlert, .{ now, idle_window_ms, config.mining.idle_alert_threshold }, false)) {
-                    thumbnail_set.notify(eve_window.hwnd, .{ .notification_type = .MiningIdle });
+                    notifier.notify(eve_window.hwnd, .{ .notification_type = .MiningIdle });
                 }
                 if (mining.query(eve_window.character_name, tracker_mod.MiningWindow.checkStoppedAlert, .{ now, stopped_window_ms }, false)) {
-                    thumbnail_set.notify(eve_window.hwnd, .{ .notification_type = .MiningStopped });
+                    notifier.notify(eve_window.hwnd, .{ .notification_type = .MiningStopped });
                 }
             }
         }

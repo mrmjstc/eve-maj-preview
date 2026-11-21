@@ -102,10 +102,10 @@ Roster.expireAlerts                   drop expired alerts; flashing ones redraw
 ThumbnailSet.update                   create/destroy/rename thumbnails
 AutoMinimizer.check
 ThumbnailSet.checkHoverZoom
-ChatlogMonitor.update + drain         -> deliverChatlogFindings -> Roster (systems), Scout, ThumbnailSet
+ChatlogMonitor.update + drain         -> deliverChatlogFindings -> Roster (systems), Notifier (alerts, intel), Scout
 NotificationCenter.update             History Panel
 MapPanel.update                       takes new stats, renders the map
-Trackers.tick                         throttled push of rates/resources into ThumbnailSet
+Trackers.tick                         throttled push of rates/resources into ThumbnailSet; alerts via Notifier
 travel_left_behind.check              every ~2 s
 adjust tick interval
 ```
@@ -290,6 +290,7 @@ WM_HOTKEY -> timerWindowProc -> HotkeyManager.handleHotkeyPress -> runAction
 ## Notifications
 
 - `notifications/notification.zig`: types, categories, placeholders, default text.
+- `notifications/notifier.zig` (`Notifier`): what `App.notifier()` hands out to every caller that raises an alert (trackers, Travel Mode, hotkeys, the dialog's Test button, App itself); a copy is only pointers into App, so alerts land with or without a thumbnail set.
 - `notifications/dispatch.zig`: shows a notification on a roster `Client` if `rules.zig` (pure) allows it; adds sound, speech, history and notified-queue entries.
 - `notifications/template.zig`: fills `{name}` placeholders in custom text (pure).
 - `notifications/stack.zig`: a client's on-screen alerts, with throttle timestamps; kept on the roster.

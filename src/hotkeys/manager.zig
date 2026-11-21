@@ -10,6 +10,7 @@ const url = @import("../protocol/url.zig");
 const set = @import("../thumbnail/set.zig");
 const alert_effects = @import("../notifications/alert_effects.zig");
 const notified_queue_mod = @import("../notifications/notified_queue.zig");
+const notifier_mod = @import("../notifications/notifier.zig");
 const keyboard_hook = @import("keyboard_hook.zig");
 const hooks = @import("hooks.zig");
 const hook_bindings = @import("hook_bindings.zig");
@@ -62,6 +63,7 @@ pub const Borrowed = struct {
     scout: *scout_mod.Scout,
     exclusions: *exclusions_mod.Exclusions,
     notified_queue: *const notified_queue_mod.NotifiedQueue,
+    notifier: notifier_mod.Notifier,
     /// The hidden window hotkeys post to.
     timer_hwnd: win32.HWND,
 };
@@ -94,6 +96,8 @@ pub const HotkeyManager = struct {
     exclusions: *exclusions_mod.Exclusions,
     /// Borrowed; outlives the manager.
     notified_queue: *const notified_queue_mod.NotifiedQueue,
+    /// Shows the alerts for membership changes and saved-position moves.
+    notifier: notifier_mod.Notifier,
     /// What syncFocusFilter last handed the hook thread; null until it first does, so a recreated manager sends it again.
     sent_focus_filter: ?hook_bindings.FocusFilter = null,
 
@@ -112,6 +116,7 @@ pub const HotkeyManager = struct {
             .cycle = try .init(allocator, config.hotkeyGroups.items.len),
             .exclusions = borrowed.exclusions,
             .notified_queue = borrowed.notified_queue,
+            .notifier = borrowed.notifier,
         };
     }
 
@@ -326,8 +331,7 @@ pub const HotkeyManager = struct {
             .previous_not_logged_in => return activating(cycling.cycleNotLoggedIn(self, false)),
             .move_to_saved_positions => {
                 slog.info("Move to saved positions hotkey pressed", .{});
-                const active_set = thumbnail_set orelse return .none;
-                actions.moveAllClientsToSavedPositions(self.scout.getWindows(), self.live(), active_set);
+                actions.moveAllClientsToSavedPositions(self.scout.getWindows(), self.live(), &self.notifier);
             },
             .return_to_last_app => return .{ .app = .return_to_last_app },
             .next_app => launch.cycleApps(self.global_settings, true),

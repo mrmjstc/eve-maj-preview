@@ -5,6 +5,7 @@ const config = @import("../config.zig");
 const scout_mod = @import("../clients/scout.zig");
 const character_ids_mod = @import("../chatlog/character_ids.zig");
 const set = @import("../thumbnail/set.zig");
+const notifier_mod = @import("../notifications/notifier.zig");
 const panel_host = @import("../panels/panel_host.zig");
 
 const GlobalConfig = config.GlobalConfig;
@@ -48,6 +49,8 @@ pub const Save = struct {
 pub const Host = struct {
     /// Null outside the run and while a rebuild failed; read each time, as it's rebuilt.
     thumbnail_set: *const fn () ?*ThumbnailSet,
+    /// Null outside the run.
+    notifier: *const fn () ?notifier_mod.Notifier,
     /// The hidden window commands are posted to; null until main.zig creates it.
     timer_window: *const fn () ?win32.HWND,
     /// Commits the profile, restarts what reads settings only at setup, then writes and applies the global settings.

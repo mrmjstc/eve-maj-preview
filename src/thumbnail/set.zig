@@ -17,8 +17,6 @@ const window = @import("window.zig");
 const arrange = @import("arrange.zig");
 const renderer_mod = @import("renderer.zig");
 const look = @import("look.zig");
-const dispatch = @import("../notifications/dispatch.zig");
-const notification_mod = @import("../notifications/notification.zig");
 const universe = @import("../map/universe.zig");
 const intel_pins = @import("../map/intel_pins.zig");
 const connections = @import("../map/connections.zig");
@@ -41,8 +39,6 @@ pub const ThumbnailSet = struct {
     store: *config_mod.ProfileStore,
     /// Borrowed from App, which keeps it across a thumbnail set rebuild.
     exclusions: *const exclusions_mod.Exclusions,
-    /// Borrowed from App's NotificationCenter, which keeps them across a thumbnail set rebuild.
-    notification_records: dispatch.Records,
     destroy_event_hook: ?win32.HANDLE = null,
     renderer: renderer_mod.Renderer,
     auto_move: auto_move_mod.AutoMoveVerifier,
@@ -52,7 +48,7 @@ pub const ThumbnailSet = struct {
     /// Borrowed from App, which keeps it across a thumbnail set rebuild.
     auto_colors: *AutoColorStore,
     /// Borrowed from App, which keeps it across a thumbnail set rebuild; holds the game state the thumbnails draw.
-    roster: *Roster,
+    roster: *const Roster,
     /// A different mode needs a new ThumbnailSet (see App.onLiveProfileEdited).
     view_mode: types.ViewMode,
 
@@ -72,10 +68,8 @@ pub const ThumbnailSet = struct {
     pub const Borrowed = struct {
         store: *config_mod.ProfileStore,
         exclusions: *const exclusions_mod.Exclusions,
-        /// App's NotificationCenter's.
-        notification_records: dispatch.Records,
         auto_colors: *AutoColorStore,
-        roster: *Roster,
+        roster: *const Roster,
     };
 
     /// Passed in, since input handling sits above thumbnail/.
@@ -110,7 +104,6 @@ pub const ThumbnailSet = struct {
             .config = config,
             .store = borrowed.store,
             .exclusions = borrowed.exclusions,
-            .notification_records = borrowed.notification_records,
             .view_mode = config.display.viewMode,
         };
 
@@ -132,29 +125,6 @@ pub const ThumbnailSet = struct {
         for (self.thumbnails.items) |thumbnail| self.destroyThumbnail(thumbnail);
         self.thumbnails.deinit(self.allocator);
         self.auto_move.deinit();
-    }
-
-    /// Subject to that type's notification settings.
-    pub fn notify(self: *const ThumbnailSet, source_hwnd: win32.HWND, notification: notification_mod.Notification) void {
-        const client = self.roster.mutableByHwnd(source_hwnd) orelse {
-            slog.debug("No client for window 0x{x} to notify", .{@intFromPtr(source_hwnd)});
-            return;
-        };
-        dispatch.notify(self.dispatchContext(), client, notification);
-    }
-
-    /// For a global user action: kept out of history, and its sound and speech play once.
-    pub fn notifyAll(self: *const ThumbnailSet, notification: notification_mod.Notification) void {
-        dispatch.notifyAll(self.dispatchContext(), self.roster.clients.items, notification);
-    }
-
-    /// For the Intel Panel, which lists every report; `message` is copied.
-    pub fn listIntel(self: *const ThumbnailSet, system: universe.SystemIndex, message: []const u8, is_clear: bool) void {
-        dispatch.listIntel(self.dispatchContext(), self.roster.clients.items, system, message, is_clear);
-    }
-
-    pub fn showTestNotification(self: *const ThumbnailSet, notification_type: notification_mod.NotificationType, type_config: config_mod.NotificationTypeConfig) !void {
-        try dispatch.showTest(self.dispatchContext(), self.roster.clients.items, notification_type, type_config);
     }
 
     /// Hides the hover zoom once the cursor has left its thumbnail.
@@ -493,10 +463,6 @@ pub const ThumbnailSet = struct {
             };
         }
         self.store.setCharacterPositions(entries.items);
-    }
-
-    fn dispatchContext(self: *const ThumbnailSet) dispatch.Context {
-        return .{ .allocator = self.allocator, .config = self.config, .auto_colors = self.auto_colors, .records = self.notification_records, .active_source_hwnd = self.roster.active_hwnd };
     }
 
     fn destroyThumbnail(self: *ThumbnailSet, thumbnail: ThumbnailWindow) void {

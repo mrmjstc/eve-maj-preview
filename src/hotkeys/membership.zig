@@ -33,7 +33,7 @@ pub fn toggleThumbnailExclusion(manager: *HotkeyManager, thumbnail_set: *Thumbna
         animation.showClient(manager.live(), source_hwnd, win32.SW_FORCEMINIMIZE);
     }
 
-    thumbnail_set.notify(source_hwnd, .{ .notification_type = .CycleExclusion, .state = if (thumbnail.is_excluded_from_cycle) .excluded else .included });
+    manager.notifier.notify(source_hwnd, .{ .notification_type = .CycleExclusion, .state = if (thumbnail.is_excluded_from_cycle) .excluded else .included });
 
     thumbnail_set.renderThumbnail(thumbnail) catch |err| {
         slog.err("Failed to render thumbnail after exclusion toggle: {}", .{err});
@@ -89,5 +89,5 @@ pub fn assignHoveredToGroup(manager: *HotkeyManager, thumbnail_set: *ThumbnailSe
 
     var group_label_buf: [config.HotkeyGroupConfig.DISPLAY_NAME_SIZE]u8 = undefined;
     const group_label = group.displayName(&group_label_buf, group_index);
-    thumbnail_set.notify(thumbnail.source_hwnd, .{ .notification_type = .GroupMembership, .state = if (added) .added else .removed, .target = group_label });
+    manager.notifier.notify(thumbnail.source_hwnd, .{ .notification_type = .GroupMembership, .state = if (added) .added else .removed, .target = group_label });
 }

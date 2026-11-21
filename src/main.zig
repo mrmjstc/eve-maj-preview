@@ -323,10 +323,8 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
             return 0;
         },
         win32.WM_HOTKEYS_STATE_CHANGED => {
-            if (app.thumbnail_set) |thumbnail_set| {
-                if (app.hotkey_manager) |manager| {
-                    thumbnail_set.notifyAll(.{ .notification_type = .HotkeySuspend, .state = if (manager.areHotkeysSuspended()) .suspended else .resumed });
-                }
+            if (app.hotkey_manager) |manager| {
+                app.notifier().notifyAll(.{ .notification_type = .HotkeySuspend, .state = if (manager.areHotkeysSuspended()) .suspended else .resumed });
             }
             return 0;
         },

@@ -18,6 +18,7 @@ const launch = @import("hotkeys/launch.zig");
 const profile_switch = @import("hotkeys/profile_switch.zig");
 const center = @import("notifications/center.zig");
 const alert_effects = @import("notifications/alert_effects.zig");
+const notifier_mod = @import("notifications/notifier.zig");
 const list_view = @import("panels/list_view.zig");
 const map_panel_mod = @import("panels/map_panel.zig");
 const panel_host = @import("panels/panel_host.zig");
@@ -49,7 +50,7 @@ const PROFILE_NAME_BUFFER_SIZE = 256;
 /// What the panels ask of App, which they can't import.
 pub const PANEL_HOST: panel_host.Host = .{ .thumbnail_set = currentThumbnailSet, .roster = currentRoster, .run = runPanelRequest };
 /// What the configuration window asks of App, which it can't import.
-pub const DIALOG_HOST: dialog_host.Host = .{ .thumbnail_set = currentThumbnailSet, .timer_window = currentTimerWindow, .save = saveDialogSettings, .run = runDialogRequest };
+pub const DIALOG_HOST: dialog_host.Host = .{ .thumbnail_set = currentThumbnailSet, .notifier = currentNotifier, .timer_window = currentTimerWindow, .save = saveDialogSettings, .run = runDialogRequest };
 
 /// What restartSubsystems' earlier steps hand to its later ones.
 const Restart = struct {
@@ -156,6 +157,11 @@ pub const App = struct {
         self.store.deinit();
         self.character_ids.deinit();
         self.global_settings.deinit();
+    }
+
+    /// Shows alerts on the roster's clients, with or without a thumbnail set.
+    pub fn notifier(self: *App) notifier_mod.Notifier {
+        return .{ .allocator = self.allocator, .config = &self.store.live, .auto_colors = &self.auto_colors, .records = self.notifications.records(), .roster = &self.roster };
     }
 
     pub fn panelContext(self: *App) panel_host.Context {
@@ -304,13 +310,11 @@ pub const App = struct {
         self.map_panel.update(self.allocator, self.io, &self.store.live, presence);
         self.notifications.update(&self.store.live, presence);
 
-        self.trackers.tick(&self.store.live, scout_result.windows, tick_start, self.tick_interval_ms, self.thumbnail_set);
+        self.trackers.tick(&self.store.live, scout_result.windows, tick_start, self.tick_interval_ms, self.thumbnail_set, &self.notifier());
 
-        if (self.thumbnail_set) |thumbnail_set| {
-            if (schedule.isDue(tick_start.elapsedSince(self.last_travel_check), TRAVEL_CHECK_INTERVAL_MS, self.tick_interval_ms)) {
-                self.last_travel_check = tick_start;
-                travel_left_behind.check(thumbnail_set, &self.roster, &self.exclusions, tick_start);
-            }
+        if (schedule.isDue(tick_start.elapsedSince(self.last_travel_check), TRAVEL_CHECK_INTERVAL_MS, self.tick_interval_ms)) {
+            self.last_travel_check = tick_start;
+            travel_left_behind.check(&self.notifier(), &self.exclusions, tick_start);
         }
 
         const wanted_interval = self.tickIntervalFor(scout_result.windows.len);
@@ -333,12 +337,8 @@ pub const App = struct {
 
     /// Temporary; not saved to the profile.
     fn toggleAutoMinimize(self: *App) void {
-        const thumbnail_set = self.thumbnail_set orelse {
-            slog.err("Failed to toggle auto-minimize: the thumbnail set isn't ready", .{});
-            return;
-        };
-        const is_enabled = self.auto_minimizer.toggle(thumbnail_set.config);
-        thumbnail_set.notifyAll(.{ .notification_type = .AutoMinimizeToggle, .state = if (is_enabled) .on else .off });
+        const is_enabled = self.auto_minimizer.toggle(&self.store.live);
+        self.notifier().notifyAll(.{ .notification_type = .AutoMinimizeToggle, .state = if (is_enabled) .on else .off });
     }
 
     fn toggleDragging(self: *App) void {
@@ -394,17 +394,12 @@ pub const App = struct {
             };
         }
 
-        const thumbnail_set = self.thumbnail_set;
-        const shown_count = findings.notifications.items.len;
-        if (thumbnail_set == null and shown_count > 0) slog.warn("Failed to deliver {} chatlog alert(s): the thumbnail set isn't ready", .{shown_count});
-        if (thumbnail_set) |active_set| {
-            for (findings.notifications.items) |event| {
-                const hwnd = self.scout.getHwndByName(event.character_name) orelse {
-                    slog.debug("Dropped {s} notification for '{s}': no window", .{ @tagName(event.notification.notification_type), event.character_name });
-                    continue;
-                };
-                active_set.notify(hwnd, event.notification);
-            }
+        for (findings.notifications.items) |event| {
+            const client = self.roster.byName(event.character_name) orelse {
+                slog.debug("Dropped {s} notification for '{s}': no window", .{ @tagName(event.notification.notification_type), event.character_name });
+                continue;
+            };
+            self.notifier().notify(client.hwnd, event.notification);
         }
 
         for (findings.intel_sightings.items) |sighting| {
@@ -416,7 +411,7 @@ pub const App = struct {
                 }
             }
             if (sighting.is_message_first) {
-                if (self.thumbnail_set) |active_set| active_set.listIntel(sighting.system, sighting.message, sighting.is_clear);
+                self.notifier().listIntel(sighting.system, sighting.message, sighting.is_clear);
             }
         }
 
@@ -428,7 +423,7 @@ pub const App = struct {
             };
             const logged_in_at = self.scout.backdateLogin(hwnd, start.started_at, now_seconds) orelse continue;
             // Without a thumbnail set nothing is lost: the next one takes the backdated time from Scout.
-            if (thumbnail_set) |active_set| active_set.setSessionStart(hwnd, logged_in_at);
+            if (self.thumbnail_set) |active_set| active_set.setSessionStart(hwnd, logged_in_at);
         }
     }
 
@@ -468,7 +463,6 @@ pub const App = struct {
         new_set.* = try ThumbnailSet.init(self.allocator, .{
             .store = &self.store,
             .exclusions = &self.exclusions,
-            .notification_records = self.notifications.records(),
             .auto_colors = &self.auto_colors,
             .roster = &self.roster,
         }, .{
@@ -526,6 +520,7 @@ pub const App = struct {
             .scout = &self.scout,
             .exclusions = &self.exclusions,
             .notified_queue = &self.notifications.notified_queue,
+            .notifier = self.notifier(),
             .timer_hwnd = timer_hwnd,
         });
         self.hotkey_manager = manager;
@@ -619,9 +614,9 @@ pub const App = struct {
         try self.restartSubsystems(timer_hwnd, new_store, null);
 
         if (profile_changed) {
-            if (self.thumbnail_set) |thumbnail_set| {
-                thumbnail_set.notifyAll(.{ .notification_type = .ProfileSwitch, .target = config.profileDisplayName(self.store.live.profile_name) });
-                if (self.global_settings.moveOnProfileSwitch) self.moveClientsToSavedPositions(thumbnail_set);
+            self.notifier().notifyAll(.{ .notification_type = .ProfileSwitch, .target = config.profileDisplayName(self.store.live.profile_name) });
+            if (self.global_settings.moveOnProfileSwitch) {
+                if (self.thumbnail_set) |thumbnail_set| self.moveClientsToSavedPositions(thumbnail_set);
             }
         }
 
@@ -784,6 +779,12 @@ pub fn startChatlogWorker(monitor: *chatlog.ChatlogMonitor) void {
 fn currentRoster() ?*const roster_mod.Roster {
     const app = g_app orelse return null;
     return &app.roster;
+}
+
+/// For the configuration window's alert tests; null outside the run.
+fn currentNotifier() ?notifier_mod.Notifier {
+    const app = g_app orelse return null;
+    return app.notifier();
 }
 
 fn currentTimerWindow() ?win32.HWND {

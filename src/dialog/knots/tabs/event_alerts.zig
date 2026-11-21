@@ -113,13 +113,13 @@ pub fn alertSettings(context: *ui.Frame, ref: TypeRef, notification_type: Notifi
     try sound(context, ref, sound_target, sound_index);
 }
 
-/// Fires an alert on every thumbnail with the settings the window has for it, saved or not.
+/// Fires an alert on every client with the settings the window has for it, saved or not.
 pub fn testAlert(notification_type: NotificationType, alert: config.NotificationTypeConfig) void {
-    const thumbnail_set = session.thumbnailSet() orelse {
-        slog.warn("Failed to test alert: the thumbnail set isn't ready", .{});
+    const notifier = session.notifier() orelse {
+        slog.warn("Failed to test alert: the app isn't running", .{});
         return;
     };
-    thumbnail_set.showTestNotification(notification_type, alert) catch |err| {
+    notifier.showTest(notification_type, alert) catch |err| {
         slog.err("Failed to test alert: {}", .{err});
         status.show(.failure, "Failed to test alert: {err}", .{ .err = err });
     };

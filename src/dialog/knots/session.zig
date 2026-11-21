@@ -5,6 +5,7 @@ const config = @import("../../config.zig");
 const patch = @import("../../config/patch.zig");
 const set = @import("../../thumbnail/set.zig");
 const dialog_host = @import("../dialog_host.zig");
+const notifier_mod = @import("../../notifications/notifier.zig");
 const field_strings = @import("field_strings.zig");
 const log = @import("../../log.zig");
 
@@ -224,6 +225,11 @@ pub fn appContext() dialog_host.Context {
 /// Null while a rebuild failed; read each time, as it's rebuilt.
 pub fn thumbnailSet() ?*ThumbnailSet {
     return appHost().thumbnail_set();
+}
+
+/// Null outside the run.
+pub fn notifier() ?notifier_mod.Notifier {
+    return appHost().notifier();
 }
 
 /// The hidden window commands are posted to; null until main.zig creates it.
