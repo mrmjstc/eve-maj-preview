@@ -51,6 +51,8 @@ pub const ThumbnailSet = struct {
     roster: *const Roster,
     /// A different mode needs a new ThumbnailSet (see App.onLiveProfileEdited).
     view_mode: types.ViewMode,
+    /// Set-wide, so it holds with no thumbnails; each thumbnail follows it, bar those the region tool hides itself.
+    visibility: state.VisibilityState = .visible,
 
     pub const refreshAllThumbnailConfigCaches = arrange.refreshConfigCaches;
     pub const refreshAllThumbnailVisuals = arrange.refreshVisuals;
@@ -106,6 +108,7 @@ pub const ThumbnailSet = struct {
             .exclusions = borrowed.exclusions,
             .view_mode = config.display.viewMode,
         };
+        thumbnail_set.visibility = thumbnail_set.visibility.afterAutoHide(thumbnail_set.focusHide(thumbnail_set.isEveWindowForeground()));
 
         try window.registerClasses(instance, callbacks.window_procedures);
 
@@ -244,24 +247,17 @@ pub const ThumbnailSet = struct {
         }
     }
 
-    /// The first one speaks for all; with none, they count as shown.
     pub fn thumbnailsShown(self: *const ThumbnailSet) bool {
-        if (self.thumbnails.items.len == 0) return true;
-        return self.thumbnails.items[0].visibility_state == .visible;
+        return self.visibility == .visible;
     }
 
     /// Manual hiding persists through focus changes.
     pub fn toggleAllThumbnailsVisibility(self: *ThumbnailSet) void {
-        if (self.thumbnails.items.len == 0) {
-            slog.debug("No thumbnails to toggle visibility", .{});
-            return;
-        }
-
-        const new_visibility: state.VisibilityState = if (self.thumbnailsShown()) .hidden_manual else .visible;
-        slog.info("Toggling all thumbnails visibility: {}", .{new_visibility});
+        self.visibility = if (self.thumbnailsShown()) .hidden_manual else .visible;
+        slog.info("Toggling all thumbnails visibility: {}", .{self.visibility});
 
         for (self.thumbnails.items) |*thumbnail| {
-            thumbnail.setVisibility(new_visibility);
+            thumbnail.setVisibility(self.visibility);
             self.renderThumbnailLogged(thumbnail, "visibility toggle");
         }
     }
@@ -272,6 +268,7 @@ pub const ThumbnailSet = struct {
 
         // Checked again, since the setting or focus may have changed while the timer ran.
         const eve_has_focus = self.isEveWindowForeground();
+        self.visibility = self.visibility.afterAutoHide(self.focusHide(eve_has_focus));
         for (self.thumbnails.items) |*thumbnail| {
             if (self.applyAutoVisibility(thumbnail, eve_has_focus)) self.renderThumbnailLogged(thumbnail, "auto-hide");
         }
@@ -316,6 +313,7 @@ pub const ThumbnailSet = struct {
         self.drawn_active_hwnd = active;
         const active_changed = old_active != active;
         const any_eve_has_focus = if (active) |hwnd| self.roster.contains(hwnd) else false;
+        if (any_eve_has_focus) self.visibility = self.visibility.afterAutoHide(self.focusHide(true));
 
         for (self.thumbnails.items) |*thumbnail| {
             // Losing focus hides only after the debounce timer, so only regaining it applies here.
@@ -586,7 +584,7 @@ pub const ThumbnailSet = struct {
             .character_name = strings.character_name,
             .system_name = strings.system_name,
             .cached_group_badge_label = strings.group_badge_label,
-            .visibility_state = state.VisibilityState.visible.afterAutoHide(self.focusHide(self.isEveWindowForeground())),
+            .visibility_state = self.visibility.afterAutoHide(self.focusHide(self.isEveWindowForeground())),
             .is_win32_enabled = is_win32_enabled,
         };
         thumbnail.refreshConfigCache(self.config, self.auto_colors);
