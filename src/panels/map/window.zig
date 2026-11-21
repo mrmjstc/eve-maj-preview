@@ -89,7 +89,7 @@ pub const MapPanelWindow = struct {
     settled_region_ids: [layout.MAX_REGIONS]u32,
     /// A leave is armed, to clear the hover.
     is_tracking_mouse: bool = false,
-    /// See MapPanel.intel_history.
+    /// The reports the Intel card lists; borrowed from App's intel, outlives the window.
     intel_history: ?*const history.NotificationHistory,
     /// See MapPanel.global.
     global: ?*const GlobalConfig,

@@ -1,12 +1,12 @@
 //! Whether a notification shows on a thumbnail, whether History lists it, and whether any can be heard; no I/O.
 const std = @import("std");
-const config_notifications = @import("../config/notifications.zig");
+const notifications = @import("../config/notifications.zig");
 const chat_alerts = @import("../config/chat_alerts.zig");
 const notification = @import("notification.zig");
 
 const ChatAlertConfig = chat_alerts.ChatAlertConfig;
-const NotificationConfig = config_notifications.NotificationConfig;
-const NotificationTypeConfig = config_notifications.NotificationTypeConfig;
+const NotificationConfig = notifications.NotificationConfig;
+const NotificationTypeConfig = notifications.NotificationTypeConfig;
 const NotificationType = notification.NotificationType;
 
 /// Why a notification is held back.

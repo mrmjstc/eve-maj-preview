@@ -293,7 +293,7 @@ pub fn renderOverlay(font_cache: *FontCache, cache: *RenderCache, target_hwnd: w
     gdi_overlay.presentLayered(target_hwnd, overlay, settings.overlay_alpha);
 }
 
-/// Reads what only Win32 can tell (DPI, client size, minimized, the clock); look.renderSettings decides the rest. `readings` are the client's.
+/// Reads what only Win32 can tell (DPI, client size, minimized, the clock), and look.renderSettings decides the rest from the client's `readings`.
 pub fn createRenderSettings(config: *const config_mod.Config, thumbnail: *const ThumbnailWindow, readings: roster.Readings, is_excluded_from_cycle: bool, active_source_hwnd: ?win32.HWND) RenderSettings {
     // Read live, so fonts and size track the monitor this window is on now.
     const dpi_scale = win32.dpiToScale(win32.GetDpiForWindow(thumbnail.hwnd));

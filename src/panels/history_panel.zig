@@ -84,13 +84,13 @@ pub const HistoryPanel = struct {
         store.update(.{ .historyPanel = .{ .show = is_shown } });
     }
 
-    /// Per-tick: renders the panel from `notifications`, or hides it.
-    pub fn update(self: *HistoryPanel, notifications: *const history_mod.NotificationHistory, config: *const config_mod.Config, presence: panel_look.Presence) void {
+    /// Per-tick: renders the panel from `notification_history`, or hides it.
+    pub fn update(self: *HistoryPanel, notification_history: *const history_mod.NotificationHistory, config: *const config_mod.Config, presence: panel_look.Presence) void {
         self.visibility.note(presence, win32.Ticks.now().ms);
 
         const window = if (self.window) |*w| w else return;
         if (self.isVisible(config, presence.any_character_logged_in)) {
-            window.render(notifications) catch |err| {
+            window.render(notification_history) catch |err| {
                 slog.err("Failed to render History Panel window: {}", .{err});
             };
         } else {
@@ -318,7 +318,7 @@ pub const HistoryPanelWindow = struct {
     }
 
     /// Called every tick; redraws only when the render signature changed.
-    pub fn render(self: *HistoryPanelWindow, notifications: *const history_mod.NotificationHistory) !void {
+    pub fn render(self: *HistoryPanelWindow, notification_history: *const history_mod.NotificationHistory) !void {
         const history_settings = &self.config.historyPanel;
         self.panel.followTopmost(history_settings.alwaysOnTop);
         try panel_chrome.ensureFonts(&self.panel, history_settings);
@@ -326,11 +326,11 @@ pub const HistoryPanelWindow = struct {
         try self.header_fonts.ensure(self.panel.allocator);
 
         var entry_buf: [history_mod.CAPACITY]history_mod.Entry = undefined;
-        const entries = notifications.snapshot(&entry_buf);
+        const entries = notification_history.snapshot(&entry_buf);
         self.row_count = history_look.build(&self.rows, entries, @intCast(@max(1, history_settings.maxRows)), history_look.buildOptions(history_settings, history_settings));
         for (self.rows[0..self.row_count], self.row_keys[0..self.row_count]) |row, *key| key.* = entries[row.last_index].timestamp.ms;
         const panel_header_state = self.header();
-        const signature = self.computeRenderSignature(entries, notifications.revision, &panel_header_state);
+        const signature = self.computeRenderSignature(entries, notification_history.revision, &panel_header_state);
         if (self.panel.isUnchanged(signature)) return;
 
         const is_collapsed = history_settings.collapsed;

@@ -89,15 +89,15 @@ pub const IntelPanel = struct {
         if (self.window) |*window| window.panel.followPosition(intel_settings.x, intel_settings.y);
     }
 
-    /// Per tick: renders the window from `notifications`, or hides it.
-    pub fn update(self: *IntelPanel, notifications: *const history.NotificationHistory, config: *const config_mod.Config, presence: panel_look.Presence) void {
+    /// Per tick: renders the window from `intel_history`, or hides it.
+    pub fn update(self: *IntelPanel, intel_history: *const history.NotificationHistory, config: *const config_mod.Config, presence: panel_look.Presence) void {
         self.visibility.note(presence, win32.Ticks.now().ms);
         const window = if (self.window) |*w| w else return;
         if (!self.isVisible(config, presence, false)) {
             window.hide();
             return;
         }
-        window.render(notifications) catch |err| {
+        window.render(intel_history) catch |err| {
             slog.err("Failed to render Intel Panel window: {}", .{err});
         };
     }
@@ -309,7 +309,7 @@ pub const IntelPanelWindow = struct {
         return null;
     }
 
-    fn computeRenderSignature(self: *const IntelPanelWindow, notifications: *const history.NotificationHistory, entries: []const history.Entry, total_count: usize, panel_header_state: *const panel_chrome.Header) u64 {
+    fn computeRenderSignature(self: *const IntelPanelWindow, intel_history: *const history.NotificationHistory, entries: []const history.Entry, total_count: usize, panel_header_state: *const panel_chrome.Header) u64 {
         const intel_settings = &self.config.intelPanel;
         const history_settings = &self.config.historyPanel;
         var hasher = std.hash.Wyhash.init(0);
@@ -326,12 +326,12 @@ pub const IntelPanelWindow = struct {
         const hovered_range: u8 = if (self.hovered_range) |range| @as(u8, @backingInt(range)) + 1 else 0;
         hasher.update(std.mem.asBytes(&hovered_range));
         panel_chrome.hashFonts(&hasher, history_settings);
-        history_rows.hashIntel(&hasher, notifications, entries, history_settings, intel_settings, &self.config.thumbnail.notifications);
+        history_rows.hashIntel(&hasher, intel_history, entries, history_settings, intel_settings, &self.config.thumbnail.notifications);
         return hasher.final();
     }
 
     /// Called every tick; redraws only when the render signature changed.
-    pub fn render(self: *IntelPanelWindow, notifications: *const history.NotificationHistory) !void {
+    pub fn render(self: *IntelPanelWindow, intel_history: *const history.NotificationHistory) !void {
         const intel_settings = &self.config.intelPanel;
         const history_settings = &self.config.historyPanel;
         self.panel.followTopmost(intel_settings.alwaysOnTop);
@@ -340,7 +340,7 @@ pub const IntelPanelWindow = struct {
         try self.header_fonts.ensure(self.panel.allocator);
 
         var entry_buf: [history.CAPACITY]history.Entry = undefined;
-        const all_entries = notifications.snapshot(&entry_buf);
+        const all_entries = intel_history.snapshot(&entry_buf);
         var shown_buf: [history.CAPACITY]history.Entry = undefined;
         var shown_count: usize = 0;
         for (all_entries) |entry| {
@@ -354,7 +354,7 @@ pub const IntelPanelWindow = struct {
         for (self.rows[0..self.row_count], self.row_systems[0..self.row_count]) |row, *system| system.* = entries[row.first_index].system;
 
         const panel_header_state = self.header();
-        const signature = self.computeRenderSignature(notifications, entries, all_entries.len, &panel_header_state);
+        const signature = self.computeRenderSignature(intel_history, entries, all_entries.len, &panel_header_state);
         if (self.panel.isUnchanged(signature)) return;
 
         const is_collapsed = intel_settings.collapsed;

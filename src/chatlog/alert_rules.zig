@@ -128,7 +128,7 @@ pub const RuleSet = struct {
         return false;
     }
 
-    /// What `message` says if an intel rule follows `channel`, at any distance from a client; a clear report's first system passes the rule's exclusions for a pin, and systems fill `out`.
+    /// Intel in `message` on a followed `channel`, at any distance; `out` holds the systems, and a clear report's first pins past the exclusions.
     pub fn intelReport(self: *const RuleSet, channel: []const u8, message: lines.ChatMessage, out: []SystemIndex) IntelReport {
         var folded_buf: [lines.MAX_LINE_LENGTH]u8 = undefined;
         const folded = foldCase(message.body, &folded_buf);

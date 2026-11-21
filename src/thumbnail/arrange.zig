@@ -120,8 +120,8 @@ pub fn repositionAll(thumbnail_set: *ThumbnailSet) void {
     var hdwp = beginDefer(thumbnail_set) orelse return;
     const layout = layoutOf(thumbnail_set, names);
     const monitor_placement = monitors.resolveMonitorPlacement(&thumbnail_set.config.display);
-    const monitor_bounds = if (monitor_placement) |mp| mp.bounds else null;
-    const scale = win32.dpiToScale(monitors.dpiForMonitor(if (monitor_placement) |mp| mp.monitor else null));
+    const monitor_bounds = if (monitor_placement) |resolved| resolved.bounds else null;
+    const scale = win32.dpiToScale(monitors.dpiForMonitor(if (monitor_placement) |resolved| resolved.monitor else null));
     const cells = layout.spaceCells(&assignment.counts);
 
     for (thumbnail_set.thumbnails.items, assignment.space_indices, assignment.rank, 0..) |thumbnail, assigned_space, rank, index| {

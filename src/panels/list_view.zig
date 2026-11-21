@@ -436,9 +436,9 @@ pub const ListWindow = struct {
         try self.names.resize(self.panel.allocator, clients.len);
         self.rows.clearRetainingCapacity();
         var has_visible_row = false;
-        for (clients, self.looks.items, self.names.items, 0..) |*client, *look, *names, i| {
+        for (clients, self.looks.items, self.names.items, 0..) |*client, *look, *row_names, i| {
             look.* = self.lookOf(client);
-            names.* = .{ .display_name = client.display_name, .character_name = client.character_name, .system_name = client.system_name };
+            row_names.* = .{ .display_name = client.display_name, .character_name = client.character_name, .system_name = client.system_name };
             if (look.is_hidden) continue;
             try self.rows.append(self.panel.allocator, i);
             // As a thumbnail stays up while hidden: a revealing alert or a drag.

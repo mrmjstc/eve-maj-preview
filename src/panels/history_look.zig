@@ -21,8 +21,8 @@ pub const HEADER_TEXT = "Alerts";
 pub const TEXT_GAP: i32 = 6;
 /// The most of a row's text width a long name may take from its message.
 pub const NAME_MAX_PERCENT = 50;
-/// Fits mergedText's and clientsText's longest results.
-pub const COUNT_TEXT_MAX = 24;
+/// Fits mergedText's and clientsText's longest results, for any usize.
+pub const COUNT_TEXT_MAX = 28;
 /// Fits every character a merged row can name, ", " apart.
 const NAMES_TEXT_MAX = history.CAPACITY * 16;
 /// A row's sides.

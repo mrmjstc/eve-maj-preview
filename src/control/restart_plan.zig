@@ -29,7 +29,7 @@ pub const Step = enum {
     build_thumbnail_set,
     /// Adds thumbnails for windows the new filters admit, keeping the set.
     populate_thumbnail_set,
-    /// Drops the roster's systems and the thumbnails' rates and log alerts once monitoring is off, since nothing would update them.
+    /// Drops the roster's systems, rates and log alerts once monitoring is off, since nothing would update them.
     clear_log_readings,
     apply_monitor_settings,
     create_monitor,

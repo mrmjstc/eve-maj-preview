@@ -454,7 +454,7 @@ pub const ThumbnailSet = struct {
     }
 
     /// Keeps the old name if copying fails.
-    fn rename(self: *ThumbnailSet, thumbnail: *ThumbnailWindow, name: []const u8) !void {
+    fn rename(self: *const ThumbnailSet, thumbnail: *ThumbnailWindow, name: []const u8) !void {
         thumbnail.replaceText(self.allocator, .character_name, try self.allocator.dupe(u8, name));
         thumbnail.refreshConfigCache(self.config, self.auto_colors);
         self.refreshGroupBadge(thumbnail);
@@ -564,8 +564,8 @@ pub const ThumbnailSet = struct {
     fn createThumbnail(self: *ThumbnailSet, eve_window: *const scout.EveWindow, initial_system_name: []const u8) !void {
         const name = eve_window.character_name;
         const monitor_placement = monitors.resolveMonitorPlacement(&self.config.display);
-        const monitor_bounds = if (monitor_placement) |mp| mp.bounds else null;
-        const scale = win32.dpiToScale(monitors.dpiForMonitor(if (monitor_placement) |mp| mp.monitor else null));
+        const monitor_bounds = if (monitor_placement) |resolved| resolved.bounds else null;
+        const scale = win32.dpiToScale(monitors.dpiForMonitor(if (monitor_placement) |resolved| resolved.monitor else null));
         const place = try arrange.newPlace(self, name, monitor_bounds, scale);
         const position = place.position;
         const size = place.size;

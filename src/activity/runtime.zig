@@ -1,4 +1,4 @@
-//! The profile's live activity trackers, and the throttled push of their values into the thumbnail set.
+//! The profile's live activity trackers, and the throttled push of their values onto the roster.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const config_mod = @import("../config.zig");

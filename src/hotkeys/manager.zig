@@ -181,7 +181,7 @@ pub const HotkeyManager = struct {
         return .none;
     }
 
-    /// Per tick: hands the hook thread the windows and setting the require-EVE-focus check needs, whenever they change, so it can let keys through to other apps.
+    /// Per tick: hands the hook thread what the require-EVE-focus check needs when it changes, so keys reach other apps.
     pub fn syncFocusFilter(self: *HotkeyManager, windows: []const scout.EveWindow) void {
         var filter: hook_bindings.FocusFilter = .{
             .is_required = self.live().hotkeys.requireEveFocus,

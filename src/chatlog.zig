@@ -578,7 +578,7 @@ pub const ChatlogMonitor = struct {
         };
     }
 
-    /// Gated by the type's settings in ThumbnailSet.notify, once the main thread delivers it.
+    /// Gated by the type's settings in Notifier.notify, once the main thread delivers it.
     fn queueNotification(self: *ChatlogMonitor, character_name: []const u8, notification: notification_mod.Notification) void {
         var event: queue.NotificationEvent = .{ .character_name = "", .notification = .{ .notification_type = notification.notification_type, .state = notification.state, .chat_rule_index = notification.chat_rule_index, .alert_group = notification.alert_group } };
         self.copyNotificationEvent(&event, character_name, notification) catch |err| {

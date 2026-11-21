@@ -205,7 +205,7 @@ pub fn cycleNotified(commands: *const Commands, is_forward: bool) ?win32.HWND {
     return null;
 }
 
-/// Cycles every logged-in client in Characters-list order (unconfigured ones follow, in Scout's discovery order); unlike other cycles, every entry is guaranteed running.
+/// In Characters-list order, unconfigured clients after in Scout's; unlike other cycles, every entry is running.
 pub fn cycleAllClients(commands: *const Commands, is_forward: bool) ?win32.HWND {
     slog.info("Cycle all clients hotkey pressed ({s})", .{directionName(is_forward)});
     const windows = commands.scout.getWindows();
@@ -271,7 +271,10 @@ pub fn cycleNotLoggedIn(commands: *const Commands, is_forward: bool) ?win32.HWND
     }
 
     var it = CycleOrder.init(found_index, hwnd_count, .{ .is_forward = is_forward });
-    const index = it.next() orelse return null;
+    const index = it.next() orelse {
+        slog.debug("No not-logged-in client to cycle to", .{});
+        return null;
+    };
     const hwnd = hwnds.items[index];
     slog.info("Cycling {s} to not-logged-in client ({}/{})", .{ directionName(is_forward), index + 1, hwnd_count });
     commands.cycle.last_not_logged_in_hwnd = hwnd;

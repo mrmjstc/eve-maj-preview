@@ -150,9 +150,9 @@ pub const Subject = struct {
     opacity: u8,
     /// Null while no character is logged in.
     session_minutes: ?u64,
-    /// Borrows from the thumbnail.
+    /// Borrows from the roster's client.
     stats: *const ActivityStats,
-    /// Borrows from the thumbnail.
+    /// Borrows from the roster's client.
     notifications: *const stack.NotificationStack,
     /// Already at the window's DPI.
     overlay_width: c_int,

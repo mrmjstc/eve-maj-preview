@@ -333,8 +333,9 @@ pub const text_input: Style = .{
     .focus = &.{ .border_color = .accent },
 };
 
-/// Fixed in an aligned row, like select and slider_box_aligned, so a growing label can't squeeze it.
-pub const text_input_aligned: Style = text_input.with(.{ .width = .fixed(230) });
+/// A text box's or dropdown's width in an aligned row, fixed so a growing label can't squeeze it.
+const ALIGNED_CONTROL_WIDTH = 230;
+pub const text_input_aligned: Style = text_input.with(.{ .width = .fixed(ALIGNED_CONTROL_WIDTH) });
 /// Wider than text_input_aligned, since a folder path is the longest value a row holds.
 pub const path_input: Style = text_input.with(.{ .width = .fixed(320) });
 /// A row label's tooltip: wider than knots' 260, and on PANEL like every menu and tooltip, set here since `.elevated` darkens inside a popover.
@@ -523,7 +524,7 @@ pub const slider_fill: Style = .{ .background = .{ .color = BORDER } };
 pub const slider_thumb: Style = .{ .width = .fixed(12), .background = .accent };
 
 pub const select: Style = .{
-    .width = .fixed(230),
+    .width = .fixed(ALIGNED_CONTROL_WIDTH),
     .height = .fixed(CONTROL_HEIGHT),
     .padding = .xy(8, 4),
     .font_size = .sm,
@@ -1023,7 +1024,7 @@ pub const icon_button_danger_text: Style = icon_button.with(.{
 pub const icon_button_disabled_text: Style = icon_button_disabled.with(.{ .font_size = .{ .px = 15 } });
 pub const icon_button_confirm: Style = confirm_button.with(.{ .width = .fixed(CONTROL_HEIGHT), .padding = .all(0), .justify = .center });
 
-/// Outside a filling tab: a roster beside the selected item's details, both sized to their content; only the roster side is inset, since the details' rows inset themselves.
+/// A roster beside its details outside a filling tab, both fitting their content; only the roster is inset, as the details' rows inset themselves.
 pub const master_detail: Style = .{ .width = .grow(), .direction = .row, .gap = 8, .padding = .init(0, 0, 0, ROW_INSET) };
 /// A master-detail filling the rest of its section, for a tab that fills the window.
 pub const master_detail_fill: Style = master_detail.with(.{ .height = .grow() });
@@ -1127,7 +1128,7 @@ pub const hotkey_remove: Style = .{
     .hover = &.{ .foreground = .{ .color = WHITE }, .background = .{ .color = DESTRUCTIVE_FILL }, .border_color = .{ .color = DESTRUCTIVE_FILL }, .state_layer = 0 },
     .active = &.{ .state_layer = 0 },
 };
-/// A hotkey's combos and buttons, at the row's right edge like an aligned row's controls; as tall as a control, so losing the + at the most combos a hotkey holds doesn't shrink the row.
+/// A hotkey's combos and buttons at the row's right edge; a control tall, so the row keeps its height when a full hotkey loses its +.
 pub const hotkey_row: Style = inline_row.with(.{ .justify = .end, .height = .{ .kind = .fit, .min = CONTROL_HEIGHT } });
 /// hotkey_row in an aligned row, whose growing label already pushes it right.
 pub const hotkey_row_fit: Style = hotkey_row.with(.{ .width = .fit() });

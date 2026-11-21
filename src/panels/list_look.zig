@@ -125,11 +125,13 @@ pub const Total = struct {
 /// In Stat order.
 pub const Totals = [STAT_COUNT]Total;
 
-/// What the row order and layout read of each client; borrowed for one render.
+/// What the row order and layout read of each client, for one render.
 pub const RowNames = struct {
+    /// Borrows from the roster.
     display_name: []const u8,
+    /// Borrows from the roster.
     character_name: []const u8,
-    /// Empty while unknown.
+    /// Borrows from the roster; empty while unknown.
     system_name: []const u8,
 };
 
@@ -224,12 +226,12 @@ pub fn systemGroupOrder(allocator: std.mem.Allocator, names: []const []const u8)
     const Group = struct {
         name: []const u8,
         count: usize,
-        first: usize,
+        first_index: usize,
 
-        fn before(_: void, first_group: @This(), second_group: @This()) bool {
-            if ((first_group.name.len == 0) != (second_group.name.len == 0)) return second_group.name.len == 0;
-            if (first_group.count != second_group.count) return first_group.count > second_group.count;
-            return first_group.first < second_group.first;
+        fn before(_: void, first: @This(), second: @This()) bool {
+            if ((first.name.len == 0) != (second.name.len == 0)) return second.name.len == 0;
+            if (first.count != second.count) return first.count > second.count;
+            return first.first_index < second.first_index;
         }
     };
     var groups: std.ArrayList(Group) = .empty;
@@ -240,7 +242,7 @@ pub fn systemGroupOrder(allocator: std.mem.Allocator, names: []const []const u8)
                 group.count += 1;
                 break;
             }
-        } else try groups.append(allocator, .{ .name = name, .count = 1, .first = index });
+        } else try groups.append(allocator, .{ .name = name, .count = 1, .first_index = index });
     }
     std.sort.insertion(Group, groups.items, {}, Group.before);
 

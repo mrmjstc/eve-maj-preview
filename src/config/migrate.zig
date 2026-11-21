@@ -177,6 +177,7 @@ fn followAccentFromOldDefault(root: *Value) void {
         const section = root.object.getPtr(follower.section) orelse continue;
         if (section.* != .object) continue;
         const text = values.stringAt(section.*, follower.key) orelse continue;
+        // Text that isn't a colour can't be the old default.
         const color = wire.parseHexColor(text) catch continue;
         if (color == OLD_ACCENT_DEFAULT) _ = section.object.orderedRemove(follower.key);
     }
