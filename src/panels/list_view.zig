@@ -106,8 +106,8 @@ pub const ListWindow = struct {
     pub fn init(context: panel_host.Context, host: panel_host.Host, row_input: RowInput) !ListWindow {
         const config = &context.store.live;
         try Class.register(context.instance);
-        const x = config.display.startX;
-        const y = config.display.startY;
+        const x = config.listView.x;
+        const y = config.listView.y;
         const sizes = list_look.metrics(&config.listView);
         const panel = try PanelWindow.init(context.allocator, context.instance, LIST_WINDOW_CLASS, "EVE Client List", .{ .left = x, .top = y, .right = x + sizes.column_width, .bottom = y + sizes.header_height }, config.listView.alwaysOnTop);
         win32.setClickThroughStyle(panel.hwnd, config.interaction.clickThrough);
@@ -127,7 +127,7 @@ pub const ListWindow = struct {
 
     /// Matches the panel to its configured position.
     pub fn sync(self: *ListWindow) void {
-        self.panel.followPosition(self.config.display.startX, self.config.display.startY);
+        self.panel.followPosition(self.config.listView.x, self.config.listView.y);
         win32.setClickThroughStyle(self.panel.hwnd, self.config.interaction.clickThrough);
     }
 
@@ -220,9 +220,7 @@ pub const ListWindow = struct {
     }
 
     pub fn saveWindowPosition(self: *const ListWindow) void {
-        if (!self.config.listView.rememberPosition) return;
-        const top_left = self.panel.topLeft() orelse return;
-        self.store.update(.{ .display = .{ .startX = top_left.x, .startY = top_left.y } });
+        panel_section.savePosition(self.store, SETTINGS_SECTION, &self.panel);
     }
 
     /// Null for a message left to Windows.

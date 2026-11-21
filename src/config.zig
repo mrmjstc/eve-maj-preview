@@ -100,7 +100,7 @@ pub const HotkeysConfig = hotkeys_mod.HotkeysConfig;
 
 pub const PROFILE_FORMAT_IDENTIFIER = "eve-maj-preview";
 /// Bumped only for schema changes needing a migration, independent of the release version; see config/migrate.zig and Config.fromWire.
-pub const PROFILE_FORMAT_VERSION: u32 = migrate.LIST_RATES_VERSION;
+pub const PROFILE_FORMAT_VERSION: u32 = migrate.LIST_POSITION_VERSION;
 
 pub const ShownColors = struct {
     system_name_color: u32,

@@ -9,8 +9,9 @@ const SCREEN_X = ranges_mod.SCREEN_X;
 const SCREEN_Y = ranges_mod.SCREEN_Y;
 const HIDE_DEBOUNCE_MS = .{ 0, 5000 };
 
-/// The client list's position is display.startX and startY.
 pub const ListViewConfig = struct {
+    x: i32 = 10,
+    y: i32 = 10,
     order: types.ListViewOrder = .ConfiguredCharacters,
     /// Folded to its header by the header's chevron.
     collapsed: bool = false,
@@ -57,6 +58,8 @@ pub const ListViewConfig = struct {
     hideDebounceMs: u32 = 500,
 
     pub const ranges = .{
+        .x = SCREEN_X,
+        .y = SCREEN_Y,
         .columns = .{ 1, 6 },
         .columnWidth = .{ 120, 500 },
         .fontSize = ranges_mod.FONT_SIZE,

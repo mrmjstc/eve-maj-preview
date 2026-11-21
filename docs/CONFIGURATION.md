@@ -43,6 +43,7 @@ Profile file names: `<name>.json` with no path separators or `:*?"<>|`, not star
 - `formatVersion` below 4 migrates on load: the Client List's and panels' `display` keys move into `listView`, `historyPanel`, `mapPanel` and `intelPanel`, dropping their prefix (`mapPanel.x` becomes `mapPanel.x`, `mapPanel.show` becomes `mapPanel.show`); a key already in its section wins.
 - `formatVersion` below 5 migrates on load: a `listView.activeColor` or `thumbnail.borderColor` still at the old default `0xFFD9A441` is removed, so it follows `accentColor`.
 - `formatVersion` below 6 migrates on load: `listView.showIncomingDps`/`showOutgoingDps`/`showMiningRate`/`showBountyRate` stay on only where `combat`/`mining`/`bounty.enabled` was on, and are removed otherwise.
+- `formatVersion` below 7 migrates on load: `display.startX`/`startY` are copied into `listView.x`/`y`, which the Client List used to share with the thumbnails' start position.
 - A profile with `thumbnailSpaces` but no `display.placementMode` gets `ThumbnailSpaces` if any space is enabled.
 
 ## Value formats
@@ -69,7 +70,7 @@ Profile file names: `<name>.json` with no path separators or `:*?"<>|`, not star
 | Key | Type | Default | Notes |
 |---|---|---|---|
 | `app` | string | `"eve-maj-preview"` | Rewritten on save. |
-| `formatVersion` | int | `6` | Read only to migrate; rewritten on save. |
+| `formatVersion` | int | `7` | Read only to migrate; rewritten on save. |
 | `accentColor` | colour | `0xFFD9A441` | This profile's accent: the config dialog, the panels, and the unset `listView.activeColor` and `thumbnail.borderColor`. |
 
 Sections: `thumbnail`, `timer`, `display`, `listView`, `historyPanel`, `mapPanel`, `intelPanel`, `snapping`, `panelSnapping`, `interaction`, `autoMinimize`, `autoMovePosition`, `exclusion`, `closeAll`, `combat`, `mining`, `bounty`, `resources`, `ping`, `travel`, `hotkeys` (objects); `windowFilters`, `characters`, `systemColors`, `chatAlerts`, `hotkeyGroups`, `thumbnailSpaces` (arrays).
@@ -296,10 +297,11 @@ Every type except `HotkeySuspend`, `ProfileSwitch` and `AutoMinimizeToggle` also
 
 ### listView
 
-The Client List (`viewMode: ClientList` or `ThumbnailsAndList`): one row per client; click activates, Shift+click toggles exclusion, drag the header to move. With `ClientList` it uses its own colour, system name and auto-hide settings below instead of the `thumbnail` ones; with `ThumbnailsAndList` it follows the `thumbnail` ones (active colour from `borderColor`), except `useUniqueCharacterNameColors`, and hides with the thumbnails. Per-character colours, display names, `systemColors` and the rate units are always shared. Its position is `display.startX`/`startY`, which thumbnails also start from.
+The Client List (`viewMode: ClientList` or `ThumbnailsAndList`): one row per client; click activates, Shift+click toggles exclusion, drag the header to move. With `ClientList` it uses its own colour, system name and auto-hide settings below instead of the `thumbnail` ones; with `ThumbnailsAndList` it follows the `thumbnail` ones (active colour from `borderColor`), except `useUniqueCharacterNameColors`, and hides with the thumbnails. Per-character colours, display names, `systemColors` and the rate units are always shared.
 
 | Key | Type | Default | Range / values | Notes |
 |---|---|---|---|---|
+| `x`, `y` | int | `10`, `10` | screen | Saved when dragged while `rememberPosition` is on. |
 | `order` | enum | `ConfiguredCharacters` | `ConfiguredCharacters` `Tracked` `Alphabetical` | Also set from the header's ⋯ menu. |
 | `collapsed` | bool | `false` | | Folded to its header, by its chevron or a double-click; the header then shows the active client and any alerts. |
 | `groupBySystem` | bool | `false` | | Rows under a heading per system, the biggest first. Also set from the header's ⋯ menu. |

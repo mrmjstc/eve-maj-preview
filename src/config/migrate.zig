@@ -15,7 +15,9 @@ const PANELS_VERSION = 4;
 /// Profiles from before this saved the old default amber as the list's active colour and focused border, rather than following the accent.
 const FOLLOWS_ACCENT_VERSION = 5;
 /// Profiles from before this showed the client list's rates only while the thumbnails' overlay was on.
-pub const LIST_RATES_VERSION = 6;
+const LIST_RATES_VERSION = 6;
+/// Profiles from before this kept the client list's position in display.startX/startY, the unplaced thumbnails' start.
+pub const LIST_POSITION_VERSION = 7;
 
 /// The amber both colours defaulted to before FOLLOWS_ACCENT_VERSION.
 const OLD_ACCENT_DEFAULT: u32 = 0xFFD9A441;
@@ -151,6 +153,7 @@ pub fn profile(arena: std.mem.Allocator, root: *Value) !void {
     try panelsFromDisplay(arena, root);
     followAccentFromOldDefault(root);
     try listRatesFromOverlays(arena, root);
+    try listPositionFromStart(arena, root);
 }
 
 /// A profile's own chatlog section, from before Log Monitoring was shared by every profile; null when it has none.
@@ -194,6 +197,19 @@ fn listRatesFromOverlays(arena: std.mem.Allocator, root: *Value) !void {
             if (list_view.* == .object) _ = list_view.object.orderedRemove(rate.key);
         }
     }
+}
+
+/// Copies, not moves: startX/startY stay where unplaced thumbnails line up.
+fn listPositionFromStart(arena: std.mem.Allocator, root: *Value) !void {
+    if (root.* != .object) return;
+    const version = values.integerAt(root.*, "formatVersion") orelse 1;
+    if (version >= LIST_POSITION_VERSION) return;
+    const display = root.object.get("display") orelse return;
+    if (display != .object) return;
+    if (values.get(display, "startX") == null and values.get(display, "startY") == null) return;
+    const list_view = try sectionObject(arena, root, "listView") orelse return;
+    try copy(arena, list_view, display, "startX", "x");
+    try copy(arena, list_view, display, "startY", "y");
 }
 
 /// Moves the old fit region and not-logged-in space into thumbnailSpaces.
@@ -281,9 +297,9 @@ fn sectionObject(arena: std.mem.Allocator, root: *Value, name: []const u8) !?*st
     return &entry.value_ptr.object;
 }
 
-fn copy(arena: std.mem.Allocator, space: *std.json.ObjectMap, display: Value, from: []const u8, to: []const u8) !void {
+fn copy(arena: std.mem.Allocator, section: *std.json.ObjectMap, display: Value, from: []const u8, to: []const u8) !void {
     const value = values.get(display, from) orelse return;
-    try space.put(arena, to, value);
+    try section.put(arena, to, value);
 }
 
 const testing = std.testing;
@@ -427,6 +443,21 @@ test "an old profile's list rates stay shown only where their overlay was on" {
         \\{"formatVersion":6,"listView":{"showMiningRate":true}}
     );
     try testing.expectEqual(true, values.boolAt(current.object.get("listView").?, "showMiningRate").?);
+}
+
+test "an old profile's client list takes its position from the thumbnails' start position, and a current profile's is left alone" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const root = try migrated(arena.allocator(),
+        \\{"formatVersion":6,"display":{"startX":120,"startY":340}}
+    );
+    try testing.expectEqual(@as(i64, 120), values.integerAt(root.object.get("listView").?, "x").?);
+    try testing.expectEqual(@as(i64, 340), values.integerAt(root.object.get("listView").?, "y").?);
+    try testing.expectEqual(@as(i64, 120), values.integerAt(root.object.get("display").?, "startX").?);
+    const current = try migrated(arena.allocator(),
+        \\{"formatVersion":7,"display":{"startX":120},"listView":{"x":5}}
+    );
+    try testing.expectEqual(@as(i64, 5), values.integerAt(current.object.get("listView").?, "x").?);
 }
 
 test "a panel setting already in its section wins, and a current profile's display is left alone" {
