@@ -43,7 +43,6 @@ pub const ThumbnailWindow = struct {
     /// Zero while no character is logged in.
     session_start: win32.Ticks = .{},
     needs_render: bool = false,
-    is_win32_enabled: bool = true,
     /// Set by drag/thumbnail.zig for as long as either of its windows is dragged.
     is_dragged: bool = false,
 

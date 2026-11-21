@@ -26,9 +26,8 @@ pub const Renderer = struct {
         self.hover_zoom.deinit();
     }
 
-    /// A no-op outside Thumbnails mode, where the list window draws instead; `readings` are the thumbnail's client's.
+    /// `readings` are the thumbnail's client's.
     pub fn render(self: *Renderer, config: *const Config, thumbnail: *ThumbnailWindow, readings: roster.Readings, is_excluded_from_cycle: bool, active_source_hwnd: ?win32.HWND) !void {
-        if (!thumbnail.is_win32_enabled) return;
         const settings = overlay.createRenderSettings(config, thumbnail, readings, is_excluded_from_cycle, active_source_hwnd);
 
         if (thumbnail.render_cache.settings) |cached| {

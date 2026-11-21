@@ -64,7 +64,6 @@ pub fn resizeIfNeeded(thumbnail_set: *ThumbnailSet, thumbnail: *ThumbnailWindow,
 
 /// For the dialog's live preview, before the reflow and refreshVisuals.
 pub fn refreshConfigCaches(thumbnail_set: *ThumbnailSet) void {
-    // Every thumbnail, not just is_win32_enabled ones: list_view.zig reads these cache fields directly.
     for (thumbnail_set.thumbnails.items) |*thumbnail| {
         thumbnail.refreshConfigCache(thumbnail_set.config, thumbnail_set.auto_colors);
         thumbnail_set.refreshGroupBadge(thumbnail);
@@ -84,11 +83,7 @@ pub fn refreshVisuals(thumbnail_set: *ThumbnailSet) void {
     };
 
     for (thumbnail_set.thumbnails.items) |*thumbnail| {
-        // Before the skip too: the client list shows tracking-only entries by their visibility.
         _ = thumbnail_set.applyAutoVisibility(thumbnail, any_eve_has_focus);
-
-        if (!thumbnail.is_win32_enabled) continue;
-
         // Opacity is otherwise only applied at window creation.
         _ = win32.SetLayeredWindowAttributes(thumbnail.hwnd, 0, thumbnail.cached_opacity, win32.LWA_ALPHA);
         win32.setClickThroughStyle(thumbnail.hwnd, thumbnail_set.config.interaction.clickThrough);
@@ -104,10 +99,7 @@ pub fn refreshVisuals(thumbnail_set: *ThumbnailSet) void {
 
 /// Null if there's nothing to move or it fails.
 pub fn beginDefer(thumbnail_set: *const ThumbnailSet) ?win32.HDWP {
-    var window_count: c_int = 0;
-    for (thumbnail_set.thumbnails.items) |thumbnail| {
-        if (thumbnail.is_win32_enabled) window_count += 2;
-    }
+    const window_count: c_int = @intCast(thumbnail_set.thumbnails.items.len * 2);
     if (window_count == 0) return null;
     return win32.BeginDeferWindowPos(window_count + 2);
 }
@@ -133,7 +125,6 @@ pub fn repositionAll(thumbnail_set: *ThumbnailSet) void {
     const cells = layout.spaceCells(&assignment.counts);
 
     for (thumbnail_set.thumbnails.items, assignment.space_indices, assignment.rank, 0..) |thumbnail, assigned_space, rank, index| {
-        if (!thumbnail.is_win32_enabled) continue;
         // Hidden before it moves, or it shows at its new place until the next render hides it.
         if (thumbnail.cached_is_thumbnail_hidden) thumbnail.show(false);
         if (assigned_space) |space_index| {
@@ -154,7 +145,6 @@ pub fn repositionAll(thumbnail_set: *ThumbnailSet) void {
     if (spaces.anyActive(thumbnail_set.config)) {
         // Avoids a one-tick delay before the border catches up to the new cell size.
         for (thumbnail_set.thumbnails.items) |*thumbnail| {
-            if (!thumbnail.is_win32_enabled) continue;
             thumbnail.render_cache.settings = null;
             thumbnail_set.renderThumbnailLogged(thumbnail, "space resize");
         }
@@ -166,7 +156,6 @@ pub fn reassertTopmost(thumbnail_set: *ThumbnailSet) void {
     // Batched so DWM doesn't composite each step and flash thumbnails.
     var hdwp = beginDefer(thumbnail_set) orelse return;
     for (thumbnail_set.thumbnails.items) |thumbnail| {
-        if (!thumbnail.is_win32_enabled) continue;
         hdwp = win32.deferRaiseTopmost(hdwp, thumbnail.hwnd) orelse return;
         hdwp = win32.deferRaiseTopmost(hdwp, thumbnail.text_hwnd) orelse return;
     }

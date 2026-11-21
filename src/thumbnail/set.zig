@@ -430,7 +430,7 @@ pub const ThumbnailSet = struct {
     }
 
     fn destroyThumbnail(self: *ThumbnailSet, thumbnail: ThumbnailWindow) void {
-        if (thumbnail.is_win32_enabled) window.destroy(&thumbnail);
+        window.destroy(&thumbnail);
         self.freeThumbnailData(thumbnail);
     }
 
@@ -455,8 +455,7 @@ pub const ThumbnailSet = struct {
     /// Matches a thumbnail's own window or its text overlay, never a source EVE window.
     fn indexOfOverlay(self: *const ThumbnailSet, hwnd: win32.HWND) ?usize {
         for (self.thumbnails.items, 0..) |thumbnail, i| {
-            // Outside Thumbnails mode the handles are sentinels.
-            if (thumbnail.is_win32_enabled and (thumbnail.hwnd == hwnd or thumbnail.text_hwnd == hwnd)) return i;
+            if (thumbnail.hwnd == hwnd or thumbnail.text_hwnd == hwnd) return i;
         }
         return null;
     }
@@ -472,7 +471,7 @@ pub const ThumbnailSet = struct {
     fn onLogin(self: *ThumbnailSet, thumbnail: *ThumbnailWindow) void {
         const name = thumbnail.character_name;
         // A space ignores the saved spot; applyNameChanges' reflow places it instead.
-        if (thumbnail.is_win32_enabled and spaces.spaceFor(self.config, name) == null) {
+        if (spaces.spaceFor(self.config, name) == null) {
             if (self.config.getCharacterPosition(name)) |saved_position| {
                 thumbnail.moveTo(saved_position.x, saved_position.y, null);
                 self.resizeThumbnailIfNeeded(thumbnail, null);
@@ -512,8 +511,9 @@ pub const ThumbnailSet = struct {
         }
     }
 
-    /// Logs and skips failures; returns whether any were created.
+    /// None outside Thumbnails mode, where the list draws from the roster; logs and skips failures, and returns whether any were created.
     fn addMissingThumbnails(self: *ThumbnailSet, eve_windows: []const scout.EveWindow) bool {
+        if (!self.view_mode.showsThumbnails()) return false;
         var created_new = false;
 
         for (eve_windows) |eve_window| {
@@ -546,8 +546,8 @@ pub const ThumbnailSet = struct {
         };
     }
 
-    /// Shared by both creation paths; the caller supplies the handles and owns the result's strings.
-    fn newThumbnailRecord(self: *ThumbnailSet, eve_window: *const scout.EveWindow, initial_system_name: []const u8, handles: window.Handles, is_win32_enabled: bool) !ThumbnailWindow {
+    /// The caller supplies the handles and owns the result's strings.
+    fn newThumbnailRecord(self: *ThumbnailSet, eve_window: *const scout.EveWindow, initial_system_name: []const u8, handles: window.Handles) !ThumbnailWindow {
         const strings = try self.dupeThumbnailStrings(eve_window.character_name, initial_system_name);
         var thumbnail: ThumbnailWindow = .{
             .hwnd = handles.hwnd,
@@ -559,7 +559,6 @@ pub const ThumbnailSet = struct {
             .system_name = strings.system_name,
             .cached_group_badge_label = strings.group_badge_label,
             .visibility_state = self.visibility.afterAutoHide(self.focusHide(self.isEveWindowForeground())),
-            .is_win32_enabled = is_win32_enabled,
         };
         thumbnail.refreshConfigCache(self.config, self.auto_colors);
         return thumbnail;
@@ -571,22 +570,7 @@ pub const ThumbnailSet = struct {
         self.reconcileThumbnailStates();
     }
 
-    /// ClientList and Nothing modes only need a data record, not real Win32 windows.
-    fn createTrackingOnlyEntry(self: *ThumbnailSet, eve_window: *const scout.EveWindow, initial_system_name: []const u8) !void {
-        // Never passed to Win32, since is_win32_enabled is false.
-        const sentinel: win32.HWND = @ptrFromInt(1);
-        const thumbnail = try self.newThumbnailRecord(eve_window, initial_system_name, .{ .hwnd = sentinel, .text_hwnd = sentinel }, false);
-        errdefer self.freeThumbnailData(thumbnail);
-        try self.addThumbnail(thumbnail);
-
-        slog.info("Created tracking entry for {s} ({s} mode)", .{ eve_window.character_name, @tagName(self.config.display.viewMode) });
-    }
-
     fn createThumbnail(self: *ThumbnailSet, eve_window: *const scout.EveWindow, initial_system_name: []const u8) !void {
-        if (!self.config.display.viewMode.showsThumbnails()) {
-            return self.createTrackingOnlyEntry(eve_window, initial_system_name);
-        }
-
         const name = eve_window.character_name;
         const monitor_placement = monitors.resolveMonitorPlacement(&self.config.display);
         const monitor_bounds = if (monitor_placement) |mp| mp.bounds else null;
@@ -603,7 +587,7 @@ pub const ThumbnailSet = struct {
         });
         errdefer window.destroyHandles(handles);
 
-        var thumbnail = try self.newThumbnailRecord(eve_window, initial_system_name, handles, true);
+        var thumbnail = try self.newThumbnailRecord(eve_window, initial_system_name, handles);
         errdefer self.freeThumbnailData(thumbnail);
         try thumbnail.applyLivePreview();
         errdefer thumbnail.dropLivePreview();
@@ -619,7 +603,6 @@ pub const ThumbnailSet = struct {
     }
 
     fn positionOf(thumbnail: *const ThumbnailWindow) ?config_mod.ProfileStore.CharacterPosition {
-        if (!thumbnail.is_win32_enabled) return null;
         var rect: win32.RECT = undefined;
         if (!win32.toBool(win32.GetWindowRect(thumbnail.hwnd, &rect))) {
             slog.warn("Failed to get the position of '{s}' to save it", .{thumbnail.character_name});

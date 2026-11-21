@@ -157,7 +157,7 @@ Cross-thread data:
 1. A layered popup with the client's DWM thumbnail (`DwmRegisterThumbnail`), or, with the live preview off for that character, no registration and a plain fill painted on `WM_ERASEBKGND`. `applyLivePreview()` registers or drops it when settings change.
 2. A layered window on top with the GDI overlay (border, texts, notifications).
 
-In `ClientList`/`Nothing` view modes both HWNDs are sentinels. Shown or hidden (visibility hotkey, focus auto-hide) is set-wide, `ThumbnailSet.visibility`, which each thumbnail follows; only the region tool hides thumbnails one by one. Render state (active, inactive, alert, minimized, dragging) isn't stored; `effectiveRenderState()` derives it each render, from the client's alerts on the roster among other things.
+In `ClientList`/`Nothing` view modes the set holds no thumbnails: the list draws from the roster. Shown or hidden (visibility hotkey, focus auto-hide) is set-wide, `ThumbnailSet.visibility`, which each thumbnail follows; only the region tool hides thumbnails one by one. Render state (active, inactive, alert, minimized, dragging) isn't stored; `effectiveRenderState()` derives it each render, from the client's alerts on the roster among other things.
 
 Per-thumbnail state owned by other modules:
 

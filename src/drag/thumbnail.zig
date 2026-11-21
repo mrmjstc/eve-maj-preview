@@ -105,7 +105,7 @@ pub fn move(thumbnail_set: *ThumbnailSet, hwnd: win32.HWND) void {
     // Batched so the whole group moves in one DWM update instead of drifting apart across separate moves.
     var hdwp = arrange.beginDefer(thumbnail_set) orelse return;
     for (thumbnail_set.thumbnails.items) |thumbnail| {
-        if (!thumbnail.is_win32_enabled or !win32.isWindow(thumbnail.hwnd) or !win32.isWindow(thumbnail.text_hwnd)) continue;
+        if (!win32.isWindow(thumbnail.hwnd) or !win32.isWindow(thumbnail.text_hwnd)) continue;
 
         var thumbnail_rect: win32.RECT = undefined;
         if (!win32.toBool(win32.GetWindowRect(thumbnail.hwnd, &thumbnail_rect))) {
