@@ -9,8 +9,8 @@ const draw = @import("draw.zig");
 const font_cache_mod = @import("font_cache.zig");
 const window = @import("window.zig");
 const look = @import("look.zig");
-const activity_stats = @import("activity_stats.zig");
-const stack = @import("../notifications/stack.zig");
+const stats_mod = @import("../activity/stats.zig");
+const roster = @import("../clients/roster.zig");
 const spaces = @import("../layout/spaces.zig");
 const pixel_buffer = @import("../util/pixel_buffer.zig");
 const universe = @import("../map/universe.zig");
@@ -20,7 +20,7 @@ const map_look = @import("../panels/map/look.zig");
 const log = @import("../log.zig");
 
 const ThumbnailWindow = window.ThumbnailWindow;
-const ActivityStats = activity_stats.ActivityStats;
+const ActivityStats = stats_mod.ActivityStats;
 const RenderSettings = look.RenderSettings;
 const TextStyle = look.TextStyle;
 const TextPosition = types.TextPosition;
@@ -232,7 +232,7 @@ pub fn renderOverlay(font_cache: *FontCache, cache: *RenderCache, target_hwnd: w
     try addGroupBadge(&layout, fonts, cache, settings);
     try addSessionTimer(&layout, fonts, settings);
     if (settings.show_text) {
-        const stats = &thumbnail.stats;
+        const stats = &settings.stats;
         try addCombat(&layout, fonts, config, stats, settings);
         try addMining(&layout, fonts, config, stats, settings);
         try addBounty(&layout, fonts, config, stats, settings);
@@ -293,15 +293,15 @@ pub fn renderOverlay(font_cache: *FontCache, cache: *RenderCache, target_hwnd: w
     gdi_overlay.presentLayered(target_hwnd, overlay, settings.overlay_alpha);
 }
 
-/// Reads what only Win32 can tell (DPI, client size, minimized, the clock); look.renderSettings decides the rest. `alerts` are the client's.
-pub fn createRenderSettings(config: *const config_mod.Config, thumbnail: *const ThumbnailWindow, alerts: *const stack.NotificationStack, active_source_hwnd: ?win32.HWND) RenderSettings {
+/// Reads what only Win32 can tell (DPI, client size, minimized, the clock); look.renderSettings decides the rest. `readings` are the client's.
+pub fn createRenderSettings(config: *const config_mod.Config, thumbnail: *const ThumbnailWindow, readings: roster.Readings, active_source_hwnd: ?win32.HWND) RenderSettings {
     // Read live, so fonts and size track the monitor this window is on now.
     const dpi_scale = win32.dpiToScale(win32.GetDpiForWindow(thumbnail.hwnd));
     const size = overlaySize(config, thumbnail, dpi_scale);
     const now = win32.Ticks.now();
     return look.renderSettings(config, &.{
-        .state = thumbnail.effectiveRenderState(active_source_hwnd, alerts),
-        .is_shown = thumbnail.isShown(alerts),
+        .state = thumbnail.effectiveRenderState(active_source_hwnd, readings.alerts),
+        .is_shown = thumbnail.isShown(readings.alerts),
         .is_focused = thumbnail.isFocused(active_source_hwnd),
         .is_excluded_from_cycle = thumbnail.is_excluded_from_cycle,
         .is_hidden_for_character = thumbnail.cached_is_thumbnail_hidden,
@@ -314,8 +314,8 @@ pub fn createRenderSettings(config: *const config_mod.Config, thumbnail: *const 
         .border_colors = thumbnail.cached_border_colors,
         .opacity = thumbnail.cached_opacity,
         .session_minutes = thumbnail.sessionMinutes(now),
-        .stats = &thumbnail.stats,
-        .notifications = alerts,
+        .stats = readings.stats,
+        .notifications = readings.alerts,
         .overlay_width = size.width,
         .overlay_height = size.height,
         .dpi_scale = dpi_scale,

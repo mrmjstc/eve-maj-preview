@@ -161,7 +161,7 @@ pub const ThumbnailSet = struct {
     }
 
     pub fn renderThumbnail(self: *ThumbnailSet, thumbnail: *ThumbnailWindow) !void {
-        try self.renderer.render(self.config, thumbnail, self.roster.alertsOf(thumbnail.source_hwnd), self.roster.active_hwnd);
+        try self.renderer.render(self.config, thumbnail, self.roster.readingsOf(thumbnail.source_hwnd), self.roster.active_hwnd);
     }
 
     /// Logs a failure, with `context` in the message, instead of propagating it.
@@ -364,12 +364,6 @@ pub const ThumbnailSet = struct {
         }
     }
 
-    /// `setter` is an ActivityStats setter; redraws if anything shown changed.
-    pub fn updateStats(self: *ThumbnailSet, source_hwnd: win32.HWND, comptime setter: anytype, args: anytype) void {
-        const thumbnail = self.getThumbnailBySourceHwnd(source_hwnd) orelse return;
-        if (@call(.auto, setter, .{&thumbnail.stats} ++ args)) thumbnail.needs_render = true;
-    }
-
     /// After Scout backdated the client's login from its gamelog.
     pub fn setSessionStart(self: *ThumbnailSet, source_hwnd: win32.HWND, started: win32.Ticks) void {
         const thumbnail = self.getThumbnailBySourceHwnd(source_hwnd) orelse return;
@@ -412,14 +406,6 @@ pub const ThumbnailSet = struct {
         if (is_excluded == thumbnail.is_excluded_from_cycle) return;
         thumbnail.is_excluded_from_cycle = is_excluded;
         thumbnail.needs_render = true;
-    }
-
-    /// Once log monitoring is off, so stale log readings don't stay on screen; the roster clears the systems and log alerts.
-    pub fn clearLogReadings(self: *ThumbnailSet) void {
-        for (self.thumbnails.items) |*thumbnail| {
-            if (thumbnail.stats.clearLogReadings()) thumbnail.needs_render = true;
-        }
-        slog.debug("Cleared what the logs last showed", .{});
     }
 
     /// Reflows once at the end, since createThumbnail sizes each against the count so far.

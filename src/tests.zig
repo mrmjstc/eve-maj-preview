@@ -102,7 +102,7 @@ test {
     _ = @import("sim/lines.zig");
     _ = @import("sim/scenarios.zig");
     _ = @import("sim/schedule.zig");
-    _ = @import("thumbnail/activity_stats.zig");
+    _ = @import("activity/stats.zig");
     _ = @import("thumbnail/draw.zig");
     _ = @import("thumbnail/look.zig");
     _ = @import("thumbnail/state.zig");

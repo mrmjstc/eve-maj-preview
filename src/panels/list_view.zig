@@ -265,10 +265,10 @@ pub const ListWindow = struct {
         return self.config.shownColors().active_color;
     }
 
-    /// The thumbnail's client's alerts, which the roster keeps.
-    fn alertsOf(self: *const ListWindow, thumbnail: *const ThumbnailWindow) *const NotificationStack {
-        const roster = self.host.roster() orelse return &roster_mod.NO_ALERTS;
-        return roster.alertsOf(thumbnail.source_hwnd);
+    /// The thumbnail's client's alerts and activity readings, which the roster keeps.
+    fn readingsOf(self: *const ListWindow, thumbnail: *const ThumbnailWindow) roster_mod.Readings {
+        const roster = self.host.roster() orelse return .{};
+        return roster.readingsOf(thumbnail.source_hwnd);
     }
 
     /// Puts `rows` in the configured order and records each row's client.
@@ -360,27 +360,27 @@ pub const ListWindow = struct {
 
         for (self.rows.items) |thumbnail_index| {
             const thumbnail = &thumbnails[thumbnail_index];
-            const alerts = self.alertsOf(thumbnail);
-            const render_state = thumbnail.effectiveRenderState(active_source_hwnd, alerts);
+            const readings = self.readingsOf(thumbnail);
+            const render_state = thumbnail.effectiveRenderState(active_source_hwnd, readings.alerts);
             hashString(&hasher, thumbnail.character_name);
             hashString(&hasher, thumbnail.cached_display_name);
             hashString(&hasher, thumbnail.system_name);
             hasher.update(std.mem.asBytes(&render_state));
             hasher.update(std.mem.asBytes(&thumbnail.is_excluded_from_cycle));
-            hasher.update(std.mem.asBytes(&thumbnail.stats.incoming_dps));
-            hasher.update(std.mem.asBytes(&thumbnail.stats.outgoing_dps));
-            hasher.update(std.mem.asBytes(&thumbnail.stats.mining_rate));
-            hasher.update(std.mem.asBytes(&thumbnail.stats.bounty_isk_rate));
-            hasher.update(std.mem.asBytes(&thumbnail.stats.has_dps));
-            hasher.update(std.mem.asBytes(&thumbnail.stats.has_mining));
-            hasher.update(std.mem.asBytes(&thumbnail.stats.has_bounty));
+            hasher.update(std.mem.asBytes(&readings.stats.incoming_dps));
+            hasher.update(std.mem.asBytes(&readings.stats.outgoing_dps));
+            hasher.update(std.mem.asBytes(&readings.stats.mining_rate));
+            hasher.update(std.mem.asBytes(&readings.stats.bounty_isk_rate));
+            hasher.update(std.mem.asBytes(&readings.stats.has_dps));
+            hasher.update(std.mem.asBytes(&readings.stats.has_mining));
+            hasher.update(std.mem.asBytes(&readings.stats.has_bounty));
             if (thumbnail.system_name.len > 0) hasher.update(std.mem.asBytes(&thumbnail.cached_system_color));
             if (thumbnail.cached_list_name_color) |name_color| hasher.update(std.mem.asBytes(&name_color));
             if (render_state == .active) {
                 const badge_color = self.resolveActiveBadgeColor(thumbnail);
                 hasher.update(std.mem.asBytes(&badge_color));
             }
-            for (alerts.items()) |notification| {
+            for (readings.alerts.items()) |notification| {
                 hashString(&hasher, notification.text);
                 hasher.update(std.mem.asBytes(&notification.border_color_override));
                 hasher.update(std.mem.asBytes(&notification.text_color_override));
@@ -401,7 +401,7 @@ pub const ListWindow = struct {
     fn statReadings(self: *const ListWindow, thumbnail: *const ThumbnailWindow, out: *[list_look.STAT_COUNT]list_look.StatReading) []const list_look.StatReading {
         const config = self.config;
         const settings = self.statSettings();
-        const stats = &thumbnail.stats;
+        const stats = self.readingsOf(thumbnail).stats;
         var reading_count: usize = 0;
         for (std.enums.values(list_look.Stat)) |stat| {
             if (!list_look.showsStat(settings, stat)) continue;
@@ -433,7 +433,7 @@ pub const ListWindow = struct {
         for (thumbnails, 0..) |*thumbnail, i| {
             if (thumbnail.cached_is_hidden_from_client_list) continue;
             try self.rows.append(self.panel.allocator, i);
-            if (thumbnail.isShown(self.alertsOf(thumbnail))) has_visible_row = true;
+            if (thumbnail.isShown(self.readingsOf(thumbnail).alerts)) has_visible_row = true;
         }
         // Also hidden once the visibility toggle or auto-hide has hidden every client.
         if (!has_visible_row) {
@@ -499,7 +499,7 @@ pub const ListWindow = struct {
         var alert_count: usize = 0;
         for (self.rows.items) |thumbnail_index| {
             const thumbnail = &thumbnails[thumbnail_index];
-            switch (thumbnail.effectiveRenderState(active_source_hwnd, self.alertsOf(thumbnail))) {
+            switch (thumbnail.effectiveRenderState(active_source_hwnd, self.readingsOf(thumbnail).alerts)) {
                 .active => active = thumbnail,
                 .alert => alert_count += 1,
                 .inactive, .minimized, .dragging => {},
@@ -616,7 +616,7 @@ pub const ListWindow = struct {
         const row_top = line.top;
         const row_height = line.bottom - line.top;
         const column_left: i32 = @as(i32, @intCast(column)) * column_width;
-        const alerts = self.alertsOf(thumbnail);
+        const alerts = self.readingsOf(thumbnail).alerts;
         const render_state = thumbnail.effectiveRenderState(active_source_hwnd, alerts);
         const is_active = render_state == .active;
         const is_alert = render_state == .alert;
@@ -676,7 +676,7 @@ pub const ListWindow = struct {
     fn drawRightSlot(self: *const ListWindow, canvas: pixel_buffer.Canvas, dc: win32.HDC, thumbnail: *const ThumbnailWindow, slot: Slot) i32 {
         const list_settings = &self.config.listView;
         var notification_buffer: [TEXT_BUFFER_SIZE]u8 = undefined;
-        const alerts = self.alertsOf(thumbnail);
+        const alerts = self.readingsOf(thumbnail).alerts;
         const newest = if (list_settings.showNotifications) alerts.newestWithText() else null;
         if (newest) |notification| {
             const line = template.oneLine(notification.text, &notification_buffer);

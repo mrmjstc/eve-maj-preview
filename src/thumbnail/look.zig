@@ -7,9 +7,9 @@ const color_mod = @import("../util/color.zig");
 const strings = @import("../util/strings.zig");
 const stack = @import("../notifications/stack.zig");
 const connections_mod = @import("../map/connections.zig");
-const activity_stats = @import("activity_stats.zig");
+const stats_mod = @import("../activity/stats.zig");
 
-const ActivityStats = activity_stats.ActivityStats;
+const ActivityStats = stats_mod.ActivityStats;
 const TextPosition = types.TextPosition;
 const BorderStyle = types.BorderStyle;
 const scalePixels = win32.scalePixels;
@@ -123,6 +123,8 @@ pub const RenderSettings = struct {
     has_resource_data: bool = false,
     has_vram_data: bool = false,
     has_ping_data: bool = false,
+    /// Copied, so the overlay and the hover zoom draw from these settings alone.
+    stats: ActivityStats = .{},
 };
 
 /// What renderSettings reads off a thumbnail; overlay.zig gathers it, along with what only Win32 can tell.
@@ -273,6 +275,7 @@ pub fn renderSettings(config: *const config_mod.Config, subject: *const Subject)
         .has_resource_data = config.resources.enabled and stats.has_resources,
         .has_vram_data = stats.has_vram,
         .has_ping_data = config.ping.enabled and stats.has_ping,
+        .stats = stats.*,
     };
     if (settings.show_notifications) {
         settings.notification_line_count = notificationLines(&settings.notification_lines, subject.notifications, subject.is_focused, thumbnail_config.notifications.color);

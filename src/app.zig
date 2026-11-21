@@ -705,7 +705,7 @@ pub const App = struct {
             .populate_thumbnail_set => if (self.thumbnail_set) |thumbnail_set| thumbnail_set.populate(restart.eve_windows, .{ .should_move_to_saved = false }),
             .clear_log_readings => {
                 self.roster.clearLogReadings();
-                if (self.thumbnail_set) |thumbnail_set| thumbnail_set.clearLogReadings();
+                slog.debug("Cleared what the logs last showed", .{});
             },
             .apply_monitor_settings => if (self.chatlog_monitor) |monitor| {
                 monitor.applySettings(&self.global_settings.chatlog);

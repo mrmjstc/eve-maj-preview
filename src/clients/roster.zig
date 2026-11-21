@@ -6,16 +6,24 @@ const auto_colors_mod = @import("auto_colors.zig");
 const scout = @import("scout.zig");
 const stragglers = @import("../travel/stragglers.zig");
 const stack = @import("../notifications/stack.zig");
+const stats_mod = @import("../activity/stats.zig");
 const log = @import("../log.zig");
 
 const Config = config_mod.Config;
 const AutoColorStore = auto_colors_mod.AutoColorStore;
 const EveWindow = scout.EveWindow;
 const NotificationStack = stack.NotificationStack;
+const ActivityStats = stats_mod.ActivityStats;
 const slog = log.Scoped("roster");
 
-/// What alertsOf gives for a window the roster doesn't track.
-pub const NO_ALERTS: NotificationStack = .{};
+const NO_ALERTS: NotificationStack = .{};
+const NO_STATS: ActivityStats = .{};
+
+/// A client's alerts and activity readings for a view to draw, empty for an untracked window; don't hold it across a sync.
+pub const Readings = struct {
+    alerts: *const NotificationStack = &NO_ALERTS,
+    stats: *const ActivityStats = &NO_STATS,
+};
 
 /// Which clients Roster.refreshConfig reads the profile for.
 pub const Refresh = enum {
@@ -41,6 +49,8 @@ pub const Client = struct {
     notifications: NotificationStack = .{},
     /// When control/activation.zig last brought it forward; "suppress when clicked" counts from it.
     last_click_time: win32.Ticks = .{},
+    /// What the activity trackers last pushed; only Roster writes it.
+    stats: ActivityStats = .{},
     /// Owned; the profile's display name for the character, else a copy of character_name.
     display_name: []const u8 = "",
     /// Null at the login screen or with "Unique Character Name Colors" off; callers fall back to their default.
@@ -94,9 +104,9 @@ pub const Roster = struct {
         return &self.clients.items[self.indexOf(hwnd) orelse return null];
     }
 
-    pub fn alertsOf(self: *const Roster, hwnd: win32.HWND) *const NotificationStack {
-        const client = self.byHwnd(hwnd) orelse return &NO_ALERTS;
-        return &client.notifications;
+    pub fn readingsOf(self: *const Roster, hwnd: win32.HWND) Readings {
+        const client = self.byHwnd(hwnd) orelse return .{};
+        return .{ .alerts = &client.notifications, .stats = &client.stats };
     }
 
     /// The first client with this name, which a window filter's windows and logged-out clients share.
@@ -146,6 +156,12 @@ pub const Roster = struct {
         }
     }
 
+    /// `setter` is an ActivityStats setter, which says whether anything shown changed.
+    pub fn updateStats(self: *Roster, hwnd: win32.HWND, comptime setter: anytype, args: anytype) void {
+        const client = self.mutableByHwnd(hwnd) orelse return;
+        if (@call(.auto, setter, .{&client.stats} ++ args)) client.revision +%= 1;
+    }
+
     pub fn setActive(self: *Roster, hwnd: ?win32.HWND) void {
         self.active_hwnd = hwnd;
     }
@@ -176,11 +192,12 @@ pub const Roster = struct {
         }
     }
 
-    /// Once log monitoring is off, so a stale system or log alert doesn't stay shown.
+    /// Once log monitoring is off, so a stale system, rate or log alert doesn't stay shown.
     pub fn clearLogReadings(self: *Roster) void {
         for (self.clients.items) |*client| {
             self.clearSystem(client);
             if (client.notifications.dismissLogDriven(self.allocator)) client.revision +%= 1;
+            if (client.stats.clearLogReadings()) client.revision +%= 1;
         }
     }
 
@@ -354,7 +371,7 @@ test "logging out drops the client's alerts" {
     client.notifications.push(testing.allocator, try testAlert(.TakingDamage, 0));
     roster.sync(&.{testWindow(1, "EVE", 0)});
 
-    try testing.expect(roster.alertsOf(@ptrFromInt(1)).isEmpty());
+    try testing.expect(roster.readingsOf(@ptrFromInt(1)).alerts.isEmpty());
 }
 
 test "a click dismisses click-suppressed alerts and bumps the revision" {
@@ -365,7 +382,7 @@ test "a click dismisses click-suppressed alerts and bumps the revision" {
     client.notifications.push(testing.allocator, try testAlert(.TakingDamage, 0));
     roster.recordClick(@ptrFromInt(1), .{ .ms = 2000 });
 
-    try testing.expect(roster.alertsOf(@ptrFromInt(1)).isEmpty());
+    try testing.expect(roster.readingsOf(@ptrFromInt(1)).alerts.isEmpty());
     try testing.expectEqual(@as(u64, 2000), client.last_click_time.ms);
     try testing.expectEqual(@as(u32, 1), client.revision);
 }
@@ -442,6 +459,28 @@ test "a system update older than the one shown is skipped, and an undated one al
 
     try roster.updateSystem(@ptrFromInt(1), "Amarr", 0, null);
     try testing.expectEqualStrings("Amarr", client.system_name);
+}
+
+test "a stats push that changes a reading bumps the revision, and clearing log readings drops the rate" {
+    var roster: Roster = .init(testing.allocator);
+    defer roster.deinit();
+    roster.sync(&.{testWindow(1, "Alpha", 500)});
+    roster.updateStats(@ptrFromInt(1), ActivityStats.setDps, .{ 120.0, 80.0 });
+    const client = roster.byHwnd(@ptrFromInt(1)) orelse return error.TestExpectedClient;
+    try testing.expectEqual(@as(u32, 1), client.revision);
+    try testing.expectEqual(@as(?f32, 120.0), roster.readingsOf(@ptrFromInt(1)).stats.incoming_dps);
+
+    roster.clearLogReadings();
+    try testing.expect(!client.stats.has_dps);
+    try testing.expectEqual(@as(u32, 2), client.revision);
+}
+
+test "a window the roster doesn't track reads as no alerts and no readings" {
+    var roster: Roster = .init(testing.allocator);
+    defer roster.deinit();
+    const readings = roster.readingsOf(@ptrFromInt(7));
+    try testing.expect(readings.alerts.isEmpty());
+    try testing.expect(!readings.stats.has_dps);
 }
 
 test "clearing log readings empties every system and keeps travel" {

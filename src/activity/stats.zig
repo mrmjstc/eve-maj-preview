@@ -1,4 +1,4 @@
-//! What the activity trackers last pushed for one thumbnail, and whether each reading is shown.
+//! What the activity trackers last pushed for one client, and whether each reading is shown.
 const std = @import("std");
 
 /// What the trackers last pushed; a null rate has too short a span yet (see activity/tracker.zig).

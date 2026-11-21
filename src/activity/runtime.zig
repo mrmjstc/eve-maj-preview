@@ -3,7 +3,8 @@ const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const config_mod = @import("../config.zig");
 const set = @import("../thumbnail/set.zig");
-const activity_stats = @import("../thumbnail/activity_stats.zig");
+const stats_mod = @import("stats.zig");
+const roster_mod = @import("../clients/roster.zig");
 const scout = @import("../clients/scout.zig");
 const chatlog = @import("../chatlog.zig");
 const notifier_mod = @import("../notifications/notifier.zig");
@@ -14,7 +15,8 @@ const schedule = @import("../util/schedule.zig");
 const log = @import("../log.zig");
 
 const ThumbnailSet = set.ThumbnailSet;
-const ActivityStats = activity_stats.ActivityStats;
+const ActivityStats = stats_mod.ActivityStats;
+const Roster = roster_mod.Roster;
 const Config = config_mod.Config;
 const Notifier = notifier_mod.Notifier;
 const slog = log.Scoped("activity");
@@ -24,7 +26,7 @@ const ALERT_CHECK_INTERVAL_MS: u64 = 1000;
 
 /// What each throttled push in one tick shares.
 const TickContext = struct {
-    thumbnail_set: ?*ThumbnailSet,
+    roster: *Roster,
     windows: []const scout.EveWindow,
     /// The tick's start.
     now: win32.Ticks,
@@ -126,7 +128,7 @@ pub const Trackers = struct {
 
     /// `now` is the tick's start, so the schedule holds however long the work takes.
     pub fn tick(self: *Trackers, config: *const Config, windows: []const scout.EveWindow, now: win32.Ticks, tick_interval_ms: u64, thumbnail_set: ?*ThumbnailSet, notifier: *const Notifier) void {
-        const context: TickContext = .{ .thumbnail_set = thumbnail_set, .windows = windows, .now = now, .tick_interval_ms = tick_interval_ms };
+        const context: TickContext = .{ .roster = notifier.roster, .windows = windows, .now = now, .tick_interval_ms = tick_interval_ms };
         if (self.combat) |t| pushThrottled(tracker_mod.CombatTracker, pushDps, t, context, &self.last_dps_update, config.combat.update_interval_ms);
         if (self.mining) |t| pushThrottled(tracker_mod.MiningTracker, pushMining, t, context, &self.last_mining_update, config.mining.update_interval_ms);
         if (self.bounty) |t| pushThrottled(tracker_mod.BountyTracker, pushBounty, t, context, &self.last_bounty_update, config.bounty.update_interval_ms);
@@ -140,7 +142,7 @@ pub const Trackers = struct {
         if (self.resources) |tracker| {
             if (schedule.isDue(now.elapsedSince(self.last_resource_update), config.resources.update_interval_ms, tick_interval_ms)) {
                 self.last_resource_update = now;
-                pushResources(tracker, thumbnail_set, windows, now);
+                pushResources(tracker, notifier.roster, windows, now);
             }
         }
 
@@ -152,7 +154,7 @@ pub const Trackers = struct {
                 tracker.sample(windows);
                 has_changed = true;
             }
-            if (has_changed) pushPing(tracker, thumbnail_set, windows);
+            if (has_changed) pushPing(tracker, notifier.roster, windows);
         }
 
         if (thumbnail_set) |active_set| active_set.renderDirtyThumbnails(null);
@@ -177,45 +179,41 @@ pub const Trackers = struct {
     }
 };
 
-fn pushThrottled(comptime T: type, comptime per_window: fn (*T, *ThumbnailSet, scout.EveWindow, win32.Ticks) void, tracker: *T, context: TickContext, last_update: *win32.Ticks, interval_ms: u32) void {
+fn pushThrottled(comptime T: type, comptime per_window: fn (*T, *Roster, scout.EveWindow, win32.Ticks) void, tracker: *T, context: TickContext, last_update: *win32.Ticks, interval_ms: u32) void {
     if (!schedule.isDue(context.now.elapsedSince(last_update.*), interval_ms, context.tick_interval_ms)) return;
     last_update.* = context.now;
 
-    const active_set = context.thumbnail_set orelse return;
     for (context.windows) |eve_window| {
-        per_window(tracker, active_set, eve_window, context.now);
+        per_window(tracker, context.roster, eve_window, context.now);
     }
 }
 
-fn pushDps(tracker: *tracker_mod.CombatTracker, thumbnail_set: *ThumbnailSet, eve_window: scout.EveWindow, now: win32.Ticks) void {
+fn pushDps(tracker: *tracker_mod.CombatTracker, roster: *Roster, eve_window: scout.EveWindow, now: win32.Ticks) void {
     const dps = tracker.query(eve_window.character_name, tracker_mod.CombatWindow.computeDps, .{now}, .{ .incoming = 0.0, .outgoing = 0.0 });
-    thumbnail_set.updateStats(eve_window.hwnd, ActivityStats.setDps, .{ dps.incoming, dps.outgoing });
+    roster.updateStats(eve_window.hwnd, ActivityStats.setDps, .{ dps.incoming, dps.outgoing });
 }
 
-fn pushMining(tracker: *tracker_mod.MiningTracker, thumbnail_set: *ThumbnailSet, eve_window: scout.EveWindow, now: win32.Ticks) void {
+fn pushMining(tracker: *tracker_mod.MiningTracker, roster: *Roster, eve_window: scout.EveWindow, now: win32.Ticks) void {
     const rates = tracker.query(eve_window.character_name, tracker_mod.MiningWindow.computeRates, .{now}, .{ .m3 = 0.0, .isk = 0.0 });
-    thumbnail_set.updateStats(eve_window.hwnd, ActivityStats.setMining, .{ rates.m3, rates.isk });
+    roster.updateStats(eve_window.hwnd, ActivityStats.setMining, .{ rates.m3, rates.isk });
 }
 
-fn pushBounty(tracker: *tracker_mod.BountyTracker, thumbnail_set: *ThumbnailSet, eve_window: scout.EveWindow, now: win32.Ticks) void {
+fn pushBounty(tracker: *tracker_mod.BountyTracker, roster: *Roster, eve_window: scout.EveWindow, now: win32.Ticks) void {
     const isk_rate = tracker.query(eve_window.character_name, tracker_mod.BountyWindow.computeIskRate, .{now}, 0.0);
-    thumbnail_set.updateStats(eve_window.hwnd, ActivityStats.setBounty, .{isk_rate});
+    roster.updateStats(eve_window.hwnd, ActivityStats.setBounty, .{isk_rate});
 }
 
-fn pushResources(tracker: *resources_mod.ResourceTracker, thumbnail_set: ?*ThumbnailSet, windows: []const scout.EveWindow, now: win32.Ticks) void {
+fn pushResources(tracker: *resources_mod.ResourceTracker, roster: *Roster, windows: []const scout.EveWindow, now: win32.Ticks) void {
     tracker.sampleAll(windows, now);
-
-    const active_set = thumbnail_set orelse return;
     for (windows) |eve_window| {
         const stats = tracker.getStats(eve_window.process_id);
-        active_set.updateStats(eve_window.hwnd, ActivityStats.setResources, .{ stats.cpu_percent, stats.ram_mb, stats.vram_mb, stats.has_vram });
+        roster.updateStats(eve_window.hwnd, ActivityStats.setResources, .{ stats.cpu_percent, stats.ram_mb, stats.vram_mb, stats.has_vram });
     }
 }
 
-fn pushPing(tracker: *const ping_mod.PingTracker, thumbnail_set: ?*ThumbnailSet, windows: []const scout.EveWindow) void {
-    const active_set = thumbnail_set orelse return;
+fn pushPing(tracker: *const ping_mod.PingTracker, roster: *Roster, windows: []const scout.EveWindow) void {
     for (windows) |eve_window| {
         const ping = tracker.pingOf(eve_window.process_id);
-        active_set.updateStats(eve_window.hwnd, ActivityStats.setPing, .{ ping.is_connected, ping.rtt_ms });
+        roster.updateStats(eve_window.hwnd, ActivityStats.setPing, .{ ping.is_connected, ping.rtt_ms });
     }
 }

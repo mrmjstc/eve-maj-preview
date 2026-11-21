@@ -4,7 +4,6 @@ const win32 = @import("../platform/win32.zig");
 const gdi_overlay = @import("../platform/gdi_overlay.zig");
 const config_mod = @import("../config.zig");
 const state = @import("state.zig");
-const activity_stats = @import("activity_stats.zig");
 const overlay = @import("overlay.zig");
 const stack = @import("../notifications/stack.zig");
 const scout = @import("../clients/scout.zig");
@@ -54,8 +53,6 @@ pub const ThumbnailWindow = struct {
     is_win32_enabled: bool = true,
     /// Set by drag/thumbnail.zig for as long as either of its windows is dragged.
     is_dragged: bool = false,
-
-    stats: activity_stats.ActivityStats = .{},
 
     render_cache: overlay.RenderCache = .{},
 
