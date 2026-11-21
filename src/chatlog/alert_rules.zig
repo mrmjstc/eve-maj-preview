@@ -4,6 +4,7 @@ const chat_alerts = @import("../config/chat_alerts.zig");
 const system_colors = @import("../config/system_colors.zig");
 const notification = @import("../notifications/notification.zig");
 const universe = @import("../map/universe.zig");
+const nearest = @import("../map/nearest.zig");
 const lines = @import("lines.zig");
 
 const ChatAlertConfig = chat_alerts.ChatAlertConfig;
@@ -272,23 +273,28 @@ fn keywordHit(rule: *const Rule, folded_body: []const u8) ?Hit {
     return null;
 }
 
+/// Within the rule's range; clients tied across mentions are all kept, under the first mention at that distance.
 fn intelHit(rule: *const Rule, mentions: []const SystemIndex, clients: []const Client) ?Hit {
-    var nearest: ?Hit = null;
-    var nearest_jumps: u8 = universe.UNREACHED;
+    comptime std.debug.assert(MAX_CLIENTS == nearest.MAX_POSITIONS);
+    var positions: [nearest.MAX_POSITIONS]?SystemIndex = undefined;
+    const client_count = @min(clients.len, positions.len);
+    for (clients[0..client_count], positions[0..client_count]) |client, *position| position.* = client.system;
+
+    var hit: ?Hit = null;
+    var hit_jumps: u8 = universe.UNREACHED;
     var distances: universe.Distances = undefined;
     for (mentions) |system| {
         universe.measureDistances(system, rule.max_jumps, &distances);
-        for (clients, 0..) |client, index| {
-            const jumps = distances[client.system];
-            if (jumps == universe.UNREACHED or jumps > nearest_jumps) continue;
-            if (jumps < nearest_jumps) {
-                nearest_jumps = jumps;
-                nearest = .{ .notification_type = rule.kind.notificationType(), .term = universe.systemName(system), .jumps = jumps };
-            }
-            if (nearest) |*hit| hit.nearest_clients.set(index);
+        const found = nearest.nearest(&distances, positions[0..client_count]) orelse continue;
+        if (found.jumps > hit_jumps) continue;
+        if (found.jumps == hit_jumps) {
+            if (hit) |*tied_hit| tied_hit.nearest_clients.setUnion(found.tied);
+            continue;
         }
+        hit_jumps = found.jumps;
+        hit = .{ .notification_type = rule.kind.notificationType(), .term = universe.systemName(system), .jumps = found.jumps, .nearest_clients = found.tied };
     }
-    return nearest;
+    return hit;
 }
 
 /// In order, each once.

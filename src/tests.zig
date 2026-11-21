@@ -62,6 +62,7 @@ test {
     _ = @import("map/incursions.zig");
     _ = @import("map/intel_pins.zig");
     _ = @import("map/intel.zig");
+    _ = @import("map/nearest.zig");
     _ = @import("map/jump_range.zig");
     _ = @import("map/layout.zig");
     _ = @import("map/overview.zig");

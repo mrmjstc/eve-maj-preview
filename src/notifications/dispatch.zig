@@ -11,6 +11,7 @@ const stack = @import("stack.zig");
 const rules = @import("rules.zig");
 const alert_effects = @import("alert_effects.zig");
 const universe = @import("../map/universe.zig");
+const nearest_mod = @import("../map/nearest.zig");
 const log = @import("../log.zig");
 
 const AutoColorStore = auto_colors_mod.AutoColorStore;
@@ -78,8 +79,18 @@ pub fn notify(context: Context, client: *Client, notification: notification_mod.
 /// Lists intel in `intel_history`, shown or not, measured from the nearest client; dropped with no client running.
 pub fn listIntel(context: Context, intel_history: *history_mod.NotificationHistory, clients: []const Client, system: universe.SystemIndex, message: []const u8, is_clear: bool) void {
     var distances: universe.Distances = undefined;
+    // Any range, and any EVE client, muted or not: the panel lists every report.
     universe.measureDistances(system, universe.UNREACHED - 1, &distances);
-    const nearest = nearestClient(clients, &distances) orelse return;
+    var positions: [nearest_mod.MAX_POSITIONS]?universe.SystemIndex = undefined;
+    const client_count = @min(clients.len, positions.len);
+    for (clients[0..client_count], positions[0..client_count]) |*candidate, *position| {
+        position.* = if (candidate.is_eve_client) universe.findSystem(candidate.system_name) else null;
+    }
+    // With none in reach, the first EVE client stands in, at 0 jumps, which the text leaves out.
+    const nearest: NearestClient = if (nearest_mod.nearest(&distances, positions[0..client_count])) |found|
+        .{ .client = &clients[found.first_index], .jumps = found.jumps }
+    else
+        .{ .client = firstEveClient(clients) orelse return, .jumps = 0 };
     const client = nearest.client;
 
     var jumps_buf: [3]u8 = undefined;
@@ -160,19 +171,11 @@ fn systemLead(context: Context, notification: notification_mod.Notification, tex
     return .{ .length = length, .color = color };
 }
 
-/// A client whose system isn't known counts as `universe.UNREACHED` away, and reads as here: 0 jumps, which the text leaves out.
-fn nearestClient(clients: []const Client, distances: *const universe.Distances) ?NearestClient {
-    var nearest: ?*const Client = null;
-    var nearest_jumps: u8 = universe.UNREACHED;
+fn firstEveClient(clients: []const Client) ?*const Client {
     for (clients) |*client| {
-        if (!client.is_eve_client) continue;
-        const jumps = if (universe.findSystem(client.system_name)) |system| distances[system] else universe.UNREACHED;
-        if (nearest != null and jumps >= nearest_jumps) continue;
-        nearest = client;
-        nearest_jumps = jumps;
+        if (client.is_eve_client) return client;
     }
-    const client = nearest orelse return null;
-    return .{ .client = client, .jumps = if (nearest_jumps == universe.UNREACHED) 0 else nearest_jumps };
+    return null;
 }
 
 fn isAlertRepeat(shown_group: ?u64, alert_group: ?u64) bool {
