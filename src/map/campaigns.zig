@@ -1,6 +1,7 @@
 //! Sovereignty campaigns: which systems have a sov timer, when it starts and how its scores stand, parsed from ESI's reply; no I/O.
 const std = @import("std");
 const universe = @import("universe.zig");
+const time = @import("../util/time.zig");
 const log = @import("../log.zig");
 
 const SystemIndex = universe.SystemIndex;
@@ -98,17 +99,7 @@ pub fn parseUtcSeconds(text: []const u8) !i64 {
     const minute = try std.fmt.parseInt(i64, text[14..16], 10);
     const second = try std.fmt.parseInt(i64, text[17..19], 10);
     if (month < 1 or month > 12 or day < 1 or day > 31 or hour > 23 or minute > 59 or second > 60) return error.InvalidTimestamp;
-    return daysFromCivil(year, month, day) * std.time.s_per_day + hour * std.time.s_per_hour + minute * std.time.s_per_min + second;
-}
-
-/// Days since 1970-01-01 in the proleptic Gregorian calendar, by Howard Hinnant's published algorithm.
-fn daysFromCivil(year: i64, month: i64, day: i64) i64 {
-    const y = if (month <= 2) year - 1 else year;
-    const era = @divFloor(y, 400);
-    const year_of_era = y - era * 400;
-    const day_of_year = @divFloor(153 * (if (month > 2) month - 3 else month + 9) + 2, 5) + day - 1;
-    const day_of_era = year_of_era * 365 + @divFloor(year_of_era, 4) - @divFloor(year_of_era, 100) + day_of_year;
-    return era * 146097 + day_of_era - 719468;
+    return time.unixSeconds(.{ .year = year, .month = month, .day = day, .hour = hour, .minute = minute, .second = second });
 }
 
 /// ESI gives scores from 0 to 1.

@@ -1,5 +1,6 @@
 //! What EVE's log lines and file names say, with no I/O.
 const std = @import("std");
+const time_mod = @import("../util/time.zig");
 
 /// Longer lines are dropped; combat lines with colour tags run to 2-3KB.
 pub const MAX_LINE_LENGTH = 4000;
@@ -246,15 +247,7 @@ pub fn logTimestampToUnixSeconds(timestamp: u64) ?i64 {
     const minute = @mod(@divTrunc(time, 100), 100);
     const second = @mod(time, 100);
     if (month < 1 or month > 12 or day < 1 or day > 31 or hour > 23 or minute > 59 or second > 59) return null;
-
-    // Howard Hinnant's days_from_civil.
-    const march_year = if (month <= 2) year - 1 else year;
-    const era = @divFloor(march_year, 400);
-    const year_of_era = march_year - era * 400;
-    const day_of_year = @divTrunc(153 * @mod(month + 9, 12) + 2, 5) + day - 1;
-    const day_of_era = year_of_era * 365 + @divTrunc(year_of_era, 4) - @divTrunc(year_of_era, 100) + day_of_year;
-    const days = era * 146097 + day_of_era - 719468;
-    return days * std.time.s_per_day + hour * std.time.s_per_hour + minute * std.time.s_per_min + second;
+    return time_mod.unixSeconds(.{ .year = year, .month = month, .day = day, .hour = hour, .minute = minute, .second = second });
 }
 
 /// The 8-13 digit character ID before ".txt"; null for any other name.

@@ -368,4 +368,4 @@ A second exe, `eve-maj-sim` (`zig build sim`), that stands in for EVE clients so
 | `platform/run_on_startup.zig` | The Run registry key, set or removed by `app.applyGlobalSettings` at startup and after a Save |
 | `platform/virtual_keys.zig` | VK codes, `KEY_NAMES`, mouse-chord encoding |
 | `platform/wic.zig` | Image decoding (portraits, alliance logos) |
-| `util/` | Colour (OKLab picks), number format, HTTP (WinHTTP, with timeouts), schedule, strings |
+| `util/` | Colour (OKLab picks), number format, HTTP (WinHTTP, with timeouts), schedule, strings, UTC time to Unix seconds |
