@@ -1,4 +1,4 @@
-//! Whether a notification shows on a thumbnail, and whether any can be heard: the settings and suppression rules; no I/O.
+//! Whether a notification shows on a thumbnail, whether History lists it, and whether any can be heard; no I/O.
 const std = @import("std");
 const config_notifications = @import("../config/notifications.zig");
 const chat_alerts = @import("../config/chat_alerts.zig");
@@ -32,6 +32,15 @@ pub fn holdReason(settings: *const NotificationConfig, type_config: Notification
     if (type_config.suppress_when_clicked and situation.since_click_ms < settings.suppress_click_duration_ms) return .recently_clicked;
     if (situation.is_throttled) return .throttled;
     return null;
+}
+
+/// Only switching notifications, the character or its type off keeps it out of History.
+pub fn isRecordedInHistory(hold: ?Hold) bool {
+    const reason = hold orelse return true;
+    return switch (reason) {
+        .notifications_off, .character_muted, .type_off => false,
+        .focused, .recently_clicked, .throttled => true,
+    };
 }
 
 /// Whether an alert holdReason can let through plays `effect`; a character's mute doesn't count, as another may not be muted.
@@ -105,6 +114,19 @@ test "with several rules applying, the first in order is reported" {
     try testing.expectEqual(Hold.notifications_off, holdReason(&.{ .enabled = false }, suppressing, everything).?);
     try testing.expectEqual(Hold.character_muted, holdReason(&.{}, suppressing, everything).?);
     try testing.expectEqual(Hold.focused, holdReason(&.{}, suppressing, with("is_focused", true)).?);
+}
+
+test "history records a notification held back only by focus, a click or its throttle" {
+    try testing.expect(isRecordedInHistory(null));
+    try testing.expect(isRecordedInHistory(.focused));
+    try testing.expect(isRecordedInHistory(.recently_clicked));
+    try testing.expect(isRecordedInHistory(.throttled));
+}
+
+test "history leaves out a notification that was switched off" {
+    try testing.expect(!isRecordedInHistory(.notifications_off));
+    try testing.expect(!isRecordedInHistory(.character_muted));
+    try testing.expect(!isRecordedInHistory(.type_off));
 }
 
 test "speech and sound count only for alert types that can still fire" {

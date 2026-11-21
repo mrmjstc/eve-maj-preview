@@ -21,6 +21,8 @@ pub const NotificationCenter = struct {
     intel_panel: intel_panel_mod.IntelPanel = .{},
     /// The latest alert group to show, so its other copies stay silent.
     shown_alert_group: ?u64 = null,
+    /// The latest alert group History listed, so its other copies aren't listed again.
+    recorded_alert_group: ?u64 = null,
 
     /// Creates the panels' windows if the context's profile shows them; in place, as the panels borrow the histories.
     pub fn start(self: *NotificationCenter, context: panel_host.Context, host: panel_host.Host) void {
@@ -36,7 +38,7 @@ pub const NotificationCenter = struct {
 
     /// For the thumbnail set to record what it shows; valid as long as the center.
     pub fn records(self: *NotificationCenter) dispatch.Records {
-        return .{ .history = &self.history, .intel_history = &self.intel_history, .notified_queue = &self.notified_queue, .shown_alert_group = &self.shown_alert_group };
+        return .{ .history = &self.history, .intel_history = &self.intel_history, .notified_queue = &self.notified_queue, .shown_alert_group = &self.shown_alert_group, .recorded_alert_group = &self.recorded_alert_group };
     }
 
     /// Matches the panels to the profile, after a change made in the config dialog or by a new profile.

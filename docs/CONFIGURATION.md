@@ -215,9 +215,9 @@ Event popups on thumbnails, from game and chat logs (needs [chatlog](#chatlog)) 
 | `enabled` | bool | `true` | | |
 | `show_text` | bool | `true` | | Show the text on thumbnails and the client list. Off keeps the border, sound, speech and history entry. |
 | `duration_ms` | int | `10000`; `3000` for user-action types | 0–60000 | |
-| `throttle_ms` | int | `10000`; `60000` for `TakingDamage`; `0` for user-action types | 0–300000 | Per thumbnail, from the last one shown. `0` = off. |
-| `suppress_when_focused` | bool | `false` | | Skip while that client has focus. |
-| `suppress_when_clicked` | bool | `false` | | Skip for `suppress_click_duration_ms` after clicking the thumbnail. |
+| `throttle_ms` | int | `10000`; `60000` for `TakingDamage`; `0` for user-action types | 0–300000 | Per thumbnail, from the last one shown. `0` = off. Repeats are still listed in Alert History. |
+| `suppress_when_focused` | bool | `false` | | Skip while that client has focus. Still listed in Alert History. |
+| `suppress_when_clicked` | bool | `false` | | Skip for `suppress_click_duration_ms` after clicking the thumbnail. Still listed in Alert History. |
 | `show_hidden_thumbnail` | bool | `false` | | Show a thumbnail hidden by focus auto-hide or the visibility toggle while active. `hideThumbnail` still wins. |
 | `show_border` | bool | `false` | | Draw the alert border. |
 | `flash_border` | bool | `false` | | Blink the border 4× (150 ms phases) first. Needs `show_border`. |
