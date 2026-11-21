@@ -1170,7 +1170,6 @@
   "Alert Options": "Opcje alertów",
   "Alert History": "Historia alertów",
   "Map & Intel": "Mapa i intel",
-  "PANELS": "PANELE",
   "Panels": "Panele",
   "Alert": "Alert",
   "Show Alerts": "Pokaż alerty",
@@ -1192,7 +1191,6 @@
   "Failed to test alert: {err}": "Nie udało się przetestować alertu: {err}",
   "Game Events requires alerts switched on in the Alert Options tab.": "Zdarzenia gry wymagają włączenia alertów w zakładce Opcje alertów.",
   "Go to Alert Options": "Przejdź do: Opcje alertów",
-  "Go to Appearance": "Przejdź do: Wygląd",
   "How clients minimize and restore as you switch between them.": "Jak klienty minimalizują się i przywracają, gdy się między nimi przełączasz.",
   "How each alert is shown in the panel.": "Jak każdy alert jest wyświetlany w panelu.",
   "How thumbnails and the client list react to the mouse.": "Jak miniatury i lista klientów reagują na mysz.",
@@ -1207,7 +1205,6 @@
   "Show or hide the panels, or clear the alert history. Also in the tray menu.": "Pokazuje lub ukrywa panele albo czyści historię alertów. Także w menu zasobnika.",
   "Shows or hides the alert history.": "Pokazuje lub ukrywa historię alertów.",
   "Stays off while Click Through is on in the Mouse tab.": "Pozostaje wyłączone, gdy w zakładce Mysz włączone jest 'Przeklikiwanie'.",
-  "The client list is hidden while Show Clients As is Thumbnails or None.": "Lista klientów jest ukryta, gdy „Pokaż klienty jako” to Miniatury lub Brak.",
   "Uses the excluded characters from the Mouse tab.": "Używa wykluczonych postaci z zakładki Mysz.",
   "Watches for characters left behind on a jump. Also on a hotkey and in the tray menu.": "Pilnuje postaci, które zostały w tyle przy skoku. Także pod skrótem i w menu zasobnika.",
   "Routes avoid your Eve Stars account's saved list. Right-click a system on the map and pick Avoid System to add or remove it, or edit the list in Eve Stars' Settings.": "Trasy omijają zapisaną listę twojego konta Eve Stars. Kliknij prawym przyciskiem system na mapie i wybierz Omijaj system, aby go dodać lub usunąć, albo edytuj listę w ustawieniach Eve Stars."

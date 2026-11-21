@@ -1,4 +1,4 @@
-//! The configuration window's Client List tab: a preview of the panel whose parts are clicked to edit them in a popover, then the panel's other settings; main thread only.
+//! The Appearance tab's Client List sections: a preview of the panel whose parts are clicked to edit them in a popover, then the panel's other settings; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const config = @import("../../../config.zig");
@@ -148,9 +148,6 @@ pub fn reset() void {
 }
 
 pub fn show(context: *ui.Frame) !void {
-    if (!session.profile().ptr.display.viewMode.showsClientList()) {
-        try widgets.noticeWithButton(context, .src(@src()), "The client list is hidden while Show Clients As is Thumbnails or None.", "Go to Appearance", .appearance);
-    }
     const list_view = session.profile().child("listView");
     const section = try widgets.openSection(context, "Client List", "A compact panel of client names. Click a part of the preview to change it.", &style.section);
     const stage = try panel_preview.Stage.open(context, STAGE_KEY);

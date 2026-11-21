@@ -1170,7 +1170,6 @@
   "Alert Options": "Параметры оповещений",
   "Alert History": "История оповещений",
   "Map & Intel": "Карта и разведка",
-  "PANELS": "ПАНЕЛИ",
   "Panels": "Панели",
   "Alert": "Оповещение",
   "Show Alerts": "Показывать оповещения",
@@ -1192,7 +1191,6 @@
   "Failed to test alert: {err}": "Не удалось протестировать оповещение: {err}",
   "Game Events requires alerts switched on in the Alert Options tab.": "Для раздела «Игровые события» нужно включить оповещения на вкладке «Параметры оповещений».",
   "Go to Alert Options": "Перейти: Параметры оповещений",
-  "Go to Appearance": "Перейти: Внешний вид",
   "How clients minimize and restore as you switch between them.": "Как клиенты сворачиваются и восстанавливаются при переключении между ними.",
   "How each alert is shown in the panel.": "Как каждое оповещение отображается на панели.",
   "How thumbnails and the client list react to the mouse.": "Как миниатюры и список клиентов реагируют на мышь.",
@@ -1207,7 +1205,6 @@
   "Show or hide the panels, or clear the alert history. Also in the tray menu.": "Показывает или скрывает панели либо очищает историю оповещений. Также в меню трея.",
   "Shows or hides the alert history.": "Показывает или скрывает историю оповещений.",
   "Stays off while Click Through is on in the Mouse tab.": "Отключено, пока на вкладке «Мышь» включен режим «Клики сквозь».",
-  "The client list is hidden while Show Clients As is Thumbnails or None.": "Список клиентов скрыт, пока «Показывать клиенты как» — «Миниатюры» или «Нет».",
   "Uses the excluded characters from the Mouse tab.": "Использует исключённых персонажей с вкладки «Мышь».",
   "Watches for characters left behind on a jump. Also on a hotkey and in the tray menu.": "Следит за персонажами, отставшими при прыжке. Также по горячей клавише и в меню трея.",
   "Routes avoid your Eve Stars account's saved list. Right-click a system on the map and pick Avoid System to add or remove it, or edit the list in Eve Stars' Settings.": "Маршруты обходят сохранённый список вашего аккаунта Eve Stars. Щёлкните систему на карте правой кнопкой и выберите «Избегать систему», чтобы добавить или убрать её, или измените список в настройках Eve Stars."

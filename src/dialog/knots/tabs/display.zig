@@ -1,4 +1,4 @@
-//! The configuration window's Appearance tab: how clients are shown, then the thumbnails' size, borders, texts and visibility, and system colours; main thread only.
+//! The configuration window's Appearance tab: how clients are shown, then the thumbnails' and the Client List's settings, and system colours; main thread only.
 const ui = @import("ui");
 const win32 = @import("../../../platform/win32.zig");
 const config = @import("../../../config.zig");
@@ -7,6 +7,7 @@ const bind = @import("../bind.zig");
 const status = @import("../status.zig");
 const style = @import("../style.zig");
 const widgets = @import("../widgets.zig");
+const client_list = @import("client_list.zig");
 const text_overlays = @import("text_overlays.zig");
 const system_colors = @import("system_colors.zig");
 const log = @import("../../../log.zig");
@@ -63,6 +64,7 @@ pub fn show(context: *ui.Frame) !void {
         try borders(context, thumbnail);
         try visibility(context, thumbnail);
     }
+    if (view_mode.showsClientList()) try client_list.show(context);
     if (view_mode.showsThumbnails() or view_mode.showsClientList()) try system_colors.show(context);
 }
 

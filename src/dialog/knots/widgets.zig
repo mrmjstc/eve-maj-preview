@@ -65,7 +65,7 @@ pub const TAB_CONTENT_KEY: ui.Key = .str("knots.content");
 pub const Box = @FieldType(ui.State.Measured, "box");
 
 /// What a notice's button opens, named here since the tabs can't reach form's Tab.
-pub const NoticeTarget = enum { notifications, log_monitoring, appearance };
+pub const NoticeTarget = enum { notifications, log_monitoring };
 
 /// Whose settings a section holds.
 const SectionScope = enum { profile, all_profiles };

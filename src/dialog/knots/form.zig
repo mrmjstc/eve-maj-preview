@@ -23,7 +23,6 @@ const hotkey_groups = @import("tabs/hotkey_groups.zig");
 const display = @import("tabs/display.zig");
 const characters = @import("tabs/characters.zig");
 const client_windows = @import("tabs/client_windows.zig");
-const client_list = @import("tabs/client_list.zig");
 const mouse = @import("tabs/mouse.zig");
 const notifications = @import("tabs/notifications.zig");
 const event_alerts = @import("tabs/event_alerts.zig");
@@ -42,7 +41,6 @@ const Canvas = ui.component.Canvas;
 const Category = enum {
     clients,
     display,
-    panels,
     input,
     alerts,
     app,
@@ -52,7 +50,6 @@ const Category = enum {
             .app => "APP",
             .clients => "CLIENTS",
             .display => "DISPLAY",
-            .panels => "PANELS",
             .input => "INPUT",
             .alerts => "ALERTS",
         };
@@ -67,14 +64,13 @@ const Tab = enum {
     appearance,
     placement,
     mining,
-    client_list,
-    notification_history,
     map_panel,
     hotkeys,
     mouse,
     notifications,
     event_alerts,
     chat_alerts,
+    notification_history,
     general,
     backups,
     about,
@@ -87,7 +83,6 @@ const Tab = enum {
             .appearance => "Appearance",
             .placement => "Placement",
             .mining => "Mining",
-            .client_list => "Client List",
             .notification_history => "Alert History",
             .map_panel => "Map & Intel",
             .hotkeys => "Hotkeys",
@@ -104,10 +99,9 @@ const Tab = enum {
     fn category(self: Tab) Category {
         return switch (self) {
             .characters, .hotkey_groups, .client_windows => .clients,
-            .appearance, .placement, .mining => .display,
-            .client_list, .notification_history, .map_panel => .panels,
+            .appearance, .placement, .mining, .map_panel => .display,
             .hotkeys, .mouse => .input,
-            .notifications, .event_alerts, .chat_alerts => .alerts,
+            .notifications, .event_alerts, .chat_alerts, .notification_history => .alerts,
             .about, .backups, .general => .app,
         };
     }
@@ -120,7 +114,6 @@ const Tab = enum {
             .appearance => .thumbnail,
             .placement => .tiles,
             .mining => .pickaxe,
-            .client_list => .list,
             .notification_history => .clock,
             .map_panel => .map,
             .hotkeys => .keyboard,
@@ -137,7 +130,7 @@ const Tab = enum {
     fn isAdvanced(self: Tab) bool {
         return switch (self) {
             .mining => true,
-            .characters, .hotkey_groups, .client_windows, .appearance, .placement, .client_list, .notification_history, .map_panel, .hotkeys, .mouse, .notifications, .event_alerts, .chat_alerts, .general, .about, .backups => false,
+            .characters, .hotkey_groups, .client_windows, .appearance, .placement, .notification_history, .map_panel, .hotkeys, .mouse, .notifications, .event_alerts, .chat_alerts, .general, .about, .backups => false,
         };
     }
 
@@ -146,7 +139,7 @@ const Tab = enum {
         return switch (self) {
             .characters, .hotkey_groups, .event_alerts, .chat_alerts => true,
             .placement => placement.fillsWindow(),
-            .client_windows, .appearance, .mining, .client_list, .notification_history, .map_panel, .hotkeys, .mouse, .notifications, .general, .about, .backups => false,
+            .client_windows, .appearance, .mining, .notification_history, .map_panel, .hotkeys, .mouse, .notifications, .general, .about, .backups => false,
         };
     }
 
@@ -185,7 +178,7 @@ pub fn frame(_: *knots.View, context: *ui.Frame) !void {
     applyAccent(context);
     const offered = Offered{ .is_advanced_mode = session.global().get("advancedMode") };
     if (host.takeRequestedPage()) |page| selectTab(context, switch (page) {
-        .client_list => .client_list,
+        .client_list => .appearance,
         .history_panel => .notification_history,
         .intel_panel => .map_panel,
     });
@@ -227,7 +220,6 @@ pub fn frame(_: *knots.View, context: *ui.Frame) !void {
     if (widgets.takeNoticeTarget()) |target| selectTab(context, switch (target) {
         .notifications => .notifications,
         .log_monitoring => .general,
-        .appearance => .appearance,
     });
 
     try footer(context);
@@ -254,7 +246,6 @@ fn showTab(context: *ui.Frame, tab: Tab) !void {
         .map_panel => try map_panel.show(context),
         .characters => try characters.show(context),
         .client_windows => try client_windows.show(context),
-        .client_list => try client_list.show(context),
         .mouse => try mouse.show(context),
         .notifications => try notifications.show(context),
         .event_alerts => try event_alerts.show(context),

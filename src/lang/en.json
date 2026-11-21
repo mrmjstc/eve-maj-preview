@@ -1170,7 +1170,6 @@
   "Alert Options": "Alert Options",
   "Alert History": "Alert History",
   "Map & Intel": "Map & Intel",
-  "PANELS": "PANELS",
   "Panels": "Panels",
   "Alert": "Alert",
   "Show Alerts": "Show Alerts",
@@ -1192,7 +1191,6 @@
   "Failed to test alert: {err}": "Failed to test alert: {err}",
   "Game Events requires alerts switched on in the Alert Options tab.": "Game Events requires alerts switched on in the Alert Options tab.",
   "Go to Alert Options": "Go to Alert Options",
-  "Go to Appearance": "Go to Appearance",
   "How clients minimize and restore as you switch between them.": "How clients minimize and restore as you switch between them.",
   "How each alert is shown in the panel.": "How each alert is shown in the panel.",
   "How thumbnails and the client list react to the mouse.": "How thumbnails and the client list react to the mouse.",
@@ -1207,7 +1205,6 @@
   "Show or hide the panels, or clear the alert history. Also in the tray menu.": "Show or hide the panels, or clear the alert history. Also in the tray menu.",
   "Shows or hides the alert history.": "Shows or hides the alert history.",
   "Stays off while Click Through is on in the Mouse tab.": "Stays off while Click Through is on in the Mouse tab.",
-  "The client list is hidden while Show Clients As is Thumbnails or None.": "The client list is hidden while Show Clients As is Thumbnails or None.",
   "Uses the excluded characters from the Mouse tab.": "Uses the excluded characters from the Mouse tab.",
   "Watches for characters left behind on a jump. Also on a hotkey and in the tray menu.": "Watches for characters left behind on a jump. Also on a hotkey and in the tray menu.",
   "Routes avoid your Eve Stars account's saved list. Right-click a system on the map and pick Avoid System to add or remove it, or edit the list in Eve Stars' Settings.": "Routes avoid your Eve Stars account's saved list. Right-click a system on the map and pick Avoid System to add or remove it, or edit the list in Eve Stars' Settings."

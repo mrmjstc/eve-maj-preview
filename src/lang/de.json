@@ -1170,7 +1170,6 @@
   "Alert Options": "Alarmoptionen",
   "Alert History": "Alarmverlauf",
   "Map & Intel": "Karte & Intel",
-  "PANELS": "PANELS",
   "Panels": "Panels",
   "Alert": "Alarm",
   "Show Alerts": "Alarme anzeigen",
@@ -1192,7 +1191,6 @@
   "Failed to test alert: {err}": "Testen des Alarms fehlgeschlagen: {err}",
   "Game Events requires alerts switched on in the Alert Options tab.": "Spielereignisse erfordern aktivierte Alarme im Alarmoptionen-Tab.",
   "Go to Alert Options": "Zu Alarmoptionen",
-  "Go to Appearance": "Zu Aussehen",
   "How clients minimize and restore as you switch between them.": "Wie Clients beim Wechseln minimiert und wiederhergestellt werden.",
   "How each alert is shown in the panel.": "Wie jeder Alarm im Panel angezeigt wird.",
   "How thumbnails and the client list react to the mouse.": "Wie Thumbnails und die Client-Liste auf die Maus reagieren.",
@@ -1207,7 +1205,6 @@
   "Show or hide the panels, or clear the alert history. Also in the tray menu.": "Zeigt oder verbirgt die Panels oder leert den Alarmverlauf. Auch im Tray-Menü.",
   "Shows or hides the alert history.": "Zeigt oder verbirgt den Alarmverlauf.",
   "Stays off while Click Through is on in the Mouse tab.": "Bleibt aus, solange 'Durchklicken' im Maus-Tab aktiv ist.",
-  "The client list is hidden while Show Clients As is Thumbnails or None.": "Die Client-Liste ist ausgeblendet, solange 'Clients anzeigen als' auf Thumbnails oder Keine steht.",
   "Uses the excluded characters from the Mouse tab.": "Nutzt die ausgeschlossenen Charaktere aus dem Maus-Tab.",
   "Watches for characters left behind on a jump. Also on a hotkey and in the tray menu.": "Achtet auf Charaktere, die bei einem Sprung zurückbleiben. Auch per Hotkey und im Tray-Menü.",
   "Routes avoid your Eve Stars account's saved list. Right-click a system on the map and pick Avoid System to add or remove it, or edit the list in Eve Stars' Settings.": "Routen meiden die gespeicherte Liste deines Eve-Stars-Kontos. Rechtsklicke ein System auf der Karte und wähle 'System meiden', um es hinzuzufügen oder zu entfernen, oder bearbeite die Liste in den Einstellungen von Eve Stars."

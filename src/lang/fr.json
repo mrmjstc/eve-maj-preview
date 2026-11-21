@@ -1170,7 +1170,6 @@
   "Alert Options": "Options des alertes",
   "Alert History": "Historique des alertes",
   "Map & Intel": "Carte et intel",
-  "PANELS": "PANNEAUX",
   "Panels": "Panneaux",
   "Alert": "Alerte",
   "Show Alerts": "Afficher les alertes",
@@ -1192,7 +1191,6 @@
   "Failed to test alert: {err}": "Échec du test de l'alerte : {err}",
   "Game Events requires alerts switched on in the Alert Options tab.": "Événements du jeu nécessite que les alertes soient activées dans l'onglet Options des alertes.",
   "Go to Alert Options": "Aller à Options des alertes",
-  "Go to Appearance": "Aller à Apparence",
   "How clients minimize and restore as you switch between them.": "Comment les clients se réduisent et se restaurent quand vous passez de l'un à l'autre.",
   "How each alert is shown in the panel.": "Comment chaque alerte s'affiche dans le panneau.",
   "How thumbnails and the client list react to the mouse.": "Comment les miniatures et la liste des clients réagissent à la souris.",
@@ -1207,7 +1205,6 @@
   "Show or hide the panels, or clear the alert history. Also in the tray menu.": "Affiche ou masque les panneaux, ou vide l'historique des alertes. Aussi dans le menu de la zone de notification.",
   "Shows or hides the alert history.": "Affiche ou masque l'historique des alertes.",
   "Stays off while Click Through is on in the Mouse tab.": "Reste désactivé tant que 'Clics traversants' est actif dans l'onglet Souris.",
-  "The client list is hidden while Show Clients As is Thumbnails or None.": "La liste des clients est masquée tant qu'Afficher les clients comme est sur Miniatures ou Aucun.",
   "Uses the excluded characters from the Mouse tab.": "Utilise les personnages exclus de l'onglet Souris.",
   "Watches for characters left behind on a jump. Also on a hotkey and in the tray menu.": "Surveille les personnages laissés en arrière lors d'un saut. Aussi par raccourci et dans le menu de la zone de notification.",
   "Routes avoid your Eve Stars account's saved list. Right-click a system on the map and pick Avoid System to add or remove it, or edit the list in Eve Stars' Settings.": "Les itinéraires évitent la liste enregistrée de votre compte Eve Stars. Faites un clic droit sur un système de la carte et choisissez Éviter le système pour l'ajouter ou le retirer, ou modifiez la liste dans les paramètres d'Eve Stars."

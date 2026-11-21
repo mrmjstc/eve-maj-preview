@@ -1170,7 +1170,6 @@
   "Alert Options": "Opciones de alertas",
   "Alert History": "Historial de alertas",
   "Map & Intel": "Mapa e intel",
-  "PANELS": "PANELES",
   "Panels": "Paneles",
   "Alert": "Alerta",
   "Show Alerts": "Mostrar alertas",
@@ -1192,7 +1191,6 @@
   "Failed to test alert: {err}": "Error al probar la alerta: {err}",
   "Game Events requires alerts switched on in the Alert Options tab.": "Eventos del juego requiere que las alertas estén activadas en la pestaña Opciones de alertas.",
   "Go to Alert Options": "Ir a Opciones de alertas",
-  "Go to Appearance": "Ir a Apariencia",
   "How clients minimize and restore as you switch between them.": "Cómo se minimizan y restauran los clientes al cambiar entre ellos.",
   "How each alert is shown in the panel.": "Cómo se muestra cada alerta en el panel.",
   "How thumbnails and the client list react to the mouse.": "Cómo responden las miniaturas y la lista de clientes al ratón.",
@@ -1207,7 +1205,6 @@
   "Show or hide the panels, or clear the alert history. Also in the tray menu.": "Muestra u oculta los paneles, o borra el historial de alertas. También en el menú de la bandeja.",
   "Shows or hides the alert history.": "Muestra u oculta el historial de alertas.",
   "Stays off while Click Through is on in the Mouse tab.": "Permanece desactivado mientras 'Clic a través' esté activado en la pestaña Ratón.",
-  "The client list is hidden while Show Clients As is Thumbnails or None.": "La lista de clientes está oculta mientras Mostrar clientes como sea Miniaturas o Ninguno.",
   "Uses the excluded characters from the Mouse tab.": "Usa los personajes excluidos de la pestaña Ratón.",
   "Watches for characters left behind on a jump. Also on a hotkey and in the tray menu.": "Vigila a los personajes que se quedan atrás en un salto. También con un atajo y en el menú de la bandeja.",
   "Routes avoid your Eve Stars account's saved list. Right-click a system on the map and pick Avoid System to add or remove it, or edit the list in Eve Stars' Settings.": "Las rutas evitan la lista guardada de tu cuenta de Eve Stars. Haz clic derecho en un sistema del mapa y elige Evitar sistema para añadirlo o quitarlo, o edita la lista en los ajustes de Eve Stars."
