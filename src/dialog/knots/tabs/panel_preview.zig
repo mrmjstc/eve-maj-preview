@@ -99,7 +99,7 @@ pub const Bench = struct {
     }
 };
 
-/// A preview part clicked to select it; while off it's a ghost or keeps its room unseen, as State says. The caller closes it.
+/// A preview part clicked to select it, which the caller closes; while off, State says whether it's a ghost or unseen.
 pub const Part = struct {
     button: Button,
     state: State,
@@ -194,6 +194,13 @@ pub fn Picker(comptime Kind: type) type {
             const open = try Part.open(context, self.keyOf(part), base, inset, self.stateOf(part, is_shown));
             if (open.is_clicked) self.select(context, part);
             return open;
+        }
+
+        /// A panel's header bar, as `part`: its chevron, `title` and muted `count` in the configuration window's font, as the panels draw it.
+        pub fn header(self: *Self, context: *ui.Frame, part: Kind, key: ui.Key, title: []const u8, count: []const u8, scale: f32) !void {
+            const header_part = try self.openPart(context, .{ .width = .grow(), .padding = .all(1), .background = .transparent }, .{ 1, 1 }, part, true);
+            try headerBar(context, key, title, count, scale);
+            try header_part.close(context);
         }
 
         pub fn stateOf(self: *const Self, part: Kind, is_shown: bool) Part.State {
@@ -314,8 +321,16 @@ pub fn frameStyle(arena: std.mem.Allocator, scale: f32, opacity: u8, size: ui.St
     return frame;
 }
 
-/// A panel's header bar: its chevron, `title` and muted `count` in the configuration window's font, as the panels draw it.
-pub fn header(context: *ui.Frame, key: ui.Key, title: []const u8, count: []const u8, scale: f32) !void {
+/// One of the shared glyphs `size` pixels square, as the panels draw it.
+pub fn panelGlyph(context: *ui.Frame, key: ui.Key, glyph: glyphs.Glyph, size: i32, argb: u32) !void {
+    const arena = context.arena();
+    const side: f32 = @floatFromInt(size);
+    const glyph_style = try arena.create(ui.Style);
+    glyph_style.* = .{ .width = .fixed(side), .height = .fixed(side) };
+    try context.e(Canvas{ .key = key, .commands = try glyphs.commands(arena, glyph, side, try glyphs.snapOffset(context, key), color_convert.fromArgb(argb).value), .style = glyph_style });
+}
+
+fn headerBar(context: *ui.Frame, key: ui.Key, title: []const u8, count: []const u8, scale: f32) !void {
     const arena = context.arena();
     const header_style = try arena.create(ui.Style);
     header_style.* = .{
@@ -341,15 +356,6 @@ pub fn header(context: *ui.Frame, key: ui.Key, title: []const u8, count: []const
     try context.e(Text{ .selectable = false, .key = key.indexed(2), .content = title, .style = try widgets.textStyle(arena, palette.TEXT, scaled(scale, palette.FONT_SIZE), .{ .is_bold = true }) });
     if (count.len > 0) try context.e(Text{ .selectable = false, .key = key.indexed(3), .content = count, .style = try widgets.textStyle(arena, palette.MUTED, scaled(scale, palette.SMALL_FONT_SIZE), .{}) });
     try row.close(context);
-}
-
-/// One of the shared glyphs `size` pixels square, as the panels draw it.
-pub fn panelGlyph(context: *ui.Frame, key: ui.Key, glyph: glyphs.Glyph, size: i32, argb: u32) !void {
-    const arena = context.arena();
-    const side: f32 = @floatFromInt(size);
-    const glyph_style = try arena.create(ui.Style);
-    glyph_style.* = .{ .width = .fixed(side), .height = .fixed(side) };
-    try context.e(Canvas{ .key = key, .commands = try glyphs.commands(arena, glyph, side, try glyphs.snapOffset(context, key), color_convert.fromArgb(argb).value), .style = glyph_style });
 }
 
 /// "Preview" and the scale on the left, Show Off at the right.

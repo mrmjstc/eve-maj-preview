@@ -263,9 +263,7 @@ fn panel(context: *ui.Frame, profile: *const config.Config, look: Look) !void {
     });
     const frame = Rect{ .key = .src(@src()), .style = panel_style };
     _ = try frame.open(context);
-    const header_part = try g_picker.openPart(context, .{ .width = .grow(), .padding = .all(1), .background = .transparent }, .{ 1, 1 }, .panel, true);
-    try panel_preview.header(context, .src(@src()), history_look.HEADER_TEXT, "", look.scale);
-    try header_part.close(context);
+    try g_picker.header(context, .panel, .src(@src()), history_look.HEADER_TEXT, "", look.scale);
     try chips(context, history_settings, &chip_layout, look);
     try rows(context, profile, shown, look);
     try frame.close(context);

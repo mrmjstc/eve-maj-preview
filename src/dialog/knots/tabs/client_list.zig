@@ -240,9 +240,7 @@ fn preview(context: *ui.Frame, list_settings: *const config.ListViewConfig, look
     const panel = Rect{ .key = .src(@src()), .style = panel_style };
     _ = try panel.open(context);
     const count_text = list_look.countText(try arena.create([list_look.COUNT_TEXT_MAX]u8), SAMPLES.len);
-    const header_part = try g_picker.openPart(context, .{ .width = .grow(), .padding = .all(1), .background = .transparent }, .{ 1, 1 }, .panel, true);
-    try panel_preview.header(context, .src(@src()), list_look.HEADER_TEXT, count_text, look.scale);
-    try header_part.close(context);
+    try g_picker.header(context, .panel, .src(@src()), list_look.HEADER_TEXT, count_text, look.scale);
 
     // Row by row across the columns, as the panel lays its rows out; a short last line keeps its cells' width.
     var first: usize = 0;
