@@ -3,7 +3,6 @@ const std = @import("std");
 const win32 = @import("platform/win32.zig");
 const config_mod = @import("config.zig");
 const update = @import("update.zig");
-const actions = @import("clients/actions.zig");
 const app_mod = @import("app.zig");
 const knots_host = @import("dialog/knots/host.zig");
 const scout = @import("clients/scout.zig");
@@ -26,7 +25,7 @@ const RETRY_INTERVAL_MS: u64 = 5000;
 /// An item in one of the group submenus.
 const GroupCommand = struct {
     group_index: usize,
-    action: actions.GroupAction,
+    action: url.GroupAction,
 };
 
 pub const TrayIcon = struct {
@@ -201,8 +200,10 @@ pub const TrayIcon = struct {
         }
 
         _ = win32.AppendMenuA(menu, win32.MF_STRING, win32.IDM_CLOSE_ALL_CLIENTS, "Close All Clients");
-        self.appendGroupMenu(menu, config.hotkeyGroups.items, win32.IDM_MINIMIZE_GROUP_BASE, "Minimize Group");
-        self.appendGroupMenu(menu, config.hotkeyGroups.items, win32.IDM_CLOSE_GROUP_BASE, "Close Group");
+        // The saved groups, which the hotkey manager runs a group command against, as it does for a hotkey or link.
+        const saved_groups = app.store.saved.hotkeyGroups.items;
+        self.appendGroupMenu(menu, saved_groups, win32.IDM_MINIMIZE_GROUP_BASE, "Minimize Group");
+        self.appendGroupMenu(menu, saved_groups, win32.IDM_CLOSE_GROUP_BASE, "Close Group");
         _ = win32.AppendMenuA(menu, win32.MF_SEPARATOR, 0, null);
         _ = win32.AppendMenuA(menu, win32.MF_STRING, win32.IDM_EXIT, "Exit");
 
@@ -267,7 +268,11 @@ pub const TrayIcon = struct {
         }
         if (groupCommand(command_id)) |command| {
             slog.info("Group {s} requested from system tray", .{@tagName(command.action)});
-            actions.applyToGroup(app.scout.getWindows(), &app.store.live, app.store.live.hotkeyGroups.items, command.group_index, command.action);
+            const manager = app.hotkey_manager orelse {
+                slog.err("Failed to {s} the group from the system tray: the hotkey manager isn't ready", .{@tagName(command.action)});
+                return;
+            };
+            app.runHotkeyOutcome(manager.runGroupActionAt(command.action, command.group_index, app.thumbnail_set));
             return;
         }
 

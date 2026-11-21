@@ -264,6 +264,11 @@ pub const HotkeyManager = struct {
             slog.warn("Failed to run group '{s}': no hotkey group named '{s}'", .{ @tagName(action), group_name });
             return .none;
         };
+        return self.runGroupActionAt(action, group_index, thumbnail_set);
+    }
+
+    /// runGroupAction by index into the saved groups, which an unnamed group needs; the tray's group menus list them.
+    pub fn runGroupActionAt(self: *HotkeyManager, action: url.GroupAction, group_index: usize, thumbnail_set: ?*ThumbnailSet) Outcome {
         const group_indices = [_]usize{group_index};
         var hotkey_action: HotkeyAction = switch (action) {
             .next => .{ .cycle_group = .{ .group_indices = &group_indices, .is_forward = true } },
