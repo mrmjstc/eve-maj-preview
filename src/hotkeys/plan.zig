@@ -73,6 +73,12 @@ const ComboSharers = struct {
     indices: std.ArrayList(usize),
 };
 
+/// The bindings build lets share a combo with their own kind, cycling through each other in order.
+const SharerKind = enum { other, character, group_forward, group_backward };
+
+/// How many bindings hold one combo, and whether they're all of one SharerKind.
+const Holders = struct { binding_count: usize = 0, kind: SharerKind = .other, is_mixed: bool = false };
+
 /// What a hotkey press knows when it arrives, read once.
 pub const PressFacts = struct {
     is_repeat: bool,
@@ -166,6 +172,22 @@ pub fn globalEntry(settings: Settings, comptime binding: bindings.GlobalBinding)
     return .{ .id = bindings.globalId(binding.action), .keys = keys, .action = bindings.actionFor(binding.action), .description = binding.description };
 }
 
+/// Combos bound more than once outside one SharerKind's cycle, which only the first to register gets; allocated in `arena`.
+pub fn conflicts(arena: std.mem.Allocator, settings: Settings) ![]const u32 {
+    var holders: std.AutoArrayHashMapUnmanaged(u32, Holders) = .empty;
+    for (settings.characters) |*character| try collect(arena, &holders, character, .character);
+    for (settings.groups) |*group| try collect(arena, &holders, group, .other);
+    try collect(arena, &holders, settings.hotkeys, .other);
+    try collect(arena, &holders, settings.global, .other);
+    var found: std.ArrayList(u32) = .empty;
+    var it = holders.iterator();
+    while (it.next()) |entry| {
+        const counted = entry.value_ptr.*;
+        if (counted.binding_count > 1 and (counted.is_mixed or counted.kind == .other)) try found.append(arena, entry.key_ptr.*);
+    }
+    return found.items;
+}
+
 /// The suspend key still toggles while hotkeys are suspended, as it's what resumes them.
 pub fn pressVerdict(facts: PressFacts) Verdict {
     if (facts.is_repeat and !facts.allows_repeat) return .ignore_repeat;
@@ -213,6 +235,59 @@ fn addComboSharer(arena: std.mem.Allocator, list: *std.ArrayList(ComboSharers), 
     var sharers: ComboSharers = .{ .virtual_key = combo_vk, .indices = .empty };
     try sharers.indices.append(arena, index);
     try list.append(arena, sharers);
+}
+
+/// Every KeyList in `value`, however deeply nested, counted under the SharerKind of the field it sits in.
+fn collect(arena: std.mem.Allocator, holders: *std.AutoArrayHashMapUnmanaged(u32, Holders), value: anytype, kind: SharerKind) !void {
+    const T = @TypeOf(value.*);
+    if (T == KeyList) {
+        // One binding listing a combo twice still counts once.
+        for (value.slice(), 0..) |combo, index| {
+            if (std.mem.findScalar(u32, value.slice()[0..index], combo) != null) continue;
+            const entry = try holders.getOrPut(arena, combo);
+            if (!entry.found_existing) entry.value_ptr.* = .{ .kind = kind };
+            entry.value_ptr.binding_count += 1;
+            if (entry.value_ptr.kind != kind) entry.value_ptr.is_mixed = true;
+        }
+        return;
+    }
+    switch (@typeInfo(T)) {
+        .@"struct" => |info| {
+            if (@hasField(T, "items") and @hasField(T, "capacity")) {
+                for (value.items) |*item| try collect(arena, holders, item, kind);
+                return;
+            }
+            inline for (info.field_names, info.field_types) |name, F| {
+                if (comptime holdsKeys(F)) try collect(arena, holders, &@field(value, name), if (kind != .other) kind else comptime sharerKind(name));
+            }
+        },
+        .optional => if (value.*) |*inner| try collect(arena, holders, inner, kind),
+        else => {},
+    }
+}
+
+fn sharerKind(comptime field_name: []const u8) SharerKind {
+    if (std.mem.eql(u8, field_name, "forwardKey")) return .group_forward;
+    if (std.mem.eql(u8, field_name, "backwardKey")) return .group_backward;
+    return .other;
+}
+
+/// Whether a field's type can contain a KeyList, so the walk skips strings, numbers and the like.
+fn holdsKeys(comptime T: type) bool {
+    // Walks every type nested in the profile and global settings, which outgrows the default quota.
+    @setEvalBranchQuota(100_000);
+    if (T == KeyList) return true;
+    return switch (@typeInfo(T)) {
+        .@"struct" => |info| blk: {
+            if (@hasField(T, "items") and @hasField(T, "capacity")) break :blk holdsKeys(@typeInfo(@FieldType(T, "items")).pointer.child);
+            for (info.field_types) |F| {
+                if (holdsKeys(F)) break :blk true;
+            }
+            break :blk false;
+        },
+        .optional => |info| holdsKeys(info.child),
+        else => false,
+    };
 }
 
 const testing = std.testing;
@@ -327,4 +402,41 @@ test "a press needing EVE focus is dropped when no EVE window is in front" {
     try testing.expectEqual(Verdict.ignore_unfocused, pressVerdict(press));
     press.has_eve_focus = true;
     try testing.expectEqual(Verdict.run, pressVerdict(press));
+}
+
+test "characters sharing a combo, or groups sharing a cycle key, don't conflict" {
+    const global: GlobalConfig = .{ .allocator = testing.allocator };
+    const characters = [_]CharacterConfig{ .{ .name = "Alpha", .hotkey = .one(F1) }, .{ .name = "Bravo", .hotkey = .one(F1) } };
+    const groups = [_]HotkeyGroupConfig{ .{ .name = "Miners", .forwardKey = .one(F2) }, .{ .name = "Haulers", .forwardKey = .one(F2) } };
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    try testing.expectEqual(0, (try conflicts(arena.allocator(), testSettings(&characters, &groups, &global))).len);
+}
+
+test "a combo held by bindings of different kinds conflicts" {
+    var global: GlobalConfig = .{ .allocator = testing.allocator };
+    global.hotkeyNextProfile = .one(F3);
+    const characters = [_]CharacterConfig{.{ .name = "Alpha", .hotkey = .one(F1) }};
+    const groups = [_]HotkeyGroupConfig{.{ .name = "Miners", .forwardKey = .one(F1), .backwardKey = .one(F2), .assignKey = .one(F3) }};
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    try testing.expectEqualSlices(u32, &.{ F1, F3 }, try conflicts(arena.allocator(), testSettings(&characters, &groups, &global)));
+}
+
+test "a group's forward key on another group's backward key conflicts" {
+    const global: GlobalConfig = .{ .allocator = testing.allocator };
+    const groups = [_]HotkeyGroupConfig{ .{ .name = "Miners", .forwardKey = .one(F1) }, .{ .name = "Haulers", .backwardKey = .one(F1) } };
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    try testing.expectEqualSlices(u32, &.{F1}, try conflicts(arena.allocator(), testSettings(&.{}, &groups, &global)));
+}
+
+test "a binding listing one combo twice doesn't conflict with itself" {
+    const global: GlobalConfig = .{ .allocator = testing.allocator };
+    var keys: KeyList = .one(F1);
+    _ = keys.append(F1);
+    const groups = [_]HotkeyGroupConfig{.{ .name = "Miners", .assignKey = keys }};
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    try testing.expectEqual(0, (try conflicts(arena.allocator(), testSettings(&.{}, &groups, &global))).len);
 }

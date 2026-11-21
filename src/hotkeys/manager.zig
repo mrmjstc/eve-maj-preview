@@ -53,6 +53,8 @@ pub const HotkeyManager = struct {
     is_typing_suspended: bool = false,
     /// What syncFocusFilter last handed the hook thread; null until it first does, so a recreated manager sends it again.
     sent_focus_filter: ?hook_bindings.FocusFilter = null,
+    /// Once per manager, since registerHotkeys runs again on every resume and only a Save changes the bindings.
+    has_warned_conflicts: bool = false,
 
     /// Registers from the profile's saved copy, since bindings only change on Save.
     pub fn init(allocator: std.mem.Allocator, borrowed: Borrowed) HotkeyManager {
@@ -73,6 +75,20 @@ pub const HotkeyManager = struct {
 
     fn planSettings(self: *const HotkeyManager) plan_mod.Settings {
         return .{ .characters = self.config.characters.items, .groups = self.config.hotkeyGroups.items, .hotkeys = &self.config.hotkeys, .global = self.global_settings };
+    }
+
+    /// For profiles the configuration window never refused, e.g. imports and hand edits.
+    fn warnConflicts(self: *HotkeyManager) void {
+        if (self.has_warned_conflicts) return;
+        self.has_warned_conflicts = true;
+        var arena: std.heap.ArenaAllocator = .init(self.allocator);
+        defer arena.deinit();
+        const found = plan_mod.conflicts(arena.allocator(), self.planSettings()) catch |err| {
+            slog.warn("Failed to check the hotkeys for keys bound twice: {}", .{err});
+            return;
+        };
+        var key_name_buf: [KEY_NAME_SIZE]u8 = undefined;
+        for (found) |combo| slog.warn("Hotkey {s} is bound to actions that can't share it, so only the first to register gets it", .{formatKeyName(combo, &key_name_buf)});
     }
 
     fn formatKeyName(virtual_key: u32, buffer: *[KEY_NAME_SIZE]u8) []const u8 {
@@ -120,6 +136,7 @@ pub const HotkeyManager = struct {
         }
         self.plan = built;
         const planned = &self.plan.?;
+        self.warnConflicts();
 
         const counts = planned.counts;
         slog.debug("Registering hotkeys: {} group(s), {} global action(s), {} per-character hotkey(s), {} profile-switch hotkey(s), {} app hotkey(s), {} url hotkey(s)", .{ counts.groups, counts.globals, counts.character_combos, counts.profile_switches, counts.apps, counts.urls });

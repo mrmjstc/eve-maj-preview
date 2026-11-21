@@ -6,6 +6,7 @@ const vk = @import("../../platform/virtual_keys.zig");
 const config = @import("../../config.zig");
 const key_list = @import("../../config/key_list.zig");
 const keyboard_hook = @import("../../hotkeys/keyboard_hook.zig");
+const plan = @import("../../hotkeys/plan.zig");
 const session = @import("session.zig");
 const labels = @import("labels.zig");
 const style = @import("style.zig");
@@ -47,11 +48,6 @@ comptime {
     }
     std.debug.assert(key_count == GROUP_KEY_LABELS.len);
 }
-
-/// Bindings that may share a combo with their own kind, cycling through each other in order.
-const HolderKind = enum { other, character, group_forward, group_backward };
-
-const Holders = struct { binding_count: usize = 0, kind: HolderKind = .other, is_mixed: bool = false };
 
 /// A field waiting for a key; the window's messages feed it until something is captured or it's cancelled.
 const Recording = struct {
@@ -244,18 +240,10 @@ pub fn beginFrame(context: *ui.Frame) !void {
     g_conflicts = try findConflicts(context.arena());
 }
 
-/// Combos the edited documents bind more than once outside one HolderKind cycle; allocated in `arena`.
+/// plan.conflicts in the edited documents; allocated in `arena`.
 pub fn findConflicts(arena: std.mem.Allocator) ![]const u32 {
-    var holders: std.AutoArrayHashMapUnmanaged(u32, Holders) = .empty;
-    try collect(arena, &holders, session.profile().ptr, .other);
-    try collect(arena, &holders, session.global().ptr, .other);
-    var conflicts: std.ArrayList(u32) = .empty;
-    var it = holders.iterator();
-    while (it.next()) |entry| {
-        const counted = entry.value_ptr.*;
-        if (counted.binding_count > 1 and (counted.is_mixed or counted.kind == .other)) try conflicts.append(arena, entry.key_ptr.*);
-    }
-    return conflicts.items;
+    const profile = session.profile().ptr;
+    return plan.conflicts(arena, .{ .characters = profile.characters.items, .groups = profile.hotkeyGroups.items, .hotkeys = &profile.hotkeys, .global = session.global().ptr });
 }
 
 /// Every binding in the edited documents holding `combo`, named as the window shows it and joined with ", "; names are made in `arena`.
@@ -322,60 +310,6 @@ fn fixedName(arena: std.mem.Allocator, label: labels.HotkeyLabel) ![]const u8 {
 
 fn holds(keys: KeyList, combo: u32) bool {
     return std.mem.findScalar(u32, keys.slice(), combo) != null;
-}
-
-/// Every KeyList in `value`, however deeply nested, counted under the HolderKind of the field it sits in.
-fn collect(arena: std.mem.Allocator, holders: *std.AutoArrayHashMapUnmanaged(u32, Holders), value: anytype, kind: HolderKind) !void {
-    const T = @TypeOf(value.*);
-    if (T == KeyList) {
-        // One binding listing a combo twice still counts once.
-        for (value.slice(), 0..) |combo, index| {
-            if (std.mem.findScalar(u32, value.slice()[0..index], combo) != null) continue;
-            const entry = try holders.getOrPut(arena, combo);
-            if (!entry.found_existing) entry.value_ptr.* = .{ .kind = kind };
-            entry.value_ptr.binding_count += 1;
-            if (entry.value_ptr.kind != kind) entry.value_ptr.is_mixed = true;
-        }
-        return;
-    }
-    switch (@typeInfo(T)) {
-        .@"struct" => |info| {
-            if (@hasField(T, "items") and @hasField(T, "capacity")) {
-                for (value.items) |*item| try collect(arena, holders, item, kind);
-                return;
-            }
-            inline for (info.field_names, info.field_types) |name, F| {
-                if (comptime holdsKeys(F)) try collect(arena, holders, &@field(value, name), if (kind != .other) kind else comptime holderKind(name));
-            }
-        },
-        .optional => if (value.*) |*inner| try collect(arena, holders, inner, kind),
-        else => {},
-    }
-}
-
-fn holderKind(comptime field_name: []const u8) HolderKind {
-    if (std.mem.eql(u8, field_name, "characters")) return .character;
-    if (std.mem.eql(u8, field_name, "forwardKey")) return .group_forward;
-    if (std.mem.eql(u8, field_name, "backwardKey")) return .group_backward;
-    return .other;
-}
-
-/// Whether a field's type can contain a KeyList, so the walk skips strings, numbers and the like.
-fn holdsKeys(comptime T: type) bool {
-    // Walks every type nested in the profile and global settings, which outgrows the default quota.
-    @setEvalBranchQuota(100_000);
-    if (T == KeyList) return true;
-    return switch (@typeInfo(T)) {
-        .@"struct" => |info| blk: {
-            if (@hasField(T, "items") and @hasField(T, "capacity")) break :blk holdsKeys(@typeInfo(@FieldType(T, "items")).pointer.child);
-            for (info.field_types) |F| {
-                if (holdsKeys(F)) break :blk true;
-            }
-            break :blk false;
-        },
-        .optional => |info| holdsKeys(info.child),
-        else => false,
-    };
 }
 
 /// Windows hands a bare Win press to the Start Menu first, so the keyboard hook reports it.
