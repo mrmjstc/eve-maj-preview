@@ -22,6 +22,42 @@ const MAX_GROUP_ITEMS = 1000;
 /// How often a missing icon is added again, in case Explorer's TaskbarCreated never arrives.
 const RETRY_INTERVAL_MS: u64 = 5000;
 
+/// The items that run a global action, as a hotkey or protocol link would; the rest the tray handles itself.
+const MENU_ACTIONS = [_]MenuAction{
+    .{ .id = win32.IDM_TOGGLE_DRAGGING, .action = .toggle_dragging },
+    .{ .id = win32.IDM_TOGGLE_AUTO_MINIMIZE, .action = .toggle_auto_minimize },
+    .{ .id = win32.IDM_TOGGLE_TRAVEL_MODE, .action = .toggle_travel_mode },
+    .{ .id = win32.IDM_TOGGLE_VISIBILITY, .action = .toggle_visibility },
+    .{ .id = win32.IDM_RESTORE_SAVED_POSITIONS, .action = .move_to_saved_positions },
+    .{ .id = win32.IDM_TOGGLE_NOTIF_HISTORY, .action = .toggle_notification_history },
+    .{ .id = win32.IDM_CLEAR_NOTIF_HISTORY, .action = .clear_notification_history },
+    .{ .id = win32.IDM_TOGGLE_MAP_PANEL, .action = .toggle_map_panel },
+    .{ .id = win32.IDM_TOGGLE_INTEL_PANEL, .action = .toggle_intel_panel },
+    .{ .id = win32.IDM_TOGGLE_ALERT_MUTE, .action = .toggle_alert_mute },
+    .{ .id = win32.IDM_SUSPEND_HOTKEYS, .action = .suspend_hotkeys },
+    .{ .id = win32.IDM_CLOSE_ALL_CLIENTS, .action = .close_all },
+};
+/// The items handleMenuCommand runs itself, which no menu action may take.
+const OWN_ITEMS = [_]u16{ win32.IDM_EXIT, win32.IDM_OPEN_CONFIG, win32.IDM_UPDATE };
+
+comptime {
+    for (MENU_ACTIONS, 0..) |item, index| {
+        const id_text = std.fmt.comptimePrint("{d}", .{item.id});
+        if (item.id >= win32.IDM_PROFILE_BASE) @compileError("tray item " ++ id_text ++ " runs into the profile and group submenus' IDs");
+        if (std.mem.indexOfScalar(u16, &OWN_ITEMS, item.id) != null) @compileError("tray item " ++ id_text ++ " is one the tray handles itself");
+        for (MENU_ACTIONS[index + 1 ..]) |other| {
+            if (other.id == item.id) @compileError("tray item " ++ id_text ++ " runs two actions");
+            if (other.action == item.action) @compileError("tray action " ++ @tagName(item.action) ++ " has two items");
+        }
+    }
+}
+
+/// A menu item and the global action it runs.
+const MenuAction = struct {
+    id: u16,
+    action: url.GlobalAction,
+};
+
 /// An item in one of the group submenus.
 const GroupCommand = struct {
     group_index: usize,
@@ -296,23 +332,12 @@ pub const TrayIcon = struct {
     }
 };
 
-/// The hotkey action a menu item runs, as a hotkey or protocol URL would; null for the items the tray handles itself.
+/// Null for the items the tray handles itself.
 fn globalAction(command_id: u16) ?url.GlobalAction {
-    return switch (command_id) {
-        win32.IDM_TOGGLE_DRAGGING => .toggle_dragging,
-        win32.IDM_TOGGLE_AUTO_MINIMIZE => .toggle_auto_minimize,
-        win32.IDM_TOGGLE_TRAVEL_MODE => .toggle_travel_mode,
-        win32.IDM_TOGGLE_VISIBILITY => .toggle_visibility,
-        win32.IDM_RESTORE_SAVED_POSITIONS => .move_to_saved_positions,
-        win32.IDM_TOGGLE_NOTIF_HISTORY => .toggle_notification_history,
-        win32.IDM_CLEAR_NOTIF_HISTORY => .clear_notification_history,
-        win32.IDM_TOGGLE_MAP_PANEL => .toggle_map_panel,
-        win32.IDM_TOGGLE_INTEL_PANEL => .toggle_intel_panel,
-        win32.IDM_TOGGLE_ALERT_MUTE => .toggle_alert_mute,
-        win32.IDM_SUSPEND_HOTKEYS => .suspend_hotkeys,
-        win32.IDM_CLOSE_ALL_CLIENTS => .close_all,
-        else => null,
-    };
+    for (MENU_ACTIONS) |item| {
+        if (item.id == command_id) return item.action;
+    }
+    return null;
 }
 
 /// Null when `command_id` is outside both group submenus' ranges.
