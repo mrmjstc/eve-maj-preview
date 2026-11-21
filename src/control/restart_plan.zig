@@ -20,7 +20,6 @@ pub const Step = enum {
     /// The chatlog worker reads the global settings, its own and the ore prices, so they're replaced only while it's stopped.
     adopt_global_draft,
     destroy_hotkey_manager,
-    /// Keeps each client's system name for build_thumbnail_set to seed the new set with.
     teardown_thumbnail_set,
     install_profile,
     record_last_used_profile,
@@ -28,7 +27,7 @@ pub const Step = enum {
     build_thumbnail_set,
     /// Adds thumbnails for windows the new filters admit, keeping the set.
     populate_thumbnail_set,
-    /// Drops the kept set's system names, rates and log alerts once monitoring is off, since nothing would update them.
+    /// Drops the roster's systems and the thumbnails' rates and log alerts once monitoring is off, since nothing would update them.
     clear_log_readings,
     apply_monitor_settings,
     create_monitor,
@@ -74,7 +73,7 @@ pub const Plan = struct {
         // Windows the new filters drop are reported closed, and leave the thumbnail set and chatlog on the next tick.
         plan.add(.rescan_windows);
         plan.add(if (rebuilds_thumbnail_set) .build_thumbnail_set else .populate_thumbnail_set);
-        if (!rebuilds_thumbnail_set and !facts.is_chatlog_enabled_next) plan.add(.clear_log_readings);
+        if (!facts.is_chatlog_enabled_next) plan.add(.clear_log_readings);
         if (keeps_monitor) plan.add(.apply_monitor_settings);
         if (creates_monitor) plan.add(.create_monitor);
         plan.add(.setup_trackers);
@@ -188,14 +187,17 @@ test "a Save that turns chatlog monitoring off clears what the logs last showed"
     try expectBefore(&plan, .populate_thumbnail_set, .clear_log_readings);
 }
 
-test "a rebuilt thumbnail set or monitoring left on clears nothing" {
-    var switch_facts = SAVE;
-    switch_facts.is_profile_replaced = true;
-    switch_facts.is_chatlog_enabled_next = false;
-    const switch_plan: Plan = .init(switch_facts);
-    try testing.expect(!has(&switch_plan, .clear_log_readings));
-    const save_plan: Plan = .init(SAVE);
-    try testing.expect(!has(&save_plan, .clear_log_readings));
+test "a profile switch with monitoring off clears what the logs last showed once the new set is built" {
+    var facts = SAVE;
+    facts.is_profile_replaced = true;
+    facts.is_chatlog_enabled_next = false;
+    const plan: Plan = .init(facts);
+    try expectBefore(&plan, .build_thumbnail_set, .clear_log_readings);
+}
+
+test "monitoring left on clears nothing" {
+    const plan: Plan = .init(SAVE);
+    try testing.expect(!has(&plan, .clear_log_readings));
 }
 
 test "every plan stops the worker before what it reads changes, and starts it only once wired" {

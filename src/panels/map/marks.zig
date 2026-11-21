@@ -13,7 +13,7 @@ pub const MAX_MARKS = 64;
 pub const Mark = struct {
     system: SystemIndex,
     source_hwnd: win32.HWND,
-    /// Borrows from the thumbnail, so it's only good until the next tick; rebuilt each render.
+    /// Borrows from the roster, so it's only good until the next tick; rebuilt each render.
     character_name: []const u8,
     color: u32,
     is_active: bool,

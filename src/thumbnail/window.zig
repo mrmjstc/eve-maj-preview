@@ -25,19 +25,6 @@ pub const SOURCE_HWND_PROP = "SOURCE_HWND";
 /// The owned strings the render cache borrows, so only replaceText may swap them.
 pub const OwnedText = enum { character_name, system_name, group_badge_label };
 
-/// ThumbnailSet records jumps; travel/left_behind.zig reads it and flags alerts.
-pub const LeftBehindState = struct {
-    /// Zero = hasn't jumped this session.
-    last_jump: win32.Ticks = .{},
-    /// Guards the left-behind alert to one per episode; cleared on jump.
-    alert_fired: bool = false,
-
-    pub fn recordJump(self: *LeftBehindState) void {
-        self.last_jump = win32.Ticks.now();
-        self.alert_fired = false;
-    }
-};
-
 /// Only AutoMinimizer.check writes it after creation.
 pub const AutoMinimizeState = struct {
     /// When check's delay counts from: the last tick the thumbnail was Active or Minimized.
@@ -54,13 +41,12 @@ pub const ThumbnailWindow = struct {
     is_eve_client: bool,
     /// Owned; ThumbnailSet frees it when it removes or renames the thumbnail.
     character_name: []const u8,
-    /// Owned; ThumbnailSet frees the old one on each system change.
+    /// Owned; the roster client's system as last drawn, which ThumbnailSet replaces when it differs.
     system_name: []const u8,
-    /// YYYYMMDD*1000000+HHMMSS of the event that set system_name; 0 if unreadable, which always applies.
-    system_name_event_timestamp: u64 = 0,
+    /// The roster client's revision when ThumbnailSet last took up its changes.
+    seen_revision: u32 = 0,
     /// Empty while showSystemConnections is off, or system_name isn't on the gate map; only ThumbnailSet.updateConnections writes it.
     connections: connections_mod.Connections = .{},
-    travel: LeftBehindState = .{},
     notifications: stack.NotificationStack = .{},
     last_click_time: win32.Ticks = .{},
     is_excluded_from_cycle: bool = false,
@@ -100,7 +86,7 @@ pub const ThumbnailWindow = struct {
 
     /// Sole writer of the config-derived cached_* fields, all but the group badge label.
     pub fn refreshConfigCache(self: *ThumbnailWindow, config: *const config_mod.Config, auto_colors: *AutoColorStore) void {
-        self.cached_system_color = if (self.system_name.len > 0) auto_colors.systemNameColor(config, self.system_name) else config.shownColors().system_name_color;
+        self.cached_system_color = systemColor(config, auto_colors, self.system_name);
         const is_logged_in = !scout.isGenericCharacterName(self.character_name);
         self.cached_character_color = if (is_logged_in) auto_colors.characterNameColor(config, self.character_name) else null;
         self.cached_list_name_color = if (is_logged_in) auto_colors.listNameColor(config, self.character_name) else null;
@@ -362,6 +348,12 @@ pub fn destroy(thumbnail: *const ThumbnailWindow) void {
 pub fn destroyHandles(handles: Handles) void {
     _ = win32.DestroyWindow(handles.text_hwnd);
     _ = win32.DestroyWindow(handles.hwnd);
+}
+
+/// The configured colour while `system_name` is empty, i.e. unknown.
+pub fn systemColor(config: *const config_mod.Config, auto_colors: *AutoColorStore, system_name: []const u8) u32 {
+    if (system_name.len == 0) return config.shownColors().system_name_color;
+    return auto_colors.systemNameColor(config, system_name);
 }
 
 /// rcSource stays zeroed, meaning the whole source window.

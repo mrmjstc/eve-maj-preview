@@ -4,6 +4,8 @@ const win32 = @import("../platform/win32.zig");
 const config_mod = @import("../config.zig");
 const window = @import("../thumbnail/window.zig");
 const auto_colors_mod = @import("../clients/auto_colors.zig");
+const roster = @import("../clients/roster.zig");
+const scout = @import("../clients/scout.zig");
 const history_mod = @import("history.zig");
 const notified_queue_mod = @import("notified_queue.zig");
 const notification_mod = @import("notification.zig");
@@ -14,6 +16,7 @@ const universe = @import("../map/universe.zig");
 const log = @import("../log.zig");
 
 const AutoColorStore = auto_colors_mod.AutoColorStore;
+const Client = roster.Client;
 const ThumbnailWindow = window.ThumbnailWindow;
 const slog = log.Scoped("notification");
 
@@ -34,7 +37,7 @@ pub const Records = struct {
 };
 
 const NearestClient = struct {
-    thumbnail: *const ThumbnailWindow,
+    client: *const Client,
     jumps: u8,
 };
 
@@ -78,10 +81,11 @@ pub fn notify(context: Context, thumbnail: *ThumbnailWindow, notification: notif
 }
 
 /// Lists intel for the Intel Panel, shown or not, measured from the nearest client; dropped with no client running.
-pub fn listIntel(context: Context, thumbnails: []const ThumbnailWindow, system: universe.SystemIndex, message: []const u8, is_clear: bool) void {
+pub fn listIntel(context: Context, clients: []const Client, system: universe.SystemIndex, message: []const u8, is_clear: bool) void {
     var distances: universe.Distances = undefined;
     universe.measureDistances(system, universe.UNREACHED - 1, &distances);
-    const nearest = nearestClient(thumbnails, &distances) orelse return;
+    const nearest = nearestClient(clients, &distances) orelse return;
+    const client = nearest.client;
 
     var jumps_buf: [3]u8 = undefined;
     // A u8 is at most three digits.
@@ -90,11 +94,11 @@ pub fn listIntel(context: Context, thumbnails: []const ThumbnailWindow, system: 
     var text_buf: [notification_mod.TEXT_MAX]u8 = undefined;
     const text = notification_mod.defaultText(notification, &text_buf);
     context.records.intel_history.push(.{
-        .source_hwnd = nearest.thumbnail.source_hwnd,
-        .character_name = nearest.thumbnail.character_name,
+        .source_hwnd = client.hwnd,
+        .character_name = client.character_name,
         .text = text,
         .notification_type = .ChatIntel,
-        .character_color = nearest.thumbnail.cached_character_color,
+        .character_color = if (scout.isGenericCharacterName(client.character_name)) null else context.auto_colors.characterNameColor(context.config, client.character_name),
         .lead = systemLead(context, notification, text, .known_only),
         .system = system,
         .intel = .{ .jumps = nearest.jumps, .is_clear = is_clear },
@@ -192,18 +196,18 @@ fn systemLead(context: Context, notification: notification_mod.Notification, tex
 }
 
 /// A client whose system isn't known counts as `universe.UNREACHED` away, and reads as here: 0 jumps, which the text leaves out.
-fn nearestClient(thumbnails: []const ThumbnailWindow, distances: *const universe.Distances) ?NearestClient {
-    var nearest: ?*const ThumbnailWindow = null;
+fn nearestClient(clients: []const Client, distances: *const universe.Distances) ?NearestClient {
+    var nearest: ?*const Client = null;
     var nearest_jumps: u8 = universe.UNREACHED;
-    for (thumbnails) |*thumbnail| {
-        if (!thumbnail.is_eve_client) continue;
-        const jumps = if (universe.findSystem(thumbnail.system_name)) |system| distances[system] else universe.UNREACHED;
+    for (clients) |*client| {
+        if (!client.is_eve_client) continue;
+        const jumps = if (universe.findSystem(client.system_name)) |system| distances[system] else universe.UNREACHED;
         if (nearest != null and jumps >= nearest_jumps) continue;
-        nearest = thumbnail;
+        nearest = client;
         nearest_jumps = jumps;
     }
-    const thumbnail = nearest orelse return null;
-    return .{ .thumbnail = thumbnail, .jumps = if (nearest_jumps == universe.UNREACHED) 0 else nearest_jumps };
+    const client = nearest orelse return null;
+    return .{ .client = client, .jumps = if (nearest_jumps == universe.UNREACHED) 0 else nearest_jumps };
 }
 
 fn isAlertRepeat(shown_group: ?u64, alert_group: ?u64) bool {

@@ -3,8 +3,10 @@ const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const config_mod = @import("../config.zig");
 const universe = @import("../map/universe.zig");
+const roster_mod = @import("../clients/roster.zig");
 const set = @import("../thumbnail/set.zig");
 
+const Roster = roster_mod.Roster;
 const ThumbnailSet = set.ThumbnailSet;
 
 /// What a panel builds its window from; App's.
@@ -34,5 +36,7 @@ pub const Request = union(enum) {
 pub const Host = struct {
     /// Null outside the run and while a rebuild failed; read each time, as it's rebuilt.
     thumbnail_set: *const fn () ?*ThumbnailSet,
+    /// Null outside the run.
+    roster: *const fn () ?*const Roster,
     run: *const fn (request: Request) void,
 };

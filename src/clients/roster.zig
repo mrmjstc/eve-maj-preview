@@ -2,6 +2,7 @@
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const scout = @import("scout.zig");
+const stragglers = @import("../travel/stragglers.zig");
 const log = @import("../log.zig");
 
 const EveWindow = scout.EveWindow;
@@ -14,6 +15,11 @@ pub const Client = struct {
     character_name: []const u8,
     /// Mirrors EveWindow.logged_in_at, which Scout alone writes; zero at the login screen.
     logged_in_at: win32.Ticks,
+    /// Owned, or empty while unknown; only Roster writes it.
+    system_name: []const u8 = "",
+    /// YYYYMMDD*1000000+HHMMSS of the event that set system_name; 0 if unreadable, which always applies.
+    system_name_event_timestamp: u64 = 0,
+    travel: stragglers.LeftBehindState = .{},
     /// Bumped whenever something a view shows changes, so views redraw by comparing it.
     revision: u32 = 0,
 };
@@ -28,7 +34,7 @@ pub const Roster = struct {
     }
 
     pub fn deinit(self: *Roster) void {
-        for (self.clients.items) |client| self.allocator.free(client.character_name);
+        for (self.clients.items) |client| self.freeClient(client);
         self.clients.deinit(self.allocator);
     }
 
@@ -36,10 +42,11 @@ pub const Roster = struct {
     pub fn sync(self: *Roster, windows: []const EveWindow) void {
         self.dropMissing(windows);
         for (windows) |*window| {
-            const client = self.byHwnd(window.hwnd) orelse {
+            const index = self.indexOf(window.hwnd) orelse {
                 self.add(window);
                 continue;
             };
+            const client = &self.clients.items[index];
             if (!std.mem.eql(u8, client.character_name, window.character_name)) self.rename(client, window.character_name);
             if (client.logged_in_at.ms != window.logged_in_at.ms) {
                 client.logged_in_at = window.logged_in_at;
@@ -48,12 +55,12 @@ pub const Roster = struct {
         }
     }
 
-    pub fn byHwnd(self: *Roster, hwnd: win32.HWND) ?*Client {
+    pub fn byHwnd(self: *const Roster, hwnd: win32.HWND) ?*const Client {
         return &self.clients.items[self.indexOf(hwnd) orelse return null];
     }
 
     /// The first client with this name, which a window filter's windows and logged-out clients share.
-    pub fn byName(self: *Roster, name: []const u8) ?*Client {
+    pub fn byName(self: *const Roster, name: []const u8) ?*const Client {
         for (self.clients.items) |*client| {
             if (std.mem.eql(u8, client.character_name, name)) return client;
         }
@@ -70,11 +77,50 @@ pub const Roster = struct {
         return self.clients.items[index].is_eve_client;
     }
 
+    /// `jumped_at_ms` is null unless the client jumped; an update older than the one shown is skipped.
+    pub fn updateSystem(self: *Roster, hwnd: win32.HWND, system_name: []const u8, event_timestamp: u64, jumped_at_ms: ?u64) !void {
+        const index = self.indexOf(hwnd) orelse {
+            slog.debug("No client for window 0x{x} to put in {s}", .{ @intFromPtr(hwnd), system_name });
+            return;
+        };
+        const client = &self.clients.items[index];
+        if (event_timestamp != 0 and event_timestamp < client.system_name_event_timestamp) {
+            slog.debug("Ignoring stale system update for {s}: {s} (event_timestamp={} < current={})", .{ client.character_name, system_name, event_timestamp, client.system_name_event_timestamp });
+            return;
+        }
+
+        const copy = try self.allocator.dupe(u8, system_name);
+        self.allocator.free(client.system_name);
+        client.system_name = copy;
+        client.system_name_event_timestamp = event_timestamp;
+        if (jumped_at_ms) |now_ms| client.travel.recordJump(now_ms);
+        client.revision +%= 1;
+        slog.debug("Updated system for {s}: {s}", .{ client.character_name, system_name });
+    }
+
+    /// Once log monitoring is off, so a stale system doesn't stay shown.
+    pub fn clearLogReadings(self: *Roster) void {
+        for (self.clients.items) |*client| self.clearSystem(client);
+    }
+
     fn indexOf(self: *const Roster, hwnd: win32.HWND) ?usize {
         for (self.clients.items, 0..) |client, index| {
             if (client.hwnd == hwnd) return index;
         }
         return null;
+    }
+
+    fn clearSystem(self: *Roster, client: *Client) void {
+        if (client.system_name.len == 0) return;
+        self.allocator.free(client.system_name);
+        client.system_name = "";
+        client.system_name_event_timestamp = 0;
+        client.revision +%= 1;
+    }
+
+    fn freeClient(self: *const Roster, client: Client) void {
+        self.allocator.free(client.character_name);
+        self.allocator.free(client.system_name);
     }
 
     fn dropMissing(self: *Roster, windows: []const EveWindow) void {
@@ -84,7 +130,7 @@ pub const Roster = struct {
             const client = self.clients.items[index];
             if (isListed(windows, client.hwnd)) continue;
             slog.debug("Dropped '{s}' from the roster", .{client.character_name});
-            self.allocator.free(client.character_name);
+            self.freeClient(client);
             _ = self.clients.orderedRemove(index);
         }
     }
@@ -108,16 +154,18 @@ pub const Roster = struct {
         slog.debug("Added '{s}' to the roster", .{name});
     }
 
-    /// Keeps the old name if copying fails, so the next sync tries again.
+    /// Keeps the old name if copying fails, so the next sync tries again; back at the login screen, the system goes too.
     fn rename(self: *Roster, client: *Client, new_name: []const u8) void {
         const name = self.allocator.dupe(u8, new_name) catch |err| {
             slog.err("Failed to copy the new name '{s}' for the roster: {}", .{ new_name, err });
             return;
         };
         slog.debug("Renamed '{s}' to '{s}' in the roster", .{ client.character_name, name });
+        const is_logout = scout.isGenericCharacterName(name) and !scout.isGenericCharacterName(client.character_name);
         self.allocator.free(client.character_name);
         client.character_name = name;
         client.revision +%= 1;
+        if (is_logout) self.clearSystem(client);
     }
 };
 
@@ -158,21 +206,24 @@ test "a window logging in keeps its place, takes the new name and bumps its revi
     try testing.expectEqual(@as(u32, 0), roster.clients.items[1].revision);
 }
 
-test "logging out renames the client to the login screen's name and clears its login time" {
+test "logging out renames the client to the login screen's name and clears its login time and system" {
     var roster: Roster = .init(testing.allocator);
     defer roster.deinit();
     roster.sync(&.{testWindow(1, "Alpha", 900)});
+    try roster.updateSystem(@ptrFromInt(1), "Jita", 0, null);
     roster.sync(&.{testWindow(1, "EVE", 0)});
 
     const client = roster.byHwnd(@ptrFromInt(1)) orelse return error.TestExpectedClient;
     try testing.expect(scout.isGenericCharacterName(client.character_name));
     try testing.expect(client.logged_in_at.isZero());
+    try testing.expectEqualStrings("", client.system_name);
 }
 
 test "a window gone from Scout's list leaves the roster" {
     var roster: Roster = .init(testing.allocator);
     defer roster.deinit();
     roster.sync(&.{ testWindow(1, "Alpha", 500), testWindow(2, "Beta", 600) });
+    try roster.updateSystem(@ptrFromInt(1), "Jita", 0, null);
     roster.sync(&.{testWindow(2, "Beta", 600)});
 
     try testing.expect(!roster.contains(@ptrFromInt(1)));
@@ -198,4 +249,42 @@ test "a sync with nothing changed leaves every revision alone" {
     roster.sync(&windows);
 
     try testing.expectEqual(@as(u32, 0), roster.clients.items[0].revision);
+}
+
+test "a system update sets the system and bumps the revision; a jump records its time" {
+    var roster: Roster = .init(testing.allocator);
+    defer roster.deinit();
+    roster.sync(&.{testWindow(1, "Alpha", 500)});
+    try roster.updateSystem(@ptrFromInt(1), "Jita", 20260101120000, null);
+    try roster.updateSystem(@ptrFromInt(1), "Perimeter", 20260101120100, 4_000);
+
+    const client = roster.byHwnd(@ptrFromInt(1)) orelse return error.TestExpectedClient;
+    try testing.expectEqualStrings("Perimeter", client.system_name);
+    try testing.expectEqual(@as(u32, 2), client.revision);
+    try testing.expectEqual(@as(u64, 4_000), client.travel.last_jump_ms);
+}
+
+test "a system update older than the one shown is skipped, and an undated one always applies" {
+    var roster: Roster = .init(testing.allocator);
+    defer roster.deinit();
+    roster.sync(&.{testWindow(1, "Alpha", 500)});
+    try roster.updateSystem(@ptrFromInt(1), "Perimeter", 20260101120100, null);
+    try roster.updateSystem(@ptrFromInt(1), "Jita", 20260101120000, null);
+    const client = roster.byHwnd(@ptrFromInt(1)) orelse return error.TestExpectedClient;
+    try testing.expectEqualStrings("Perimeter", client.system_name);
+
+    try roster.updateSystem(@ptrFromInt(1), "Amarr", 0, null);
+    try testing.expectEqualStrings("Amarr", client.system_name);
+}
+
+test "clearing log readings empties every system and keeps travel" {
+    var roster: Roster = .init(testing.allocator);
+    defer roster.deinit();
+    roster.sync(&.{ testWindow(1, "Alpha", 500), testWindow(2, "Beta", 600) });
+    try roster.updateSystem(@ptrFromInt(1), "Jita", 0, 4_000);
+    roster.clearLogReadings();
+
+    try testing.expectEqualStrings("", roster.clients.items[0].system_name);
+    try testing.expectEqual(@as(u64, 4_000), roster.clients.items[0].travel.last_jump_ms);
+    try testing.expectEqual(@as(u32, 0), roster.clients.items[1].revision);
 }

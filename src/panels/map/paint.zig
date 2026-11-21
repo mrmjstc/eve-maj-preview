@@ -35,6 +35,7 @@ const faction_warfare = @import("../../map/faction_warfare.zig");
 const evestars = @import("../../map/evestars.zig");
 const zkill = @import("../../map/zkill.zig");
 const intel_pins = @import("../../map/intel_pins.zig");
+const roster = @import("../../clients/roster.zig");
 const window = @import("../../thumbnail/window.zig");
 const fixed_text = @import("../../util/fixed_text.zig");
 const pixel_buffer = @import("../../util/pixel_buffer.zig");
@@ -63,6 +64,7 @@ const Storms = storms_mod.Storms;
 const SystemIndex = universe.SystemIndex;
 const SystemStats = stats_mod.SystemStats;
 const ThumbnailWindow = window.ThumbnailWindow;
+const Client = roster.Client;
 const Traffic = traffic_mod.Traffic;
 const TrafficSpan = types.TrafficSpan;
 const slog = log.Scoped("map_panel");
@@ -76,6 +78,8 @@ const ROUTE_DETAIL_MAX = 40;
 
 /// What the panel shows besides its own settings.
 pub const Scene = struct {
+    /// Borrowed for one render.
+    clients: []const Client = &.{},
     /// Borrowed for one render.
     thumbnails: []const ThumbnailWindow = &.{},
     active_source_hwnd: ?win32.HWND = null,

@@ -7,6 +7,7 @@ const scout = @import("../clients/scout.zig");
 const actions = @import("../clients/actions.zig");
 const auto_move_mod = @import("../clients/auto_move.zig");
 const exclusions_mod = @import("../clients/exclusions.zig");
+const roster_mod = @import("../clients/roster.zig");
 const auto_colors_mod = @import("../clients/auto_colors.zig");
 const drag_overlays_mod = @import("../drag/overlays.zig");
 const spaces = @import("../layout/spaces.zig");
@@ -24,44 +25,10 @@ const connections = @import("../map/connections.zig");
 const log = @import("../log.zig");
 
 const AutoColorStore = auto_colors_mod.AutoColorStore;
+const Roster = roster_mod.Roster;
 const slog = log.Scoped("thumbnail_set");
 
 pub const ThumbnailWindow = window.ThumbnailWindow;
-
-/// Copied before a reload so the new thumbnails start with their system names.
-pub const SystemNameSnapshot = struct {
-    allocator: std.mem.Allocator,
-    /// Keyed by source_hwnd, which survives the thumbnails' teardown and recreation; values owned, freed in deinit.
-    names: std.AutoHashMap(win32.HWND, []const u8),
-
-    pub fn init(allocator: std.mem.Allocator) SystemNameSnapshot {
-        return .{ .allocator = allocator, .names = .init(allocator) };
-    }
-
-    pub fn deinit(self: *SystemNameSnapshot) void {
-        var it = self.names.valueIterator();
-        while (it.next()) |name| self.allocator.free(name.*);
-        self.names.deinit();
-    }
-
-    pub fn capture(self: *SystemNameSnapshot, thumbnail_set: *const ThumbnailSet) void {
-        for (thumbnail_set.thumbnails.items) |thumbnail| {
-            if (thumbnail.system_name.len == 0) continue;
-            const copy = self.allocator.dupe(u8, thumbnail.system_name) catch |err| {
-                slog.warn("Failed to snapshot system name for reload: {}", .{err});
-                continue;
-            };
-            self.names.put(thumbnail.source_hwnd, copy) catch |err| {
-                slog.warn("Failed to record system name snapshot for reload: {}", .{err});
-                self.allocator.free(copy);
-            };
-        }
-    }
-
-    pub fn get(self: *const SystemNameSnapshot, source_hwnd: win32.HWND) ?[]const u8 {
-        return self.names.get(source_hwnd);
-    }
-};
 
 pub const ThumbnailSet = struct {
     allocator: std.mem.Allocator,
@@ -84,6 +51,8 @@ pub const ThumbnailSet = struct {
     active_source_hwnd: ?win32.HWND = null,
     /// Borrowed from App, which keeps it across a thumbnail set rebuild.
     auto_colors: *AutoColorStore,
+    /// Borrowed from App, which keeps it across a thumbnail set rebuild; holds the game state the thumbnails draw.
+    roster: *const Roster,
     /// A different mode needs a new ThumbnailSet (see App.onLiveProfileEdited).
     view_mode: types.ViewMode,
 
@@ -97,8 +66,16 @@ pub const ThumbnailSet = struct {
         should_move_to_saved: bool,
         /// False at startup/reload so clients already running stay put.
         should_minimize_new: bool = false,
-        /// Seeds each new thumbnail's system name, so a reload doesn't show them blank.
-        system_names: ?*const SystemNameSnapshot = null,
+    };
+
+    /// What App lends the set; each must outlive it.
+    pub const Borrowed = struct {
+        store: *config_mod.ProfileStore,
+        exclusions: *const exclusions_mod.Exclusions,
+        /// App's NotificationCenter's.
+        notification_records: dispatch.Records,
+        auto_colors: *AutoColorStore,
+        roster: *const Roster,
     };
 
     /// Passed in, since input handling sits above thumbnail/.
@@ -117,23 +94,23 @@ pub const ThumbnailSet = struct {
         group_badge_label: []const u8,
     };
 
-    /// Borrows `store`, `exclusions`, `notification_records` and `auto_colors`, which must outlive the thumbnail set.
-    pub fn init(allocator: std.mem.Allocator, store: *config_mod.ProfileStore, exclusions: *const exclusions_mod.Exclusions, notification_records: dispatch.Records, auto_colors: *AutoColorStore, callbacks: Callbacks) !ThumbnailSet {
+    pub fn init(allocator: std.mem.Allocator, borrowed: Borrowed, callbacks: Callbacks) !ThumbnailSet {
         const instance = win32.GetModuleHandleA(null) orelse return error.GetModuleHandleFailed;
-        const config = &store.live;
+        const config = &borrowed.store.live;
 
         var thumbnail_set: ThumbnailSet = .{
             .allocator = allocator,
             .thumbnails = .empty,
-            .auto_colors = auto_colors,
+            .auto_colors = borrowed.auto_colors,
+            .roster = borrowed.roster,
             .auto_move = .init(allocator),
             .drag_overlays = .init(allocator),
             .renderer = .init(allocator),
             .instance = instance,
             .config = config,
-            .store = store,
-            .exclusions = exclusions,
-            .notification_records = notification_records,
+            .store = borrowed.store,
+            .exclusions = borrowed.exclusions,
+            .notification_records = borrowed.notification_records,
             .view_mode = config.display.viewMode,
         };
 
@@ -173,7 +150,7 @@ pub const ThumbnailSet = struct {
 
     /// For the Intel Panel, which lists every report; `message` is copied.
     pub fn listIntel(self: *const ThumbnailSet, system: universe.SystemIndex, message: []const u8, is_clear: bool) void {
-        dispatch.listIntel(self.dispatchContext(), self.thumbnails.items, system, message, is_clear);
+        dispatch.listIntel(self.dispatchContext(), self.roster.clients.items, system, message, is_clear);
     }
 
     pub fn showTestNotification(self: *ThumbnailSet, notification_type: notification_mod.NotificationType, type_config: config_mod.NotificationTypeConfig) !void {
@@ -405,30 +382,6 @@ pub const ThumbnailSet = struct {
         return self.hasThumbnail(foreground_hwnd);
     }
 
-    /// See ThumbnailWindow.system_name_event_timestamp and .travel for `event_timestamp` and `is_jump`.
-    pub fn updateSystemNameByHwnd(self: *ThumbnailSet, source_hwnd: win32.HWND, system_name: []const u8, event_timestamp: u64, is_jump: bool) !void {
-        const thumbnail = self.getThumbnailBySourceHwnd(source_hwnd) orelse {
-            slog.debug("No thumbnail for window 0x{x} to show system {s}", .{ @intFromPtr(source_hwnd), system_name });
-            return;
-        };
-
-        if (event_timestamp != 0 and event_timestamp < thumbnail.system_name_event_timestamp) {
-            slog.debug("Ignoring stale system update for {s}: {s} (event_timestamp={} < current={})", .{ thumbnail.character_name, system_name, event_timestamp, thumbnail.system_name_event_timestamp });
-            return;
-        }
-
-        thumbnail.replaceText(self.allocator, .system_name, try self.allocator.dupe(u8, system_name));
-        thumbnail.system_name_event_timestamp = event_timestamp;
-        thumbnail.cached_system_color = self.auto_colors.systemNameColor(self.config, system_name);
-        slog.debug("System '{s}' color resolved to: 0x{X:0>6}", .{ system_name, thumbnail.cached_system_color & 0xFFFFFF });
-        self.shareSystemColor(thumbnail);
-
-        if (is_jump) thumbnail.travel.recordJump();
-
-        thumbnail.needs_render = true;
-        slog.debug("Updated system for {s}: {s}", .{ thumbnail.character_name, system_name });
-    }
-
     /// Call every tick, since pins fade with nothing to announce it.
     pub fn updateConnections(self: *ThumbnailSet, pins: *const intel_pins.IntelPins, now_ms: u64) void {
         const thumbnail_config = &self.config.thumbnail;
@@ -439,8 +392,9 @@ pub const ThumbnailSet = struct {
         }
     }
 
-    /// Past `max_immediate`, the rest stay dirty for the next tick.
+    /// Takes up the roster's changes first; past `max_immediate`, the rest stay dirty for the next tick.
     pub fn renderDirtyThumbnails(self: *ThumbnailSet, max_immediate: ?usize) void {
+        self.followRoster();
         var rendered_count: usize = 0;
         for (self.thumbnails.items) |*thumbnail| {
             if (!thumbnail.needs_render) continue;
@@ -506,10 +460,9 @@ pub const ThumbnailSet = struct {
         thumbnail.needs_render = true;
     }
 
-    /// Once log monitoring is off, so stale log readings don't stay on screen.
+    /// Once log monitoring is off, so stale log readings don't stay on screen; the roster clears the systems.
     pub fn clearLogReadings(self: *ThumbnailSet) void {
         for (self.thumbnails.items) |*thumbnail| {
-            if (thumbnail.system_name.len > 0) self.clearSystemName(thumbnail);
             if (thumbnail.stats.clearLogReadings()) thumbnail.needs_render = true;
             dispatch.clearLogDriven(self.allocator, thumbnail);
         }
@@ -623,22 +576,28 @@ pub const ThumbnailSet = struct {
         }
     }
 
-    /// Back at the login screen; applyNameChanges' reflow moves it.
+    /// Back at the login screen, where the roster drops the system; applyNameChanges' reflow moves it.
     fn onLogout(self: *ThumbnailSet, thumbnail: *ThumbnailWindow) void {
         dispatch.clearAll(self.allocator, thumbnail);
-        self.clearSystemName(thumbnail);
-        slog.debug("Cleared system name for logged out client", .{});
     }
 
-    fn clearSystemName(self: *ThumbnailSet, thumbnail: *ThumbnailWindow) void {
-        // Owned like any system name, since freeThumbnailData frees it.
-        const empty_system = self.allocator.dupe(u8, "") catch |err| {
-            slog.err("Failed to clear the system name for '{s}': {}", .{ thumbnail.character_name, err });
-            return;
-        };
-        thumbnail.replaceText(self.allocator, .system_name, empty_system);
-        thumbnail.cached_system_color = self.config.shownColors().system_name_color;
-        thumbnail.needs_render = true;
+    /// Copies each client's system onto its thumbnail, only when it differs, since replaceText drops the measured text sizes.
+    fn followRoster(self: *ThumbnailSet) void {
+        for (self.thumbnails.items) |*thumbnail| {
+            const client = self.roster.byHwnd(thumbnail.source_hwnd) orelse continue;
+            if (client.revision == thumbnail.seen_revision) continue;
+            if (!std.mem.eql(u8, thumbnail.system_name, client.system_name)) {
+                const copy = self.allocator.dupe(u8, client.system_name) catch |err| {
+                    slog.err("Failed to copy the system '{s}' for '{s}': {}", .{ client.system_name, thumbnail.character_name, err });
+                    continue;
+                };
+                thumbnail.replaceText(self.allocator, .system_name, copy);
+                thumbnail.cached_system_color = window.systemColor(self.config, self.auto_colors, copy);
+                self.shareSystemColor(thumbnail);
+                thumbnail.needs_render = true;
+            }
+            thumbnail.seen_revision = client.revision;
+        }
     }
 
     /// An evicted system's colour is picked again on return, so thumbnails already there would keep the old one.
@@ -658,7 +617,7 @@ pub const ThumbnailSet = struct {
         for (eve_windows) |eve_window| {
             if (self.hasThumbnail(eve_window.hwnd)) continue;
 
-            const system_name = if (options.system_names) |names| (names.get(eve_window.hwnd) orelse "") else "";
+            const system_name = if (self.roster.byHwnd(eve_window.hwnd)) |client| client.system_name else "";
             self.createThumbnail(&eve_window, system_name) catch |err| {
                 slog.err("Failed to create thumbnail for '{s}': {}", .{ eve_window.character_name, err });
                 continue;

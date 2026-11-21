@@ -237,6 +237,7 @@ pub const MapPanel = struct {
             scene.kills = &self.kills;
             scene.kill_names = &self.kill_names;
         }
+        if (self.host.roster()) |roster| scene.clients = roster.clients.items;
         if (thumbnail_set) |active_set| {
             scene.thumbnails = active_set.thumbnails.items;
             scene.active_source_hwnd = active_set.active_source_hwnd;

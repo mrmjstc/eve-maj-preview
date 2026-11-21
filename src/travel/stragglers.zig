@@ -4,6 +4,19 @@ const activity = @import("../config/activity.zig");
 
 const TravelConfig = activity.TravelConfig;
 
+/// One client's jumps, which the roster records and travel/left_behind.zig reads.
+pub const LeftBehindState = struct {
+    /// When it last jumped, in ms on the caller's clock; 0 when it hasn't this session.
+    last_jump_ms: u64 = 0,
+    /// Guards the left-behind alert to one per episode; cleared on jump.
+    alert_fired: bool = false,
+
+    pub fn recordJump(self: *LeftBehindState, now_ms: u64) void {
+        self.last_jump_ms = now_ms;
+        self.alert_fired = false;
+    }
+};
+
 pub const Traveler = struct {
     /// Borrows from the caller.
     system_name: []const u8,

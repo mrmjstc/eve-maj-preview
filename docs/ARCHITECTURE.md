@@ -95,13 +95,14 @@ Driven by `WM_TIMER` at `timer.scanIntervalMs`, or 1 s while no window is tracke
 
 ```
 Scout.update(force_scan)              hook events + full EnumWindows at most every 1 s
+Roster.sync                           mirror Scout's windows
 clearLoggedOutExclusions
 ThumbnailSet.update                   create/destroy/rename thumbnails
 focus.afterThumbnailSetUpdate         record focus, resync cycle cursors
 AutoMinimizer.check
 ThumbnailSet.updateNotifications
 ThumbnailSet.checkHoverZoom
-ChatlogMonitor.update + drain         -> deliverChatlogFindings -> Scout, ThumbnailSet
+ChatlogMonitor.update + drain         -> deliverChatlogFindings -> Roster (systems), Scout, ThumbnailSet
 NotificationCenter.update             History Panel
 MapPanel.update                       takes new stats, renders the map
 Trackers.tick                         throttled push of rates/resources into ThumbnailSet
@@ -145,7 +146,7 @@ Cross-thread data:
 
 **`clients/scout.zig`** (`Scout`): `EnumWindows` matched against `windowFilters` (class name, then exe path for new windows only). `trinityWindow` titles give the character name. Per-process `EVENT_OBJECT_NAMECHANGE`/`DESTROY` hooks catch renames and closes between scans; the destroy hook only records the hwnd, and `update()` drops it before handing out the window list, so the slice a tick borrows never changes under it. No creation hook: it would fire for every window on the desktop.
 
-**`clients/roster.zig`** (`Roster`, pure, tested): one `Client` record per tracked window, kept by App for the whole run. `sync` mirrors Scout's window list once per tick, right after `Scout.update`, and is the only place clients are added or removed. It holds an owned copy of the name, the login time mirrored from Scout, and a `revision` bumped on every change a view shows. Game state is moving onto it from `ThumbnailWindow`; nothing reads it yet.
+**`clients/roster.zig`** (`Roster`, pure, tested): one `Client` record per tracked window, kept by App for the whole run. `sync` mirrors Scout's window list once per tick, right after `Scout.update`, and is the only place clients are added or removed. It holds an owned copy of the name, the login time mirrored from Scout, the system (only `updateSystem` writes it, dropping stale log events; cleared at logout and when log monitoring goes off), Travel Mode's jumps, and a `revision` bumped on every change a view shows. A thumbnail set rebuild or profile switch keeps it, so nothing is carried across. Read by Travel Mode, the Map Panel's marks (through `panel_host.Host.roster`) and the Intel Panel's nearest client; `ThumbnailSet` copies each system onto its thumbnail when the revision moves and the text differs. More game state is moving onto it from `ThumbnailWindow`.
 
 **`thumbnail/set.zig`** (`ThumbnailSet`): the central mutable state. Owns the `ThumbnailWindow` list (linear search, a few dozen at most), keeps it in step with Scout, dispatches notifications, schedules layout and redraws. Holds the `Renderer`, auto-move verifier, and a drag's ghost overlay and hint (`DragOverlays`), and borrows App's `AutoColorStore`; callers outside `thumbnail/` reach the hover zoom and drag overlays through its methods, not `renderer`.
 
@@ -164,7 +165,6 @@ Per-thumbnail state owned by other modules:
 | `notifications` | `notifications/stack.zig` |
 | `auto_minimize` | `control/auto_minimize.zig` |
 | `is_dragged` | `drag/thumbnail.zig` |
-| `travel` | `travel/left_behind.zig` |
 | `stats` | Activity trackers, via `ThumbnailSet.updateStats` |
 
 Rendering:

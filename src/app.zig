@@ -47,7 +47,7 @@ const IDLE_TICK_INTERVAL_MS: win32.UINT = FORCED_SCAN_INTERVAL_MS;
 const TRAVEL_CHECK_INTERVAL_MS: u64 = 2000;
 const PROFILE_NAME_BUFFER_SIZE = 256;
 /// What the panels ask of App, which they can't import.
-pub const PANEL_HOST: panel_host.Host = .{ .thumbnail_set = currentThumbnailSet, .run = runPanelRequest };
+pub const PANEL_HOST: panel_host.Host = .{ .thumbnail_set = currentThumbnailSet, .roster = currentRoster, .run = runPanelRequest };
 /// What the configuration window asks of App, which it can't import.
 pub const DIALOG_HOST: dialog_host.Host = .{ .thumbnail_set = currentThumbnailSet, .timer_window = currentTimerWindow, .save = saveDialogSettings, .run = runDialogRequest };
 
@@ -57,8 +57,6 @@ const Restart = struct {
     /// The replacement store until install_profile takes it.
     pending: *?config.ProfileStore,
     global_draft: ?*config.GlobalConfig,
-    /// Owned; restartSubsystems frees it.
-    system_names: set.SystemNameSnapshot,
     /// Borrows Scout's windows, from rescan_windows on.
     eve_windows: []const scout_mod.EveWindow = &.{},
 };
@@ -236,9 +234,8 @@ pub const App = struct {
         const thumbnail_set = self.thumbnail_set orelse return;
         // A view mode builds different windows, so it needs a new thumbnail set rather than a restyle.
         if (thumbnail_set.view_mode != self.store.live.display.viewMode) {
-            var system_names = self.teardownThumbnailSet();
-            defer system_names.deinit();
-            self.buildThumbnailSet(self.scout.getWindows(), &system_names) catch |err| {
+            self.destroyThumbnailSet();
+            self.buildThumbnailSet(self.scout.getWindows()) catch |err| {
                 slog.err("Failed to rebuild thumbnails for view mode {s}: {}", .{ @tagName(self.store.live.display.viewMode), err });
                 return;
             };
@@ -311,7 +308,7 @@ pub const App = struct {
         if (self.thumbnail_set) |thumbnail_set| {
             if (schedule.isDue(tick_start.elapsedSince(self.last_travel_check), TRAVEL_CHECK_INTERVAL_MS, self.tick_interval_ms)) {
                 self.last_travel_check = tick_start;
-                travel_left_behind.check(thumbnail_set, &self.exclusions, tick_start);
+                travel_left_behind.check(thumbnail_set, &self.roster, &self.exclusions, tick_start);
             }
         }
 
@@ -386,20 +383,21 @@ pub const App = struct {
     }
 
     fn deliverChatlogFindings(self: *App, findings: *const chatlog.Findings) void {
-        const thumbnail_set = self.thumbnail_set;
-        const shown_count = findings.system_updates.items.len + findings.notifications.items.len;
-        if (thumbnail_set == null and shown_count > 0) slog.warn("Failed to deliver {} chatlog event(s): the thumbnail set isn't ready", .{shown_count});
+        const now_ms = win32.Ticks.now().ms;
+        for (findings.system_updates.items) |system_update| {
+            const client = self.roster.byName(system_update.character_name) orelse {
+                slog.debug("Dropped system update for '{s}': no window", .{system_update.character_name});
+                continue;
+            };
+            self.roster.updateSystem(client.hwnd, system_update.system_name, system_update.event_timestamp, if (system_update.is_jump) now_ms else null) catch |err| {
+                slog.err("Failed to update system name for '{s}': {}", .{ system_update.character_name, err });
+            };
+        }
 
+        const thumbnail_set = self.thumbnail_set;
+        const shown_count = findings.notifications.items.len;
+        if (thumbnail_set == null and shown_count > 0) slog.warn("Failed to deliver {} chatlog alert(s): the thumbnail set isn't ready", .{shown_count});
         if (thumbnail_set) |active_set| {
-            for (findings.system_updates.items) |system_update| {
-                const hwnd = self.scout.getHwndByName(system_update.character_name) orelse {
-                    slog.debug("Dropped system update for '{s}': no window", .{system_update.character_name});
-                    continue;
-                };
-                active_set.updateSystemNameByHwnd(hwnd, system_update.system_name, system_update.event_timestamp, system_update.is_jump) catch |err| {
-                    slog.err("Failed to update system name for '{s}': {}", .{ system_update.character_name, err });
-                };
-            }
             for (findings.notifications.items) |event| {
                 const hwnd = self.scout.getHwndByName(event.character_name) orelse {
                     slog.debug("Dropped {s} notification for '{s}': no window", .{ @tagName(event.notification.notification_type), event.character_name });
@@ -409,7 +407,6 @@ pub const App = struct {
             }
         }
 
-        const now_ms = win32.Ticks.now().ms;
         for (findings.intel_sightings.items) |sighting| {
             if (sighting.is_pinned) {
                 if (!sighting.is_clear) {
@@ -461,7 +458,13 @@ pub const App = struct {
     pub fn createThumbnailSet(self: *App) !*ThumbnailSet {
         const new_set = try self.allocator.create(ThumbnailSet);
         errdefer self.allocator.destroy(new_set);
-        new_set.* = try ThumbnailSet.init(self.allocator, &self.store, &self.exclusions, self.notifications.records(), &self.auto_colors, .{
+        new_set.* = try ThumbnailSet.init(self.allocator, .{
+            .store = &self.store,
+            .exclusions = &self.exclusions,
+            .notification_records = self.notifications.records(),
+            .auto_colors = &self.auto_colors,
+            .roster = &self.roster,
+        }, .{
             .window_procedures = .{ .thumbnail = thumbnail_input.windowProc, .text = thumbnail_input.textWindowProc },
             .destroy_hook = thumbnail_input.windowDestroyProc,
         });
@@ -498,22 +501,10 @@ pub const App = struct {
         self.allocator.destroy(old_set);
     }
 
-    /// The caller deinits the returned snapshot.
-    fn teardownThumbnailSet(self: *App) set.SystemNameSnapshot {
-        var system_names = set.SystemNameSnapshot.init(self.allocator);
-        if (self.thumbnail_set) |old_set| system_names.capture(old_set);
-        self.destroyThumbnailSet();
-        return system_names;
-    }
-
-    fn buildThumbnailSet(self: *App, windows: []const scout_mod.EveWindow, system_names: *const set.SystemNameSnapshot) !void {
+    fn buildThumbnailSet(self: *App, windows: []const scout_mod.EveWindow) !void {
         const new_set = try self.createThumbnailSet();
-        new_set.populate(windows, .{
-            // Clients are already where the user put them; only startup and new arrivals auto-move.
-            .should_move_to_saved = false,
-            // Only while monitoring stays on, or a stale name would never update.
-            .system_names = if (self.global_settings.chatlog.enabled) system_names else null,
-        });
+        // Clients are already where the user put them; only startup and new arrivals auto-move.
+        new_set.populate(windows, .{ .should_move_to_saved = false });
     }
 
     /// A hotkey registration failure is logged, not fatal.
@@ -591,6 +582,8 @@ pub const App = struct {
             slog.err("Failed to scan for EVE windows: {}", .{err});
         };
         self.scout.pruneNonMatchingWindows(self.store.saved.windowFilters.items);
+        // The set built from these windows reads their clients.
+        self.roster.sync(self.scout.getWindows());
         return self.scout.getWindows();
     }
 
@@ -651,8 +644,7 @@ pub const App = struct {
         });
         if (!next_chatlog.enabled) slog.info("Chatlog monitoring disabled", .{});
 
-        var restart: Restart = .{ .timer_hwnd = timer_hwnd, .pending = &pending, .global_draft = global_draft, .system_names = .init(self.allocator) };
-        defer restart.system_names.deinit();
+        var restart: Restart = .{ .timer_hwnd = timer_hwnd, .pending = &pending, .global_draft = global_draft };
 
         for (plan.steps(), 0..) |step, index| {
             self.runRestartStep(step, &restart) catch |err| {
@@ -684,10 +676,7 @@ pub const App = struct {
                 self.destroyHotkeyManager();
                 slog.debug("Cleaned up hotkey manager", .{});
             },
-            .teardown_thumbnail_set => {
-                restart.system_names.deinit();
-                restart.system_names = self.teardownThumbnailSet();
-            },
+            .teardown_thumbnail_set => self.destroyThumbnailSet(),
             .install_profile => {
                 const store = restart.pending.* orelse return;
                 self.store.deinit();
@@ -703,14 +692,17 @@ pub const App = struct {
             },
             .rescan_windows => restart.eve_windows = self.rescanWindows(),
             .build_thumbnail_set => {
-                self.buildThumbnailSet(restart.eve_windows, &restart.system_names) catch |err| {
+                self.buildThumbnailSet(restart.eve_windows) catch |err| {
                     slog.err("Failed to create thumbnail set: {}", .{err});
                     return err;
                 };
                 slog.debug("Recreated {} thumbnail(s)", .{restart.eve_windows.len});
             },
             .populate_thumbnail_set => if (self.thumbnail_set) |thumbnail_set| thumbnail_set.populate(restart.eve_windows, .{ .should_move_to_saved = false }),
-            .clear_log_readings => if (self.thumbnail_set) |thumbnail_set| thumbnail_set.clearLogReadings(),
+            .clear_log_readings => {
+                self.roster.clearLogReadings();
+                if (self.thumbnail_set) |thumbnail_set| thumbnail_set.clearLogReadings();
+            },
             .apply_monitor_settings => if (self.chatlog_monitor) |monitor| {
                 monitor.applySettings(&self.global_settings.chatlog);
                 slog.info("Kept chatlog monitoring without rescanning logs", .{});
@@ -777,6 +769,12 @@ pub fn startChatlogWorker(monitor: *chatlog.ChatlogMonitor) void {
     monitor.startWorkerThread() catch |err| {
         slog.warn("Failed to start chatlog worker thread: {}", .{err});
     };
+}
+
+/// For the panels; null outside the run.
+fn currentRoster() ?*const roster_mod.Roster {
+    const app = g_app orelse return null;
+    return &app.roster;
 }
 
 fn currentTimerWindow() ?win32.HWND {

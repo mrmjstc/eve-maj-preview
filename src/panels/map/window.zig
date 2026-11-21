@@ -430,15 +430,19 @@ pub const MapPanelWindow = struct {
 
     fn updateMarks(self: *MapPanelWindow, scene: Scene) void {
         self.state.marks.clear();
-        for (scene.thumbnails) |*thumbnail| {
-            if (scout.isGenericCharacterName(thumbnail.character_name)) continue;
-            const system = universe.findSystem(thumbnail.system_name) orelse continue;
+        for (scene.clients) |*client| {
+            if (scout.isGenericCharacterName(client.character_name)) continue;
+            const system = universe.findSystem(client.system_name) orelse continue;
+            // The thumbnails still cache each character's colour.
+            const color = for (scene.thumbnails) |*thumbnail| {
+                if (thumbnail.source_hwnd == client.hwnd) break thumbnail.cached_character_color;
+            } else null;
             const is_added = self.state.marks.add(.{
                 .system = system,
-                .source_hwnd = thumbnail.source_hwnd,
-                .character_name = thumbnail.character_name,
-                .color = thumbnail.cached_character_color orelse list_look.NAME,
-                .is_active = thumbnail.source_hwnd == scene.active_source_hwnd,
+                .source_hwnd = client.hwnd,
+                .character_name = client.character_name,
+                .color = color orelse list_look.NAME,
+                .is_active = client.hwnd == scene.active_source_hwnd,
             });
             if (!is_added) break;
         }
