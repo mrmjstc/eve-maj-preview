@@ -1,6 +1,5 @@
 //! What EVE's log lines and file names say, with no I/O.
 const std = @import("std");
-const gamelog_events = @import("../notifications/gamelog_events.zig");
 
 /// Longer lines are dropped; combat lines with colour tags run to 2-3KB.
 pub const MAX_LINE_LENGTH = 4000;
@@ -161,13 +160,24 @@ pub fn parseGameLine(line: []const u8) GameLine {
     const tag = message[0 .. (std.mem.findScalar(u8, message, ')') orelse return .{}) + 1];
     if (std.mem.eql(u8, tag, "(notify)")) {
         // A conduit jump moves the character as well as showing a notification.
-        const conduit: ?SystemChange = if (gamelog_events.conduitDestination(line)) |system| .{ .system = system, .source = .conduit } else null;
+        const conduit: ?SystemChange = if (conduitDestination(line)) |system| .{ .system = system, .source = .conduit } else null;
         return .{ .system = conduit, .activity = .event };
     }
     if (std.mem.eql(u8, tag, "(question)") or std.mem.eql(u8, tag, "(combat)") or std.mem.eql(u8, tag, "(None)")) return .{ .activity = .event };
     if (std.mem.eql(u8, tag, "(mining)")) return .{ .activity = .mining };
     if (std.mem.eql(u8, tag, "(bounty)")) return .{ .activity = .bounty };
     return .{};
+}
+
+/// "A Conduit Field activated by X jumps you to [System]."; the activator's own line continues ", bringing along N passengers.", so a comma ends the name too.
+pub fn conduitDestination(text: []const u8) ?[]const u8 {
+    if (std.mem.find(u8, text, "Conduit Field") == null) return null;
+    const needle = "jumps you to ";
+    const match_index = std.mem.find(u8, text, needle) orelse return null;
+    const after = text[match_index + needle.len ..];
+    const end = std.mem.findAny(u8, after, "\r\n.,") orelse after.len;
+    const system = std.mem.trim(u8, after[0..end], " \t");
+    return if (system.len == 0) null else system;
 }
 
 /// The latest genuine Local change, skipping any a player typed.
@@ -427,6 +437,12 @@ test "parseGameLine treats a conduit notify as a move and an event" {
     try testing.expectEqualStrings("Ahbazon", line.system.?.system);
     try testing.expectEqual(SystemSource.conduit, line.system.?.source);
     try testing.expectEqual(Activity.event, line.activity.?);
+}
+
+test "conduitDestination stops at the activator's passenger count" {
+    try testing.expectEqualStrings("Ahbazon", conduitDestination("A Conduit Field activated by you jumps you to Ahbazon, bringing along 3 passengers.").?);
+    try testing.expect(conduitDestination("A Conduit Field activated by you jumps you to .") == null);
+    try testing.expect(conduitDestination("Something jumps you to Ahbazon.") == null);
 }
 
 test "lineTimestamp reads the bracketed time before a position" {
