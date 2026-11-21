@@ -213,7 +213,7 @@ fn parseCombatEvent(message: []const u8) ?Notification {
 fn parseNoneEvent(message: []const u8) ?Notification {
     const trimmed = std.mem.trim(u8, message, " \t\r\n");
 
-    // ChatlogMonitor.parseLine handles system jumps.
+    // The chatlog interpreter reads jumps as system changes.
     if (std.mem.startsWith(u8, trimmed, "Jumping from")) {
         return null;
     }

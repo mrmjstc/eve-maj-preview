@@ -138,7 +138,7 @@ The one-shot threads (update check, clipboard uploads, dialog helpers, map stats
 
 Cross-thread data:
 
-- Chatlog: `commands` (main → worker); `system_updates`, `notifications`, `session_starts`, `intel_sightings` (worker → main). Every other `ChatlogMonitor` field is owned by one thread.
+- Chatlog: `commands` (main → worker); `system_updates`, `notifications`, `session_starts`, `intel_sightings` (worker → main). Every other `ChatlogMonitor` field, its `Interpreter` included, is owned by one thread.
 - `activity/tracker.zig` trackers: written by the worker, read by main, each under its own mutex.
 - `CharacterIds`: locks its own map.
 - Hook bindings, held presses and the require-EVE-focus filter: hook thread only. Main changes them through `hook_thread.call`, which runs the change there and waits for it. The hook thread never logs while a hook is installed, since waiting on the log lock could stall it past `LowLevelHooksTimeout` and Windows would silently drop the hook: changes report their outcome for main to log, and failed `WM_HOTKEY` posts are counted for `App.tick` to log.
@@ -276,11 +276,12 @@ WM_HOTKEY -> timerWindowProc -> HotkeyManager.handleHotkeyPress -> Commands.run
 
 ## Log monitoring
 
-`chatlog.zig` (`ChatlogMonitor`). Worker loop: `processCommands` → `pollLogFiles` → `rescanForNewLogs` → wait `poll_interval_ms`.
+`chatlog.zig` (`ChatlogMonitor`) finds and follows the logs and owns the queues; what their lines mean is `chatlog/interpret.zig`'s. Worker loop: `processCommands` → `pollLogFiles` → `rescanForNewLogs` → wait `poll_interval_ms`.
 
 - Main side: `update()` queues add/remove/resolve-ID commands; `drain()` returns `Findings`, which `App.deliverChatlogFindings` routes to Scout and `ThumbnailSet`. The monitor never touches either.
 - `chatlog/discovery.zig` (`LogFinder`): finds a character's newest log by cached ID (`*_<id>.txt`), else by reading `Listener:` headers of the newest 64 files.
 - `chatlog/tail.zig` (`LogFile`): keeps the handle open, reads appended bytes, backs off when idle.
+- `chatlog/interpret.zig` (`Interpreter`, the monitor's, worker only): each line to system changes, chat alerts, intel sightings, game events and the trackers' combat, mining (priced from the ore table) and bounty entries, pushed onto the monitor's queues. It holds the alert rules, the weapon filter, the trackers and where each client is; the monitor sets them while the worker is stopped.
 - `chatlog/utf16.zig`, `chatlog/lines.zig`: decoding and line parsing (pure). System changes, jumps, undocks, file names, headers.
 - `chatlog/alert_rules.zig` + `chatlog/routing.zig` (pure, tested): which chat lines alert and who gets them (nearest clients, else the listener or an unmuted stand-in), duplicates and cooldowns, where each client is, and which system reports count (a repeated undock or Local is dropped, a jump never is, only gate jumps notify).
 - `notifications/gamelog_events.zig` (`classify`): line → `Notification` (pure).
