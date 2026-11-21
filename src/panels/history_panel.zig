@@ -297,7 +297,7 @@ pub const HistoryPanelWindow = struct {
         hasher.update(std.mem.asBytes(&history_settings.width));
         hasher.update(std.mem.asBytes(&history_settings.height));
         hasher.update(std.mem.asBytes(&history_settings.opacity));
-        panel_chrome.hashFonts(&hasher, history_settings);
+        panel_chrome.hashFonts(&hasher, history_settings.fontName, history_settings.fontSize, history_settings.fontWeight);
         hasher.update(std.mem.asBytes(&history_settings.maxRows));
         hasher.update(std.mem.asBytes(&history_settings.showTimestamp));
         hasher.update(std.mem.asBytes(&history_settings.showCategoryFilters));
@@ -321,13 +321,13 @@ pub const HistoryPanelWindow = struct {
     pub fn render(self: *HistoryPanelWindow, notification_history: *const history_mod.NotificationHistory) !void {
         const history_settings = &self.config.historyPanel;
         self.panel.followTopmost(history_settings.alwaysOnTop);
-        try panel_chrome.ensureFonts(&self.panel, history_settings);
+        try panel_chrome.ensureFonts(&self.panel, history_settings.fontName, history_settings.fontSize, history_settings.fontWeight);
         try self.bold_font.ensure(self.panel.allocator, "History Panel name", history_settings.fontName, history_settings.fontSize, history_settings.fontWeight.bolded());
         try self.header_fonts.ensure(self.panel.allocator);
 
         var entry_buf: [history_mod.CAPACITY]history_mod.Entry = undefined;
         const entries = notification_history.snapshot(&entry_buf);
-        self.row_count = history_look.build(&self.rows, entries, @intCast(@max(1, history_settings.maxRows)), history_look.buildOptions(history_settings, history_settings));
+        self.row_count = history_look.build(&self.rows, entries, @intCast(@max(1, history_settings.maxRows)), history_look.buildOptions(history_settings.mergeEnabled, history_settings.mergeWindowSec, history_settings));
         for (self.rows[0..self.row_count], self.row_keys[0..self.row_count]) |row, *key| key.* = entries[row.last_index].timestamp.ms;
         const panel_header_state = self.header();
         const signature = self.computeRenderSignature(entries, notification_history.revision, &panel_header_state);

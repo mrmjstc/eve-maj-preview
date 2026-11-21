@@ -19,7 +19,6 @@ const Box = box_mod.Box;
 const Row = history_look.Row;
 const Names = history_look.Names;
 const Canvas = pixel_buffer.Canvas;
-const HistoryPanelConfig = panels.HistoryPanelConfig;
 const IntelPanelConfig = panels.IntelPanelConfig;
 const NotificationConfig = notifications_mod.NotificationConfig;
 
@@ -71,13 +70,13 @@ pub const HistoryPlace = struct {
 };
 
 /// What the Intel Panel's rows depend on, for a render signature.
-pub fn hashIntel(hasher: *std.hash.Wyhash, intel_history: *const history.NotificationHistory, entries: []const history.Entry, history_settings: *const HistoryPanelConfig, intel_settings: *const IntelPanelConfig, notifications: *const NotificationConfig) void {
+pub fn hashIntel(hasher: *std.hash.Wyhash, intel_history: *const history.NotificationHistory, entries: []const history.Entry, intel_settings: *const IntelPanelConfig, notifications: *const NotificationConfig) void {
     hasher.update(std.mem.asBytes(&intel_history.revision));
     hasher.update(std.mem.asBytes(&intel_settings.colorSystemNames));
-    hasher.update(std.mem.asBytes(&history_settings.showTimestamp));
-    hasher.update(std.mem.asBytes(&history_settings.mergeEnabled));
-    hasher.update(std.mem.asBytes(&history_settings.mergeWindowSec));
-    hashEntries(hasher, entries, notifications, history_settings.showTimestamp);
+    hasher.update(std.mem.asBytes(&intel_settings.showTimestamp));
+    hasher.update(std.mem.asBytes(&intel_settings.mergeEnabled));
+    hasher.update(std.mem.asBytes(&intel_settings.mergeWindowSec));
+    hashEntries(hasher, entries, notifications, intel_settings.showTimestamp);
 }
 
 /// What the rows' pixels depend on, for a panel's render signature.

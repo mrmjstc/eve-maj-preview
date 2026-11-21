@@ -26,6 +26,7 @@ const SECTIONS = std.StaticStringMap(SectionWords).initComptime(.{
     .{ "historyPanel", SectionWords{ .title = "Alert History", .hint = "Panel of recent alerts" } },
     .{ "mapPanel", SectionWords{ .title = "Map", .hint = "Region map, live stats and routes" } },
     .{ "intelPanel", SectionWords{ .title = "Intel Panel", .hint = "Intel reports from chat" } },
+    .{ "intel", SectionWords{ .title = "Intel Pins", .hint = "How long intel marks a system, and clear calls" } },
     .{ "hotkeyGroups", SectionWords{ .title = "Hotkey Groups", .hint = "Character cycling groups ({n})" } },
     .{ "hotkeys", SectionWords{ .title = "Global Hotkeys", .hint = "App-wide hotkeys" } },
     .{ "interaction", SectionWords{ .title = "Interaction", .hint = "Click/drag behavior" } },

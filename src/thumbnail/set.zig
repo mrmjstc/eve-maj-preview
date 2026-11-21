@@ -323,7 +323,7 @@ pub const ThumbnailSet = struct {
     /// Call every tick, since pins fade with nothing to announce it.
     pub fn updateConnections(self: *ThumbnailSet, pins: *const intel_pins.IntelPins, now_ms: u64) void {
         const thumbnail_config = &self.config.thumbnail;
-        const intel: ?connections.IntelView = if (thumbnail_config.showSystemConnectionIntel) .{ .pins = pins, .shrink_ms = self.config.mapPanel.intelShrinkMs() } else null;
+        const intel: ?connections.IntelView = if (thumbnail_config.showSystemConnectionIntel) .{ .pins = pins, .shrink_ms = self.config.intel.shrinkMs() } else null;
         for (self.thumbnails.items) |*thumbnail| {
             const start = if (thumbnail_config.showSystemConnections) universe.findSystem(thumbnail.system_name) else null;
             if (thumbnail.connections.refresh(start, thumbnail_config.systemConnectionJumps, intel, now_ms)) thumbnail.needs_render = true;

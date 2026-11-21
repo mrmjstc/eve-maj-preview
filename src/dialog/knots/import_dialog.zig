@@ -30,7 +30,7 @@ const Group = struct { label: []const u8, ids: []const []const u8 };
 const MAJ_GROUPS = [_]Group{
     .{ .label = "Clients", .ids = &.{ "characters", "hotkeyGroups", "autoMinimize", "autoMovePosition", "timer", "windowFilters" } },
     .{ .label = "Display", .ids = &.{ "display", "thumbnail", "systemColors", "thumbnailSpaces", "snapping", "panelSnapping", "mining", "combat", "bounty", "resources", "ping" } },
-    .{ .label = "Panels", .ids = &.{ "listView", "historyPanel", "mapPanel", "intelPanel" } },
+    .{ .label = "Panels", .ids = &.{ "listView", "historyPanel", "mapPanel", "intelPanel", "intel" } },
     .{ .label = "Input", .ids = &.{ "hotkeys", "interaction", "exclusion", "closeAll" } },
     .{ .label = "Alerts", .ids = &.{ "chatAlerts", "travel" } },
     .{ .label = "App", .ids = &.{ "chatlog", "accentColor" } },

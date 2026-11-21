@@ -5,7 +5,12 @@ const template = @import("template.zig");
 const universe = @import("../map/universe.zig");
 const config = @import("../config.zig");
 
-pub const CAPACITY = config.HistoryPanelConfig.MAX_ROWS[1];
+/// Both panels list from this many; the History Panel's maxRows can't ask for more.
+pub const CAPACITY = 30;
+
+comptime {
+    if (config.HistoryPanelConfig.MAX_ROWS[1] > CAPACITY) @compileError("historyPanel.maxRows reaches past the history's CAPACITY");
+}
 
 /// What an intel report's entry knows besides its text.
 pub const IntelFacts = struct {

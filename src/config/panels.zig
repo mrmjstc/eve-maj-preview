@@ -8,6 +8,7 @@ const ranges_mod = @import("ranges.zig");
 const SCREEN_X = ranges_mod.SCREEN_X;
 const SCREEN_Y = ranges_mod.SCREEN_Y;
 const HIDE_DEBOUNCE_MS = .{ 0, 5000 };
+const MERGE_WINDOW_SEC = .{ 1, 300 };
 
 pub const ListViewConfig = struct {
     x: i32 = 10,
@@ -91,7 +92,6 @@ pub const HistoryPanelConfig = struct {
     hideWhenNoEveFocus: bool = false,
     hideDebounceMs: u32 = 500,
     opacity: u8 = 255,
-    /// Also the detached Intel Panel's, so the panels match.
     fontName: []const u8 = types.DEFAULT_FONT,
     fontSize: i32 = types.DEFAULT_FONT_SIZE,
     fontWeight: types.FontWeight = .Regular,
@@ -115,7 +115,7 @@ pub const HistoryPanelConfig = struct {
         .width = .{ 100, ranges_mod.MAX_WINDOW_WIDTH },
         .height = .{ 60, ranges_mod.MAX_WINDOW_HEIGHT },
         .maxRows = MAX_ROWS,
-        .mergeWindowSec = .{ 1, 300 },
+        .mergeWindowSec = MERGE_WINDOW_SEC,
         .fontSize = ranges_mod.FONT_SIZE,
         .opacity = ranges_mod.OPACITY,
         .hideDebounceMs = HIDE_DEBOUNCE_MS,
@@ -182,10 +182,6 @@ pub const MapPanelConfig = struct {
     killLifetimeMin: i32 = 30,
     /// Off only hides the pins, so turning it back on shows those still live.
     showIntel: bool = true,
-    /// How long an intel pin shows, its halo shrinking all the while.
-    intelShrinkSec: i32 = 300,
-    /// Turns a pin yellow when intel calls its system clear; off, those messages leave pins alone.
-    intelShowClear: bool = true,
     routePreference: types.RoutePreference = .Shorter,
     /// Plans routes through the Eve Stars account's Ansiblex gates.
     routeAnsiblex: bool = false,
@@ -214,7 +210,6 @@ pub const MapPanelConfig = struct {
         .height = .{ MIN_HEIGHT, ranges_mod.MAX_WINDOW_HEIGHT },
         .fontSize = ranges_mod.FONT_SIZE,
         .opacity = ranges_mod.OPACITY,
-        .intelShrinkSec = .{ 1, 900 },
         .killLifetimeMin = .{ 1, 120 },
         .hideDebounceMs = HIDE_DEBOUNCE_MS,
     };
@@ -225,10 +220,6 @@ pub const MapPanelConfig = struct {
 
     pub fn killLifetimeSeconds(self: *const MapPanelConfig) i64 {
         return @as(i64, @max(1, self.killLifetimeMin)) * std.time.s_per_min;
-    }
-
-    pub fn intelShrinkMs(self: *const MapPanelConfig) u64 {
-        return @as(u64, @intCast(@max(0, self.intelShrinkSec))) * std.time.ms_per_s;
     }
 
     pub const Wire = wire.Wire(MapPanelConfig);
@@ -254,6 +245,13 @@ pub const IntelPanelConfig = struct {
     hideWhenNoEveFocus: bool = false,
     hideDebounceMs: u32 = 500,
     opacity: u8 = 255,
+    /// While detached; the map's Intel card uses the configuration window's font.
+    fontName: []const u8 = types.DEFAULT_FONT,
+    fontSize: i32 = types.DEFAULT_FONT_SIZE,
+    fontWeight: types.FontWeight = .Regular,
+    showTimestamp: bool = false,
+    mergeEnabled: bool = false,
+    mergeWindowSec: i32 = 10,
     /// Draws each row's system in its name colour, whatever the chat rule's color_system_name says.
     colorSystemNames: bool = true,
     /// Set by the range filter over the rows.
@@ -266,6 +264,8 @@ pub const IntelPanelConfig = struct {
         .y = SCREEN_Y,
         .width = .{ 160, ranges_mod.MAX_WINDOW_WIDTH },
         .height = .{ 120, ranges_mod.MAX_WINDOW_HEIGHT },
+        .mergeWindowSec = MERGE_WINDOW_SEC,
+        .fontSize = ranges_mod.FONT_SIZE,
         .hideDebounceMs = HIDE_DEBOUNCE_MS,
         .opacity = ranges_mod.OPACITY,
     };

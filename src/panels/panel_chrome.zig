@@ -3,7 +3,7 @@ const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const gdi_overlay = @import("../platform/gdi_overlay.zig");
 const panel_window = @import("../platform/panel_window.zig");
-const panels = @import("../config/panels.zig");
+const fonts_mod = @import("../platform/fonts.zig");
 const glyphs = @import("glyphs.zig");
 const list_look = @import("list_look.zig");
 const palette = @import("palette.zig");
@@ -13,7 +13,7 @@ const pixel_buffer = @import("../util/pixel_buffer.zig");
 
 const Box = box.Box;
 const Canvas = pixel_buffer.Canvas;
-const HistoryPanelConfig = panels.HistoryPanelConfig;
+const FontWeight = fonts_mod.FontWeight;
 const PanelWindow = panel_window.PanelWindow;
 
 pub const MAX_TEXT_LENGTH: usize = 160;
@@ -97,16 +97,16 @@ pub fn beginFrame(panel: *PanelWindow, fonts: *const HeaderFonts, header: *const
     return .{ .bitmap = bitmap, .dc = dc, .canvas = canvas, .old_font = old_font, .summary_left = drawHeaderText(dc, fonts, header) };
 }
 
-/// Every panel uses the History Panel's font, so they match.
-pub fn ensureFonts(panel: *PanelWindow, history_settings: *const HistoryPanelConfig) !void {
-    try panel.ensureFont("panel", history_settings.fontName, history_settings.fontSize, history_settings.fontWeight);
-    try panel.ensureSmallFont("panel small", history_settings.fontName, list_look.smallFontSize(history_settings.fontSize), history_settings.fontWeight);
+/// The panel's font and its small font, for the smaller text under a row.
+pub fn ensureFonts(panel: *PanelWindow, font_name: []const u8, font_size: i32, font_weight: FontWeight) !void {
+    try panel.ensureFont("panel", font_name, font_size, font_weight);
+    try panel.ensureSmallFont("panel small", font_name, list_look.smallFontSize(font_size), font_weight);
 }
 
-pub fn hashFonts(hasher: *std.hash.Wyhash, history_settings: *const HistoryPanelConfig) void {
-    hasher.update(history_settings.fontName);
-    hasher.update(std.mem.asBytes(&history_settings.fontSize));
-    hasher.update(std.mem.asBytes(&history_settings.fontWeight));
+pub fn hashFonts(hasher: *std.hash.Wyhash, font_name: []const u8, font_size: i32, font_weight: FontWeight) void {
+    hasher.update(font_name);
+    hasher.update(std.mem.asBytes(&font_size));
+    hasher.update(std.mem.asBytes(&font_weight));
 }
 
 /// What to pass restoreFont once drawing is done, as a font still selected into the DC can't be deleted when the settings change.

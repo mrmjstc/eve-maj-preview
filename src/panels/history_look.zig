@@ -241,9 +241,9 @@ pub fn splitAfterSystem(text: []const u8) AfterSystem {
     return .{ .distance = distance, .message = std.mem.trimStart(u8, rest, ": ") };
 }
 
-/// The History Panel's merge settings, which the Intel Panel follows too; `filter` is BuildOptions.filter.
-pub fn buildOptions(history_settings: *const HistoryPanelConfig, filter: ?*const HistoryPanelConfig) BuildOptions {
-    return .{ .filter = filter, .merges = history_settings.mergeEnabled, .merge_window_ms = @as(u64, @intCast(@max(0, history_settings.mergeWindowSec))) * std.time.ms_per_s };
+/// From a panel's mergeEnabled and mergeWindowSec; `filter` is BuildOptions.filter.
+pub fn buildOptions(merges: bool, merge_window_sec: i32, filter: ?*const HistoryPanelConfig) BuildOptions {
+    return .{ .filter = filter, .merges = merges, .merge_window_ms = @as(u64, @intCast(@max(0, merge_window_sec))) * std.time.ms_per_s };
 }
 
 /// Fills `rows` from `entries`, merging repeats, up to `capacity` rows; returns how many it filled.

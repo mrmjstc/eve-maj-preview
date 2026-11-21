@@ -274,7 +274,7 @@ pub const MapPanelWindow = struct {
         const tab = self.shownTab();
         const row_count = switch (tab) {
             .intel => blk: {
-                self.state.intel_row_count = history_look.build(&self.state.intel_rows, entries, capacity, history_look.buildOptions(&self.config.historyPanel, null));
+                self.state.intel_row_count = history_look.build(&self.state.intel_rows, entries, capacity, history_look.buildOptions(self.config.intelPanel.mergeEnabled, self.config.intelPanel.mergeWindowSec, null));
                 break :blk self.state.intel_row_count;
             },
             .kills => self.listKills(scene, capacity),
@@ -485,19 +485,19 @@ pub const MapPanelWindow = struct {
         hasher.update(std.mem.asBytes(&scene.pins.revision));
         // Each minute while timers or kills show, for their countdowns, ages and fading.
         if (paint.shownCampaigns(self.config, scene) != null or scene.kills != null) hasher.update(std.mem.asBytes(&@divFloor(scene.now_seconds, std.time.s_per_min)));
-        const lifetime_ms = map_settings.intelShrinkMs();
+        const lifetime_ms = self.config.intel.shrinkMs();
         const halo_scale = look.markerScale(self.state.layout.view.zoom);
         // By whole pixels, so a shrinking halo redraws only when it can show.
         for (&scene.pins.pins) |*pin| {
             if (!pin.isLive(lifetime_ms, now_ms) or !self.state.regions.contains(universe.systemInfo(pin.system).region)) continue;
-            const halo_radius: i32 = @intFromFloat(paint.intelHaloRadius(map_settings, pin, halo_scale, now_ms));
+            const halo_radius: i32 = @intFromFloat(paint.intelHaloRadius(&self.config.intel, pin, halo_scale, now_ms));
             hasher.update(std.mem.asBytes(&halo_radius));
             if (look.rippleAt(now_ms -| pin.seen_ms)) |ripple| hashRipple(&hasher, ripple, halo_scale);
         }
         if (self.state.ping) |ping| {
             if (look.rippleAt(now_ms -| ping.started_ms)) |ripple| hashRipple(&hasher, ripple, halo_scale);
         }
-        if (self.intel_history) |intel_history| history_rows.hashIntel(&hasher, intel_history, intel_entries, &self.config.historyPanel, &self.config.intelPanel, &self.config.thumbnail.notifications);
+        if (self.intel_history) |intel_history| history_rows.hashIntel(&hasher, intel_history, intel_entries, &self.config.intelPanel, &self.config.thumbnail.notifications);
         const age_bucket = now_ms / AGE_BUCKET_MS;
         hasher.update(std.mem.asBytes(&age_bucket));
         return hasher.final();
@@ -721,7 +721,8 @@ pub const MapPanelWindow = struct {
         const map_settings = &self.config.mapPanel;
         self.panel.followSize(map_settings.width, map_settings.height);
         self.panel.followTopmost(map_settings.alwaysOnTop);
-        try panel_chrome.ensureFonts(&self.panel, &self.config.historyPanel);
+        const intel_settings = &self.config.intelPanel;
+        try panel_chrome.ensureFonts(&self.panel, intel_settings.fontName, intel_settings.fontSize, intel_settings.fontWeight);
         try self.label_font.ensure(self.panel.allocator, "Map Panel labels", map_settings.fontName, map_settings.fontSize, map_settings.fontWeight);
         try self.title_font.ensure(self.panel.allocator, "Map Panel title", map_settings.fontName, look.TITLE_FONT_SIZE, .Bold);
         try self.ui_font.ensure(self.panel.allocator, "Map Panel text", palette.FACE, palette.FONT_SIZE, .Regular);

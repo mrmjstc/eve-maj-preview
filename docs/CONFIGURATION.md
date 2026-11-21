@@ -7,7 +7,7 @@ Every setting EVE-Maj Preview reads, by file and JSON key. The config dialog wri
 - [Files](#files)
 - [Loading rules](#loading-rules)
 - [Value formats](#value-formats)
-- [Profile](#profile): [top level](#top-level) · [thumbnail](#thumbnail) · [thumbnail.notifications](#thumbnailnotifications) · [timer](#timer) · [display](#display) · [listView](#listview) · [historyPanel](#historypanel) · [mapPanel](#mappanel) · [intelPanel](#intelpanel) · [thumbnailSpaces](#thumbnailspaces) · [snapping](#snapping) · [panelSnapping](#panelsnapping) · [interaction](#interaction) · [exclusion](#exclusion) · [autoMinimize](#autominimize) · [autoMovePosition](#automoveposition) · [closeAll](#closeall) · [combat](#combat) · [mining](#mining) · [bounty](#bounty) · [resources](#resources) · [ping](#ping) · [travel](#travel) · [hotkeys](#hotkeys) · [hotkeyGroups](#hotkeygroups) · [characters](#characters) · [systemColors](#systemcolors) · [chatAlerts](#chatalerts) · [windowFilters](#windowfilters)
+- [Profile](#profile): [top level](#top-level) · [thumbnail](#thumbnail) · [thumbnail.notifications](#thumbnailnotifications) · [timer](#timer) · [display](#display) · [listView](#listview) · [historyPanel](#historypanel) · [mapPanel](#mappanel) · [intelPanel](#intelpanel) · [intel](#intel) · [thumbnailSpaces](#thumbnailspaces) · [snapping](#snapping) · [panelSnapping](#panelsnapping) · [interaction](#interaction) · [exclusion](#exclusion) · [autoMinimize](#autominimize) · [autoMovePosition](#automoveposition) · [closeAll](#closeall) · [combat](#combat) · [mining](#mining) · [bounty](#bounty) · [resources](#resources) · [ping](#ping) · [travel](#travel) · [hotkeys](#hotkeys) · [hotkeyGroups](#hotkeygroups) · [characters](#characters) · [systemColors](#systemcolors) · [chatAlerts](#chatalerts) · [windowFilters](#windowfilters)
 - [Global settings](#global-settings): [chatlog](#chatlog)
 - [Command line and protocol](#command-line-and-protocol)
 
@@ -44,6 +44,7 @@ Profile file names: `<name>.json` with no path separators or `:*?"<>|`, not star
 - `formatVersion` below 5 migrates on load: a `listView.activeColor` or `thumbnail.borderColor` still at the old default `0xFFD9A441` is removed, so it follows `accentColor`.
 - `formatVersion` below 6 migrates on load: `listView.showIncomingDps`/`showOutgoingDps`/`showMiningRate`/`showBountyRate` stay on only where `combat`/`mining`/`bounty.enabled` was on, and are removed otherwise.
 - `formatVersion` below 7 migrates on load: `display.startX`/`startY` are copied into `listView.x`/`y`, which the Client List used to share with the thumbnails' start position.
+- `formatVersion` below 8 migrates on load: `mapPanel.intelShrinkSec`/`intelShowClear` move to `intel.shrinkSec`/`showClear`, and `historyPanel`'s `fontName`/`fontSize`/`fontWeight`/`showTimestamp`/`mergeEnabled`/`mergeWindowSec` are copied into `intelPanel`; a key already in its new section wins.
 - A profile with `thumbnailSpaces` but no `display.placementMode` gets `ThumbnailSpaces` if any space is enabled.
 
 ## Value formats
@@ -73,7 +74,7 @@ Profile file names: `<name>.json` with no path separators or `:*?"<>|`, not star
 | `formatVersion` | int | `7` | Read only to migrate; rewritten on save. |
 | `accentColor` | colour | `0xFFD9A441` | This profile's accent: the config dialog, the panels, and the unset `listView.activeColor` and `thumbnail.borderColor`. |
 
-Sections: `thumbnail`, `timer`, `display`, `listView`, `historyPanel`, `mapPanel`, `intelPanel`, `snapping`, `panelSnapping`, `interaction`, `autoMinimize`, `autoMovePosition`, `exclusion`, `closeAll`, `combat`, `mining`, `bounty`, `resources`, `ping`, `travel`, `hotkeys` (objects); `windowFilters`, `characters`, `systemColors`, `chatAlerts`, `hotkeyGroups`, `thumbnailSpaces` (arrays).
+Sections: `thumbnail`, `timer`, `display`, `listView`, `historyPanel`, `mapPanel`, `intelPanel`, `intel`, `snapping`, `panelSnapping`, `interaction`, `autoMinimize`, `autoMovePosition`, `exclusion`, `closeAll`, `combat`, `mining`, `bounty`, `resources`, `ping`, `travel`, `hotkeys` (objects); `windowFilters`, `characters`, `systemColors`, `chatAlerts`, `hotkeyGroups`, `thumbnailSpaces` (arrays).
 
 ### thumbnail
 
@@ -397,9 +398,7 @@ The Map: a schematic of one region, or up to four side by side (Ctrl+click a reg
 | `showAnsiblex` | bool | `true` | | Draw the Eve Stars account's Ansiblex gates: an arc between two systems shown, or a stub naming the far end. Needs `evestarsToken`; a read-only token is enough. Fetched every 30 minutes while shown. |
 | `showKills` | bool | `true` | | Follow zKillboard's live feed while the panel shows: each kill ripples and leaves a fading mark, and the Intel card gains a Kills tab listing those in the regions shown. Kills only NPCs took part in are left out. |
 | `killLifetimeMin` | int | `30` | 1–120 | Minutes a kill stays on the map and in the Kills tab. |
-| `showIntel` | bool | `true` | | Highlight systems named in intel channels. Off only hides the pins. |
-| `intelShrinkSec` | int | `300` | 1–900 | Seconds an intel pin shows, its halo shrinking all the while. |
-| `intelShowClear` | bool | `true` | | Turn a live pin yellow and restart its shrink when intel calls its system `clear` or `clr`, even if the rule excludes those words. Only the first system a message names is cleared. Off, those messages are ignored. |
+| `showIntel` | bool | `true` | | Highlight systems named in intel channels, as [intel](#intel) sets. Off only hides the pins. |
 | `routePreference` | enum | `Shorter` | `Shorter`, `Safer`, `LessSecure` | How routes sent through Eve Stars are planned. Keep it the same as the game's autopilot setting. |
 | `routeAnsiblex` | bool | `false` | | Plan routes sent through Eve Stars through the account's Ansiblex gates. Keep the game's Ansiblex setting the same. |
 | `routeEveryWaypoint` | bool | `false` | | Set every system on a route sent through Eve Stars as a waypoint, so the game's autopilot settings can't change the way it flies. Uses more of each character's ESI limit, and takes longer. |
@@ -407,7 +406,7 @@ The Map: a schematic of one region, or up to four side by side (Ctrl+click a reg
 
 ### intelPanel
 
-The Intel Panel lists every report that names a system in a channel an intel rule follows, at any distance, against the nearest client. It uses the default wording, whatever a rule's `custom_text` or `text_color`, and the Alert History panel's timestamp and merge settings, and its font when detached. A rule's exclusions don't apply here: `clr` and `nv` lines list too, though they stay off the map and don't alert. Clicking a row opens its system on the map and pings it. Also toggled from the tray. Clearing the history clears both.
+The Intel Panel lists every report that names a system in a channel an intel rule follows, at any distance, against the nearest client. It uses the default wording, whatever a rule's `custom_text` or `text_color`. A rule's exclusions don't apply here: `clr` and `nv` lines list too, though they stay off the map and don't alert. Clicking a row opens its system on the map and pings it. Also toggled from the tray. Clearing the history clears both.
 
 | Key | Type | Default | Range | Notes |
 |---|---|---|---|---|
@@ -424,9 +423,24 @@ The Intel Panel lists every report that names a system in a channel an intel rul
 | `hideWhenNoEveFocus` | bool | `false` | | *Detached.* As `historyPanel.hideWhenNoEveFocus`. |
 | `hideDebounceMs` | int | `500` | 0–5000 | *Detached.* Delay before hiding. |
 | `opacity` | int | `255` | opacity | *Detached.* Inside the map it takes the map's. |
+| `fontName` | string | `"Geist"` | | *Detached.* |
+| `fontSize` | int | `12` | font size | *Detached.* |
+| `fontWeight` | enum | `Regular` | weight | *Detached.* |
+| `showTimestamp` | bool | `false` | | Also the map's Intel card. |
+| `mergeEnabled` | bool | `false` | | Merge identical back-to-back reports into one row marked `×N`; also the map's Intel card. |
+| `mergeWindowSec` | int | `10` | 1–300 | Max gap to merge. |
 | `colorSystemNames` | bool | `true` | | Draw each row's system in its name colour: `systemColors`, then unique colours if on, then the default. Doesn't need a rule's `color_system_name`. |
 | `range` | enum | `All` | `OneJump` `FiveJumps` `TenJumps` `All` | *Detached.* Lists only reports this close to the nearest client; set by the range filter. Reports no client can reach show only under `All`. |
 | `muteSounds` | bool | `false` | | Silences intel alerts' sound and speech; the detached panel's speaker button. |
+
+### intel
+
+How chat intel marks systems, on the map (`mapPanel.showIntel`) and on the thumbnails' connection maps (`thumbnail.showSystemConnectionIntel`).
+
+| Key | Type | Default | Range | Notes |
+|---|---|---|---|---|
+| `shrinkSec` | int | `300` | 1–900 | Seconds an intel pin shows, its halo shrinking all the while. |
+| `showClear` | bool | `true` | | Turn a live pin yellow and restart its shrink when intel calls its system `clear` or `clr`, even if the rule excludes those words. Only the first system a message names is cleared. Off, those messages are ignored. |
 
 ### thumbnailSpaces
 

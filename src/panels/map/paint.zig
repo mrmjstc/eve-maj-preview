@@ -352,15 +352,15 @@ pub const Painter = struct {
             return;
         }
         const now = win32.Ticks.now();
-        const history_settings = &self.config.historyPanel;
+        const intel_settings = &self.config.intelPanel;
         for (self.state.intel_rows[0..card.row_count], card.rows[0..card.row_count]) |row, box| {
             history_rows.drawStacked(dc, text, entries, row, &self.config.thumbnail.notifications, .{
                 .left = left,
                 .top = box.top + look.INTEL_PADDING_Y,
                 .right = right,
                 .line_gap = look.TITLE_LINE_GAP,
-                .shows_timestamp = history_settings.showTimestamp,
-                .shows_leads = self.config.intelPanel.colorSystemNames,
+                .shows_timestamp = intel_settings.showTimestamp,
+                .shows_leads = intel_settings.colorSystemNames,
             }, now);
         }
     }
@@ -745,14 +745,14 @@ pub const Painter = struct {
     }
 
     fn haloRadius(self: *const Painter, pin: *const intel_pins.Pin, now_ms: u64) f32 {
-        return intelHaloRadius(&self.config.mapPanel, pin, look.markerScale(self.state.layout.view.zoom), now_ms);
+        return intelHaloRadius(&self.config.intel, pin, look.markerScale(self.state.layout.view.zoom), now_ms);
     }
 
     fn drawMap(self: *const Painter, canvas: pixel_buffer.Canvas, scene: Scene, paint: *const MapPaint, now_ms: u64) void {
         const layout = &self.state.layout;
         const scale = look.markerScale(layout.view.zoom);
         const hovered_node: ?u16 = if (self.state.hover.kind == .node) self.state.hover.index else null;
-        const lifetime_ms = self.config.mapPanel.intelShrinkMs();
+        const lifetime_ms = self.config.intel.shrinkMs();
         // Under everything else, so a new halo doesn't hide the systems around it.
         for (layout.nodes[0..layout.node_count]) |node| {
             const pin = scene.pins.find(node.system, lifetime_ms, now_ms) orelse continue;
@@ -996,7 +996,7 @@ pub const Painter = struct {
         for (layout.nodes[0..layout.node_count], 0..) |node, index| {
             const label = node.label orelse continue;
             const plain_color = if (self.state.isNoteworthy(node.system)) list_look.NAME else look.LABEL;
-            const label_color = if (self.state.focus_system == node.system) look.FOCUS_NAME else if (scene.pins.find(node.system, self.config.mapPanel.intelShrinkMs(), now_ms) != null) list_look.NAME else stormCenterColor(storms, node.system) orelse incursionStagingColor(incursions, node.system) orelse plain_color;
+            const label_color = if (self.state.focus_system == node.system) look.FOCUS_NAME else if (scene.pins.find(node.system, self.config.intel.shrinkMs(), now_ms) != null) list_look.NAME else stormCenterColor(storms, node.system) orelse incursionStagingColor(incursions, node.system) orelse plain_color;
             drawHaloText(dc, universe.systemName(node.system), label.left, label.top, label_color, outline);
             var suffix_buffer: [text_mod.SECURITY_TEXT_MAX]u8 = undefined;
             if (self.labelSuffix(node.system, &suffix_buffer)) |suffix| {
@@ -1058,7 +1058,7 @@ pub const Painter = struct {
         var facts: text_mod.SystemFacts = .{ .system = system, .stats = scene.stats, .activity = self.spannedActivity(scene, self.config.mapPanel.metric), .avoided_area = if (self.has_eve_stars) avoidedArea(&scene.destinations.avoid, system) else null, .reach = if (self.state.reach) |*reach| reach else null, .storms = self.shownStorms(scene), .incursions = self.shownIncursions(scene), .campaigns = shownCampaigns(self.config, scene), .wormholes = shownWormholes(self.config, scene), .bridges = shownBridges(self.config, self.has_eve_stars, scene), .now_seconds = scene.now_seconds };
         var names: [marks.MAX_MARKS][]const u8 = undefined;
         facts.characters = self.state.marks.namesAt(system, &names);
-        if (scene.pins.find(system, self.config.mapPanel.intelShrinkMs(), now_ms)) |pin| {
+        if (scene.pins.find(system, self.config.intel.shrinkMs(), now_ms)) |pin| {
             facts.intel_message = pin.message();
             facts.intel_age_ms = now_ms -| pin.seen_ms;
             facts.is_intel_clear = pin.is_clear;
@@ -1185,8 +1185,8 @@ pub fn titleText(state: *const MapState) FixedText {
 }
 
 /// `scale` is the zoom's marker scale.
-pub fn intelHaloRadius(map_settings: *const config_mod.MapPanelConfig, pin: *const intel_pins.Pin, scale: f32, now_ms: u64) f32 {
-    return look.intelHaloRadius(now_ms -| pin.seen_ms, map_settings.intelShrinkMs()) * scale;
+pub fn intelHaloRadius(intel_settings: *const config_mod.IntelConfig, pin: *const intel_pins.Pin, scale: f32, now_ms: u64) f32 {
+    return look.intelHaloRadius(now_ms -| pin.seen_ms, intel_settings.shrinkMs()) * scale;
 }
 
 /// Searched linearly, as a route asks this once a jump.

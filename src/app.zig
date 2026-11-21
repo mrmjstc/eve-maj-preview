@@ -444,8 +444,8 @@ pub const App = struct {
 
         for (findings.intel_sightings.items) |sighting| {
             if (sighting.is_pinned) {
-                const map_settings = &self.store.live.mapPanel;
-                self.intel.pin(sighting.system, sighting.message, sighting.is_clear, .{ .shows_clear = map_settings.intelShowClear, .lifetime_ms = map_settings.intelShrinkMs() }, now_ms);
+                const intel_settings = &self.store.live.intel;
+                self.intel.pin(sighting.system, sighting.message, sighting.is_clear, .{ .shows_clear = intel_settings.showClear, .lifetime_ms = intel_settings.shrinkMs() }, now_ms);
             }
             if (sighting.is_message_first) {
                 self.notifier().listIntel(sighting.system, sighting.message, sighting.is_clear);

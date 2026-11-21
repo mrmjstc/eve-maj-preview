@@ -305,7 +305,7 @@ WM_HOTKEY -> timerWindowProc -> HotkeyManager.handleHotkeyPress -> Commands.run
 
 `config.zig` defines `Config` and re-exports every settings type; other modules import only it.
 
-- One file per section (`thumbnail.zig`, `display.zig`, `panels.zig` (the Client List and the History, Map and Intel panels, one section each), `behavior.zig`, `activity.zig`, `notifications.zig`, `chatlog.zig`, `characters.zig`, `hotkeys.zig`, `spaces.zig`, ...). Types holding saved settings are named `XxxConfig`.
+- One file per section (`thumbnail.zig`, `display.zig`, `panels.zig` (the Client List and the History, Map and Intel panels, one section each), `intel.zig` (how intel marks systems, for every view), `behavior.zig`, `activity.zig`, `notifications.zig`, `chatlog.zig`, `characters.zig`, `hotkeys.zig`, `spaces.zig`, ...). Types holding saved settings are named `XxxConfig`.
 - **`wire.zig`**: generates each section's JSON shape and encode/decode/free/clone from its fields (`pub const Wire = wire.Wire(Self)`). Field-name conventions pick the encoding: `*Color` u32 → hex string, `KeyList` → key code(s). `runtime_fields` aren't saved; `wire_defaults` supplies defaults a runtime field can't hold.
 - **`readable.zig`**: lenient load. Drops each field, item or entry that doesn't fit its type, so it falls back to its default alone. Only non-JSON fails (file copied to `profiles/backup/`, defaults used).
 - **`migrate.zig`**: upgrades older profile JSON before parsing (pure, tested).

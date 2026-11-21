@@ -18,6 +18,8 @@ const FOLLOWS_ACCENT_VERSION = 5;
 const LIST_RATES_VERSION = 6;
 /// Profiles from before this kept the client list's position in display.startX/startY, the unplaced thumbnails' start.
 pub const LIST_POSITION_VERSION = 7;
+/// Profiles from before this kept intel's pin settings in mapPanel, and the Intel Panel followed the History Panel's list settings.
+const REGROUP_VERSION = 8;
 
 /// The amber both colours defaulted to before FOLLOWS_ACCENT_VERSION.
 const OLD_ACCENT_DEFAULT: u32 = 0xFFD9A441;
@@ -35,8 +37,19 @@ const LIST_RATES = [_]struct { key: []const u8, overlay: []const u8 }{
     .{ .key = "showBountyRate", .overlay = "bounty" },
 };
 
+/// The History Panel's settings the Intel Panel used to follow, copied so it keeps looking the same.
+const INTEL_LIST_KEYS = [_][]const u8{ "fontName", "fontSize", "fontWeight", "showTimestamp", "mergeEnabled", "mergeWindowSec" };
+
 /// A display setting that moved into its own section under a new name.
 const Move = struct { old: []const u8, section: []const u8, new: []const u8 };
+
+/// A setting that moved from one section to another under a new name.
+const SectionMove = struct { from: []const u8, old: []const u8, to: []const u8, new: []const u8 };
+
+const REGROUP_MOVES = [_]SectionMove{
+    .{ .from = "mapPanel", .old = "intelShrinkSec", .to = "intel", .new = "shrinkSec" },
+    .{ .from = "mapPanel", .old = "intelShowClear", .to = "intel", .new = "showClear" },
+};
 
 const PANEL_MOVES = [_]Move{
     .{ .old = "listViewOrder", .section = "listView", .new = "order" },
@@ -154,6 +167,7 @@ pub fn profile(arena: std.mem.Allocator, root: *Value) !void {
     followAccentFromOldDefault(root);
     try listRatesFromOverlays(arena, root);
     try listPositionFromStart(arena, root);
+    try regroupFromViews(arena, root);
 }
 
 /// A profile's own chatlog section, from before Log Monitoring was shared by every profile; null when it has none.
@@ -211,6 +225,27 @@ fn listPositionFromStart(arena: std.mem.Allocator, root: *Value) !void {
     const list_view = try sectionObject(arena, root, "listView") orelse return;
     try copy(arena, list_view, display, "startX", "x");
     try copy(arena, list_view, display, "startY", "y");
+}
+
+/// Moves settings out of the view that first showed them; one already in its new section wins, so a part-migrated profile migrates again.
+fn regroupFromViews(arena: std.mem.Allocator, root: *Value) !void {
+    if (root.* != .object) return;
+    const version = values.integerAt(root.*, "formatVersion") orelse 1;
+    if (version >= REGROUP_VERSION) return;
+    for (REGROUP_MOVES) |move| {
+        const value = values.get(root.object.get(move.from), move.old) orelse continue;
+        const section = try sectionObject(arena, root, move.to) orelse continue;
+        if (section.get(move.new) == null) try section.put(arena, move.new, value);
+        // Looked up again, as making the new section can move the old one.
+        if (root.object.getPtr(move.from)) |from| _ = from.object.orderedRemove(move.old);
+    }
+    const history_panel = root.object.get("historyPanel") orelse return;
+    if (history_panel != .object) return;
+    const intel_panel = try sectionObject(arena, root, "intelPanel") orelse return;
+    for (INTEL_LIST_KEYS) |key| {
+        const value = values.get(history_panel, key) orelse continue;
+        if (intel_panel.get(key) == null) try intel_panel.put(arena, key, value);
+    }
 }
 
 /// Moves the old fit region and not-logged-in space into thumbnailSpaces.
@@ -472,6 +507,56 @@ test "a panel setting already in its section wins, and a current profile's displ
         \\{"formatVersion":4,"display":{"listViewColumns":3}}
     );
     try testing.expect(current.object.get("listView") == null);
+}
+
+test "an old profile's intel pin settings move out of mapPanel, and a value already in intel wins" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const root = try migrated(arena.allocator(),
+        \\{"formatVersion":7,"mapPanel":{"intelShrinkSec":120,"intelShowClear":false,"showIntel":true}}
+    );
+    try testing.expectEqual(@as(i64, 120), values.integerAt(root.object.get("intel").?, "shrinkSec").?);
+    try testing.expectEqual(false, values.boolAt(root.object.get("intel").?, "showClear").?);
+    try testing.expect(values.get(root.object.get("mapPanel").?, "intelShrinkSec") == null);
+    try testing.expectEqual(true, values.boolAt(root.object.get("mapPanel").?, "showIntel").?);
+    const both = try migrated(arena.allocator(),
+        \\{"formatVersion":7,"mapPanel":{"intelShrinkSec":120},"intel":{"shrinkSec":60}}
+    );
+    try testing.expectEqual(@as(i64, 60), values.integerAt(both.object.get("intel").?, "shrinkSec").?);
+    try testing.expect(values.get(both.object.get("mapPanel").?, "intelShrinkSec") == null);
+}
+
+test "a display-era intel setting reaches intel through mapPanel" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const root = try migrated(arena.allocator(),
+        \\{"formatVersion":3,"display":{"mapPanelIntelShrinkSec":45}}
+    );
+    try testing.expectEqual(@as(i64, 45), values.integerAt(root.object.get("intel").?, "shrinkSec").?);
+}
+
+test "the Intel Panel takes a copy of the History Panel's list settings, keeping any of its own" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const root = try migrated(arena.allocator(),
+        \\{"formatVersion":7,"historyPanel":{"fontSize":14,"showTimestamp":true,"mergeWindowSec":30,"maxRows":20},"intelPanel":{"mergeWindowSec":5}}
+    );
+    const intel_panel = root.object.get("intelPanel").?;
+    try testing.expectEqual(@as(i64, 14), values.integerAt(intel_panel, "fontSize").?);
+    try testing.expectEqual(true, values.boolAt(intel_panel, "showTimestamp").?);
+    try testing.expectEqual(@as(i64, 5), values.integerAt(intel_panel, "mergeWindowSec").?);
+    try testing.expect(values.get(intel_panel, "maxRows") == null);
+    try testing.expectEqual(@as(i64, 14), values.integerAt(root.object.get("historyPanel").?, "fontSize").?);
+}
+
+test "a regrouped profile's intel settings are left alone" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const root = try migrated(arena.allocator(),
+        \\{"formatVersion":8,"mapPanel":{"intelShrinkSec":120},"historyPanel":{"fontSize":14}}
+    );
+    try testing.expect(root.object.get("intel") == null);
+    try testing.expect(root.object.get("intelPanel") == null);
 }
 
 test "a profile's chatlog section is found, and nothing else passes for one" {

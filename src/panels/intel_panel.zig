@@ -311,7 +311,6 @@ pub const IntelPanelWindow = struct {
 
     fn computeRenderSignature(self: *const IntelPanelWindow, intel_history: *const history.NotificationHistory, entries: []const history.Entry, total_count: usize, panel_header_state: *const panel_chrome.Header) u64 {
         const intel_settings = &self.config.intelPanel;
-        const history_settings = &self.config.historyPanel;
         var hasher = std.hash.Wyhash.init(0);
         panel_chrome.hashHeader(&hasher, panel_header_state);
         hasher.update(std.mem.asBytes(&intel_settings.width));
@@ -325,18 +324,17 @@ pub const IntelPanelWindow = struct {
         hasher.update(std.mem.asBytes(&hovered_action));
         const hovered_range: u8 = if (self.hovered_range) |range| @as(u8, @backingInt(range)) + 1 else 0;
         hasher.update(std.mem.asBytes(&hovered_range));
-        panel_chrome.hashFonts(&hasher, history_settings);
-        history_rows.hashIntel(&hasher, intel_history, entries, history_settings, intel_settings, &self.config.thumbnail.notifications);
+        panel_chrome.hashFonts(&hasher, intel_settings.fontName, intel_settings.fontSize, intel_settings.fontWeight);
+        history_rows.hashIntel(&hasher, intel_history, entries, intel_settings, &self.config.thumbnail.notifications);
         return hasher.final();
     }
 
     /// Called every tick; redraws only when the render signature changed.
     pub fn render(self: *IntelPanelWindow, intel_history: *const history.NotificationHistory) !void {
         const intel_settings = &self.config.intelPanel;
-        const history_settings = &self.config.historyPanel;
         self.panel.followTopmost(intel_settings.alwaysOnTop);
-        try panel_chrome.ensureFonts(&self.panel, history_settings);
-        try self.bold_font.ensure(self.panel.allocator, "Intel Panel system", history_settings.fontName, history_settings.fontSize, history_settings.fontWeight.bolded());
+        try panel_chrome.ensureFonts(&self.panel, intel_settings.fontName, intel_settings.fontSize, intel_settings.fontWeight);
+        try self.bold_font.ensure(self.panel.allocator, "Intel Panel system", intel_settings.fontName, intel_settings.fontSize, intel_settings.fontWeight.bolded());
         try self.header_fonts.ensure(self.panel.allocator);
 
         var entry_buf: [history.CAPACITY]history.Entry = undefined;
@@ -350,7 +348,7 @@ pub const IntelPanelWindow = struct {
             shown_count += 1;
         }
         const entries = shown_buf[0..shown_count];
-        self.row_count = history_look.build(&self.rows, entries, history.CAPACITY, history_look.buildOptions(history_settings, null));
+        self.row_count = history_look.build(&self.rows, entries, history.CAPACITY, history_look.buildOptions(intel_settings.mergeEnabled, intel_settings.mergeWindowSec, null));
         for (self.rows[0..self.row_count], self.row_systems[0..self.row_count]) |row, *system| system.* = entries[row.first_index].system;
 
         const panel_header_state = self.header();
@@ -452,7 +450,7 @@ pub const IntelPanelWindow = struct {
         const small_font = self.panel.small_font.handle orelse return;
         _ = win32.SelectObject(dc, message_font);
         const text: RowText = .{ .system_font = self.bold_font.handle orelse message_font, .message_font = message_font, .small_font = small_font, .name_height = panel_chrome.lineHeight(dc) };
-        const row_height = intel_look.rowHeight(self.config.historyPanel.fontSize);
+        const row_height = intel_look.rowHeight(self.config.intelPanel.fontSize);
         const bottom = panel_height - list_look.BOTTOM_PADDING;
         var y = top + intel_look.ROWS_PADDING_TOP;
         if (self.row_count == 0) {
@@ -497,7 +495,7 @@ pub const IntelPanelWindow = struct {
         panel_chrome.drawLine(dc, pill_text, pill_left + @divTrunc(pill_width - pill_text_width, 2), small_y, intel_look.faded(swatch.text, is_old));
 
         var content_right = row_box.right - intel_look.PADDING_X;
-        if (self.config.historyPanel.showTimestamp) {
+        if (self.config.intelPanel.showTimestamp) {
             var time_buf: [panel_look.TIME_TEXT_MAX]u8 = undefined;
             const time_text = panel_look.relativeTime(&time_buf, now.elapsedSince(entry.timestamp));
             content_right -= panel_chrome.textWidth(dc, time_text);
