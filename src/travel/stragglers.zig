@@ -22,7 +22,7 @@ pub const Traveler = struct {
     system_name: []const u8,
     /// When it last jumped, in ms on the caller's clock; 0 when it hasn't this session.
     last_jump_ms: u64,
-    /// Excluded from cycling, so it neither counts toward the group nor gets the alert.
+    /// Excluded from cycling, which marks it as off on its own: it neither counts toward the group nor gets the alert.
     is_excluded: bool,
 };
 

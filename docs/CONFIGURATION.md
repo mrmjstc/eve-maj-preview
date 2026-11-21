@@ -711,7 +711,7 @@ Fires `TravelLeftBehind` when a character isn't in the group's system. Checked a
 | `threshold_percent` | float | `50.0` | 1–100 | Share of eligible characters that must share a system for it to count as the group. |
 | `threshold_count` | int | `2` | 1–50 | As above, as a count. |
 
-Eligible: jumped (gate or Conduit, not undock) at least once this session and not excluded. The group system is the one most eligible characters share. A straggler is flagged once; its next jump rearms.
+Eligible: jumped (gate or Conduit, not undock) at least once this session and not [excluded](#exclusion) from cycling, as a character set aside, like a scout ahead or a parked hauler, is off on its own. The group system is the one most eligible characters share. A straggler is flagged once; its next jump rearms.
 
 ### hotkeys
 
