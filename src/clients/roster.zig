@@ -5,12 +5,17 @@ const config_mod = @import("../config.zig");
 const auto_colors_mod = @import("auto_colors.zig");
 const scout = @import("scout.zig");
 const stragglers = @import("../travel/stragglers.zig");
+const stack = @import("../notifications/stack.zig");
 const log = @import("../log.zig");
 
 const Config = config_mod.Config;
 const AutoColorStore = auto_colors_mod.AutoColorStore;
 const EveWindow = scout.EveWindow;
+const NotificationStack = stack.NotificationStack;
 const slog = log.Scoped("roster");
+
+/// What alertsOf gives for a window the roster doesn't track.
+pub const NO_ALERTS: NotificationStack = .{};
 
 /// Which clients Roster.refreshConfig reads the profile for.
 pub const Refresh = enum {
@@ -32,6 +37,10 @@ pub const Client = struct {
     /// YYYYMMDD*1000000+HHMMSS of the event that set system_name; 0 if unreadable, which always applies.
     system_name_event_timestamp: u64 = 0,
     travel: stragglers.LeftBehindState = .{},
+    /// The alerts on screen, and each type's throttle; written by notifications/dispatch and Roster.
+    notifications: NotificationStack = .{},
+    /// When control/activation.zig last brought it forward; "suppress when clicked" counts from it.
+    last_click_time: win32.Ticks = .{},
     /// Owned; the profile's display name for the character, else a copy of character_name.
     display_name: []const u8 = "",
     /// Null at the login screen or with "Unique Character Name Colors" off; callers fall back to their default.
@@ -78,6 +87,16 @@ pub const Roster = struct {
 
     pub fn byHwnd(self: *const Roster, hwnd: win32.HWND) ?*const Client {
         return &self.clients.items[self.indexOf(hwnd) orelse return null];
+    }
+
+    /// For notifications/dispatch, which shows alerts on the client; don't hold it across a sync.
+    pub fn mutableByHwnd(self: *Roster, hwnd: win32.HWND) ?*Client {
+        return &self.clients.items[self.indexOf(hwnd) orelse return null];
+    }
+
+    pub fn alertsOf(self: *const Roster, hwnd: win32.HWND) *const NotificationStack {
+        const client = self.byHwnd(hwnd) orelse return &NO_ALERTS;
+        return &client.notifications;
     }
 
     /// The first client with this name, which a window filter's windows and logged-out clients share.
@@ -131,9 +150,38 @@ pub const Roster = struct {
         self.active_hwnd = hwnd;
     }
 
-    /// Once log monitoring is off, so a stale system doesn't stay shown.
+    /// After control/activation.zig brings `hwnd` forward: dismisses the alerts a click clears.
+    pub fn recordClick(self: *Roster, hwnd: win32.HWND, now: win32.Ticks) void {
+        const client = self.mutableByHwnd(hwnd) orelse return;
+        client.last_click_time = now;
+        if (client.notifications.dismissClickSuppressed(self.allocator)) client.revision +%= 1;
+    }
+
+    /// Per tick; a flashing alert bumps the revision every tick, so both its phases get drawn.
+    pub fn expireAlerts(self: *Roster, now: win32.Ticks) void {
+        for (self.clients.items) |*client| {
+            const expired = client.notifications.expire(self.allocator, now);
+            const is_flashing = if (client.notifications.newest()) |newest| newest.isFlashing(now) else false;
+            if (expired or is_flashing) client.revision +%= 1;
+        }
+    }
+
+    /// On a profile switch, since alerts carry the old profile's colours and durations; their throttle goes too.
+    pub fn clearAlerts(self: *Roster) void {
+        for (self.clients.items) |*client| {
+            client.notifications.deinit(self.allocator);
+            // Kept rising, as a thumbnail's render cache compares it.
+            client.notifications = .{ .revision = client.notifications.revision +% 1 };
+            client.revision +%= 1;
+        }
+    }
+
+    /// Once log monitoring is off, so a stale system or log alert doesn't stay shown.
     pub fn clearLogReadings(self: *Roster) void {
-        for (self.clients.items) |*client| self.clearSystem(client);
+        for (self.clients.items) |*client| {
+            self.clearSystem(client);
+            if (client.notifications.dismissLogDriven(self.allocator)) client.revision +%= 1;
+        }
     }
 
     fn indexOf(self: *const Roster, hwnd: win32.HWND) ?usize {
@@ -174,6 +222,7 @@ pub const Roster = struct {
         self.allocator.free(client.character_name);
         self.allocator.free(client.system_name);
         self.allocator.free(client.display_name);
+        client.notifications.deinit(self.allocator);
     }
 
     fn dropMissing(self: *Roster, windows: []const EveWindow) void {
@@ -207,7 +256,7 @@ pub const Roster = struct {
         slog.debug("Added '{s}' to the roster", .{name});
     }
 
-    /// Keeps the old name if copying fails, so the next sync tries again; back at the login screen, the system goes too.
+    /// Keeps the old name if copying fails, so the next sync tries again; back at the login screen, the system and alerts go too.
     fn rename(self: *Roster, client: *Client, new_name: []const u8) void {
         const name = self.allocator.dupe(u8, new_name) catch |err| {
             slog.err("Failed to copy the new name '{s}' for the roster: {}", .{ new_name, err });
@@ -219,7 +268,9 @@ pub const Roster = struct {
         client.character_name = name;
         client.is_config_stale = true;
         client.revision +%= 1;
-        if (is_logout) self.clearSystem(client);
+        if (!is_logout) return;
+        self.clearSystem(client);
+        _ = client.notifications.clear(self.allocator);
     }
 };
 
@@ -231,6 +282,17 @@ fn isListed(windows: []const EveWindow, hwnd: win32.HWND) bool {
 }
 
 const testing = std.testing;
+
+fn testAlert(notification_type: @FieldType(stack.ActiveNotification, "notification_type"), duration_ms: u32) !stack.ActiveNotification {
+    return .{
+        .text = try testing.allocator.dupe(u8, "alert"),
+        .notification_type = notification_type,
+        .start_time = .{ .ms = 1000 },
+        .duration_ms = duration_ms,
+        .suppress_when_focused = false,
+        .suppress_when_clicked = true,
+    };
+}
 
 fn testWindow(hwnd_value: usize, character_name: []const u8, logged_in_ms: u64) EveWindow {
     // Never passed to Win32; only compared.
@@ -282,6 +344,46 @@ test "a renamed client waits for its profile settings, and an unchanged one does
 
     try testing.expect(roster.clients.items[0].is_config_stale);
     try testing.expect(!roster.clients.items[1].is_config_stale);
+}
+
+test "logging out drops the client's alerts" {
+    var roster: Roster = .init(testing.allocator);
+    defer roster.deinit();
+    roster.sync(&.{testWindow(1, "Alpha", 900)});
+    const client = roster.mutableByHwnd(@ptrFromInt(1)) orelse return error.TestExpectedClient;
+    client.notifications.push(testing.allocator, try testAlert(.TakingDamage, 0));
+    roster.sync(&.{testWindow(1, "EVE", 0)});
+
+    try testing.expect(roster.alertsOf(@ptrFromInt(1)).isEmpty());
+}
+
+test "a click dismisses click-suppressed alerts and bumps the revision" {
+    var roster: Roster = .init(testing.allocator);
+    defer roster.deinit();
+    roster.sync(&.{testWindow(1, "Alpha", 900)});
+    const client = roster.mutableByHwnd(@ptrFromInt(1)) orelse return error.TestExpectedClient;
+    client.notifications.push(testing.allocator, try testAlert(.TakingDamage, 0));
+    roster.recordClick(@ptrFromInt(1), .{ .ms = 2000 });
+
+    try testing.expect(roster.alertsOf(@ptrFromInt(1)).isEmpty());
+    try testing.expectEqual(@as(u64, 2000), client.last_click_time.ms);
+    try testing.expectEqual(@as(u32, 1), client.revision);
+}
+
+test "an alert past its duration expires; a profile switch clears the rest, throttle included" {
+    var roster: Roster = .init(testing.allocator);
+    defer roster.deinit();
+    roster.sync(&.{testWindow(1, "Alpha", 900)});
+    const client = roster.mutableByHwnd(@ptrFromInt(1)) orelse return error.TestExpectedClient;
+    client.notifications.push(testing.allocator, try testAlert(.TakingDamage, 500));
+    client.notifications.push(testing.allocator, try testAlert(.MiningIdle, 0));
+    client.notifications.markShown(.MiningIdle, .{ .ms = 1000 });
+    roster.expireAlerts(.{ .ms = 1600 });
+    try testing.expectEqual(@as(usize, 1), client.notifications.items().len);
+
+    roster.clearAlerts();
+    try testing.expect(client.notifications.isEmpty());
+    try testing.expect(!client.notifications.isThrottled(.MiningIdle, 60_000, .{ .ms = 1700 }));
 }
 
 test "a window gone from Scout's list leaves the roster" {

@@ -1,8 +1,7 @@
-//! Decides whether a notification shows on a thumbnail, and puts it there with its sound, speech, history entry and recently-notified cycle entry.
+//! Decides whether a notification shows on a client, and puts it there with its sound, speech, history entry and recently-notified cycle entry.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const config_mod = @import("../config.zig");
-const window = @import("../thumbnail/window.zig");
 const auto_colors_mod = @import("../clients/auto_colors.zig");
 const roster = @import("../clients/roster.zig");
 const history_mod = @import("history.zig");
@@ -16,12 +15,11 @@ const log = @import("../log.zig");
 
 const AutoColorStore = auto_colors_mod.AutoColorStore;
 const Client = roster.Client;
-const ThumbnailWindow = window.ThumbnailWindow;
 const slog = log.Scoped("notification");
 
 const TEST_PERMANENT_FALLBACK_MS: u32 = 5000;
 
-/// Where a notification is recorded beyond its thumbnail.
+/// Where a notification is recorded beyond its client.
 pub const Records = struct {
     /// Borrowed from App's NotificationCenter.
     history: *history_mod.NotificationHistory,
@@ -43,7 +41,7 @@ const NearestClient = struct {
 /// Intel lists every report, so assigning there would evict the colours thumbnails show.
 const SystemColoring = enum { assign, known_only };
 
-/// What showing a notification reads and records beyond the thumbnail itself; borrowed for one call.
+/// What showing a notification reads and records beyond the client itself; borrowed for one call.
 pub const Context = struct {
     allocator: std.mem.Allocator,
     config: *const config_mod.Config,
@@ -52,28 +50,28 @@ pub const Context = struct {
     active_source_hwnd: ?win32.HWND,
 };
 
-/// Shows `notification` on one client's thumbnail under its type's or chat rule's settings; History lists it unless it's switched off.
-pub fn notify(context: Context, thumbnail: *ThumbnailWindow, notification: notification_mod.Notification) void {
+/// Shows `notification` on one client under its type's or chat rule's settings; History lists it unless it's switched off.
+pub fn notify(context: Context, client: *Client, notification: notification_mod.Notification) void {
     const settings = &context.config.thumbnail.notifications;
     const type_config = alertConfig(context.config, notification);
     var text_buf: [notification_mod.TEXT_MAX]u8 = undefined;
-    const text = notification_mod.text(notification, type_config.customText(), thumbnail.character_name, &text_buf);
+    const text = notification_mod.text(notification, type_config.customText(), client.character_name, &text_buf);
     const lead = if (type_config.color_system_name) systemLead(context, notification, text, .assign) else null;
     const now = win32.Ticks.now();
-    const hold = holdFor(context, thumbnail, notification.notification_type, type_config, now);
+    const hold = holdFor(context, client, notification.notification_type, type_config, now);
 
-    if (rules.isRecordedInHistory(hold)) record(context, thumbnail, notification, text, type_config, lead);
+    if (rules.isRecordedInHistory(hold)) record(context, client, notification, text, type_config, lead);
     if (hold != null) return;
-    show(context, thumbnail, text, notification.notification_type, type_config, lead, now) catch |err| {
-        slog.err("Failed to show {s} notification for '{s}': {}", .{ @tagName(notification.notification_type), thumbnail.character_name, err });
+    show(context, client, text, notification.notification_type, type_config, lead, now) catch |err| {
+        slog.err("Failed to show {s} notification for '{s}': {}", .{ @tagName(notification.notification_type), client.character_name, err });
         return;
     };
     if (isAlertRepeat(context.records.shown_alert_group.*, notification.alert_group)) return;
     context.records.shown_alert_group.* = notification.alert_group;
     if (notification.notification_type == .ChatIntel and context.config.intelPanel.muteSounds) return;
 
-    const spoken_name: ?[]const u8 = if (settings.tts_speak_character_name and thumbnail.character_name.len > 0)
-        (if (settings.tts_use_display_name) thumbnail.cached_display_name else thumbnail.character_name)
+    const spoken_name: ?[]const u8 = if (settings.tts_speak_character_name and client.character_name.len > 0)
+        (if (settings.tts_use_display_name) client.display_name else client.character_name)
     else
         null;
     alert_effects.play(settings, type_config, text, spoken_name, notification_mod.notificationCategory(notification.notification_type) == .Chat);
@@ -105,7 +103,7 @@ pub fn listIntel(context: Context, clients: []const Client, system: universe.Sys
 }
 
 /// Shows `notification` on every EVE client for a global user action; kept out of history, with its sound played once.
-pub fn notifyAll(context: Context, thumbnails: []ThumbnailWindow, notification: notification_mod.Notification) void {
+pub fn notifyAll(context: Context, clients: []Client, notification: notification_mod.Notification) void {
     const settings = &context.config.thumbnail.notifications;
     const type_config = settings.getTypeConfig(notification.notification_type);
     var text_buf: [notification_mod.TEXT_MAX]u8 = undefined;
@@ -113,11 +111,11 @@ pub fn notifyAll(context: Context, thumbnails: []ThumbnailWindow, notification: 
 
     const now = win32.Ticks.now();
     var has_shown_any = false;
-    for (thumbnails) |*thumbnail| {
-        if (!thumbnail.is_eve_client) continue;
-        if (holdFor(context, thumbnail, notification.notification_type, type_config, now) != null) continue;
-        show(context, thumbnail, text, notification.notification_type, type_config, null, now) catch |err| {
-            slog.err("Failed to show {s} notification for '{s}': {}", .{ @tagName(notification.notification_type), thumbnail.character_name, err });
+    for (clients) |*client| {
+        if (!client.is_eve_client) continue;
+        if (holdFor(context, client, notification.notification_type, type_config, now) != null) continue;
+        show(context, client, text, notification.notification_type, type_config, null, now) catch |err| {
+            slog.err("Failed to show {s} notification for '{s}': {}", .{ @tagName(notification.notification_type), client.character_name, err });
             continue;
         };
         has_shown_any = true;
@@ -125,8 +123,8 @@ pub fn notifyAll(context: Context, thumbnails: []ThumbnailWindow, notification: 
     if (has_shown_any) alert_effects.play(settings, type_config, text, null, false);
 }
 
-/// Bypasses every suppression, shows hidden thumbnails and skips history and cycle tracking; alerts play once, not per thumbnail.
-pub fn showTest(context: Context, thumbnails: []ThumbnailWindow, notification_type: notification_mod.NotificationType, type_config: config_mod.NotificationTypeConfig) !void {
+/// Bypasses every suppression, shows hidden thumbnails and skips history and cycle tracking; alerts play once, not per client.
+pub fn showTest(context: Context, clients: []Client, notification_type: notification_mod.NotificationType, type_config: config_mod.NotificationTypeConfig) !void {
     const example = notification_mod.sample(notification_type);
     var text_buf: [notification_mod.TEXT_MAX]u8 = undefined;
     var spoken_buf: [notification_mod.TEXT_MAX]u8 = undefined;
@@ -135,9 +133,9 @@ pub fn showTest(context: Context, thumbnails: []ThumbnailWindow, notification_ty
     // A permanent (0) duration would never clear a test.
     const duration_ms = if (type_config.duration_ms == 0) TEST_PERMANENT_FALLBACK_MS else type_config.duration_ms;
 
-    for (thumbnails) |*thumbnail| {
-        if (!thumbnail.is_eve_client) continue;
-        const character_name: ?[]const u8 = if (thumbnail.character_name.len > 0) thumbnail.character_name else notification_mod.SAMPLE_CHARACTER;
+    for (clients) |*client| {
+        if (!client.is_eve_client) continue;
+        const character_name: ?[]const u8 = if (client.character_name.len > 0) client.character_name else notification_mod.SAMPLE_CHARACTER;
         const text = notification_mod.text(example, type_config.customText(), character_name, &text_buf);
         if (spoken == null) {
             @memcpy(spoken_buf[0..text.len], text);
@@ -146,41 +144,11 @@ pub fn showTest(context: Context, thumbnails: []ThumbnailWindow, notification_ty
         var entry: stack.ActiveNotification = .fromConfig(try context.allocator.dupe(u8, text), notification_type, type_config, now, duration_ms);
         entry.reveals_thumbnail = true;
         if (type_config.color_system_name) entry.lead = systemLead(context, example, text, .assign);
-        push(context.allocator, thumbnail, entry);
+        push(context.allocator, client, entry);
     }
 
     const speech = spoken orelse notification_mod.text(example, type_config.customText(), notification_mod.SAMPLE_CHARACTER, &spoken_buf);
     alert_effects.playUnmuted(&context.config.thumbnail.notifications, type_config, speech, null, false);
-}
-
-/// Removes click-dismissable notifications (control/activation.zig's activate); returns whether anything was removed.
-pub fn dismissClickSuppressed(allocator: std.mem.Allocator, thumbnail: *ThumbnailWindow) bool {
-    const removed_any = thumbnail.notifications.dismissClickSuppressed(allocator);
-    if (removed_any) thumbnail.needs_render = true;
-    return removed_any;
-}
-
-/// Drops every notification at once, as on logout.
-pub fn clearAll(allocator: std.mem.Allocator, thumbnail: *ThumbnailWindow) void {
-    if (thumbnail.notifications.clear(allocator)) thumbnail.needs_render = true;
-}
-
-/// Drops the notifications read from the logs, as once log monitoring is off.
-pub fn clearLogDriven(allocator: std.mem.Allocator, thumbnail: *ThumbnailWindow) void {
-    if (thumbnail.notifications.dismissLogDriven(allocator)) thumbnail.needs_render = true;
-}
-
-/// Clears expired notifications; call every tick.
-pub fn expire(allocator: std.mem.Allocator, thumbnails: []ThumbnailWindow) void {
-    const now = win32.Ticks.now();
-    for (thumbnails) |*thumbnail| {
-        if (thumbnail.notifications.expire(allocator, now)) thumbnail.needs_render = true;
-
-        // Rendered each tick so the newest entry's on/off flash phases actually paint.
-        if (thumbnail.notifications.newest()) |newest| {
-            if (newest.isFlashing(now)) thumbnail.needs_render = true;
-        }
-    }
 }
 
 /// Null when the text doesn't start with a system.
@@ -224,40 +192,40 @@ fn alertConfig(config: *const config_mod.Config, notification: notification_mod.
     return config.thumbnail.notifications.getTypeConfig(notification.notification_type);
 }
 
-fn holdFor(context: Context, thumbnail: *const ThumbnailWindow, notification_type: notification_mod.NotificationType, type_config: config_mod.NotificationTypeConfig, now: win32.Ticks) ?rules.Hold {
+fn holdFor(context: Context, client: *const Client, notification_type: notification_mod.NotificationType, type_config: config_mod.NotificationTypeConfig, now: win32.Ticks) ?rules.Hold {
     return rules.holdReason(&context.config.thumbnail.notifications, type_config, .{
-        .is_muted = context.config.isNotificationMuted(thumbnail.character_name),
-        .is_focused = thumbnail.isFocused(context.active_source_hwnd),
-        .since_click_ms = now.elapsedSince(thumbnail.last_click_time),
-        .is_throttled = thumbnail.notifications.isThrottled(notification_type, type_config.throttle_ms, now),
+        .is_muted = context.config.isNotificationMuted(client.character_name),
+        .is_focused = client.hwnd == context.active_source_hwnd,
+        .since_click_ms = now.elapsedSince(client.last_click_time),
+        .is_throttled = client.notifications.isThrottled(notification_type, type_config.throttle_ms, now),
     });
 }
 
 /// Once per alert group, so other clients' copies aren't listed again.
-fn record(context: Context, thumbnail: *const ThumbnailWindow, notification: notification_mod.Notification, text: []const u8, type_config: config_mod.NotificationTypeConfig, lead: ?notification_mod.Lead) void {
+fn record(context: Context, client: *const Client, notification: notification_mod.Notification, text: []const u8, type_config: config_mod.NotificationTypeConfig, lead: ?notification_mod.Lead) void {
     // Intel belongs to the Intel Panel and the map, which list every report through listIntel.
     if (notification.notification_type == .ChatIntel) return;
     if (isAlertRepeat(context.records.recorded_alert_group.*, notification.alert_group)) return;
     context.records.recorded_alert_group.* = notification.alert_group;
     // Null uses the type's own colour; only a chat rule sets its own.
     const text_color = if (notification.chat_rule_index != null) type_config.text_color else null;
-    context.records.history.push(.{ .source_hwnd = thumbnail.source_hwnd, .character_name = thumbnail.character_name, .text = text, .notification_type = notification.notification_type, .character_color = thumbnail.cached_character_color, .text_color = text_color, .lead = lead });
+    context.records.history.push(.{ .source_hwnd = client.hwnd, .character_name = client.character_name, .text = text, .notification_type = notification.notification_type, .character_color = client.character_color, .text_color = text_color, .lead = lead });
 }
 
-fn show(context: Context, thumbnail: *ThumbnailWindow, text: []const u8, notification_type: notification_mod.NotificationType, type_config: config_mod.NotificationTypeConfig, lead: ?notification_mod.Lead, now: win32.Ticks) !void {
-    thumbnail.notifications.markShown(notification_type, now);
+fn show(context: Context, client: *Client, text: []const u8, notification_type: notification_mod.NotificationType, type_config: config_mod.NotificationTypeConfig, lead: ?notification_mod.Lead, now: win32.Ticks) !void {
+    client.notifications.markShown(notification_type, now);
 
     var entry: stack.ActiveNotification = .fromConfig(try context.allocator.dupe(u8, text), notification_type, type_config, now, type_config.duration_ms);
     entry.lead = lead;
-    push(context.allocator, thumbnail, entry);
+    push(context.allocator, client, entry);
 
     // Game events feed the "cycle to recently notified" queue; feedback on the user's own action must not.
-    if (!notification_mod.isUserAction(notification_type)) context.records.notified_queue.track(context.allocator, thumbnail.character_name);
+    if (!notification_mod.isUserAction(notification_type)) context.records.notified_queue.track(context.allocator, client.character_name);
 
-    slog.debug("Queued notification for {s}: [{s}] {s} (border_color_override: {?})", .{ thumbnail.character_name, @tagName(notification_type), text, type_config.border_color });
+    slog.debug("Queued notification for {s}: [{s}] {s} (border_color_override: {?})", .{ client.character_name, @tagName(notification_type), text, type_config.border_color });
 }
 
-fn push(allocator: std.mem.Allocator, thumbnail: *ThumbnailWindow, entry: stack.ActiveNotification) void {
-    thumbnail.notifications.push(allocator, entry);
-    thumbnail.needs_render = true;
+fn push(allocator: std.mem.Allocator, client: *Client, entry: stack.ActiveNotification) void {
+    client.notifications.push(allocator, entry);
+    client.revision +%= 1;
 }

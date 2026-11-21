@@ -10,6 +10,7 @@ const font_cache_mod = @import("font_cache.zig");
 const window = @import("window.zig");
 const look = @import("look.zig");
 const activity_stats = @import("activity_stats.zig");
+const stack = @import("../notifications/stack.zig");
 const spaces = @import("../layout/spaces.zig");
 const pixel_buffer = @import("../util/pixel_buffer.zig");
 const universe = @import("../map/universe.zig");
@@ -292,15 +293,15 @@ pub fn renderOverlay(font_cache: *FontCache, cache: *RenderCache, target_hwnd: w
     gdi_overlay.presentLayered(target_hwnd, overlay, settings.overlay_alpha);
 }
 
-/// Reads what only Win32 can tell (DPI, client size, minimized, the clock); look.renderSettings decides the rest.
-pub fn createRenderSettings(config: *const config_mod.Config, thumbnail: *const ThumbnailWindow, active_source_hwnd: ?win32.HWND) RenderSettings {
+/// Reads what only Win32 can tell (DPI, client size, minimized, the clock); look.renderSettings decides the rest. `alerts` are the client's.
+pub fn createRenderSettings(config: *const config_mod.Config, thumbnail: *const ThumbnailWindow, alerts: *const stack.NotificationStack, active_source_hwnd: ?win32.HWND) RenderSettings {
     // Read live, so fonts and size track the monitor this window is on now.
     const dpi_scale = win32.dpiToScale(win32.GetDpiForWindow(thumbnail.hwnd));
     const size = overlaySize(config, thumbnail, dpi_scale);
     const now = win32.Ticks.now();
     return look.renderSettings(config, &.{
-        .state = thumbnail.effectiveRenderState(active_source_hwnd),
-        .is_shown = thumbnail.isShown(),
+        .state = thumbnail.effectiveRenderState(active_source_hwnd, alerts),
+        .is_shown = thumbnail.isShown(alerts),
         .is_focused = thumbnail.isFocused(active_source_hwnd),
         .is_excluded_from_cycle = thumbnail.is_excluded_from_cycle,
         .is_hidden_for_character = thumbnail.cached_is_thumbnail_hidden,
@@ -314,7 +315,7 @@ pub fn createRenderSettings(config: *const config_mod.Config, thumbnail: *const 
         .opacity = thumbnail.cached_opacity,
         .session_minutes = thumbnail.sessionMinutes(now),
         .stats = &thumbnail.stats,
-        .notifications = &thumbnail.notifications,
+        .notifications = alerts,
         .overlay_width = size.width,
         .overlay_height = size.height,
         .dpi_scale = dpi_scale,

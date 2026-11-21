@@ -30,11 +30,8 @@ pub fn activate(app: *App, source_hwnd: win32.HWND) void {
     // Handled now rather than when the foreground hook fires, which can be late, so the active border shows at once.
     _ = focus.onClientFocused(app, source_hwnd);
 
-    if (thumbnail_set.getThumbnailBySourceHwnd(source_hwnd)) |thumbnail| {
-        thumbnail.last_click_time = win32.Ticks.now();
-        // After focus is reconciled above, since that decides which notifications a click dismisses.
-        _ = thumbnail_set.dismissClickSuppressedNotifications(thumbnail);
-    }
+    // After focus is reconciled above, since that decides which notifications a click dismisses.
+    app.roster.recordClick(source_hwnd, win32.Ticks.now());
 
     // Rendering now avoids hotkey lag; past a few, the rest wait for the timer so a rare bulk update can't block.
     const max_immediate_renders: usize = 4;

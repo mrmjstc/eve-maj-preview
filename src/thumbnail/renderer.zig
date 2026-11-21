@@ -7,6 +7,7 @@ const overlay = @import("overlay.zig");
 const look = @import("look.zig");
 const font_cache_mod = @import("font_cache.zig");
 const hover_zoom_mod = @import("hover_zoom.zig");
+const stack = @import("../notifications/stack.zig");
 
 const Config = config_mod.Config;
 const ThumbnailWindow = window.ThumbnailWindow;
@@ -25,10 +26,10 @@ pub const Renderer = struct {
         self.hover_zoom.deinit();
     }
 
-    /// A no-op outside Thumbnails mode, where the list window draws instead.
-    pub fn render(self: *Renderer, config: *const Config, thumbnail: *ThumbnailWindow, active_source_hwnd: ?win32.HWND) !void {
+    /// A no-op outside Thumbnails mode, where the list window draws instead; `alerts` are the thumbnail's client's.
+    pub fn render(self: *Renderer, config: *const Config, thumbnail: *ThumbnailWindow, alerts: *const stack.NotificationStack, active_source_hwnd: ?win32.HWND) !void {
         if (!thumbnail.is_win32_enabled) return;
-        const settings = overlay.createRenderSettings(config, thumbnail, active_source_hwnd);
+        const settings = overlay.createRenderSettings(config, thumbnail, alerts, active_source_hwnd);
 
         if (thumbnail.render_cache.settings) |cached| {
             if (look.renderSettingsEqual(cached, settings)) return;

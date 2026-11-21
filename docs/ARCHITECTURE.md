@@ -98,9 +98,9 @@ Scout.update(force_scan)              hook events + full EnumWindows at most eve
 Roster.sync, refreshConfig, setActive mirror Scout's windows, read new names' settings; the foreground window is the active one
 clearLoggedOutExclusions
 focus.afterActiveRefresh              record focus, resync cycle cursors
+Roster.expireAlerts                   drop expired alerts; flashing ones redraw
 ThumbnailSet.update                   create/destroy/rename thumbnails
 AutoMinimizer.check
-ThumbnailSet.updateNotifications
 ThumbnailSet.checkHoverZoom
 ChatlogMonitor.update + drain         -> deliverChatlogFindings -> Roster (systems), Scout, ThumbnailSet
 NotificationCenter.update             History Panel
@@ -146,7 +146,7 @@ Cross-thread data:
 
 **`clients/scout.zig`** (`Scout`): `EnumWindows` matched against `windowFilters` (class name, then exe path for new windows only). `trinityWindow` titles give the character name. Per-process `EVENT_OBJECT_NAMECHANGE`/`DESTROY` hooks catch renames and closes between scans; the destroy hook only records the hwnd, and `update()` drops it before handing out the window list, so the slice a tick borrows never changes under it. No creation hook: it would fire for every window on the desktop.
 
-**`clients/roster.zig`** (`Roster`, tested): one `Client` record per tracked window, kept by App for the whole run. `sync` mirrors Scout's window list once per tick, right after `Scout.update`, and is the only place clients are added or removed. It holds an owned copy of the name, the login time mirrored from Scout, the system (only `updateSystem` writes it, dropping stale log events; cleared at logout and when log monitoring goes off), Travel Mode's jumps, the display name, character colour and minimize exclusion (`refreshConfig` reads them for new names each tick, and for everyone after a profile switch, Save or dialog edit), the active window (`active_hwnd`, the foreground window whether a client's or not; only `setActive` writes it), and a `revision` bumped on every change a view shows. A thumbnail set rebuild or profile switch keeps it, so nothing is carried across. Read by Travel Mode, the Map Panel's marks and their colours (through `panel_host.Host.roster`) and the Intel Panel's nearest client; `ThumbnailSet` copies each system onto its thumbnail when the revision moves and the text differs. More game state is moving onto it from `ThumbnailWindow`.
+**`clients/roster.zig`** (`Roster`, tested): one `Client` record per tracked window, kept by App for the whole run. `sync` mirrors Scout's window list once per tick, right after `Scout.update`, and is the only place clients are added or removed. It holds an owned copy of the name, the login time mirrored from Scout, the system (only `updateSystem` writes it, dropping stale log events; cleared at logout and when log monitoring goes off), Travel Mode's jumps, the alerts on screen and their throttle (expired each tick, cleared at logout, on a profile switch, and of log alerts once monitoring is off), when a click last brought it forward, the display name, character colour and minimize exclusion (`refreshConfig` reads them for new names each tick, and for everyone after a profile switch, Save or dialog edit), the active window (`active_hwnd`, the foreground window whether a client's or not; only `setActive` writes it), and a `revision` bumped on every change a view shows. A thumbnail set rebuild or profile switch keeps it, so nothing is carried across. Read by Travel Mode, the Map Panel's marks and their colours (through `panel_host.Host.roster`) and the Intel Panel's nearest client; `ThumbnailSet` copies each system onto its thumbnail when the revision moves and the text differs. More game state is moving onto it from `ThumbnailWindow`.
 
 **`thumbnail/set.zig`** (`ThumbnailSet`): the central mutable state. Owns the `ThumbnailWindow` list (linear search, a few dozen at most), keeps it in step with Scout, dispatches notifications, schedules layout and redraws. Holds the `Renderer`, auto-move verifier, and a drag's ghost overlay and hint (`DragOverlays`), and borrows App's `AutoColorStore`; callers outside `thumbnail/` reach the hover zoom and drag overlays through its methods, not `renderer`.
 
@@ -155,14 +155,13 @@ Cross-thread data:
 1. A layered popup with the client's DWM thumbnail (`DwmRegisterThumbnail`), or, with the live preview off for that character, no registration and a plain fill painted on `WM_ERASEBKGND`. `applyLivePreview()` registers or drops it when settings change.
 2. A layered window on top with the GDI overlay (border, texts, notifications).
 
-In `ClientList`/`Nothing` view modes both HWNDs are sentinels. Render state (active, inactive, alert, minimized, dragging) isn't stored; `effectiveRenderState()` derives it each render.
+In `ClientList`/`Nothing` view modes both HWNDs are sentinels. Render state (active, inactive, alert, minimized, dragging) isn't stored; `effectiveRenderState()` derives it each render, from the client's alerts on the roster among other things.
 
 Per-thumbnail state owned by other modules:
 
 | Field | Owner |
 |---|---|
 | `render_cache` | `thumbnail/overlay.zig` |
-| `notifications` | `notifications/stack.zig` |
 | `auto_minimize` | `control/auto_minimize.zig` |
 | `is_dragged` | `drag/thumbnail.zig` |
 | `stats` | Activity trackers, via `ThumbnailSet.updateStats` |
@@ -291,9 +290,9 @@ WM_HOTKEY -> timerWindowProc -> HotkeyManager.handleHotkeyPress -> runAction
 ## Notifications
 
 - `notifications/notification.zig`: types, categories, placeholders, default text.
-- `notifications/dispatch.zig`: shows a notification if `rules.zig` (pure) allows it; adds sound, speech, history and notified-queue entries.
+- `notifications/dispatch.zig`: shows a notification on a roster `Client` if `rules.zig` (pure) allows it; adds sound, speech, history and notified-queue entries.
 - `notifications/template.zig`: fills `{name}` placeholders in custom text (pure).
-- `notifications/stack.zig`: per-thumbnail on-screen stack, with throttle timestamps.
+- `notifications/stack.zig`: a client's on-screen alerts, with throttle timestamps; kept on the roster.
 - `notifications/center.zig` (`NotificationCenter` on `App`): `history.zig` ring buffers (one more for the Intel Panel, fed by every chatlog intel sighting), `notified_queue.zig`, `panels/history_panel.zig`, `panels/intel_panel.zig`. Survives thumbnail set rebuilds.
 - `notifications/alert_effects.zig`: speech and sound, plus the session-only audio mute.
 - The chatlog worker queues `Notification` payloads; text is rendered on the main thread.

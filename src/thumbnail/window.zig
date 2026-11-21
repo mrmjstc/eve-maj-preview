@@ -47,8 +47,6 @@ pub const ThumbnailWindow = struct {
     seen_revision: u32 = 0,
     /// Empty while showSystemConnections is off, or system_name isn't on the gate map; only ThumbnailSet.updateConnections writes it.
     connections: connections_mod.Connections = .{},
-    notifications: stack.NotificationStack = .{},
-    last_click_time: win32.Ticks = .{},
     is_excluded_from_cycle: bool = false,
     /// Zero while no character is logged in.
     session_start: win32.Ticks = .{},
@@ -133,11 +131,11 @@ pub const ThumbnailWindow = struct {
         return self.source_hwnd == active_source_hwnd;
     }
 
-    /// Only a style-lookup key (getStateConfig), never stored.
-    pub fn effectiveRenderState(self: *const ThumbnailWindow, active_source_hwnd: ?win32.HWND) ThumbnailState {
+    /// Only a style-lookup key (getStateConfig), never stored; `alerts` are its client's.
+    pub fn effectiveRenderState(self: *const ThumbnailWindow, active_source_hwnd: ?win32.HWND, alerts: *const stack.NotificationStack) ThumbnailState {
         return state.renderState(.{
             .is_dragged = self.is_dragged,
-            .has_alert = !self.notifications.isEmpty(),
+            .has_alert = !alerts.isEmpty(),
             .is_focused = self.isFocused(active_source_hwnd),
             .is_minimized = win32.isWindowIconic(self.source_hwnd),
         });
@@ -155,9 +153,9 @@ pub const ThumbnailWindow = struct {
         return self.visibility_state.isVisible();
     }
 
-    /// Whether it's on screen: visible, or hidden but kept up by a revealing alert or a drag.
-    pub fn isShown(self: *const ThumbnailWindow) bool {
-        return self.isVisible() or self.notifications.revealsThumbnail() or self.is_dragged;
+    /// Whether it's on screen: visible, or hidden but kept up by a revealing alert of its client's, or a drag.
+    pub fn isShown(self: *const ThumbnailWindow, alerts: *const stack.NotificationStack) bool {
+        return self.isVisible() or alerts.revealsThumbnail() or self.is_dragged;
     }
 
     pub fn show(self: *const ThumbnailWindow, is_shown: bool) void {

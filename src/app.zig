@@ -277,6 +277,7 @@ pub const App = struct {
         hook_bindings.logFailedPosts();
         focus_mod.afterActiveRefresh(self, scout_result.name_changes.items);
 
+        self.roster.expireAlerts(win32.Ticks.now());
         if (self.thumbnail_set) |thumbnail_set| {
             thumbnail_set.updateConnections(&self.map_panel.pins, tick_start.ms);
             thumbnail_set.update(scout_result.windows, scout_result.closed_windows.items, scout_result.name_changes.items);
@@ -287,7 +288,6 @@ pub const App = struct {
             }
             self.auto_minimizer.check(thumbnail_set.config, thumbnail_set.thumbnails.items, self.roster.active_hwnd);
 
-            thumbnail_set.updateNotifications();
             thumbnail_set.checkHoverZoom();
         }
 
@@ -689,6 +689,7 @@ pub const App = struct {
                 self.store.deinit();
                 self.store = store;
                 restart.pending.* = null;
+                self.roster.clearAlerts();
                 // Not dumped as at startup: it stalled switches with the debug console open.
                 slog.info("Loaded new config: {s}", .{self.store.saved.profile_name});
                 self.map_panel.sync(self.panelContext());

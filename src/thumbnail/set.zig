@@ -52,7 +52,7 @@ pub const ThumbnailSet = struct {
     /// Borrowed from App, which keeps it across a thumbnail set rebuild.
     auto_colors: *AutoColorStore,
     /// Borrowed from App, which keeps it across a thumbnail set rebuild; holds the game state the thumbnails draw.
-    roster: *const Roster,
+    roster: *Roster,
     /// A different mode needs a new ThumbnailSet (see App.onLiveProfileEdited).
     view_mode: types.ViewMode,
 
@@ -75,7 +75,7 @@ pub const ThumbnailSet = struct {
         /// App's NotificationCenter's.
         notification_records: dispatch.Records,
         auto_colors: *AutoColorStore,
-        roster: *const Roster,
+        roster: *Roster,
     };
 
     /// Passed in, since input handling sits above thumbnail/.
@@ -135,17 +135,17 @@ pub const ThumbnailSet = struct {
     }
 
     /// Subject to that type's notification settings.
-    pub fn notify(self: *ThumbnailSet, source_hwnd: win32.HWND, notification: notification_mod.Notification) void {
-        const thumbnail = self.getThumbnailBySourceHwnd(source_hwnd) orelse {
-            slog.debug("Window 0x{x} not found for notification update (thumbnail may not exist yet)", .{@intFromPtr(source_hwnd)});
+    pub fn notify(self: *const ThumbnailSet, source_hwnd: win32.HWND, notification: notification_mod.Notification) void {
+        const client = self.roster.mutableByHwnd(source_hwnd) orelse {
+            slog.debug("No client for window 0x{x} to notify", .{@intFromPtr(source_hwnd)});
             return;
         };
-        dispatch.notify(self.dispatchContext(), thumbnail, notification);
+        dispatch.notify(self.dispatchContext(), client, notification);
     }
 
     /// For a global user action: kept out of history, and its sound and speech play once.
-    pub fn notifyAll(self: *ThumbnailSet, notification: notification_mod.Notification) void {
-        dispatch.notifyAll(self.dispatchContext(), self.thumbnails.items, notification);
+    pub fn notifyAll(self: *const ThumbnailSet, notification: notification_mod.Notification) void {
+        dispatch.notifyAll(self.dispatchContext(), self.roster.clients.items, notification);
     }
 
     /// For the Intel Panel, which lists every report; `message` is copied.
@@ -153,18 +153,8 @@ pub const ThumbnailSet = struct {
         dispatch.listIntel(self.dispatchContext(), self.roster.clients.items, system, message, is_clear);
     }
 
-    pub fn showTestNotification(self: *ThumbnailSet, notification_type: notification_mod.NotificationType, type_config: config_mod.NotificationTypeConfig) !void {
-        try dispatch.showTest(self.dispatchContext(), self.thumbnails.items, notification_type, type_config);
-    }
-
-    /// Returns whether anything was removed.
-    pub fn dismissClickSuppressedNotifications(self: *const ThumbnailSet, thumbnail: *ThumbnailWindow) bool {
-        return dispatch.dismissClickSuppressed(self.allocator, thumbnail);
-    }
-
-    /// Clears expired notifications; call every tick.
-    pub fn updateNotifications(self: *ThumbnailSet) void {
-        dispatch.expire(self.allocator, self.thumbnails.items);
+    pub fn showTestNotification(self: *const ThumbnailSet, notification_type: notification_mod.NotificationType, type_config: config_mod.NotificationTypeConfig) !void {
+        try dispatch.showTest(self.dispatchContext(), self.roster.clients.items, notification_type, type_config);
     }
 
     /// Hides the hover zoom once the cursor has left its thumbnail.
@@ -201,7 +191,7 @@ pub const ThumbnailSet = struct {
     }
 
     pub fn renderThumbnail(self: *ThumbnailSet, thumbnail: *ThumbnailWindow) !void {
-        try self.renderer.render(self.config, thumbnail, self.roster.active_hwnd);
+        try self.renderer.render(self.config, thumbnail, self.roster.alertsOf(thumbnail.source_hwnd), self.roster.active_hwnd);
     }
 
     /// Logs a failure, with `context` in the message, instead of propagating it.
@@ -437,7 +427,6 @@ pub const ThumbnailSet = struct {
             thumbnail.session_start = change.logged_in_at;
 
             if (was_generic and !is_now_generic) self.onLogin(thumbnail);
-            if (is_now_generic) self.onLogout(thumbnail);
 
             self.renderThumbnailLogged(thumbnail, "name change");
             slog.info("Updated thumbnail for {s}", .{thumbnail.character_name});
@@ -455,11 +444,10 @@ pub const ThumbnailSet = struct {
         thumbnail.needs_render = true;
     }
 
-    /// Once log monitoring is off, so stale log readings don't stay on screen; the roster clears the systems.
+    /// Once log monitoring is off, so stale log readings don't stay on screen; the roster clears the systems and log alerts.
     pub fn clearLogReadings(self: *ThumbnailSet) void {
         for (self.thumbnails.items) |*thumbnail| {
             if (thumbnail.stats.clearLogReadings()) thumbnail.needs_render = true;
-            dispatch.clearLogDriven(self.allocator, thumbnail);
         }
         slog.debug("Cleared what the logs last showed", .{});
     }
@@ -516,12 +504,11 @@ pub const ThumbnailSet = struct {
         self.freeThumbnailData(thumbnail);
     }
 
-    /// Frees what it owns in every mode: its strings and notification stack.
+    /// Frees what it owns in every mode: its strings.
     fn freeThumbnailData(self: *ThumbnailSet, thumbnail: ThumbnailWindow) void {
         self.allocator.free(thumbnail.character_name);
         self.allocator.free(thumbnail.system_name);
         self.allocator.free(thumbnail.cached_group_badge_label);
-        thumbnail.notifications.deinit(self.allocator);
     }
 
     fn removeThumbnailAt(self: *ThumbnailSet, index: usize) void {
@@ -571,12 +558,7 @@ pub const ThumbnailSet = struct {
         }
     }
 
-    /// Back at the login screen, where the roster drops the system; applyNameChanges' reflow moves it.
-    fn onLogout(self: *ThumbnailSet, thumbnail: *ThumbnailWindow) void {
-        dispatch.clearAll(self.allocator, thumbnail);
-    }
-
-    /// Copies each client's system onto its thumbnail, only when it differs, since replaceText drops the measured text sizes.
+    /// Redraws each thumbnail whose client changed, copying its system only when it differs, since replaceText drops the measured text sizes.
     fn followRoster(self: *ThumbnailSet) void {
         for (self.thumbnails.items) |*thumbnail| {
             const client = self.roster.byHwnd(thumbnail.source_hwnd) orelse continue;
@@ -589,8 +571,8 @@ pub const ThumbnailSet = struct {
                 thumbnail.replaceText(self.allocator, .system_name, copy);
                 thumbnail.cached_system_color = window.systemColor(self.config, self.auto_colors, copy);
                 self.shareSystemColor(thumbnail);
-                thumbnail.needs_render = true;
             }
+            thumbnail.needs_render = true;
             thumbnail.seen_revision = client.revision;
         }
     }

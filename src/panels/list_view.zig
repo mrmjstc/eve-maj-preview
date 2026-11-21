@@ -19,6 +19,8 @@ const panel_menu = @import("panel_menu.zig");
 const panel_menu_look = @import("panel_menu_look.zig");
 const panel_section = @import("panel_section.zig");
 const template = @import("../notifications/template.zig");
+const stack = @import("../notifications/stack.zig");
+const roster_mod = @import("../clients/roster.zig");
 const box = @import("../util/box.zig");
 const pixel_buffer = @import("../util/pixel_buffer.zig");
 const strings = @import("../util/strings.zig");
@@ -26,6 +28,7 @@ const log = @import("../log.zig");
 
 const PanelWindow = panel_window.PanelWindow;
 const ThumbnailWindow = window.ThumbnailWindow;
+const NotificationStack = stack.NotificationStack;
 const slog = log.Scoped("list_view");
 
 const TEXT_BUFFER_SIZE: usize = 256;
@@ -262,6 +265,12 @@ pub const ListWindow = struct {
         return self.config.shownColors().active_color;
     }
 
+    /// The thumbnail's client's alerts, which the roster keeps.
+    fn alertsOf(self: *const ListWindow, thumbnail: *const ThumbnailWindow) *const NotificationStack {
+        const roster = self.host.roster() orelse return &roster_mod.NO_ALERTS;
+        return roster.alertsOf(thumbnail.source_hwnd);
+    }
+
     /// Puts `rows` in the configured order and records each row's client.
     fn sortRows(self: *ListWindow, thumbnails: []const ThumbnailWindow) !void {
         const AlphabeticalContext = struct {
@@ -351,7 +360,8 @@ pub const ListWindow = struct {
 
         for (self.rows.items) |thumbnail_index| {
             const thumbnail = &thumbnails[thumbnail_index];
-            const render_state = thumbnail.effectiveRenderState(active_source_hwnd);
+            const alerts = self.alertsOf(thumbnail);
+            const render_state = thumbnail.effectiveRenderState(active_source_hwnd, alerts);
             hashString(&hasher, thumbnail.character_name);
             hashString(&hasher, thumbnail.cached_display_name);
             hashString(&hasher, thumbnail.system_name);
@@ -370,7 +380,7 @@ pub const ListWindow = struct {
                 const badge_color = self.resolveActiveBadgeColor(thumbnail);
                 hasher.update(std.mem.asBytes(&badge_color));
             }
-            for (thumbnail.notifications.items()) |notification| {
+            for (alerts.items()) |notification| {
                 hashString(&hasher, notification.text);
                 hasher.update(std.mem.asBytes(&notification.border_color_override));
                 hasher.update(std.mem.asBytes(&notification.text_color_override));
@@ -423,7 +433,7 @@ pub const ListWindow = struct {
         for (thumbnails, 0..) |*thumbnail, i| {
             if (thumbnail.cached_is_hidden_from_client_list) continue;
             try self.rows.append(self.panel.allocator, i);
-            if (thumbnail.isShown()) has_visible_row = true;
+            if (thumbnail.isShown(self.alertsOf(thumbnail))) has_visible_row = true;
         }
         // Also hidden once the visibility toggle or auto-hide has hidden every client.
         if (!has_visible_row) {
@@ -489,7 +499,7 @@ pub const ListWindow = struct {
         var alert_count: usize = 0;
         for (self.rows.items) |thumbnail_index| {
             const thumbnail = &thumbnails[thumbnail_index];
-            switch (thumbnail.effectiveRenderState(active_source_hwnd)) {
+            switch (thumbnail.effectiveRenderState(active_source_hwnd, self.alertsOf(thumbnail))) {
                 .active => active = thumbnail,
                 .alert => alert_count += 1,
                 .inactive, .minimized, .dragging => {},
@@ -606,14 +616,15 @@ pub const ListWindow = struct {
         const row_top = line.top;
         const row_height = line.bottom - line.top;
         const column_left: i32 = @as(i32, @intCast(column)) * column_width;
-        const render_state = thumbnail.effectiveRenderState(active_source_hwnd);
+        const alerts = self.alertsOf(thumbnail);
+        const render_state = thumbnail.effectiveRenderState(active_source_hwnd, alerts);
         const is_active = render_state == .active;
         const is_alert = render_state == .alert;
         const is_excluded = thumbnail.is_excluded_from_cycle;
         const active_color = self.resolveActiveBadgeColor(thumbnail);
 
         const background: u32 = if (is_alert)
-            list_look.alertTint(alertColor(thumbnail))
+            list_look.alertTint(alertColor(alerts))
         else if (is_active)
             list_look.activeTint(active_color)
         else if (self.hovered_source_hwnd == thumbnail.source_hwnd)
@@ -665,12 +676,13 @@ pub const ListWindow = struct {
     fn drawRightSlot(self: *const ListWindow, canvas: pixel_buffer.Canvas, dc: win32.HDC, thumbnail: *const ThumbnailWindow, slot: Slot) i32 {
         const list_settings = &self.config.listView;
         var notification_buffer: [TEXT_BUFFER_SIZE]u8 = undefined;
-        const newest = if (list_settings.showNotifications) thumbnail.notifications.newestWithText() else null;
+        const alerts = self.alertsOf(thumbnail);
+        const newest = if (list_settings.showNotifications) alerts.newestWithText() else null;
         if (newest) |notification| {
             const line = template.oneLine(notification.text, &notification_buffer);
             const text_color = notification.text_color_override orelse list_settings.notificationColor;
             const lead: Lead = if (notification.lead) |lead| .{ .length = @min(lead.length, line.len), .color = lead.color } else .{ .length = 0, .color = text_color };
-            return drawPill(canvas, dc, slot, line, lead, text_color, alertColor(thumbnail));
+            return drawPill(canvas, dc, slot, line, lead, text_color, alertColor(alerts));
         }
         if (thumbnail.is_excluded_from_cycle) return drawRightAligned(dc, slot, "Excluded", list_look.MUTED);
         // Grouped rows sit under their system's heading.
@@ -695,8 +707,8 @@ fn alertText(buffer: *[ALERT_TEXT_MAX]u8, count: usize) []const u8 {
 }
 
 /// The newest notification's border colour, which tints an alerting row.
-fn alertColor(thumbnail: *const ThumbnailWindow) u32 {
-    const notification = thumbnail.notifications.newest() orelse return list_look.BADGE_ALERT;
+fn alertColor(alerts: *const NotificationStack) u32 {
+    const notification = alerts.newest() orelse return list_look.BADGE_ALERT;
     return notification.border_color_override orelse list_look.BADGE_ALERT;
 }
 
