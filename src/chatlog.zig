@@ -173,7 +173,7 @@ pub const ChatlogMonitor = struct {
     pub fn applyProfile(self: *ChatlogMonitor, settings: *const config.Config) void {
         if (!self.isWorkerStopped("chat alerts and weapon filter")) return;
         self.interpreter.setDamageAlertExcludedWeapons(settings.combat.damage_alert_excluded_weapons);
-        if (self.interpreter.setChatAlerts(settings)) self.has_stale_channels = true;
+        if (self.interpreter.setChatAlerts(settings.chatAlerts.items, settings.characters.items)) self.has_stale_channels = true;
     }
 
     /// Borrows the trackers; only while the worker is stopped.
@@ -311,12 +311,13 @@ pub const ChatlogMonitor = struct {
         if (rules.rules.len == 0) return;
         const session_start = self.sessionStart(character_name) orelse return;
 
-        var logs = self.finder.findChannels(character_name, session_start, rules);
+        var logs = self.finder.findChannels(character_name, session_start);
         defer {
             for (logs.items) |*channel_log| channel_log.deinit(self.allocator);
             logs.deinit(self.allocator);
         }
         for (logs.items) |channel_log| {
+            if (!rules.followsChannel(channel_log.channel)) continue;
             self.addLogFile(channel_log.path, character_name, channel_log.channel, true) catch |err| {
                 slog.err("Failed to follow channel '{s}' for '{s}': {}", .{ channel_log.channel, character_name, err });
             };

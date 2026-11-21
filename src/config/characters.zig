@@ -77,6 +77,11 @@ pub const CharacterConfig = struct {
         .opacity = ranges_mod.OPACITY,
     };
 
+    /// Never receives a chat alert, so another client must.
+    pub fn mutesChatAlerts(self: *const CharacterConfig) bool {
+        return self.notificationsMuted or self.excludeFromChatAlerts;
+    }
+
     /// ThumbnailConfig.validate() skips these overrides, and a negative size would panic as a usize.
     pub fn validate(self: *CharacterConfig) void {
         ranges_mod.clamp(CharacterConfig, self);

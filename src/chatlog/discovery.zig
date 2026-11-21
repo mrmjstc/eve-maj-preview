@@ -2,7 +2,6 @@
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const lines = @import("lines.zig");
-const alert_rules = @import("alert_rules.zig");
 const utf16 = @import("utf16.zig");
 const character_ids_mod = @import("character_ids.zig");
 const log = @import("../log.zig");
@@ -118,8 +117,8 @@ pub const LogFinder = struct {
         return self.findByHeader(dir, is_chatlog, character_name);
     }
 
-    /// From this session on, so a channel left long ago isn't followed; the caller owns the list and each log.
-    pub fn findChannels(self: *const LogFinder, character_name: []const u8, session_start: i64, rules: *const alert_rules.RuleSet) std.ArrayList(ChannelLog) {
+    /// Every channel but Local, from this session on, so a channel left long ago isn't followed; the caller owns the list and each log.
+    pub fn findChannels(self: *const LogFinder, character_name: []const u8, session_start: i64) std.ArrayList(ChannelLog) {
         var logs: std.ArrayList(ChannelLog) = .empty;
         const id = self.cachedId(character_name) orelse return logs;
         defer self.allocator.free(id);
@@ -134,7 +133,7 @@ pub const LogFinder = struct {
         defer files.close();
         while (files.next()) |name| {
             const file = lines.channelFile(name) orelse continue;
-            if (std.mem.eql(u8, file.channel, lines.LOCAL_CHANNEL) or !rules.followsChannel(file.channel)) continue;
+            if (std.mem.eql(u8, file.channel, lines.LOCAL_CHANNEL)) continue;
             const file_id = lines.characterIdFromFileName(name) orelse continue;
             if (!std.mem.eql(u8, file_id, id)) continue;
             const started_at = lines.logTimestampToUnixSeconds(file.timestamp) orelse continue;

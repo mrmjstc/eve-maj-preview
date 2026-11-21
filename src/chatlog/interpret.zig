@@ -74,17 +74,17 @@ pub const Interpreter = struct {
     }
 
     /// Copied, since the worker reads them while a dialog preview may replace the config's; false, keeping the previous ones, on failure.
-    pub fn setChatAlerts(self: *Interpreter, settings: *const config.Config) bool {
+    pub fn setChatAlerts(self: *Interpreter, chat_alerts: []const config.ChatAlertConfig, characters: []const config.CharacterConfig) bool {
         var muted: std.ArrayList([]const u8) = .empty;
         defer muted.deinit(self.allocator);
-        for (settings.characters.items) |character| {
-            if (!character.notificationsMuted and !character.excludeFromChatAlerts) continue;
+        for (characters) |character| {
+            if (!character.mutesChatAlerts()) continue;
             muted.append(self.allocator, character.name) catch |err| {
                 slog.err("Failed to copy chat alert rules, keeping the previous ones: {}", .{err});
                 return false;
             };
         }
-        const rules = RuleSet.init(self.allocator, settings.chatAlerts.items, muted.items) catch |err| {
+        const rules = RuleSet.init(self.allocator, chat_alerts, muted.items) catch |err| {
             slog.err("Failed to copy chat alert rules, keeping the previous ones: {}", .{err});
             return false;
         };
