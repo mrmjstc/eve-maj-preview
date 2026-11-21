@@ -12,6 +12,7 @@ test {
     _ = @import("chatlog/routing.zig");
     _ = @import("chatlog/utf16.zig");
     _ = @import("clients/exclusions.zig");
+    _ = @import("clients/roster.zig");
     _ = @import("clients/scout.zig");
     _ = @import("config.zig");
     _ = @import("config/characters.zig");

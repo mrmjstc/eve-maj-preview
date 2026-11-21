@@ -49,7 +49,7 @@ Owns every long-lived subsystem. Main thread only.
 
 | Field | Lifetime |
 |---|---|
-| `store` (`ProfileStore`), `global_settings`, `character_ids`, `scout`, `exclusions`, `notifications` (`NotificationCenter`), `focus`, `trackers`, tray | Whole run |
+| `store` (`ProfileStore`), `global_settings`, `character_ids`, `scout`, `roster`, `exclusions`, `notifications` (`NotificationCenter`), `focus`, `trackers`, tray | Whole run |
 | `auto_minimizer` | Whole run; reset when a different profile loads |
 | `thumbnail_set`, `hotkey_manager`, `chatlog_monitor` | Rebuilt on reload; heap pointers |
 | `list_window` | Built and torn down with `thumbnail_set`; `ClientList` and `ThumbnailsAndList` modes only |
@@ -144,6 +144,8 @@ Cross-thread data:
 ## Window discovery and thumbnails
 
 **`clients/scout.zig`** (`Scout`): `EnumWindows` matched against `windowFilters` (class name, then exe path for new windows only). `trinityWindow` titles give the character name. Per-process `EVENT_OBJECT_NAMECHANGE`/`DESTROY` hooks catch renames and closes between scans; the destroy hook only records the hwnd, and `update()` drops it before handing out the window list, so the slice a tick borrows never changes under it. No creation hook: it would fire for every window on the desktop.
+
+**`clients/roster.zig`** (`Roster`, pure, tested): one `Client` record per tracked window, kept by App for the whole run. `sync` mirrors Scout's window list once per tick, right after `Scout.update`, and is the only place clients are added or removed. It holds an owned copy of the name, the login time mirrored from Scout, and a `revision` bumped on every change a view shows. Game state is moving onto it from `ThumbnailWindow`; nothing reads it yet.
 
 **`thumbnail/set.zig`** (`ThumbnailSet`): the central mutable state. Owns the `ThumbnailWindow` list (linear search, a few dozen at most), keeps it in step with Scout, dispatches notifications, schedules layout and redraws. Holds the `Renderer`, auto-move verifier, a drag's ghost overlay and hint (`DragOverlays`) and `AutoColorStore`; callers outside `thumbnail/` reach the hover zoom and drag overlays through its methods, not `renderer`.
 

@@ -3,6 +3,7 @@ const std = @import("std");
 const win32 = @import("platform/win32.zig");
 const config = @import("config.zig");
 const scout_mod = @import("clients/scout.zig");
+const roster_mod = @import("clients/roster.zig");
 const exclusions_mod = @import("clients/exclusions.zig");
 const activation = @import("control/activation.zig");
 const auto_minimize = @import("control/auto_minimize.zig");
@@ -77,6 +78,8 @@ pub const App = struct {
     character_ids: CharacterIds,
     /// Its WinEvent hooks find it once main.zig calls listenForEvents, after which App mustn't move.
     scout: scout_mod.Scout,
+    /// Synced from Scout each tick; kept across a thumbnail set rebuild and a profile switch.
+    roster: roster_mod.Roster,
     /// Kept across a Save or profile switch.
     exclusions: exclusions_mod.Exclusions,
     /// Kept across a thumbnail set rebuild.
@@ -121,6 +124,7 @@ pub const App = struct {
             .auto_minimizer = .init(allocator),
             .trackers = .init(allocator, io),
             .scout = .init(allocator),
+            .roster = .init(allocator),
             .map_panel = .{ .host = PANEL_HOST },
         };
     }
@@ -142,6 +146,7 @@ pub const App = struct {
         self.destroyThumbnailSet();
         self.auto_minimizer.deinit();
         self.exclusions.deinit();
+        self.roster.deinit();
         self.scout.deinit();
         self.map_panel.deinit(self.allocator);
         self.notifications.deinit(self.allocator);
@@ -258,6 +263,7 @@ pub const App = struct {
 
         var scout_result = self.scout.update(should_force_scan, self.store.saved.windowFilters.items);
         defer scout_result.deinit(self.allocator);
+        self.roster.sync(scout_result.windows);
         self.clearLoggedOutExclusions(scout_result.name_changes.items);
         // The Characters tab marks who's logged in, which only a login, logout or closed client changes.
         if (scout_result.name_changes.items.len > 0 or scout_result.closed_windows.items.len > 0) {
