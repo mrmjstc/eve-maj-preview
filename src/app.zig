@@ -165,7 +165,7 @@ pub const App = struct {
     }
 
     pub fn panelContext(self: *App) panel_host.Context {
-        return .{ .allocator = self.allocator, .store = &self.store, .instance = self.instance };
+        return .{ .allocator = self.allocator, .store = &self.store, .auto_colors = &self.auto_colors, .instance = self.instance };
     }
 
     pub fn dialogContext(self: *App) dialog_host.Context {
@@ -289,12 +289,12 @@ pub const App = struct {
         if (self.thumbnail_set) |thumbnail_set| {
             thumbnail_set.updateConnections(&self.map_panel.pins, tick_start.ms);
             thumbnail_set.update(scout_result.windows, scout_result.closed_windows.items, scout_result.name_changes.items);
-            if (self.list_window) |*list_window| {
-                list_window.render(thumbnail_set.thumbnails.items, self.roster.active_hwnd) catch |err| {
-                    slog.err("Failed to render list window: {}", .{err});
-                };
-            }
             thumbnail_set.checkHoverZoom();
+        }
+        if (self.list_window) |*list_window| {
+            list_window.render(&self.roster, list_view.viewOf(self.thumbnail_set)) catch |err| {
+                slog.err("Failed to render list window: {}", .{err});
+            };
         }
         self.auto_minimizer.check(&self.store.live, self.roster.clients.items, self.roster.active_hwnd, dragged_hwnd);
 

@@ -5,6 +5,7 @@ const config_mod = @import("../config.zig");
 const universe = @import("../map/universe.zig");
 const roster_mod = @import("../clients/roster.zig");
 const exclusions_mod = @import("../clients/exclusions.zig");
+const auto_colors_mod = @import("../clients/auto_colors.zig");
 const set = @import("../thumbnail/set.zig");
 
 const Roster = roster_mod.Roster;
@@ -16,6 +17,8 @@ pub const Context = struct {
     allocator: std.mem.Allocator,
     /// Borrowed from App, which outlives every panel.
     store: *config_mod.ProfileStore,
+    /// Borrowed from App, which outlives every panel.
+    auto_colors: *auto_colors_mod.AutoColorStore,
     instance: win32.HINSTANCE,
 };
 

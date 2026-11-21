@@ -54,13 +54,10 @@ pub const ThumbnailWindow = struct {
     cached_system_color: u32 = 0,
     /// Null when "Unique Character Name Colors" is off; callers fall back to their default.
     cached_character_color: ?u32 = null,
-    /// cached_character_color by the client list's own unique name colour setting.
-    cached_list_name_color: ?u32 = null,
     /// Borrows from config or character_name.
     cached_display_name: []const u8 = "",
     cached_border_colors: ?config_mod.CharacterBorderColorsConfig = null,
     cached_is_thumbnail_hidden: bool = false,
-    cached_is_hidden_from_client_list: bool = false,
     cached_thumbnail_size: ?config_mod.CharacterThumbnailSizeConfig = null,
     cached_opacity: u8 = 255,
     cached_shows_live_preview: bool = true,
@@ -73,11 +70,9 @@ pub const ThumbnailWindow = struct {
         self.cached_system_color = systemColor(config, auto_colors, self.system_name);
         const is_logged_in = !scout.isGenericCharacterName(self.character_name);
         self.cached_character_color = if (is_logged_in) auto_colors.characterNameColor(config, self.character_name) else null;
-        self.cached_list_name_color = if (is_logged_in) auto_colors.listNameColor(config, self.character_name) else null;
         self.cached_display_name = config.getDisplayName(self.character_name);
         self.cached_border_colors = if (is_logged_in) auto_colors.characterBorderColors(config, self.character_name) else null;
         self.cached_is_thumbnail_hidden = config.isThumbnailHidden(self.character_name);
-        self.cached_is_hidden_from_client_list = config.isHiddenFromClientList(self.character_name);
         self.cached_thumbnail_size = config.getCharacterSize(self.character_name);
         self.cached_opacity = config.getCharacterOpacity(self.character_name);
         self.cached_shows_live_preview = config.showsLivePreview(self.character_name);
