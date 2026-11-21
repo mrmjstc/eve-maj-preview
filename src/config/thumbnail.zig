@@ -101,6 +101,85 @@ pub const MiningTextStyle = struct {
     pub const Wire = wire.Wire(MiningTextStyle);
 };
 
+/// The bounty rate text; bounty holds what the tracker measures and the rate's unit.
+pub const BountyTextStyle = struct {
+    shown: bool = false,
+    color: u32 = activity.BOUNTY_COLOR,
+    bg_color: u32 = 0xE6000000,
+    font_size: i32 = types.DEFAULT_FONT_SIZE,
+    font_name: []const u8 = types.DEFAULT_FONT,
+    font_weight: types.FontWeight = .Regular,
+    position: types.TextPosition = .TopRight,
+    offset_x: i32 = 0,
+    offset_y: i32 = 0,
+    show_prefix: bool = true,
+
+    pub const ranges = .{
+        .font_size = ranges_mod.FONT_SIZE,
+        .offset_x = ranges_mod.TEXT_OFFSET,
+        .offset_y = ranges_mod.TEXT_OFFSET,
+    };
+
+    pub fn validate(self: *BountyTextStyle) void {
+        ranges_mod.clamp(BountyTextStyle, self);
+    }
+
+    pub const Wire = wire.Wire(BountyTextStyle);
+};
+
+/// The CPU, RAM and VRAM text; resources holds how often they're sampled.
+pub const ResourcesTextStyle = struct {
+    shown: bool = false,
+    show_cpu: bool = true,
+    show_ram: bool = true,
+    show_vram: bool = true,
+    color: u32 = 0xFFFFFFFF,
+    bg_color: u32 = 0xE6000000,
+    font_size: i32 = types.DEFAULT_FONT_SIZE,
+    font_name: []const u8 = types.DEFAULT_FONT,
+    font_weight: types.FontWeight = .Regular,
+    position: types.TextPosition = .LeftCenter,
+    offset_x: i32 = 0,
+    offset_y: i32 = 0,
+
+    pub const ranges = .{
+        .font_size = ranges_mod.FONT_SIZE,
+        .offset_x = ranges_mod.TEXT_OFFSET,
+        .offset_y = ranges_mod.TEXT_OFFSET,
+    };
+
+    pub fn validate(self: *ResourcesTextStyle) void {
+        ranges_mod.clamp(ResourcesTextStyle, self);
+    }
+
+    pub const Wire = wire.Wire(ResourcesTextStyle);
+};
+
+/// The ping text; ping holds how often clients are pinged.
+pub const PingTextStyle = struct {
+    shown: bool = false,
+    color: u32 = 0xFFFFFFFF,
+    bg_color: u32 = 0xE6000000,
+    font_size: i32 = types.DEFAULT_FONT_SIZE,
+    font_name: []const u8 = types.DEFAULT_FONT,
+    font_weight: types.FontWeight = .Regular,
+    position: types.TextPosition = .RightCenter,
+    offset_x: i32 = 0,
+    offset_y: i32 = 24,
+
+    pub const ranges = .{
+        .font_size = ranges_mod.FONT_SIZE,
+        .offset_x = ranges_mod.TEXT_OFFSET,
+        .offset_y = ranges_mod.TEXT_OFFSET,
+    };
+
+    pub fn validate(self: *PingTextStyle) void {
+        ranges_mod.clamp(PingTextStyle, self);
+    }
+
+    pub const Wire = wire.Wire(PingTextStyle);
+};
+
 /// Decided live by ThumbnailWindow.effectiveRenderState, never saved.
 pub const ThumbnailState = enum {
     inactive,
@@ -200,6 +279,9 @@ pub const ThumbnailConfig = struct {
     alertText: AlertTextStyle = .{},
     combatText: CombatTextStyle = .{},
     miningText: MiningTextStyle = .{},
+    bountyText: BountyTextStyle = .{},
+    resourcesText: ResourcesTextStyle = .{},
+    pingText: PingTextStyle = .{},
     thumbnailOpacity: u8 = 255,
     applyOpacityToOverlayTexts: bool = true,
     activeThumbnailHidden: bool = false,

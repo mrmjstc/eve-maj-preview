@@ -389,11 +389,11 @@ fn addMining(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, st
 }
 
 fn addBounty(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, stats: *const ActivityStats, settings: RenderSettings) !void {
-    const bounty = &config.bounty;
-    if (!bounty.enabled) return;
+    const bounty = &config.thumbnail.bountyText;
+    if (!bounty.shown) return;
     const isk_per_second = stats.shownBounty() orelse return;
     const font = try fonts.getScaled(.bounty, bounty.font_name, bounty.font_size, bounty.font_weight);
-    const text = iskRateText(layout, if (bounty.show_prefix) "ISK: " else "", isk_per_second, bounty.isk_rate_unit);
+    const text = iskRateText(layout, if (bounty.show_prefix) "ISK: " else "", isk_per_second, config.bounty.isk_rate_unit);
     layout.addAt(font, text, layout.measure(font, text), .{ .anchor = bounty.position, .offset_x = bounty.offset_x, .offset_y = bounty.offset_y, .color = bounty.color, .bg_color = settings.bounty_bg_color });
 }
 
@@ -403,8 +403,8 @@ fn iskRateText(layout: *Layout, prefix: []const u8, isk_per_second: f32, unit: c
 }
 
 fn addResources(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, stats: *const ActivityStats, settings: RenderSettings) !void {
-    const resources = &config.resources;
-    if (!resources.enabled or !stats.has_resources) return;
+    const resources = &config.thumbnail.resourcesText;
+    if (!resources.shown or !stats.has_resources) return;
     const font = try fonts.getScaled(.resources, resources.font_name, resources.font_size, resources.font_weight);
 
     var texts: [MAX_STACK_LINES][]const u8 = undefined;
@@ -425,8 +425,8 @@ fn addResources(layout: *Layout, fonts: Fonts, config: *const config_mod.Config,
 }
 
 fn addPing(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, stats: *const ActivityStats, settings: RenderSettings) !void {
-    const ping = &config.ping;
-    if (!ping.enabled or !stats.has_ping) return;
+    const ping = &config.thumbnail.pingText;
+    if (!ping.shown or !stats.has_ping) return;
     const font = try fonts.getScaled(.ping, ping.font_name, ping.font_size, ping.font_weight);
     const text = if (stats.ping_ms) |ms| layout.print("{d} ms", .{ms}) else layout.print("?? ms", .{});
     layout.addAt(font, text, layout.measure(font, text), .{ .anchor = ping.position, .offset_x = ping.offset_x, .offset_y = ping.offset_y, .color = ping.color, .bg_color = settings.ping_bg_color });

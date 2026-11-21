@@ -87,6 +87,9 @@ pub const ThumbnailConfig = thumbnail_mod.ThumbnailConfig;
 pub const AlertTextStyle = thumbnail_mod.AlertTextStyle;
 pub const CombatTextStyle = thumbnail_mod.CombatTextStyle;
 pub const MiningTextStyle = thumbnail_mod.MiningTextStyle;
+pub const BountyTextStyle = thumbnail_mod.BountyTextStyle;
+pub const ResourcesTextStyle = thumbnail_mod.ResourcesTextStyle;
+pub const PingTextStyle = thumbnail_mod.PingTextStyle;
 pub const DisplayConfig = display_mod.DisplayConfig;
 pub const ListViewConfig = panels.ListViewConfig;
 pub const HistoryPanelConfig = panels.HistoryPanelConfig;
@@ -105,7 +108,7 @@ pub const HotkeysConfig = hotkeys_mod.HotkeysConfig;
 
 pub const PROFILE_FORMAT_IDENTIFIER = "eve-maj-preview";
 /// Bumped only for schema changes needing a migration, independent of the release version; see config/migrate.zig and Config.fromWire.
-pub const PROFILE_FORMAT_VERSION: u32 = migrate.LIST_POSITION_VERSION;
+pub const PROFILE_FORMAT_VERSION: u32 = migrate.REGROUP_VERSION;
 
 pub const ShownColors = struct {
     system_name_color: u32,
@@ -377,8 +380,18 @@ pub const Config = struct {
         return self.thumbnail.miningText.shown or (self.display.viewMode.showsClientList() and self.listView.showMiningRate);
     }
 
+    /// Only the thumbnails show them.
+    pub fn tracksResources(self: *const Config) bool {
+        return self.thumbnail.resourcesText.shown;
+    }
+
+    /// Only the thumbnails show it.
+    pub fn tracksPing(self: *const Config) bool {
+        return self.thumbnail.pingText.shown;
+    }
+
     pub fn tracksBounty(self: *const Config) bool {
-        return self.bounty.enabled or (self.display.viewMode.showsClientList() and self.listView.showBountyRate);
+        return self.thumbnail.bountyText.shown or (self.display.viewMode.showsClientList() and self.listView.showBountyRate);
     }
 
     pub fn validate(self: *Config) void {

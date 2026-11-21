@@ -7,7 +7,7 @@ Every setting EVE-Maj Preview reads, by file and JSON key. The config dialog wri
 - [Files](#files)
 - [Loading rules](#loading-rules)
 - [Value formats](#value-formats)
-- [Profile](#profile): [top level](#top-level) · [thumbnail](#thumbnail) · [thumbnail.alertText](#thumbnailalerttext) · [thumbnail.combatText](#thumbnailcombattext) · [thumbnail.miningText](#thumbnailminingtext) · [notifications](#notifications) · [timer](#timer) · [display](#display) · [listView](#listview) · [historyPanel](#historypanel) · [mapPanel](#mappanel) · [intelPanel](#intelpanel) · [intel](#intel) · [thumbnailSpaces](#thumbnailspaces) · [snapping](#snapping) · [panelSnapping](#panelsnapping) · [interaction](#interaction) · [exclusion](#exclusion) · [autoMinimize](#autominimize) · [autoMovePosition](#automoveposition) · [closeAll](#closeall) · [combat](#combat) · [mining](#mining) · [bounty](#bounty) · [resources](#resources) · [ping](#ping) · [travel](#travel) · [hotkeys](#hotkeys) · [hotkeyGroups](#hotkeygroups) · [characters](#characters) · [systemColors](#systemcolors) · [chatAlerts](#chatalerts) · [windowFilters](#windowfilters)
+- [Profile](#profile): [top level](#top-level) · [thumbnail](#thumbnail) · [thumbnail.alertText](#thumbnailalerttext) · [thumbnail.combatText](#thumbnailcombattext) · [thumbnail.miningText](#thumbnailminingtext) · [thumbnail.bountyText](#thumbnailbountytext) · [thumbnail.resourcesText](#thumbnailresourcestext) · [thumbnail.pingText](#thumbnailpingtext) · [notifications](#notifications) · [timer](#timer) · [display](#display) · [listView](#listview) · [historyPanel](#historypanel) · [mapPanel](#mappanel) · [intelPanel](#intelpanel) · [intel](#intel) · [thumbnailSpaces](#thumbnailspaces) · [snapping](#snapping) · [panelSnapping](#panelsnapping) · [interaction](#interaction) · [exclusion](#exclusion) · [autoMinimize](#autominimize) · [autoMovePosition](#automoveposition) · [closeAll](#closeall) · [combat](#combat) · [mining](#mining) · [bounty](#bounty) · [resources](#resources) · [ping](#ping) · [travel](#travel) · [hotkeys](#hotkeys) · [hotkeyGroups](#hotkeygroups) · [characters](#characters) · [systemColors](#systemcolors) · [chatAlerts](#chatalerts) · [windowFilters](#windowfilters)
 - [Global settings](#global-settings): [chatlog](#chatlog)
 - [Command line and protocol](#command-line-and-protocol)
 
@@ -44,7 +44,7 @@ Profile file names: `<name>.json` with no path separators or `:*?"<>|`, not star
 - `formatVersion` below 5 migrates on load: a `listView.activeColor` or `thumbnail.borderColor` still at the old default `0xFFD9A441` is removed, so it follows `accentColor`.
 - `formatVersion` below 6 migrates on load: `listView.showIncomingDps`/`showOutgoingDps`/`showMiningRate`/`showBountyRate` stay on only where `combat`/`mining`/`bounty.enabled` was on, and are removed otherwise.
 - `formatVersion` below 7 migrates on load: `display.startX`/`startY` are copied into `listView.x`/`y`, which the Client List used to share with the thumbnails' start position.
-- `formatVersion` below 8 migrates on load: `thumbnail.notifications` splits, its `position`/`offset_x`/`offset_y`/`font_name`/`font_size`/`font_weight`/`bg_color` going to `thumbnail.alertText` and the rest to `notifications`; `combat`'s and `mining`'s text settings move to `thumbnail.combatText` and `thumbnail.miningText`, `enabled` becoming `shown`; `mapPanel.intelShrinkSec`/`intelShowClear` move to `intel.shrinkSec`/`showClear`, and `historyPanel`'s `fontName`/`fontSize`/`fontWeight`/`showTimestamp`/`mergeEnabled`/`mergeWindowSec` are copied into `intelPanel`; a key already in its new section wins.
+- `formatVersion` below 8 migrates on load: `thumbnail.notifications` splits, its `position`/`offset_x`/`offset_y`/`font_name`/`font_size`/`font_weight`/`bg_color` going to `thumbnail.alertText` and the rest to `notifications`; `combat`'s, `mining`'s, `bounty`'s, `resources`' and `ping`'s text settings move to `thumbnail.combatText`, `miningText`, `bountyText`, `resourcesText` and `pingText`, `enabled` becoming `shown`; `mapPanel.intelShrinkSec`/`intelShowClear` move to `intel.shrinkSec`/`showClear`, and `historyPanel`'s `fontName`/`fontSize`/`fontWeight`/`showTimestamp`/`mergeEnabled`/`mergeWindowSec` are copied into `intelPanel`; a key already in its new section wins.
 - A profile with `thumbnailSpaces` but no `display.placementMode` gets `ThumbnailSpaces` if any space is enabled.
 
 ## Value formats
@@ -71,7 +71,7 @@ Profile file names: `<name>.json` with no path separators or `:*?"<>|`, not star
 | Key | Type | Default | Notes |
 |---|---|---|---|
 | `app` | string | `"eve-maj-preview"` | Rewritten on save. |
-| `formatVersion` | int | `7` | Read only to migrate; rewritten on save. |
+| `formatVersion` | int | `8` | Read only to migrate; rewritten on save. |
 | `accentColor` | colour | `0xFFD9A441` | This profile's accent: the config dialog, the panels, and the unset `listView.activeColor` and `thumbnail.borderColor`. |
 
 Sections: `thumbnail`, `notifications`, `timer`, `display`, `listView`, `historyPanel`, `mapPanel`, `intelPanel`, `intel`, `snapping`, `panelSnapping`, `interaction`, `autoMinimize`, `autoMovePosition`, `exclusion`, `closeAll`, `combat`, `mining`, `bounty`, `resources`, `ping`, `travel`, `hotkeys` (objects); `windowFilters`, `characters`, `systemColors`, `chatAlerts`, `hotkeyGroups`, `thumbnailSpaces` (arrays).
@@ -236,6 +236,55 @@ The thumbnails' mining rate text; what's measured, and the rates' units, are in 
 | `position` | enum | `BottomRight` | position | |
 | `offset_x`, `offset_y` | int | `0` | offset | |
 | `show_prefix` | bool | `true` | | `M:` |
+
+### thumbnail.bountyText
+
+The thumbnails' bounty rate text; what's measured, and the rate's unit, are in [bounty](#bounty).
+
+| Key | Type | Default | Range | Notes |
+|---|---|---|---|---|
+| `shown` | bool | `false` | | |
+| `color` | colour | `0xFFE1C747` | | |
+| `bg_color` | colour | `0xE6000000` | | |
+| `font_name` | string | `"Geist"` | | |
+| `font_size` | int | `12` | font size | |
+| `font_weight` | enum | `Regular` | weight | |
+| `position` | enum | `TopRight` | position | |
+| `offset_x`, `offset_y` | int | `0` | offset | |
+| `show_prefix` | bool | `true` | | `ISK:` |
+
+### thumbnail.resourcesText
+
+The thumbnails' CPU / RAM / VRAM text; how often it's sampled is in [resources](#resources).
+
+| Key | Type | Default | Range | Notes |
+|---|---|---|---|---|
+| `shown` | bool | `false` | | |
+| `show_cpu` | bool | `true` | | `GetProcessTimes`, normalised to all logical cores, 0–100 %. First sample reads 0 %. |
+| `show_ram` | bool | `true` | | Working set, MB. |
+| `show_vram` | bool | `true` | | Dedicated GPU memory, MB, via the "GPU Process Memory" perf counter. Omitted when unavailable. |
+| `color` | colour | `0xFFFFFFFF` | | |
+| `bg_color` | colour | `0xE6000000` | | |
+| `font_name` | string | `"Geist"` | | |
+| `font_size` | int | `12` | font size | |
+| `font_weight` | enum | `Regular` | weight | |
+| `position` | enum | `LeftCenter` | position | |
+| `offset_x`, `offset_y` | int | `0` | offset | |
+
+### thumbnail.pingText
+
+The thumbnails' ping text; how often it's measured is in [ping](#ping).
+
+| Key | Type | Default | Range | Notes |
+|---|---|---|---|---|
+| `shown` | bool | `false` | | |
+| `color` | colour | `0xFFFFFFFF` | | |
+| `bg_color` | colour | `0xE6000000` | | |
+| `font_name` | string | `"Geist"` | | |
+| `font_size` | int | `12` | font size | |
+| `font_weight` | enum | `Regular` | weight | |
+| `position` | enum | `RightCenter` | position | |
+| `offset_x`, `offset_y` | int | `0`, `24` | offset | |
 
 ### notifications
 
@@ -626,57 +675,29 @@ m³/min and ISK rate from gamelog `(mining)` lines (normal and critical yields; 
 
 ### bounty
 
-ISK rate from gamelog `(bounty)` lines (`… ISK added to next bounty payout`). Same formula as mining.
+ISK rate from gamelog `(bounty)` lines (`… ISK added to next bounty payout`), for [thumbnail.bountyText](#thumbnailbountytext) and the Client List. Same formula as mining; the tracker runs while either shows the rate.
 
 | Key | Type | Default | Range | Notes |
 |---|---|---|---|---|
-| `enabled` | bool | `false` | | The thumbnails' overlay; its tracker and alerts also run while the shown Client List shows the rate. |
 | `window_seconds` | int | `1200` | 60–3600 | **0 = default.** |
 | `update_interval_ms` | int | `1000` | 1000–10000 | |
-| `color` | colour | `0xFFE1C747` | | |
-| `bg_color` | colour | `0xE6000000` | | |
-| `font_name` | string | `"Geist"` | | |
-| `font_size` | int | `12` | font size | |
-| `font_weight` | enum | `Regular` | weight | |
-| `position` | enum | `TopRight` | position | |
-| `offset_x`, `offset_y` | int | `0` | offset | |
-| `show_prefix` | bool | `true` | | `ISK:` |
 | `isk_rate_unit` | enum | `hour` | `hour` `minute` | The ISK rate's period, on thumbnails and the Client List. |
 
 ### resources
 
-Per-client CPU / RAM / VRAM label, sampled from the OS (no logs needed).
+Per-client CPU / RAM / VRAM, sampled from the OS (no logs needed) while [thumbnail.resourcesText](#thumbnailresourcestext) shows.
 
 | Key | Type | Default | Range | Notes |
 |---|---|---|---|---|
-| `enabled` | bool | `false` | | |
-| `show_cpu` | bool | `true` | | `GetProcessTimes`, normalised to all logical cores, 0–100 %. First sample reads 0 %. |
-| `show_ram` | bool | `true` | | Working set, MB. |
-| `show_vram` | bool | `true` | | Dedicated GPU memory, MB, via the "GPU Process Memory" perf counter. Omitted when unavailable. |
 | `update_interval_ms` | int | `10000` | 1000–60000 | |
-| `color` | colour | `0xFFFFFFFF` | | |
-| `bg_color` | colour | `0xE6000000` | | |
-| `font_name` | string | `"Geist"` | | |
-| `font_size` | int | `12` | font size | |
-| `font_weight` | enum | `Regular` | weight | |
-| `position` | enum | `LeftCenter` | position | |
-| `offset_x`, `offset_y` | int | `0` | offset | |
 
 ### ping
 
-Per-client round trip to its game server: an ICMP echo to the address of the client's connection on port 26000. Shows `?? ms` until the first reply and after a timeout (1 s); hidden while the client has no server connection. Tranquility connects through Cloudflare, so this is the time to the nearest Cloudflare edge, not to CCP's servers.
+Per-client round trip to its game server, measured while [thumbnail.pingText](#thumbnailpingtext) shows: an ICMP echo to the address of the client's connection on port 26000. Shows `?? ms` until the first reply and after a timeout (1 s); hidden while the client has no server connection. Tranquility connects through Cloudflare, so this is the time to the nearest Cloudflare edge, not to CCP's servers.
 
 | Key | Type | Default | Range | Notes |
 |---|---|---|---|---|
-| `enabled` | bool | `false` | | |
 | `update_interval_ms` | int | `10000` | 1000–60000 | |
-| `color` | colour | `0xFFFFFFFF` | | |
-| `bg_color` | colour | `0xE6000000` | | |
-| `font_name` | string | `"Geist"` | | |
-| `font_size` | int | `12` | font size | |
-| `font_weight` | enum | `Regular` | weight | |
-| `position` | enum | `RightCenter` | position | |
-| `offset_x`, `offset_y` | int | `0`, `24` | offset | |
 
 ### travel
 

@@ -17,9 +17,9 @@ const FOLLOWS_ACCENT_VERSION = 5;
 /// Profiles from before this showed the client list's rates only while the thumbnails' overlay was on.
 const LIST_RATES_VERSION = 6;
 /// Profiles from before this kept the client list's position in display.startX/startY, the unplaced thumbnails' start.
-pub const LIST_POSITION_VERSION = 7;
+const LIST_POSITION_VERSION = 7;
 /// Profiles from before this kept settings with the view that first showed them; see regroupFromViews.
-const REGROUP_VERSION = 8;
+pub const REGROUP_VERSION = 8;
 
 /// The amber both colours defaulted to before FOLLOWS_ACCENT_VERSION.
 const OLD_ACCENT_DEFAULT: u32 = 0xFFD9A441;
@@ -44,6 +44,9 @@ const ALERT_TEXT_KEYS = [_][]const u8{ "position", "offset_x", "offset_y", "font
 const TEXT_SPLITS = [_]TextSplit{
     .{ .section = "combat", .text = "combatText", .tracking = &.{ "window_seconds", "update_interval_ms", "damage_alert_excluded_weapons" } },
     .{ .section = "mining", .text = "miningText", .tracking = &.{ "window_seconds", "update_interval_ms", "idle_alert_window_seconds", "idle_alert_threshold", "stopped_alert_window_seconds", "m3_rate_unit", "isk_rate_unit" } },
+    .{ .section = "bounty", .text = "bountyText", .tracking = &.{ "window_seconds", "update_interval_ms", "isk_rate_unit" } },
+    .{ .section = "resources", .text = "resourcesText", .tracking = &.{"update_interval_ms"} },
+    .{ .section = "ping", .text = "pingText", .tracking = &.{"update_interval_ms"} },
 };
 
 /// The History Panel's settings the Intel Panel used to follow, copied so it keeps looking the same.
@@ -634,6 +637,24 @@ test "an old profile's combat and mining texts move to thumbnail, enabled as sho
     try testing.expectEqualStrings("minute", values.stringAt(mining, "m3_rate_unit").?);
     try testing.expectEqual(@as(i64, 3), values.integerAt(mining, "idle_alert_threshold").?);
     try testing.expect(values.get(mining, "show_isk_rate") == null);
+}
+
+test "an old profile's bounty, resources and ping texts move to thumbnail, keeping their sampling" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const root = try migrated(arena.allocator(),
+        \\{"formatVersion":7,"bounty":{"enabled":true,"isk_rate_unit":"minute","position":"Center"},
+        \\"resources":{"enabled":true,"show_ram":false,"update_interval_ms":5000},"ping":{"enabled":true,"offset_y":30}}
+    );
+    const thumbnail = root.object.get("thumbnail").?;
+    try testing.expectEqualStrings("Center", values.stringAt(values.get(thumbnail, "bountyText"), "position").?);
+    try testing.expectEqualStrings("minute", values.stringAt(root.object.get("bounty"), "isk_rate_unit").?);
+    const resources_text = values.get(thumbnail, "resourcesText").?;
+    try testing.expectEqual(true, values.boolAt(resources_text, "shown").?);
+    try testing.expectEqual(false, values.boolAt(resources_text, "show_ram").?);
+    try testing.expectEqual(@as(i64, 5000), values.integerAt(root.object.get("resources"), "update_interval_ms").?);
+    try testing.expectEqual(@as(i64, 30), values.integerAt(values.get(thumbnail, "pingText"), "offset_y").?);
+    try testing.expect(values.get(root.object.get("ping"), "enabled") == null);
 }
 
 test "a rate text setting already in thumbnail wins over its tracker's" {

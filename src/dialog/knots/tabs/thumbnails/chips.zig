@@ -164,9 +164,10 @@ pub const CHIPS = [_]Chip{
     .{
         .label = "Bounty Rate",
         .sample = "ISK: 38.2m ISK/hr",
-        .section = .bounty,
+        .section = .bounty_text,
+        .tracking_section = .bounty,
         .fields = .snakeCase("", true),
-        .show_field = "enabled",
+        .show_field = "shown",
         .needs_show_text = true,
         .chatlog_notice = NEEDS_LOGS,
         .rows = &([_]Row{
@@ -182,9 +183,10 @@ pub const CHIPS = [_]Chip{
     .{
         .label = "Resource Usage",
         .sample = "CPU 12% 1.8G",
-        .section = .resources,
+        .section = .resources_text,
+        .tracking_section = .resources,
         .fields = .snakeCase("", true),
-        .show_field = "enabled",
+        .show_field = "shown",
         .needs_show_text = true,
         .rows = &([_]Row{
             .{ .heading = "Content" },
@@ -199,9 +201,10 @@ pub const CHIPS = [_]Chip{
     .{
         .label = "Ping",
         .sample = "38 ms",
-        .section = .ping,
+        .section = .ping_text,
+        .tracking_section = .ping,
         .fields = .snakeCase("", true),
-        .show_field = "enabled",
+        .show_field = "shown",
         .needs_show_text = true,
         .rows = &(STYLE_ROWS ++ [_]Row{
             .{ .heading = "Data" },
@@ -234,7 +237,7 @@ pub const Part = enum(u8) {
 };
 
 /// The settings struct a chip's fields live in.
-pub const Section = enum { thumbnail, notifications, alert_text, combat, combat_text, mining, mining_text, bounty, resources, ping };
+pub const Section = enum { thumbnail, notifications, alert_text, combat, combat_text, mining, mining_text, bounty, bounty_text, resources, resources_text, ping, ping_text };
 
 /// One row of a text's settings; a `hint` is a tooltip on the label, and a row that `tracks` binds the chip's tracking_section.
 pub const Row = union(enum) {
@@ -437,8 +440,11 @@ fn SectionType(comptime section: Section) type {
         .mining => config.MiningConfig,
         .mining_text => config.MiningTextStyle,
         .bounty => config.BountyConfig,
+        .bounty_text => config.BountyTextStyle,
         .resources => config.ResourcesConfig,
+        .resources_text => config.ResourcesTextStyle,
         .ping => config.PingConfig,
+        .ping_text => config.PingTextStyle,
     };
 }
 
@@ -453,8 +459,11 @@ fn refFor(comptime section: Section) session.Ref(SectionType(section)) {
         .mining => profile.child("mining"),
         .mining_text => profile.child("thumbnail").child("miningText"),
         .bounty => profile.child("bounty"),
+        .bounty_text => profile.child("thumbnail").child("bountyText"),
         .resources => profile.child("resources"),
+        .resources_text => profile.child("thumbnail").child("resourcesText"),
         .ping => profile.child("ping"),
+        .ping_text => profile.child("thumbnail").child("pingText"),
     };
 }
 

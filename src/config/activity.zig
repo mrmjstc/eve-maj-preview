@@ -1,5 +1,4 @@
-//! What the combat and mining trackers measure, the bounty, resource and ping overlays, and the travel left-behind check.
-const types = @import("types.zig");
+//! What the activity trackers measure and how often, and the travel left-behind check.
 const wire = @import("wire.zig");
 const ranges_mod = @import("ranges.zig");
 
@@ -77,28 +76,15 @@ pub const MiningConfig = struct {
     pub const Wire = wire.Wire(MiningConfig);
 };
 
-/// Like Mining's ISK rate, without an m3 rate or ore table, since bounties already arrive in ISK.
+/// Like Mining's ISK rate, without an m3 rate or ore table, since bounties already arrive in ISK; see Config.tracksBounty.
 pub const BountyConfig = struct {
-    enabled: bool = false,
     window_seconds: u32 = 1200,
-    color: u32 = BOUNTY_COLOR,
-    bg_color: u32 = 0xE6000000,
-    font_size: i32 = types.DEFAULT_FONT_SIZE,
-    font_name: []const u8 = types.DEFAULT_FONT,
-    font_weight: types.FontWeight = .Regular,
     update_interval_ms: u32 = 1000,
-    position: types.TextPosition = .TopRight,
-    offset_x: i32 = 0,
-    offset_y: i32 = 0,
     isk_rate_unit: RateUnit = .hour,
-    show_prefix: bool = true,
 
     pub const ranges = .{
         .window_seconds = .{ 60, 3600 },
-        .font_size = ranges_mod.FONT_SIZE,
         .update_interval_ms = UPDATE_INTERVAL_MS,
-        .offset_x = ranges_mod.TEXT_OFFSET,
-        .offset_y = ranges_mod.TEXT_OFFSET,
     };
     pub const zero_means_default = .{"window_seconds"};
 
@@ -109,28 +95,13 @@ pub const BountyConfig = struct {
     pub const Wire = wire.Wire(BountyConfig);
 };
 
-/// One combined label and no alerts, like BountyConfig.
+/// Each client's CPU, RAM and VRAM, sampled while the thumbnails show them; see Config.tracksResources.
 pub const ResourcesConfig = struct {
-    enabled: bool = false,
-    show_cpu: bool = true,
-    show_ram: bool = true,
-    show_vram: bool = true,
-    color: u32 = 0xFFFFFFFF,
-    bg_color: u32 = 0xE6000000,
-    font_size: i32 = types.DEFAULT_FONT_SIZE,
-    font_name: []const u8 = types.DEFAULT_FONT,
-    font_weight: types.FontWeight = .Regular,
     update_interval_ms: u32 = 10000,
-    position: types.TextPosition = .LeftCenter,
-    offset_x: i32 = 0,
-    offset_y: i32 = 0,
 
     pub const ranges = .{
-        .font_size = ranges_mod.FONT_SIZE,
-        // A higher ceiling than the other overlays: each refresh samples every client's CPU, RAM and VRAM.
+        // A higher ceiling than the log-fed trackers': each refresh samples every client's CPU, RAM and VRAM.
         .update_interval_ms = .{ 1000, 60000 },
-        .offset_x = ranges_mod.TEXT_OFFSET,
-        .offset_y = ranges_mod.TEXT_OFFSET,
     };
 
     pub fn validate(self: *ResourcesConfig) void {
@@ -140,25 +111,13 @@ pub const ResourcesConfig = struct {
     pub const Wire = wire.Wire(ResourcesConfig);
 };
 
-/// One label and no alerts, like ResourcesConfig.
+/// Each client's round trip to its server, pinged while the thumbnails show it; see Config.tracksPing.
 pub const PingConfig = struct {
-    enabled: bool = false,
-    color: u32 = 0xFFFFFFFF,
-    bg_color: u32 = 0xE6000000,
-    font_size: i32 = types.DEFAULT_FONT_SIZE,
-    font_name: []const u8 = types.DEFAULT_FONT,
-    font_weight: types.FontWeight = .Regular,
     update_interval_ms: u32 = 10000,
-    position: types.TextPosition = .RightCenter,
-    offset_x: i32 = 0,
-    offset_y: i32 = 24,
 
     pub const ranges = .{
-        .font_size = ranges_mod.FONT_SIZE,
         // Like ResourcesConfig's ceiling, since a ping rarely changes between samples.
         .update_interval_ms = .{ 1000, 60000 },
-        .offset_x = ranges_mod.TEXT_OFFSET,
-        .offset_y = ranges_mod.TEXT_OFFSET,
     };
 
     pub fn validate(self: *PingConfig) void {

@@ -67,8 +67,8 @@ pub const Trackers = struct {
         self.reconcile(tracker_mod.CombatTracker, &self.combat, has_monitor and config.tracksCombat(), config.combat.window_seconds, "Combat DPS");
         self.reconcile(tracker_mod.MiningTracker, &self.mining, has_monitor and config.tracksMining(), config.mining.window_seconds, "Mining rate");
         self.reconcile(tracker_mod.BountyTracker, &self.bounty, has_monitor and config.tracksBounty(), config.bounty.window_seconds, "Bounty rate");
-        self.setupSampler(resources_mod.ResourceTracker, &self.resources, config.resources.enabled, "Resource usage");
-        self.setupSampler(ping_mod.PingTracker, &self.ping, config.ping.enabled, "Ping");
+        self.setupSampler(resources_mod.ResourceTracker, &self.resources, config.tracksResources(), "Resource usage");
+        self.setupSampler(ping_mod.PingTracker, &self.ping, config.tracksPing(), "Ping");
 
         if (monitor) |active_monitor| active_monitor.setTrackers(self.combat, self.mining, self.bounty);
     }
@@ -138,7 +138,7 @@ pub const Trackers = struct {
             self.checkAlerts(notifier, config, windows, now);
         }
 
-        self.setupSampler(resources_mod.ResourceTracker, &self.resources, config.resources.enabled, "Resource usage");
+        self.setupSampler(resources_mod.ResourceTracker, &self.resources, config.tracksResources(), "Resource usage");
         if (self.resources) |tracker| {
             if (schedule.isDue(now.elapsedSince(self.last_resource_update), config.resources.update_interval_ms, tick_interval_ms)) {
                 self.last_resource_update = now;
@@ -146,7 +146,7 @@ pub const Trackers = struct {
             }
         }
 
-        self.setupSampler(ping_mod.PingTracker, &self.ping, config.ping.enabled, "Ping");
+        self.setupSampler(ping_mod.PingTracker, &self.ping, config.tracksPing(), "Ping");
         if (self.ping) |tracker| {
             var has_changed = tracker.poll();
             if (schedule.isDue(now.elapsedSince(self.last_ping_update), config.ping.update_interval_ms, tick_interval_ms)) {
