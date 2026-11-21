@@ -429,9 +429,8 @@ pub const App = struct {
                 slog.debug("Dropped session start for '{s}': no window", .{start.character_name});
                 continue;
             };
-            const logged_in_at = self.scout.backdateLogin(hwnd, start.started_at, now_seconds) orelse continue;
-            // Without a thumbnail set nothing is lost: the next one takes the backdated time from Scout.
-            if (self.thumbnail_set) |active_set| active_set.setSessionStart(hwnd, logged_in_at);
+            // The roster takes the backdated time from Scout on its next sync.
+            _ = self.scout.backdateLogin(hwnd, start.started_at, now_seconds);
         }
     }
 

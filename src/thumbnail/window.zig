@@ -40,8 +40,6 @@ pub const ThumbnailWindow = struct {
     seen_revision: u32 = 0,
     /// Empty while showSystemConnections is off, or system_name isn't on the gate map; only ThumbnailSet.updateConnections writes it.
     connections: connections_mod.Connections = .{},
-    /// Zero while no character is logged in.
-    session_start: win32.Ticks = .{},
     needs_render: bool = false,
     /// Set by drag/thumbnail.zig for as long as either of its windows is dragged.
     is_dragged: bool = false,
@@ -99,11 +97,6 @@ pub const ThumbnailWindow = struct {
         const old_text = slot.*;
         slot.* = new_text;
         allocator.free(old_text);
-    }
-
-    pub fn sessionMinutes(self: *const ThumbnailWindow, now: win32.Ticks) ?u64 {
-        if (self.session_start.isZero()) return null;
-        return now.elapsedSince(self.session_start) / std.time.ms_per_min;
     }
 
     pub fn isFocused(self: *const ThumbnailWindow, active_source_hwnd: ?win32.HWND) bool {

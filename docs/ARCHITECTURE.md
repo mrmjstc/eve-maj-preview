@@ -283,7 +283,7 @@ WM_HOTKEY -> timerWindowProc -> HotkeyManager.handleHotkeyPress -> runAction
 - `chatlog/alert_rules.zig` + `chatlog/routing.zig` (pure, tested): which chat lines alert and who gets them (nearest clients, else the listener or an unmuted stand-in), duplicates and cooldowns, where each client is, and which system reports count (a repeated undock or Local is dropped, a jump never is, only gate jumps notify).
 - `notifications/gamelog_events.zig` (`classify`): line → `Notification` (pure).
 - `activity/lines.zig`: combat/mining/bounty line parsers (pure), feeding `activity/tracker.zig`'s ring-buffer windows.
-- `session_starts` backdates a character's login (Session Timer) via `Scout.backdateLogin`.
+- `session_starts` backdates a character's login (Session Timer) via `Scout.backdateLogin`; the roster mirrors it on its next sync, and the thumbnail's timer reads it from there.
 
 `activity/runtime.zig` (`Trackers`) matches trackers to the config while the worker is stopped, keeping history for those that stay enabled. `activity/resources.zig` samples CPU/RAM/VRAM (PDH) per client process on the main thread, and `activity/ping.zig` pings each client's game server with asynchronous ICMP echoes it polls each tick; both follow the live config, so they preview before Save. Every reading lands on the roster client's `stats` (`activity/stats.zig`) through `Roster.updateStats`, so it survives a thumbnail set rebuild.
 

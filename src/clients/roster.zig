@@ -23,6 +23,14 @@ const NO_STATS: ActivityStats = .{};
 pub const Readings = struct {
     alerts: *const NotificationStack = &NO_ALERTS,
     stats: *const ActivityStats = &NO_STATS,
+    /// Zero at the login screen.
+    logged_in_at: win32.Ticks = .{},
+
+    /// Null at the login screen.
+    pub fn sessionMinutes(self: Readings, now: win32.Ticks) ?u64 {
+        if (self.logged_in_at.isZero()) return null;
+        return now.elapsedSince(self.logged_in_at) / std.time.ms_per_min;
+    }
 };
 
 /// What the last sync did to a client.
@@ -116,7 +124,7 @@ pub const Roster = struct {
 
     pub fn readingsOf(self: *const Roster, hwnd: win32.HWND) Readings {
         const client = self.byHwnd(hwnd) orelse return .{};
-        return .{ .alerts = &client.notifications, .stats = &client.stats };
+        return .{ .alerts = &client.notifications, .stats = &client.stats, .logged_in_at = client.logged_in_at };
     }
 
     /// The first client with this name, which a window filter's windows and logged-out clients share.
@@ -528,12 +536,20 @@ test "a stats push that changes a reading bumps the revision, and clearing log r
     try testing.expectEqual(@as(u32, 2), client.revision);
 }
 
-test "a window the roster doesn't track reads as no alerts and no readings" {
+test "a window the roster doesn't track reads as no alerts, no readings and no session" {
     var roster: Roster = .init(testing.allocator);
     defer roster.deinit();
     const readings = roster.readingsOf(@ptrFromInt(7));
     try testing.expect(readings.alerts.isEmpty());
     try testing.expect(!readings.stats.has_dps);
+    try testing.expectEqual(@as(?u64, null), readings.sessionMinutes(.{ .ms = 60_000 }));
+}
+
+test "the session counts whole minutes from the client's login" {
+    var roster: Roster = .init(testing.allocator);
+    defer roster.deinit();
+    roster.sync(&.{testWindow(1, "Alpha", 1_000)});
+    try testing.expectEqual(@as(?u64, 2), roster.readingsOf(@ptrFromInt(1)).sessionMinutes(.{ .ms = 1_000 + 150_000 }));
 }
 
 test "clearing log readings empties every system and keeps travel" {

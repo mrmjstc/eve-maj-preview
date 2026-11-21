@@ -231,7 +231,8 @@ pub const ThumbnailSet = struct {
             if (thumbnail.is_dragged) continue;
 
             if (thumbnail.render_cache.settings) |cached| {
-                if (cached.show_session_timer and cached.session_minutes != (thumbnail.sessionMinutes(now) orelse 0)) thumbnail.needs_render = true;
+                const session_minutes = self.roster.readingsOf(thumbnail.source_hwnd).sessionMinutes(now);
+                if (cached.show_session_timer and cached.session_minutes != (session_minutes orelse 0)) thumbnail.needs_render = true;
             }
         }
     }
@@ -346,13 +347,6 @@ pub const ThumbnailSet = struct {
         }
     }
 
-    /// After Scout backdated the client's login from its gamelog.
-    pub fn setSessionStart(self: *ThumbnailSet, source_hwnd: win32.HWND, started: win32.Ticks) void {
-        const thumbnail = self.getThumbnailBySourceHwnd(source_hwnd) orelse return;
-        thumbnail.session_start = started;
-        thumbnail.needs_render = true;
-    }
-
     /// Logins, logouts and renames; returns whether the layout needs a reflow.
     fn applyNameChanges(self: *ThumbnailSet, name_changes: []const scout.NameChange) bool {
         var any_login = false;
@@ -370,7 +364,6 @@ pub const ThumbnailSet = struct {
                 slog.err("Failed to rename the thumbnail for '{s}': {}", .{ change.new_name, err });
                 continue;
             };
-            thumbnail.session_start = change.logged_in_at;
 
             if (was_generic and !is_now_generic) self.onLogin(thumbnail);
 
@@ -554,7 +547,6 @@ pub const ThumbnailSet = struct {
             .text_hwnd = handles.text_hwnd,
             .source_hwnd = eve_window.hwnd,
             .is_eve_client = eve_window.is_eve_client,
-            .session_start = eve_window.logged_in_at,
             .character_name = strings.character_name,
             .system_name = strings.system_name,
             .cached_group_badge_label = strings.group_badge_label,

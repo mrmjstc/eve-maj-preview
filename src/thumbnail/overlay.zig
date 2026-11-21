@@ -313,7 +313,7 @@ pub fn createRenderSettings(config: *const config_mod.Config, thumbnail: *const 
         .system_color = thumbnail.cached_system_color,
         .border_colors = thumbnail.cached_border_colors,
         .opacity = thumbnail.cached_opacity,
-        .session_minutes = thumbnail.sessionMinutes(now),
+        .session_minutes = readings.sessionMinutes(now),
         .stats = readings.stats,
         .notifications = readings.alerts,
         .overlay_width = size.width,
