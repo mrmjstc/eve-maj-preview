@@ -1,7 +1,7 @@
 //! Fetching Jita ore prices on a thread of its own, since the requests would stall the window; the result comes back to the main thread as a command.
 const std = @import("std");
 const win32 = @import("../../platform/win32.zig");
-const config = @import("../../config.zig");
+const ores = @import("../../activity/ores.zig");
 const esi_prices = @import("../tools/esi_prices.zig");
 const detached = @import("../../util/detached.zig");
 const handoff = @import("../../util/handoff.zig");
@@ -11,8 +11,8 @@ const slog = log.Scoped("dialog_knots");
 
 /// Every ore the catalogue lists, which the fetch asks for.
 pub const NAMES = blk: {
-    var names: [config.DEFAULT_ORE_TABLE.len][]const u8 = undefined;
-    for (config.DEFAULT_ORE_TABLE, &names) |entry, *name| name.* = entry.name;
+    var names: [ores.CATALOG.len][]const u8 = undefined;
+    for (ores.CATALOG, &names) |entry, *name| name.* = entry.name;
     break :blk names;
 };
 

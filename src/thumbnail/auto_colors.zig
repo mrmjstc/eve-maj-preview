@@ -1,12 +1,12 @@
 //! The unique colours generated for systems and characters, kept in their own file.
 const std = @import("std");
 const color_mod = @import("../util/color.zig");
-const wire = @import("wire.zig");
-const files = @import("files.zig");
 const config_mod = @import("../config.zig");
+const wire = @import("../config/wire.zig");
+const files = @import("../config/files.zig");
 const log = @import("../log.zig");
 
-const slog = log.Scoped("config");
+const slog = log.Scoped("auto_colors");
 
 const AUTO_COLORS_FILE = files.AUTO_COLORS_FILE;
 

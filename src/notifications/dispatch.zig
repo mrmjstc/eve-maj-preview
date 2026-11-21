@@ -3,6 +3,7 @@ const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const config_mod = @import("../config.zig");
 const window = @import("../thumbnail/window.zig");
+const auto_colors_mod = @import("../thumbnail/auto_colors.zig");
 const history_mod = @import("history.zig");
 const notified_queue_mod = @import("notified_queue.zig");
 const notification_mod = @import("notification.zig");
@@ -12,6 +13,7 @@ const alert_effects = @import("alert_effects.zig");
 const universe = @import("../map/universe.zig");
 const log = @import("../log.zig");
 
+const AutoColorStore = auto_colors_mod.AutoColorStore;
 const ThumbnailWindow = window.ThumbnailWindow;
 const slog = log.Scoped("notification");
 
@@ -46,7 +48,7 @@ const HistoryRecord = struct {
 pub const Context = struct {
     allocator: std.mem.Allocator,
     config: *const config_mod.Config,
-    auto_colors: *config_mod.AutoColorStore,
+    auto_colors: *AutoColorStore,
     records: Records,
     active_source_hwnd: ?win32.HWND,
 };
@@ -76,7 +78,7 @@ pub fn notify(context: Context, thumbnail: *ThumbnailWindow, notification: notif
     alert_effects.play(settings, type_config, text, spoken_name, notification_mod.notificationCategory(notification.notification_type) == .Chat);
 }
 
-/// Lists an intel report for the Intel Panel, shown or not, so it's all there when the panel opens; measured from the client nearest it, and dropped with no client running.
+/// Lists intel for the Intel Panel, shown or not, measured from the nearest client; dropped with no client running.
 pub fn listIntel(context: Context, thumbnails: []const ThumbnailWindow, system: universe.SystemIndex, message: []const u8, is_clear: bool) void {
     var distances: universe.Distances = undefined;
     universe.measureDistances(system, universe.UNREACHED - 1, &distances);
@@ -100,7 +102,7 @@ pub fn listIntel(context: Context, thumbnails: []const ThumbnailWindow, system: 
     });
 }
 
-/// Shows `notification` on every EVE client's thumbnail for a global user action; kept out of history, and sound/speech play once rather than per thumbnail.
+/// Shows `notification` on every EVE client for a global user action; kept out of history, with its sound played once.
 pub fn notifyAll(context: Context, thumbnails: []ThumbnailWindow, notification: notification_mod.Notification) void {
     const settings = &context.config.thumbnail.notifications;
     const type_config = settings.getTypeConfig(notification.notification_type);
@@ -218,7 +220,7 @@ fn alertConfig(config: *const config_mod.Config, notification: notification_mod.
     return config.thumbnail.notifications.getTypeConfig(notification.notification_type);
 }
 
-/// Applies `type_config`'s enable/mute/suppress/throttle rules and queues the notification, kept out of history if `history_record` is null; false if it was filtered out.
+/// Queues the notification unless holdReason holds it back, kept out of history without `history_record`; false if held back.
 fn queue(context: Context, thumbnail: *ThumbnailWindow, text: []const u8, notification_type: notification_mod.NotificationType, type_config: config_mod.NotificationTypeConfig, lead: ?notification_mod.Lead, history_record: ?HistoryRecord) !bool {
     const settings = &context.config.thumbnail.notifications;
     const now = win32.Ticks.now();

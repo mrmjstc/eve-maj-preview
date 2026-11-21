@@ -5,6 +5,7 @@ const notification_mod = @import("notifications/notification.zig");
 const gamelog_events = @import("notifications/gamelog_events.zig");
 const tracker_mod = @import("activity/tracker.zig");
 const activity_lines = @import("activity/lines.zig");
+const ores = @import("activity/ores.zig");
 const scout = @import("clients/scout.zig");
 const config = @import("config.zig");
 const universe = @import("map/universe.zig");
@@ -711,7 +712,7 @@ pub const ChatlogMonitor = struct {
         const tracker = self.mining_tracker orelse return;
         const parsed = activity_lines.parseMiningLine(event_text) orelse return;
         const global_settings = self.global_settings orelse return;
-        const volume_per_unit = global_settings.oreVolume(parsed.name()) orelse {
+        const volume_per_unit = ores.volume(parsed.name()) orelse {
             slog.warn("Failed to record mining yield: unknown ore, ice or gas '{s}'", .{parsed.name()});
             return;
         };

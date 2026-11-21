@@ -1,7 +1,7 @@
 //! The configuration window's Mining tab: the ore prices the mining overlay's ISK rate uses; main thread only.
 const std = @import("std");
 const ui = @import("ui");
-const config = @import("../../../config.zig");
+const ores = @import("../../../activity/ores.zig");
 const session = @import("../session.zig");
 const bind = @import("../bind.zig");
 const host = @import("../host.zig");
@@ -44,7 +44,7 @@ pub fn setOrePrice(name: []const u8, price: f64) void {
     for (global.ptr.oreTable.items, 0..) |override, index| {
         if (std.mem.eql(u8, override.name, name)) return global.item("oreTable", index).set("price", price);
     }
-    for (config.DEFAULT_ORE_TABLE) |entry| {
+    for (ores.CATALOG) |entry| {
         if (std.mem.eql(u8, entry.name, name) and entry.price == price) return;
     }
     const added = global.append("oreTable", .{}) orelse return;
@@ -78,9 +78,9 @@ fn oreTable(context: *ui.Frame) !void {
 }
 
 fn oreRows(context: *ui.Frame, category: []const u8) !void {
-    var catalog_indices: [config.DEFAULT_ORE_TABLE.len]usize = undefined;
+    var catalog_indices: [ores.CATALOG.len]usize = undefined;
     var ore_count: usize = 0;
-    for (config.DEFAULT_ORE_TABLE, 0..) |entry, catalog_index| {
+    for (ores.CATALOG, 0..) |entry, catalog_index| {
         if (!std.mem.eql(u8, entry.category, category)) continue;
         catalog_indices[ore_count] = catalog_index;
         ore_count += 1;
@@ -102,7 +102,7 @@ fn oreRows(context: *ui.Frame, category: []const u8) !void {
 }
 
 fn oreCell(context: *ui.Frame, catalog_index: usize) !void {
-    const entry = config.DEFAULT_ORE_TABLE[catalog_index];
+    const entry = ores.CATALOG[catalog_index];
     const cell = Rect{ .key = ui.Key.str("knots.ore.cell").indexed(catalog_index), .style = &style.table_cell };
     _ = try cell.open(context);
     try context.e(Text{ .selectable = false, .key = ui.Key.str("knots.ore.name").indexed(catalog_index), .content = entry.name, .style = &style.table_name_cell });
@@ -113,7 +113,7 @@ fn oreCell(context: *ui.Frame, catalog_index: usize) !void {
 }
 
 /// The saved override, or the catalogue's own price.
-fn orePrice(entry: config.OreEntry) f64 {
+fn orePrice(entry: ores.Ore) f64 {
     for (session.global().ptr.oreTable.items) |override| {
         if (std.mem.eql(u8, override.name, entry.name)) return override.price;
     }

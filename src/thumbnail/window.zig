@@ -6,11 +6,13 @@ const config_mod = @import("../config.zig");
 const state = @import("state.zig");
 const activity_stats = @import("activity_stats.zig");
 const overlay = @import("overlay.zig");
+const auto_colors_mod = @import("auto_colors.zig");
 const stack = @import("../notifications/stack.zig");
 const scout = @import("../clients/scout.zig");
 const connections_mod = @import("../map/connections.zig");
 const log = @import("../log.zig");
 
+const AutoColorStore = auto_colors_mod.AutoColorStore;
 const ThumbnailState = config_mod.ThumbnailState;
 const slog = log.Scoped("thumbnail");
 
@@ -97,7 +99,7 @@ pub const ThumbnailWindow = struct {
     cached_group_badge_label: []const u8,
 
     /// Sole writer of the config-derived cached_* fields, all but the group badge label.
-    pub fn refreshConfigCache(self: *ThumbnailWindow, config: *const config_mod.Config, auto_colors: *config_mod.AutoColorStore) void {
+    pub fn refreshConfigCache(self: *ThumbnailWindow, config: *const config_mod.Config, auto_colors: *AutoColorStore) void {
         self.cached_system_color = if (self.system_name.len > 0) auto_colors.systemNameColor(config, self.system_name) else config.shownColors().system_name_color;
         const is_logged_in = !scout.isGenericCharacterName(self.character_name);
         self.cached_character_color = if (is_logged_in) auto_colors.characterNameColor(config, self.character_name) else null;

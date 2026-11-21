@@ -4,6 +4,7 @@ const win32 = @import("../platform/win32.zig");
 const config_mod = @import("../config.zig");
 const types = @import("../config/types.zig");
 const color_mod = @import("../util/color.zig");
+const strings = @import("../util/strings.zig");
 const stack = @import("../notifications/stack.zig");
 const connections_mod = @import("../map/connections.zig");
 const activity_stats = @import("activity_stats.zig");
@@ -291,6 +292,18 @@ pub fn renderSettingsOnlyVisibilityChanged(first: RenderSettings, second: Render
 /// Unchanged config and notification slices keep their pointer and length, so those are checked first.
 pub fn stringsEqualFast(first: []const u8, second: []const u8) bool {
     return (first.ptr == second.ptr and first.len == second.len) or std.mem.eql(u8, first, second);
+}
+
+/// The character's badge-enabled groups by name or 1-based number ("1, Miners"), or "" for none; caller owns it.
+pub fn groupBadgeLabel(allocator: std.mem.Allocator, config: *const config_mod.Config, character_name: []const u8) ![]const u8 {
+    var label: std.Io.Writer.Allocating = .init(allocator);
+    errdefer label.deinit();
+    for (config.hotkeyGroups.items, 1..) |*group, number| {
+        if (!group.showBadge or strings.indexOfString(group.characters.items, character_name) == null) continue;
+        if (label.written().len > 0) try label.writer.writeAll(", ");
+        if (group.name.len > 0) try label.writer.writeAll(group.name) else try label.writer.print("{}", .{number});
+    }
+    return label.toOwnedSlice();
 }
 
 /// All fields but show_thumbnail, walked at comptime so new fields are always compared.
@@ -675,4 +688,25 @@ test "a change to show_thumbnail alone is a visibility change, not a redraw" {
     try testing.expect(renderSettingsOnlyVisibilityChanged(first, second));
     second.border_color +%= 1;
     try testing.expect(!renderSettingsOnlyVisibilityChanged(first, second));
+}
+
+test "groupBadgeLabel names badge groups, numbering unnamed ones from 1" {
+    const json_text =
+        \\{"hotkeyGroups": [
+        \\  {"name": "", "characters": ["Alpha"], "showBadge": true},
+        \\  {"name": "Miners", "characters": ["Alpha"], "showBadge": true},
+        \\  {"name": "Hidden", "characters": ["Alpha"], "showBadge": false},
+        \\  {"name": "Scouts", "characters": ["Bravo"], "showBadge": true}
+        \\]}
+    ;
+    var config = try config_mod.Config.buildConfigFromJson(testing.allocator, json_text, "Test");
+    defer config.deinit();
+
+    const label = try groupBadgeLabel(testing.allocator, &config, "Alpha");
+    defer testing.allocator.free(label);
+    try testing.expectEqualStrings("1, Miners", label);
+
+    const none = try groupBadgeLabel(testing.allocator, &config, "Charlie");
+    defer testing.allocator.free(none);
+    try testing.expectEqualStrings("", none);
 }

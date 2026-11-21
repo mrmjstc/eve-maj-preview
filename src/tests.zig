@@ -1,6 +1,7 @@
 //! Root of `zig build test`: the modules with unit tests, which can run without the app or Windows UI.
 test {
     _ = @import("activity/lines.zig");
+    _ = @import("activity/ores.zig");
     _ = @import("activity/ping.zig");
     _ = @import("activity/resources.zig");
     _ = @import("activity/tracker.zig");

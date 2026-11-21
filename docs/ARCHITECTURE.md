@@ -19,7 +19,7 @@ All relative to the exe folder (`main.zig` sets the cwd there).
 | `profiles/<name>.json` | Per-profile `Config` | `config/profiles.zig` |
 | `profiles/global.settings.json` | `GlobalConfig` | `config/global.zig` |
 | `profiles/backup/` | Profiles deleted, reset, imported over, unreadable or backed up from the Backups tab, `<unix time>_<name>` | `config/profiles.zig` |
-| `data/colors.json` | Generated system/character colours | `config/auto_colors.zig` |
+| `data/colors.json` | Generated system/character colours | `thumbnail/auto_colors.zig` |
 | `data/character_ids.json` | Character name → EVE ID | `chatlog/character_ids.zig` |
 | `data/portraits/{id}.jpg` | Character portraits | `dialog/knots/portraits.zig` |
 | `data/logo_colors.json` | Colour picked from each sov-holding alliance's logo, at most 200 before it starts again | `map/stats_feed.zig` |

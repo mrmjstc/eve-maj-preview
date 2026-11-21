@@ -15,6 +15,8 @@ const state = @import("state.zig");
 const window = @import("window.zig");
 const arrange = @import("arrange.zig");
 const renderer_mod = @import("renderer.zig");
+const look = @import("look.zig");
+const auto_colors_mod = @import("auto_colors.zig");
 const dispatch = @import("../notifications/dispatch.zig");
 const notification_mod = @import("../notifications/notification.zig");
 const universe = @import("../map/universe.zig");
@@ -22,6 +24,7 @@ const intel_pins = @import("../map/intel_pins.zig");
 const connections = @import("../map/connections.zig");
 const log = @import("../log.zig");
 
+const AutoColorStore = auto_colors_mod.AutoColorStore;
 const slog = log.Scoped("thumbnail_set");
 
 pub const ThumbnailWindow = window.ThumbnailWindow;
@@ -81,7 +84,7 @@ pub const ThumbnailSet = struct {
     /// Sole "who's focused" source of truth; write only via reconcileThumbnailStates.
     active_source_hwnd: ?win32.HWND = null,
     /// Unique system and character colours.
-    auto_colors: config_mod.AutoColorStore,
+    auto_colors: AutoColorStore,
     /// A different mode needs a new ThumbnailSet (see App.onLiveProfileEdited).
     view_mode: types.ViewMode,
 
@@ -291,8 +294,8 @@ pub const ThumbnailSet = struct {
     }
 
     /// After the character's group membership changed.
-    pub fn refreshGroupBadge(self: *ThumbnailSet, thumbnail: *ThumbnailWindow) void {
-        const new_label = self.config.groupBadgeLabel(self.allocator, thumbnail.character_name) catch |err| {
+    pub fn refreshGroupBadge(self: *const ThumbnailSet, thumbnail: *ThumbnailWindow) void {
+        const new_label = look.groupBadgeLabel(self.allocator, self.config, thumbnail.character_name) catch |err| {
             slog.err("Failed to build group badge label for '{s}': {}", .{ thumbnail.character_name, err });
             return;
         };
@@ -686,7 +689,7 @@ pub const ThumbnailSet = struct {
         errdefer allocator.free(character_name_copy);
         const system_name_copy = try allocator.dupe(u8, system_name);
         errdefer allocator.free(system_name_copy);
-        const group_badge_label_copy = try self.config.groupBadgeLabel(allocator, character_name);
+        const group_badge_label_copy = try look.groupBadgeLabel(allocator, self.config, character_name);
         errdefer allocator.free(group_badge_label_copy);
 
         return .{

@@ -19,10 +19,8 @@ const thumbnail_mod = @import("config/thumbnail.zig");
 const display_mod = @import("config/display.zig");
 const panels = @import("config/panels.zig");
 const behavior = @import("config/behavior.zig");
-const auto_colors = @import("config/auto_colors.zig");
 const profiles = @import("config/profiles.zig");
 const store = @import("config/store.zig");
-const strings = @import("util/strings.zig");
 const log = @import("log.zig");
 
 const slog = log.Scoped("config");
@@ -56,8 +54,6 @@ pub const ProfileStore = store.ProfileStore;
 pub const KeyList = key_list.KeyList;
 pub const parseHexColor = wire.parseHexColor;
 
-pub const DEFAULT_ORE_TABLE = global.DEFAULT_ORE_TABLE;
-pub const OreEntry = global.OreEntry;
 pub const GlobalConfig = global.GlobalConfig;
 pub const ProtocolLinksConfig = global.ProtocolLinksConfig;
 pub const Position = characters_mod.Position;
@@ -101,7 +97,6 @@ pub const AutoMovePositionConfig = behavior.AutoMovePositionConfig;
 pub const ExclusionConfig = behavior.ExclusionConfig;
 pub const CloseAllConfig = behavior.CloseAllConfig;
 pub const HotkeysConfig = hotkeys_mod.HotkeysConfig;
-pub const AutoColorStore = auto_colors.AutoColorStore;
 
 pub const PROFILE_FORMAT_IDENTIFIER = "eve-maj-preview";
 /// Bumped only for schema changes needing a migration, independent of the release version; see config/migrate.zig and Config.fromWire.
@@ -379,18 +374,6 @@ pub const Config = struct {
         return self.bounty.enabled or (self.display.viewMode.showsClientList() and self.listView.showBountyRate);
     }
 
-    /// Its badge-enabled groups by name or 1-based number ("1, Miners"), or "" for none; caller owns it.
-    pub fn groupBadgeLabel(self: *const Config, allocator: std.mem.Allocator, character_name: []const u8) ![]const u8 {
-        var label: std.Io.Writer.Allocating = .init(allocator);
-        errdefer label.deinit();
-        for (self.hotkeyGroups.items, 1..) |*group, number| {
-            if (!group.showBadge or strings.indexOfString(group.characters.items, character_name) == null) continue;
-            if (label.written().len > 0) try label.writer.writeAll(", ");
-            if (group.name.len > 0) try label.writer.writeAll(group.name) else try label.writer.print("{}", .{number});
-        }
-        return label.toOwnedSlice();
-    }
-
     pub fn validate(self: *Config) void {
         ranges.clamp(Config, self);
         for (self.characters.items) |*character| character.validate();
@@ -432,26 +415,6 @@ test "findSystemColor prefers an exact name over an earlier pattern" {
     try testing.expectEqual(@as(?u32, 0xFF000002), config.findSystemColor("Jita"));
     try testing.expectEqual(@as(?u32, 0xFF000001), config.findSystemColor("J123456"));
     try testing.expectEqual(@as(?u32, null), config.findSystemColor("Amarr"));
-}
-
-test "groupBadgeLabel names badge groups, numbering unnamed ones from 1" {
-    var config = try testConfig(
-        \\{"hotkeyGroups": [
-        \\  {"name": "", "characters": ["Alpha"], "showBadge": true},
-        \\  {"name": "Miners", "characters": ["Alpha"], "showBadge": true},
-        \\  {"name": "Hidden", "characters": ["Alpha"], "showBadge": false},
-        \\  {"name": "Scouts", "characters": ["Bravo"], "showBadge": true}
-        \\]}
-    );
-    defer config.deinit();
-
-    const label = try config.groupBadgeLabel(testing.allocator, "Alpha");
-    defer testing.allocator.free(label);
-    try testing.expectEqualStrings("1, Miners", label);
-
-    const none = try config.groupBadgeLabel(testing.allocator, "Charlie");
-    defer testing.allocator.free(none);
-    try testing.expectEqualStrings("", none);
 }
 
 test "hotkeyGroupIndex ignores case but hasHotkeyGroupNamed doesn't" {
