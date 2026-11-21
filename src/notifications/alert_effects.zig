@@ -22,7 +22,7 @@ pub fn toggleMuted() void {
 
 /// Stops the speech or sound thread once no alert in `profile` uses it, whether or not alerts are muted.
 pub fn releaseUnused(profile: *const config.Config) void {
-    const settings = &profile.thumbnail.notifications;
+    const settings = &profile.notifications;
     const chat_rules = profile.chatAlerts.items;
     const is_intel_muted = profile.intelPanel.muteSounds;
     if (!rules.hasAudibleAlert(settings, chat_rules, is_intel_muted, .speech)) tts.stopIfIdle();

@@ -7,7 +7,7 @@ Every setting EVE-Maj Preview reads, by file and JSON key. The config dialog wri
 - [Files](#files)
 - [Loading rules](#loading-rules)
 - [Value formats](#value-formats)
-- [Profile](#profile): [top level](#top-level) · [thumbnail](#thumbnail) · [thumbnail.notifications](#thumbnailnotifications) · [timer](#timer) · [display](#display) · [listView](#listview) · [historyPanel](#historypanel) · [mapPanel](#mappanel) · [intelPanel](#intelpanel) · [intel](#intel) · [thumbnailSpaces](#thumbnailspaces) · [snapping](#snapping) · [panelSnapping](#panelsnapping) · [interaction](#interaction) · [exclusion](#exclusion) · [autoMinimize](#autominimize) · [autoMovePosition](#automoveposition) · [closeAll](#closeall) · [combat](#combat) · [mining](#mining) · [bounty](#bounty) · [resources](#resources) · [ping](#ping) · [travel](#travel) · [hotkeys](#hotkeys) · [hotkeyGroups](#hotkeygroups) · [characters](#characters) · [systemColors](#systemcolors) · [chatAlerts](#chatalerts) · [windowFilters](#windowfilters)
+- [Profile](#profile): [top level](#top-level) · [thumbnail](#thumbnail) · [thumbnail.alertText](#thumbnailalerttext) · [notifications](#notifications) · [timer](#timer) · [display](#display) · [listView](#listview) · [historyPanel](#historypanel) · [mapPanel](#mappanel) · [intelPanel](#intelpanel) · [intel](#intel) · [thumbnailSpaces](#thumbnailspaces) · [snapping](#snapping) · [panelSnapping](#panelsnapping) · [interaction](#interaction) · [exclusion](#exclusion) · [autoMinimize](#autominimize) · [autoMovePosition](#automoveposition) · [closeAll](#closeall) · [combat](#combat) · [mining](#mining) · [bounty](#bounty) · [resources](#resources) · [ping](#ping) · [travel](#travel) · [hotkeys](#hotkeys) · [hotkeyGroups](#hotkeygroups) · [characters](#characters) · [systemColors](#systemcolors) · [chatAlerts](#chatalerts) · [windowFilters](#windowfilters)
 - [Global settings](#global-settings): [chatlog](#chatlog)
 - [Command line and protocol](#command-line-and-protocol)
 
@@ -44,7 +44,7 @@ Profile file names: `<name>.json` with no path separators or `:*?"<>|`, not star
 - `formatVersion` below 5 migrates on load: a `listView.activeColor` or `thumbnail.borderColor` still at the old default `0xFFD9A441` is removed, so it follows `accentColor`.
 - `formatVersion` below 6 migrates on load: `listView.showIncomingDps`/`showOutgoingDps`/`showMiningRate`/`showBountyRate` stay on only where `combat`/`mining`/`bounty.enabled` was on, and are removed otherwise.
 - `formatVersion` below 7 migrates on load: `display.startX`/`startY` are copied into `listView.x`/`y`, which the Client List used to share with the thumbnails' start position.
-- `formatVersion` below 8 migrates on load: `mapPanel.intelShrinkSec`/`intelShowClear` move to `intel.shrinkSec`/`showClear`, and `historyPanel`'s `fontName`/`fontSize`/`fontWeight`/`showTimestamp`/`mergeEnabled`/`mergeWindowSec` are copied into `intelPanel`; a key already in its new section wins.
+- `formatVersion` below 8 migrates on load: `thumbnail.notifications` splits, its `position`/`offset_x`/`offset_y`/`font_name`/`font_size`/`font_weight`/`bg_color` going to `thumbnail.alertText` and the rest to `notifications`; `mapPanel.intelShrinkSec`/`intelShowClear` move to `intel.shrinkSec`/`showClear`, and `historyPanel`'s `fontName`/`fontSize`/`fontWeight`/`showTimestamp`/`mergeEnabled`/`mergeWindowSec` are copied into `intelPanel`; a key already in its new section wins.
 - A profile with `thumbnailSpaces` but no `display.placementMode` gets `ThumbnailSpaces` if any space is enabled.
 
 ## Value formats
@@ -74,7 +74,7 @@ Profile file names: `<name>.json` with no path separators or `:*?"<>|`, not star
 | `formatVersion` | int | `7` | Read only to migrate; rewritten on save. |
 | `accentColor` | colour | `0xFFD9A441` | This profile's accent: the config dialog, the panels, and the unset `listView.activeColor` and `thumbnail.borderColor`. |
 
-Sections: `thumbnail`, `timer`, `display`, `listView`, `historyPanel`, `mapPanel`, `intelPanel`, `intel`, `snapping`, `panelSnapping`, `interaction`, `autoMinimize`, `autoMovePosition`, `exclusion`, `closeAll`, `combat`, `mining`, `bounty`, `resources`, `ping`, `travel`, `hotkeys` (objects); `windowFilters`, `characters`, `systemColors`, `chatAlerts`, `hotkeyGroups`, `thumbnailSpaces` (arrays).
+Sections: `thumbnail`, `notifications`, `timer`, `display`, `listView`, `historyPanel`, `mapPanel`, `intelPanel`, `intel`, `snapping`, `panelSnapping`, `interaction`, `autoMinimize`, `autoMovePosition`, `exclusion`, `closeAll`, `combat`, `mining`, `bounty`, `resources`, `ping`, `travel`, `hotkeys` (objects); `windowFilters`, `characters`, `systemColors`, `chatAlerts`, `hotkeyGroups`, `thumbnailSpaces` (arrays).
 
 ### thumbnail
 
@@ -187,20 +187,27 @@ Sections: `thumbnail`, `timer`, `display`, `listView`, `historyPanel`, `mapPanel
 | `showBorder` | bool | |
 | `showThumbnail` | bool | Default `true`; `active` defaults to `null` (follows `activeThumbnailHidden`). |
 
-### thumbnail.notifications
+### thumbnail.alertText
 
-Event popups on thumbnails, from game and chat logs (needs [chatlog](#chatlog)) and from your own actions.
+Where and how thumbnails draw their alerts; what an alert says and its colour are in [notifications](#notifications).
 
 | Key | Type | Default | Range | Notes |
 |---|---|---|---|---|
-| `enabled` | bool | `true` | | Thumbnail popups. Client List uses `listView.showNotifications`. |
 | `position` | enum | `Center` | position | |
 | `offset_x`, `offset_y` | int | `0` | offset | |
 | `font_name` | string | `"Geist"` | | |
 | `font_size` | int | `12` | font size | |
 | `font_weight` | enum | `Regular` | weight | |
-| `color` | colour | `0xFFFFFFFF` | | Text colour for types without `text_color`. |
 | `bg_color` | colour | `0xE6000000` | | |
+
+### notifications
+
+Alerts, from game and chat logs (needs [chatlog](#chatlog)) and from your own actions: on thumbnails, in the Client List and in Alert History.
+
+| Key | Type | Default | Range | Notes |
+|---|---|---|---|---|
+| `enabled` | bool | `true` | | Every alert. Client List also needs `listView.showNotifications`. |
+| `color` | colour | `0xFFFFFFFF` | | Text colour for types without `text_color`, on thumbnails and in the History and Intel panels. |
 | `suppress_click_duration_ms` | int | `2000` | 0–60000 | Window for `suppress_when_clicked`. |
 | `tts_volume` | int | `100` | 0–100 | |
 | `tts_rate` | int | `0` | −10–10 | SAPI rate. |
@@ -766,7 +773,7 @@ Rules for chat messages that raise an alert. Needs [chatlog](#chatlog). Rules ar
 | `exclude` | string | `""` | | Comma-separated words or phrases that stop the message matching this rule. |
 | `max_jumps` | int | `5` | 0–30 | Intel rules: how far the system may be from a client. |
 | `cooldown_ms` | int | `15000` | 0–300000 | How long the same system or keyword stays quiet for this rule after alerting. |
-| `alert` | object | | | How the alert looks and sounds, as [`type_configs.<Type>`](#thumbnailnotifications); `throttle_ms` and `show_text` default to `0` and `false`. |
+| `alert` | object | | | How the alert looks and sounds, as [`type_configs.<Type>`](#notifications); `throttle_ms` and `show_text` default to `0` and `false`. |
 
 System names that are ordinary words (`Pain`) only count written as spelled; names with a digit or hyphen match in any case. An intel message with no client in range doesn't alert. A client with `excludeFromChatAlerts` or `notificationsMuted` never receives an alert; a keyword alert its listener can't receive goes to another client.
 

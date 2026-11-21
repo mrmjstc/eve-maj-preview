@@ -447,7 +447,7 @@ fn lookOf(arena: std.mem.Allocator, profile: *const config.Config, bench: *const
         .active_color = active_color,
         .active_name_color = if (uses_unique_names) style.UNIQUE_SAMPLE else list_look.ACTIVE_NAME,
         .name_color = if (uses_unique_names) style.UNIQUE_SAMPLE else list_look.NAME,
-        .notification_color = profile.thumbnail.notifications.getTypeConfig(.FleetInvite).text_color orelse list_settings.notificationColor,
+        .notification_color = profile.notifications.getTypeConfig(.FleetInvite).text_color orelse list_settings.notificationColor,
         .system_color = if (shown.uses_unique_system_colors) style.UNIQUE_SAMPLE else shown.system_name_color,
         .name_size = @as(f32, @floatFromInt(list_settings.fontSize)) * scale,
         .small_size = @as(f32, @floatFromInt(list_look.smallFontSize(list_settings.fontSize))) * scale,
@@ -598,7 +598,7 @@ fn requirementNotices(context: *ui.Frame, part: Part) !void {
     const stat_settings: list_look.StatSettings = .{ .list_settings = &profile.listView, .mining = &profile.mining, .bounty = &profile.bounty };
     if (part == .totals and !list_look.showsAnyStat(stat_settings)) try widgets.notice(context, .src(@src()), "Needs at least one rate shown on the rows.");
     if (part == .notifications and !is_monitoring) try widgets.notice(context, .src(@src()), "Without Log Monitoring, only alerts for your own actions, like Profile Switch, are shown.");
-    if (part == .notifications and !profile.thumbnail.notifications.enabled) try widgets.notice(context, .src(@src()), "Requires alerts switched on in the Alert Options tab.");
+    if (part == .notifications and !profile.notifications.enabled) try widgets.notice(context, .src(@src()), "Requires alerts switched on in the Alert Options tab.");
 }
 
 fn statSettings(context: *ui.Frame, list_view: ListRef, comptime rows: StatRows) !void {

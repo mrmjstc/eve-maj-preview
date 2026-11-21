@@ -354,7 +354,7 @@ fn appearance(draft: *Draft, ini: *const Ini) !void {
         const alpha: f64 = if (!is_shown) 0 else if (number(ini.get("overlay", "backgroundOpacity"))) |percent| values.opacityFromPercent(percent) else 255;
         // One shared background, which each overlay text here has its own of.
         const color = values.withAlpha(background, alpha);
-        inline for (.{ "thumbnail.characterNameBgColor", "thumbnail.systemNameBgColor", "thumbnail.quickGroupBadgeBgColor", "thumbnail.notifications.bg_color" }) |path| {
+        inline for (.{ "thumbnail.characterNameBgColor", "thumbnail.systemNameBgColor", "thumbnail.quickGroupBadgeBgColor", "thumbnail.alertText.bg_color" }) |path| {
             try draft.setColor(path, color);
         }
     }
@@ -517,7 +517,7 @@ fn chatlog(draft: *Draft, ini: *const Ini) !void {
 }
 
 fn notifications(draft: *Draft, ini: *const Ini) !void {
-    try draft.setBool("thumbnail.notifications.enabled", qtBool(ini.get("combatMessages", "enabled")));
+    try draft.setBool("notifications.enabled", qtBool(ini.get("combatMessages", "enabled")));
     const default_duration = intValue(ini.get("combatMessages", "duration"));
     const color = values.rgbColor(ini.get("combatMessages", "color"));
     const suppresses_all = qtBool(ini.get("combatMessages", "suppressWhenFocused"));
@@ -530,7 +530,7 @@ fn notifications(draft: *Draft, ini: *const Ini) !void {
             try draft.note("Event type \"{evt}\" has no equivalent notification in EVE-Maj Preview and was not imported.", &.{.{ .name = "evt", .value = event }});
             continue;
         };
-        const base = try draft.arena.print("thumbnail.notifications.type_configs.{s}.", .{target});
+        const base = try draft.arena.print("notifications.type_configs.{s}.", .{target});
         try draft.setBool(try concat(draft, base, "enabled"), true);
         const duration_key = try draft.arena.print("eventDurations\\{s}", .{event});
         try draft.setNumber(try concat(draft, base, "duration_ms"), intValue(ini.get("combatMessages", duration_key)) orelse default_duration);

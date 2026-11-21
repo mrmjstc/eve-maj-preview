@@ -210,20 +210,20 @@ pub fn renderSettings(config: *const config_mod.Config, subject: *const Subject)
             .color = subject.system_color,
             .bg_color = resolveTextBgColor(state_config, thumbnail_config.systemNameBgColor, forces_opaque_backgrounds),
         },
-        .notifications_bg_color = resolveTextBgColor(state_config, thumbnail_config.notifications.bg_color, forces_opaque_backgrounds),
+        .notifications_bg_color = resolveTextBgColor(state_config, thumbnail_config.alertText.bg_color, forces_opaque_backgrounds),
         .combat_incoming_bg_color = resolveTextBgColor(state_config, config.combat.incoming_bg_color, forces_opaque_backgrounds),
         .combat_outgoing_bg_color = resolveTextBgColor(state_config, config.combat.outgoing_bg_color, forces_opaque_backgrounds),
         .mining_bg_color = resolveTextBgColor(state_config, config.mining.bg_color, forces_opaque_backgrounds),
         .bounty_bg_color = resolveTextBgColor(state_config, config.bounty.bg_color, forces_opaque_backgrounds),
         .resources_bg_color = resolveTextBgColor(state_config, config.resources.bg_color, forces_opaque_backgrounds),
         .ping_bg_color = resolveTextBgColor(state_config, config.ping.bg_color, forces_opaque_backgrounds),
-        .show_notifications = show_text and thumbnail_config.notifications.enabled,
-        .notifications_position = thumbnail_config.notifications.position,
-        .notifications_offset_x = thumbnail_config.notifications.offset_x,
-        .notifications_offset_y = thumbnail_config.notifications.offset_y,
-        .notifications_font_name = thumbnail_config.notifications.font_name,
-        .notifications_font_size = scalePixels(thumbnail_config.notifications.font_size, dpi_scale),
-        .notifications_font_weight = thumbnail_config.notifications.font_weight,
+        .show_notifications = show_text and config.notifications.enabled,
+        .notifications_position = thumbnail_config.alertText.position,
+        .notifications_offset_x = thumbnail_config.alertText.offset_x,
+        .notifications_offset_y = thumbnail_config.alertText.offset_y,
+        .notifications_font_name = thumbnail_config.alertText.font_name,
+        .notifications_font_size = scalePixels(thumbnail_config.alertText.font_size, dpi_scale),
+        .notifications_font_weight = thumbnail_config.alertText.font_weight,
         .show_border = border.is_shown,
         .border_width = border.width,
         .border_color = border.color,
@@ -278,7 +278,7 @@ pub fn renderSettings(config: *const config_mod.Config, subject: *const Subject)
         .stats = stats.*,
     };
     if (settings.show_notifications) {
-        settings.notification_line_count = notificationLines(&settings.notification_lines, subject.notifications, subject.is_focused, thumbnail_config.notifications.color);
+        settings.notification_line_count = notificationLines(&settings.notification_lines, subject.notifications, subject.is_focused, config.notifications.color);
         settings.notification_revision = subject.notifications.revision;
     }
     return settings;

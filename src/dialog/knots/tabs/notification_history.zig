@@ -98,7 +98,7 @@ pub fn reset() void {
 
 pub fn show(context: *ui.Frame) !void {
     const profile = session.profile().ptr;
-    const are_alerts_on = profile.thumbnail.notifications.enabled;
+    const are_alerts_on = profile.notifications.enabled;
     if (!are_alerts_on) try widgets.noticeWithButton(context, .src(@src()), "Alert History requires alerts switched on in the Alert Options tab.", "Go to Alert Options", .notifications);
     const ref = session.profile().child("historyPanel");
 
@@ -422,7 +422,7 @@ fn sampleRow(context: *ui.Frame, profile: *const config.Config, sample: Sample, 
     try slot.close(context);
 
     try context.e(Text{ .selectable = false, .key = key.indexed(3), .content = sample.name, .style = try widgets.textStyle(arena, if (sample.is_new) look.new_name_color else look.name_color, look.name_size, .{ .is_bold = true }) });
-    const message_color = history_look.messageColor(&profile.thumbnail.notifications, sample.notification_type);
+    const message_color = history_look.messageColor(&profile.notifications, sample.notification_type);
     // Takes the room left and clips a long message, so the timestamp keeps its place.
     const middle_style = try arena.create(ui.Style);
     middle_style.* = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = look.scaled(history_look.TEXT_GAP), .overflow = .hidden };

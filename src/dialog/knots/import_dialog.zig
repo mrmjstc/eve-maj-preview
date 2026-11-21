@@ -32,7 +32,7 @@ const MAJ_GROUPS = [_]Group{
     .{ .label = "Display", .ids = &.{ "display", "thumbnail", "systemColors", "thumbnailSpaces", "snapping", "panelSnapping", "mining", "combat", "bounty", "resources", "ping" } },
     .{ .label = "Panels", .ids = &.{ "listView", "historyPanel", "mapPanel", "intelPanel", "intel" } },
     .{ .label = "Input", .ids = &.{ "hotkeys", "interaction", "exclusion", "closeAll" } },
-    .{ .label = "Alerts", .ids = &.{ "chatAlerts", "travel" } },
+    .{ .label = "Alerts", .ids = &.{ "notifications", "chatAlerts", "travel" } },
     .{ .label = "App", .ids = &.{ "chatlog", "accentColor" } },
 };
 

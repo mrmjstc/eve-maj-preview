@@ -325,7 +325,7 @@ pub const IntelPanelWindow = struct {
         const hovered_range: u8 = if (self.hovered_range) |range| @as(u8, @backingInt(range)) + 1 else 0;
         hasher.update(std.mem.asBytes(&hovered_range));
         panel_chrome.hashFonts(&hasher, intel_settings.fontName, intel_settings.fontSize, intel_settings.fontWeight);
-        history_rows.hashIntel(&hasher, intel_history, entries, intel_settings, &self.config.thumbnail.notifications);
+        history_rows.hashIntel(&hasher, intel_history, entries, intel_settings, &self.config.notifications);
         return hasher.final();
     }
 

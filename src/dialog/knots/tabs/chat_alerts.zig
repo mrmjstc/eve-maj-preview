@@ -21,7 +21,7 @@ var g_selected: selection.Selection = .{};
 
 pub fn show(context: *ui.Frame) !void {
     const profile = session.profile();
-    const is_enabled = profile.ptr.thumbnail.notifications.enabled;
+    const is_enabled = profile.ptr.notifications.enabled;
     if (!is_enabled) {
         try widgets.noticeWithButton(context, .src(@src()), "Chat Events requires alerts switched on in the Alert Options tab.", "Go to Alert Options", .notifications);
     } else if (!session.global().ptr.chatlog.enabled) {

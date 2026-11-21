@@ -497,7 +497,7 @@ pub const MapPanelWindow = struct {
         if (self.state.ping) |ping| {
             if (look.rippleAt(now_ms -| ping.started_ms)) |ripple| hashRipple(&hasher, ripple, halo_scale);
         }
-        if (self.intel_history) |intel_history| history_rows.hashIntel(&hasher, intel_history, intel_entries, &self.config.intelPanel, &self.config.thumbnail.notifications);
+        if (self.intel_history) |intel_history| history_rows.hashIntel(&hasher, intel_history, intel_entries, &self.config.intelPanel, &self.config.notifications);
         const age_bucket = now_ms / AGE_BUCKET_MS;
         hasher.update(std.mem.asBytes(&age_bucket));
         return hasher.final();

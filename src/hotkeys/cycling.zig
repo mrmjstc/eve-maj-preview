@@ -174,7 +174,7 @@ pub fn cycleExcluded(commands: *const Commands, is_forward: bool) ?win32.HWND {
 /// Forward visits the oldest notification first (FIFO).
 pub fn cycleNotified(commands: *const Commands, is_forward: bool) ?win32.HWND {
     slog.info("Cycle notified character hotkey pressed ({s})", .{directionName(is_forward)});
-    const retention_ms: u64 = @as(u64, commands.live().thumbnail.notifications.notified_cycle_retention_seconds) * std.time.ms_per_s;
+    const retention_ms: u64 = @as(u64, commands.live().notifications.notified_cycle_retention_seconds) * std.time.ms_per_s;
 
     var names = commands.notified_queue.namesWithin(commands.allocator, retention_ms) catch |err| {
         slog.err("Failed to build notified-character list: {}", .{err});

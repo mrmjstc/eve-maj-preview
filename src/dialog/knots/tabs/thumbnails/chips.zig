@@ -83,7 +83,8 @@ pub const CHIPS = [_]Chip{
     .{
         .label = "Alert",
         .sample = "Fleet Invite",
-        .section = .notifications,
+        .section = .alert_text,
+        .switch_section = .notifications,
         .fields = .snakeCase("", true),
         .show_field = "enabled",
         .needs_show_text = true,
@@ -229,7 +230,7 @@ pub const Part = enum(u8) {
 };
 
 /// The settings struct a chip's fields live in.
-pub const Section = enum { thumbnail, notifications, combat, mining, bounty, resources, ping };
+pub const Section = enum { thumbnail, notifications, alert_text, combat, mining, bounty, resources, ping };
 
 /// One row of a text's settings; a `hint` is a tooltip on the label.
 pub const Row = union(enum) {
@@ -254,6 +255,8 @@ pub const Chip = struct {
     /// What the stage draws for it.
     sample: []const u8,
     section: Section,
+    /// Where show_field and the text colour are kept, when not in `section`.
+    switch_section: ?Section = null,
     fields: Fields,
     /// The switch at the top of its settings.
     show_field: []const u8,
@@ -291,6 +294,7 @@ comptime {
 
 pub fn look(comptime chip: Chip) Look {
     const ref = refFor(chip.section);
+    const switch_ref = switchRef(chip);
     const thumbnail = &session.profile().ptr.thumbnail;
     const fields = chip.fields;
     const is_unique = if (chip.unique_field) |field| ref.get(field) else false;
@@ -300,7 +304,7 @@ pub fn look(comptime chip: Chip) Look {
         "Enable Text Overlays"
     else if (!is_enabled)
         enabled_label
-    else if (!ref.get(chip.show_field))
+    else if (!switch_ref.get(chip.show_field))
         chip.label
     else
         null;
@@ -311,7 +315,7 @@ pub fn look(comptime chip: Chip) Look {
         .font_size = ref.get(fields.font_size),
         .font_weight = ref.get(fields.font_weight),
         // Unique colours vary per character, so a sample stands in.
-        .color = if (is_unique) style.UNIQUE_SAMPLE else if (fields.color) |field| ref.get(field) else 0xFFFFFFFF,
+        .color = if (is_unique) style.UNIQUE_SAMPLE else if (fields.color) |field| switch_ref.get(field) else 0xFFFFFFFF,
         .background_color = ref.get(fields.bg_color),
         .off_switch = off_switch,
     };
@@ -343,9 +347,11 @@ pub fn showSettings(context: *ui.Frame, comptime chip: Chip, comptime index: usi
     // The search's index draws every tab with it, and they bind some of the same fields, so its rows need keys of their own.
     var ref = refFor(chip.section);
     ref.index = 1;
+    var switch_ref = switchRef(chip);
+    switch_ref.index = 1;
     const fields = chip.fields;
     const title = try panel_preview.openInspectorTitle(context, .str("knots.chip.title:" ++ chip.label), chip.label);
-    try bind.toggle(context, ref, chip.show_field, "");
+    try bind.toggle(context, switch_ref, chip.show_field, "");
     try title.close(context);
 
     if (chip.chatlog_notice) |notice| {
@@ -395,7 +401,7 @@ pub fn showSettings(context: *ui.Frame, comptime chip: Chip, comptime index: usi
                 const color_row = try widgets.openBinding(context, .str("knots.chip.color:" ++ chip.label), "Text Color");
                 const color_group = try widgets.openInlineGroup(context, .str("knots.chip.color_group:" ++ chip.label), !is_color_disabled);
                 // Comptime: a chip listing .font without a colour field fails to compile.
-                try bind.rgbBox(context, ref, fields.color.?);
+                try bind.rgbBox(context, switch_ref, fields.color.?);
                 try color_group.close(context);
                 try color_row.close(context);
                 if (chip.unique_field != null) try widgets.hintText(context, .str("knots.chip.hint:" ++ chip.label ++ ":color"), "Used while unique colors are off.");
@@ -417,6 +423,7 @@ fn SectionType(comptime section: Section) type {
     return switch (section) {
         .thumbnail => config.ThumbnailConfig,
         .notifications => config.NotificationConfig,
+        .alert_text => config.AlertTextStyle,
         .combat => config.CombatConfig,
         .mining => config.MiningConfig,
         .bounty => config.BountyConfig,
@@ -429,13 +436,18 @@ fn refFor(comptime section: Section) session.Ref(SectionType(section)) {
     const profile = session.profile();
     return switch (section) {
         .thumbnail => profile.child("thumbnail"),
-        .notifications => profile.child("thumbnail").child("notifications"),
+        .notifications => profile.child("notifications"),
+        .alert_text => profile.child("thumbnail").child("alertText"),
         .combat => profile.child("combat"),
         .mining => profile.child("mining"),
         .bounty => profile.child("bounty"),
         .resources => profile.child("resources"),
         .ping => profile.child("ping"),
     };
+}
+
+fn switchRef(comptime chip: Chip) session.Ref(SectionType(chip.switch_section orelse chip.section)) {
+    return refFor(chip.switch_section orelse chip.section);
 }
 
 fn copyStyleToOthers(comptime source_index: usize) void {

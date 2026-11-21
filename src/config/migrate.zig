@@ -18,7 +18,7 @@ const FOLLOWS_ACCENT_VERSION = 5;
 const LIST_RATES_VERSION = 6;
 /// Profiles from before this kept the client list's position in display.startX/startY, the unplaced thumbnails' start.
 pub const LIST_POSITION_VERSION = 7;
-/// Profiles from before this kept intel's pin settings in mapPanel, and the Intel Panel followed the History Panel's list settings.
+/// Profiles from before this kept alerts under thumbnail, intel's pins in mapPanel, and the Intel Panel's list settings in historyPanel.
 const REGROUP_VERSION = 8;
 
 /// The amber both colours defaulted to before FOLLOWS_ACCENT_VERSION.
@@ -36,6 +36,9 @@ const LIST_RATES = [_]struct { key: []const u8, overlay: []const u8 }{
     .{ .key = "showMiningRate", .overlay = "mining" },
     .{ .key = "showBountyRate", .overlay = "bounty" },
 };
+
+/// The thumbnail.notifications keys that only style the thumbnail's alert text, which go to thumbnail.alertText; the rest go to notifications.
+const ALERT_TEXT_KEYS = [_][]const u8{ "position", "offset_x", "offset_y", "font_name", "font_size", "font_weight", "bg_color" };
 
 /// The History Panel's settings the Intel Panel used to follow, copied so it keeps looking the same.
 const INTEL_LIST_KEYS = [_][]const u8{ "fontName", "fontSize", "fontWeight", "showTimestamp", "mergeEnabled", "mergeWindowSec" };
@@ -232,6 +235,7 @@ fn regroupFromViews(arena: std.mem.Allocator, root: *Value) !void {
     if (root.* != .object) return;
     const version = values.integerAt(root.*, "formatVersion") orelse 1;
     if (version >= REGROUP_VERSION) return;
+    try alertsFromThumbnail(arena, root);
     for (REGROUP_MOVES) |move| {
         const value = values.get(root.object.get(move.from), move.old) orelse continue;
         const section = try sectionObject(arena, root, move.to) orelse continue;
@@ -246,6 +250,29 @@ fn regroupFromViews(arena: std.mem.Allocator, root: *Value) !void {
         const value = values.get(history_panel, key) orelse continue;
         if (intel_panel.get(key) == null) try intel_panel.put(arena, key, value);
     }
+}
+
+/// Splits thumbnail.notifications into notifications and thumbnail.alertText; a key already in its new section wins.
+fn alertsFromThumbnail(arena: std.mem.Allocator, root: *Value) !void {
+    const old = values.get(root.object.get("thumbnail"), "notifications") orelse return;
+    if (old != .object) return;
+    const behaviour = try sectionObject(arena, root, "notifications") orelse return;
+    // Looked up after making notifications, which can move it.
+    const thumbnail = root.object.getPtr("thumbnail") orelse return;
+    const alert_text = try objectIn(arena, &thumbnail.object, "alertText") orelse return;
+    var it = old.object.iterator();
+    while (it.next()) |entry| {
+        const section = if (isAlertTextKey(entry.key_ptr.*)) alert_text else behaviour;
+        if (section.get(entry.key_ptr.*) == null) try section.put(arena, entry.key_ptr.*, entry.value_ptr.*);
+    }
+    _ = thumbnail.object.orderedRemove("notifications");
+}
+
+fn isAlertTextKey(key: []const u8) bool {
+    for (ALERT_TEXT_KEYS) |listed| {
+        if (std.mem.eql(u8, listed, key)) return true;
+    }
+    return false;
 }
 
 /// Moves the old fit region and not-logged-in space into thumbnailSpaces.
@@ -327,7 +354,12 @@ fn panelsFromDisplay(arena: std.mem.Allocator, root: *Value) !void {
 
 /// `name`'s object in `root`, made if missing; null if it holds something else.
 fn sectionObject(arena: std.mem.Allocator, root: *Value, name: []const u8) !?*std.json.ObjectMap {
-    const entry = try root.object.getOrPut(arena, name);
+    return objectIn(arena, &root.object, name);
+}
+
+/// `name`'s object in `parent`, made if missing; null if it holds something else.
+fn objectIn(arena: std.mem.Allocator, parent: *std.json.ObjectMap, name: []const u8) !?*std.json.ObjectMap {
+    const entry = try parent.getOrPut(arena, name);
     if (!entry.found_existing) entry.value_ptr.* = .{ .object = .empty };
     if (entry.value_ptr.* != .object) return null;
     return &entry.value_ptr.object;
@@ -507,6 +539,41 @@ test "a panel setting already in its section wins, and a current profile's displ
         \\{"formatVersion":4,"display":{"listViewColumns":3}}
     );
     try testing.expect(current.object.get("listView") == null);
+}
+
+test "an old profile's alerts split into notifications and thumbnail.alertText" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const root = try migrated(arena.allocator(),
+        \\{"formatVersion":7,"thumbnail":{"width":300,"notifications":{"enabled":false,"color":"0xFF112233","font_size":14,"bg_color":"0x80000000","tts_volume":40,"type_configs":{"FleetInvite":{"enabled":false}}}}}
+    );
+    const notifications = root.object.get("notifications").?;
+    try testing.expectEqual(false, values.boolAt(notifications, "enabled").?);
+    try testing.expectEqualStrings("0xFF112233", values.stringAt(notifications, "color").?);
+    try testing.expectEqual(@as(i64, 40), values.integerAt(notifications, "tts_volume").?);
+    try testing.expect(values.get(values.get(notifications, "type_configs"), "FleetInvite") != null);
+    try testing.expect(values.get(notifications, "font_size") == null);
+    const thumbnail = root.object.get("thumbnail").?;
+    const alert_text = values.get(thumbnail, "alertText").?;
+    try testing.expectEqual(@as(i64, 14), values.integerAt(alert_text, "font_size").?);
+    try testing.expectEqualStrings("0x80000000", values.stringAt(alert_text, "bg_color").?);
+    try testing.expect(values.get(alert_text, "color") == null);
+    try testing.expect(values.get(thumbnail, "notifications") == null);
+    try testing.expectEqual(@as(i64, 300), values.integerAt(thumbnail, "width").?);
+}
+
+test "an alert setting already in its new section wins, and a regrouped profile's thumbnail alerts are left alone" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const both = try migrated(arena.allocator(),
+        \\{"formatVersion":7,"thumbnail":{"notifications":{"tts_volume":40,"font_size":14},"alertText":{"font_size":20}},"notifications":{"tts_volume":70}}
+    );
+    try testing.expectEqual(@as(i64, 70), values.integerAt(both.object.get("notifications").?, "tts_volume").?);
+    try testing.expectEqual(@as(i64, 20), values.integerAt(values.get(both.object.get("thumbnail"), "alertText"), "font_size").?);
+    const current = try migrated(arena.allocator(),
+        \\{"formatVersion":8,"thumbnail":{"notifications":{"tts_volume":40}}}
+    );
+    try testing.expect(current.object.get("notifications") == null);
 }
 
 test "an old profile's intel pin settings move out of mapPanel, and a value already in intel wins" {

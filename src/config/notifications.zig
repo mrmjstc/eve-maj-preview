@@ -1,6 +1,5 @@
-//! Notification popups: shared appearance and each type's own settings.
+//! How alerts behave wherever they show: the master switch, speech, and each type's own settings.
 const std = @import("std");
-const types = @import("types.zig");
 const notification = @import("../notifications/notification.zig");
 const wire = @import("wire.zig");
 const ranges_mod = @import("ranges.zig");
@@ -170,15 +169,8 @@ pub const NotificationTypeConfigs = struct {
 
 pub const NotificationConfig = struct {
     enabled: bool = true,
-    position: types.TextPosition = .Center,
-    offset_x: i32 = 0,
-    offset_y: i32 = 0,
-    font_name: []const u8 = types.DEFAULT_FONT,
-    font_size: i32 = types.DEFAULT_FONT_SIZE,
-    font_weight: types.FontWeight = .Regular,
-    /// A type without a text colour of its own uses this.
+    /// A type without a text colour of its own uses this, on thumbnails and in the History and Intel panels.
     color: u32 = 0xFFFFFFFF,
-    bg_color: u32 = 0xE6000000,
 
     suppress_click_duration_ms: u32 = 2000,
 
@@ -194,9 +186,6 @@ pub const NotificationConfig = struct {
     type_configs: NotificationTypeConfigs = .{},
 
     pub const ranges = .{
-        .offset_x = ranges_mod.TEXT_OFFSET,
-        .offset_y = ranges_mod.TEXT_OFFSET,
-        .font_size = ranges_mod.FONT_SIZE,
         .suppress_click_duration_ms = .{ 0, 60000 },
         .tts_volume = ranges_mod.PERCENT,
         .tts_rate = .{ -10, 10 },

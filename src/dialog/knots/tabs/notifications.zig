@@ -31,7 +31,7 @@ pub fn show(context: *ui.Frame) !void {
 }
 
 fn system(context: *ui.Frame) !void {
-    const ref = session.profile().child("thumbnail").child("notifications");
+    const ref = session.profile().child("notifications");
     const section = try widgets.openSection(context, "Alerts", "Alerts for game events like fleet invites. Set each one up on Game Events.", &style.section);
     try bind.toggle(context, ref, "enabled", "Enable Alerts");
     // Its placement and font are edited from its text on the Appearance tab's thumbnail preview.
@@ -46,7 +46,7 @@ fn system(context: *ui.Frame) !void {
 
 fn speech(context: *ui.Frame) !void {
     const section = try widgets.openSection(context, "Text-to-Speech", "Reads alerts aloud. Turn it on per event with Speak Aloud on Game Events.", &style.section);
-    const ref = session.profile().child("thumbnail").child("notifications");
+    const ref = session.profile().child("notifications");
     // Speech only means something while alerts fire, so the section dims with them.
     const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
     try bind.toggle(context, ref, "tts_speak_character_name", "Prefix Spoken Alerts with the Character Name");

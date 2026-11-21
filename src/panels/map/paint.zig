@@ -354,7 +354,7 @@ pub const Painter = struct {
         const now = win32.Ticks.now();
         const intel_settings = &self.config.intelPanel;
         for (self.state.intel_rows[0..card.row_count], card.rows[0..card.row_count]) |row, box| {
-            history_rows.drawStacked(dc, text, entries, row, &self.config.thumbnail.notifications, .{
+            history_rows.drawStacked(dc, text, entries, row, &self.config.notifications, .{
                 .left = left,
                 .top = box.top + look.INTEL_PADDING_Y,
                 .right = right,

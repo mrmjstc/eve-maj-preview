@@ -51,7 +51,7 @@ pub const Context = struct {
 
 /// Shows `notification` on one client under its type's or chat rule's settings; History lists it unless it's switched off.
 pub fn notify(context: Context, client: *Client, notification: notification_mod.Notification) void {
-    const settings = &context.config.thumbnail.notifications;
+    const settings = &context.config.notifications;
     const type_config = alertConfig(context.config, notification);
     var text_buf: [notification_mod.TEXT_MAX]u8 = undefined;
     const text = notification_mod.text(notification, type_config.customText(), client.character_name, &text_buf);
@@ -113,7 +113,7 @@ pub fn listIntel(context: Context, intel_history: *history_mod.NotificationHisto
 
 /// Shows `notification` on every EVE client for a global user action; kept out of history, with its sound played once.
 pub fn notifyAll(context: Context, clients: []Client, notification: notification_mod.Notification) void {
-    const settings = &context.config.thumbnail.notifications;
+    const settings = &context.config.notifications;
     const type_config = settings.getTypeConfig(notification.notification_type);
     var text_buf: [notification_mod.TEXT_MAX]u8 = undefined;
     const text = notification_mod.text(notification, type_config.customText(), null, &text_buf);
@@ -157,7 +157,7 @@ pub fn showTest(context: Context, clients: []Client, notification_type: notifica
     }
 
     const speech = spoken orelse notification_mod.text(example, type_config.customText(), notification_mod.SAMPLE_CHARACTER, &spoken_buf);
-    alert_effects.playUnmuted(&context.config.thumbnail.notifications, type_config, speech, null, false);
+    alert_effects.playUnmuted(&context.config.notifications, type_config, speech, null, false);
 }
 
 /// Null when the text doesn't start with a system.
@@ -190,11 +190,11 @@ fn alertConfig(config: *const config_mod.Config, notification: notification_mod.
     if (notification.chat_rule_index) |index| {
         if (index < chat_rules.len) return chat_rules[index].alert;
     }
-    return config.thumbnail.notifications.getTypeConfig(notification.notification_type);
+    return config.notifications.getTypeConfig(notification.notification_type);
 }
 
 fn holdFor(context: Context, client: *const Client, notification_type: notification_mod.NotificationType, type_config: config_mod.NotificationTypeConfig, now: win32.Ticks) ?rules.Hold {
-    return rules.holdReason(&context.config.thumbnail.notifications, type_config, .{
+    return rules.holdReason(&context.config.notifications, type_config, .{
         .is_muted = context.config.isNotificationMuted(client.character_name),
         .is_focused = client.hwnd == context.active_source_hwnd,
         .since_click_ms = now.elapsedSince(client.last_click_time),

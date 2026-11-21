@@ -2,15 +2,35 @@
 const types = @import("types.zig");
 const wire = @import("wire.zig");
 const ranges_mod = @import("ranges.zig");
-const notifications_mod = @import("notifications.zig");
 const connections = @import("../map/connections.zig");
 const color = @import("../util/color.zig");
-
-const NotificationConfig = notifications_mod.NotificationConfig;
 
 const BORDER_WIDTH = .{ 1, 50 };
 /// How much of the border colour a blankDimsBorder fill keeps over black.
 const BLANK_BORDER_PERCENT = 25;
+
+/// Where and how a thumbnail draws its alerts; what they say and their colour are notifications'.
+pub const AlertTextStyle = struct {
+    position: types.TextPosition = .Center,
+    offset_x: i32 = 0,
+    offset_y: i32 = 0,
+    font_name: []const u8 = types.DEFAULT_FONT,
+    font_size: i32 = types.DEFAULT_FONT_SIZE,
+    font_weight: types.FontWeight = .Regular,
+    bg_color: u32 = 0xE6000000,
+
+    pub const ranges = .{
+        .offset_x = ranges_mod.TEXT_OFFSET,
+        .offset_y = ranges_mod.TEXT_OFFSET,
+        .font_size = ranges_mod.FONT_SIZE,
+    };
+
+    pub fn validate(self: *AlertTextStyle) void {
+        ranges_mod.clamp(AlertTextStyle, self);
+    }
+
+    pub const Wire = wire.Wire(AlertTextStyle);
+};
 
 /// Decided live by ThumbnailWindow.effectiveRenderState, never saved.
 pub const ThumbnailState = enum {
@@ -108,7 +128,7 @@ pub const ThumbnailConfig = struct {
     sessionTimerFontWeight: types.FontWeight = .Regular,
     exclusionOverlayStyle: types.ExclusionOverlayStyle = .X,
     exclusionOverlayColor: u32 = 0x33A62222,
-    notifications: NotificationConfig = .{},
+    alertText: AlertTextStyle = .{},
     thumbnailOpacity: u8 = 255,
     applyOpacityToOverlayTexts: bool = true,
     activeThumbnailHidden: bool = false,

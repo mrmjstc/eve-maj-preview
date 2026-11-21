@@ -57,12 +57,12 @@ var g_last_text_field: std.EnumArray(NotificationType, TextField) = .initFill(.c
 
 /// A notification type's own settings, by its index in NotificationType.
 pub fn typeRef(index: usize) TypeRef {
-    const configs = &session.profile().ptr.thumbnail.notifications.type_configs;
+    const configs = &session.profile().ptr.notifications.type_configs;
     return .{ .doc = .profile, .ptr = &configs.map.values[index], .layout = .none, .index = index };
 }
 
 pub fn show(context: *ui.Frame) !void {
-    const is_enabled = session.profile().ptr.thumbnail.notifications.enabled;
+    const is_enabled = session.profile().ptr.notifications.enabled;
     if (!is_enabled) {
         try widgets.noticeWithButton(context, .src(@src()), "Game Events requires alerts switched on in the Alert Options tab.", "Go to Alert Options", .notifications);
     } else if (!session.global().ptr.chatlog.enabled) {
@@ -439,7 +439,7 @@ fn customText(context: *ui.Frame, ref: TypeRef, notification_type: NotificationT
         try preview(context, notification_type, .custom_text_alt, ref.get("custom_text_alt"), alt_sample);
     }
     const shown_text = try widgets.openGroup(context, .src(@src()), ref.get("show_text"));
-    try bind.optionalColor(context, ref, "text_color", "Text Color", session.profile().ptr.thumbnail.notifications.color);
+    try bind.optionalColor(context, ref, "text_color", "Text Color", session.profile().ptr.notifications.color);
     try widgets.hintText(context, .src(@src()), "Reset uses the Alert text's color on the Appearance tab.");
     if (notification_type == .ChatIntel) {
         try bind.toggle(context, ref, "color_system_name", "Color System Name");

@@ -117,8 +117,8 @@ pub const Draft = struct {
             try self.setString(prefix ++ "FontName", name);
             try self.setNumber(prefix ++ "FontSize", size);
         }
-        try self.setString("thumbnail.notifications.font_name", name);
-        try self.setNumber("thumbnail.notifications.font_size", size);
+        try self.setString("thumbnail.alertText.font_name", name);
+        try self.setNumber("thumbnail.alertText.font_size", size);
     }
 
     /// The character's entry in the draft, added the first time it's named; valid until the next item is added.

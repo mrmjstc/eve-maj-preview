@@ -313,7 +313,7 @@ pub const HistoryPanelWindow = struct {
         hasher.update(std.mem.asBytes(&expanded_key));
         const hovered_row = self.hovered_row orelse std.math.maxInt(usize);
         hasher.update(std.mem.asBytes(&hovered_row));
-        history_rows.hashEntries(&hasher, entries, &self.config.thumbnail.notifications, history_settings.showTimestamp);
+        history_rows.hashEntries(&hasher, entries, &self.config.notifications, history_settings.showTimestamp);
         return hasher.final();
     }
 
@@ -449,7 +449,7 @@ pub const HistoryPanelWindow = struct {
             const height = history_rows.historyRowHeight(line_height, text.small_height, name_line_count);
             if (y + height > bottom) return;
             place.box = .{ .left = 0, .top = y, .right = panel_width, .bottom = y + height };
-            history_rows.drawHistoryRow(canvas, dc, text, entries, row, &self.config.thumbnail.notifications, place, now);
+            history_rows.drawHistoryRow(canvas, dc, text, entries, row, &self.config.notifications, place, now);
             self.row_spans[index] = .{ y, y + height };
             self.drawn_count = index + 1;
             y += height;
