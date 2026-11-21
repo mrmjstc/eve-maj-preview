@@ -419,7 +419,7 @@ The Client List (`viewMode: ClientList` or `ThumbnailsAndList`): one row per cli
 | `showNotifications` | bool | `true` | | |
 | `notificationColor` | colour | `0xFFFFFFFF` | | For types without `text_color`. |
 | `showIncomingDps`, `showOutgoingDps`, `showMiningRate`, `showBountyRate` | bool | `false` | | Independent of the thumbnails' overlay `enabled`. While any shows, every row keeps a second line for them under its name. |
-| `showIncomingPrefix`, `showOutgoingPrefix`, `showMiningPrefix`, `showBountyPrefix` | bool | `true` | | `IN:`, `OUT:`, `M:`, `ISK:`. |
+| `showIncomingPrefix`, `showOutgoingPrefix`, `showMiningPrefix`, `showBountyPrefix` | bool | `true` | | `IN: `, `OUT: `, `M: `, `ISK: `, as on the thumbnails. |
 | `incomingDpsColor` | colour | `0xFFE05A4E` | | |
 | `outgoingDpsColor` | colour | `0xFF68CA6B` | | |
 | `miningRateColor` | colour | `0xFF7E98E7` | | |

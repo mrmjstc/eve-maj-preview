@@ -5,7 +5,7 @@ const activity = @import("../config/activity.zig");
 const panels = @import("../config/panels.zig");
 const characters = @import("../config/characters.zig");
 const color = @import("../util/color.zig");
-const format = @import("../util/format.zig");
+const stat_text = @import("../activity/stat_text.zig");
 const strings = @import("../util/strings.zig");
 const palette = @import("palette.zig");
 const panel_header = @import("panel_header.zig");
@@ -402,16 +402,15 @@ pub fn statColor(list_settings: *const ListViewConfig, stat: Stat) u32 {
     };
 }
 
-/// E.g. "IN:412" or "M:1,284 m3/hr", as the thumbnails write it; overflow is ignored, since a truncated result is still drawn.
+/// As the thumbnails write it, through stat_text.
 pub fn writeStat(writer: *std.Io.Writer, reading: StatReading) void {
-    if (reading.has_prefix) writer.writeAll(prefix(reading.stat)) catch {};
-    var number_buf: [24]u8 = undefined;
-    switch (reading.stat) {
-        .incoming_dps, .outgoing_dps => writer.print("{d:.0}", .{reading.value}) catch {},
-        .mining_rate => writer.writeAll(format.formatMinedVolume(&number_buf, reading.value)) catch {},
-        .bounty_rate => writer.writeAll(format.formatIskAbbreviated(&number_buf, reading.value)) catch {},
-    }
-    if (reading.unit) |unit| writer.print(" {s}/{s}", .{ quantity(reading.stat), unit.suffix() }) catch {};
+    const kind: stat_text.Kind = switch (reading.stat) {
+        .incoming_dps => .incoming_dps,
+        .outgoing_dps => .outgoing_dps,
+        .mining_rate => .mining_volume,
+        .bounty_rate => .bounty_isk,
+    };
+    stat_text.write(writer, .{ .kind = kind, .value = reading.value, .has_prefix = reading.has_prefix, .unit = reading.unit });
 }
 
 /// A name at `font_size` with a stats line under it.
@@ -422,24 +421,6 @@ fn statsRowHeight(font_size: i32) i32 {
 /// About as tall as Windows lays out a line at `font_size` px.
 fn lineHeight(font_size: i32) i32 {
     return @divTrunc(font_size * 4 + 2, 3);
-}
-
-fn prefix(stat: Stat) []const u8 {
-    return switch (stat) {
-        .incoming_dps => "IN:",
-        .outgoing_dps => "OUT:",
-        .mining_rate => "M:",
-        .bounty_rate => "ISK:",
-    };
-}
-
-/// What a rate counts, before its period.
-fn quantity(stat: Stat) []const u8 {
-    return switch (stat) {
-        .incoming_dps, .outgoing_dps => "HP",
-        .mining_rate => "m3",
-        .bounty_rate => "ISK",
-    };
 }
 
 /// Reorders `rows` so clients in one system sit together, as systemGroupOrder ranks them.
@@ -499,30 +480,15 @@ test "countText is the bare number" {
     try testing.expectEqualStrings("12", countText(&buffer, 12));
 }
 
-test "writeStat adds the prefix and rounds by stat" {
-    var buffer: [STAT_TEXT_MAX]u8 = undefined;
-    var writer: std.Io.Writer = .fixed(&buffer);
-    writeStat(&writer, .{ .stat = .incoming_dps, .value = 412.4, .has_prefix = true });
-    try testing.expectEqualStrings("IN:412", writer.buffered());
-
-    writer = .fixed(&buffer);
-    writeStat(&writer, .{ .stat = .mining_rate, .value = 4.24, .has_prefix = true });
-    try testing.expectEqualStrings("M:4.2", writer.buffered());
-
-    writer = .fixed(&buffer);
-    writeStat(&writer, .{ .stat = .outgoing_dps, .value = 87, .has_prefix = false });
-    try testing.expectEqualStrings("87", writer.buffered());
-}
-
-test "writeStat groups mined volume and ends a rate with its period" {
+test "writeStat writes each of the list's stats as the thumbnails do" {
     var buffer: [STAT_TEXT_MAX]u8 = undefined;
     var writer: std.Io.Writer = .fixed(&buffer);
     writeStat(&writer, .{ .stat = .mining_rate, .value = 1284, .has_prefix = true, .unit = .hour });
-    try testing.expectEqualStrings("M:1,284 m3/hr", writer.buffered());
+    try testing.expectEqualStrings("M: 1,284 m3/hr", writer.buffered());
 
     writer = .fixed(&buffer);
-    writeStat(&writer, .{ .stat = .bounty_rate, .value = 200_000, .has_prefix = false, .unit = .minute });
-    try testing.expectEqualStrings("200k ISK/min", writer.buffered());
+    writeStat(&writer, .{ .stat = .bounty_rate, .value = 200_000, .has_prefix = true, .unit = .minute });
+    try testing.expectEqualStrings("ISK: 200k ISK/min", writer.buffered());
 }
 
 test "totalReadings sums the rows showing each stat, in the overlay's period" {
