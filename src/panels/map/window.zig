@@ -241,8 +241,8 @@ pub const MapPanelWindow = struct {
     }
 
     /// Stops the window being dragged smaller than the settings allow.
-    pub fn limitSize(_: *const MapPanelWindow, limits: *win32.MINMAXINFO) void {
-        const outer = PanelWindow.outerSize(config_mod.MapPanelConfig.MIN_WIDTH, config_mod.MapPanelConfig.MIN_HEIGHT);
+    pub fn limitSize(self: *const MapPanelWindow, limits: *win32.MINMAXINFO) void {
+        const outer = PanelWindow.outerSize(config_mod.MapPanelConfig.MIN_WIDTH, config_mod.MapPanelConfig.MIN_HEIGHT, win32.GetDpiForWindow(self.panel.hwnd));
         limits.ptMinTrackSize = .{ .x = outer.cx, .y = outer.cy };
     }
 

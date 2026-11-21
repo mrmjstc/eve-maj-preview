@@ -423,7 +423,7 @@ comptime {
     std.debug.assert(@offsetOf(MINIDUMP_EXCEPTION_INFORMATION, "ExceptionPointers") == 4);
     std.debug.assert(@sizeOf(MINIDUMP_EXCEPTION_INFORMATION) == 16);
 }
-// Stack traces for every thread, without memory contents.
+/// Stack traces for every thread, without memory contents.
 pub const MiniDumpNormal: DWORD = 0x00000000;
 pub extern "dbghelp" fn MiniDumpWriteDump(
     hProcess: HANDLE,
@@ -494,7 +494,7 @@ pub extern "user32" fn EnumWindows(lpEnumFunc: WNDENUMPROC, lParam: LPARAM) call
 pub extern "user32" fn EnumThreadWindows(dwThreadId: DWORD, lpfn: WNDENUMPROC, lParam: LPARAM) callconv(.c) BOOL;
 pub extern "user32" fn GetClientRect(hWnd: HWND, lpRect: *RECT) callconv(.c) BOOL;
 pub extern "user32" fn GetWindowRect(hWnd: HWND, lpRect: *RECT) callconv(.c) BOOL;
-pub extern "user32" fn AdjustWindowRectEx(lpRect: *RECT, dwStyle: DWORD, bMenu: BOOL, dwExStyle: DWORD) callconv(.c) BOOL;
+pub extern "user32" fn AdjustWindowRectExForDpi(lpRect: *RECT, dwStyle: DWORD, bMenu: BOOL, dwExStyle: DWORD, dpi: UINT) callconv(.c) BOOL;
 pub extern "user32" fn BeginPaint(hWnd: HWND, lpPaint: *PAINTSTRUCT) callconv(.c) ?HDC;
 pub extern "user32" fn EndPaint(hWnd: HWND, lpPaint: *const PAINTSTRUCT) callconv(.c) BOOL;
 pub extern "user32" fn InvalidateRect(hWnd: HWND, lpRect: ?*const RECT, bErase: BOOL) callconv(.c) BOOL;
@@ -582,7 +582,7 @@ pub const MAPVK_VK_TO_CHAR: UINT = 2;
 pub extern "user32" fn keybd_event(bVk: BYTE, bScan: BYTE, dwFlags: DWORD, dwExtraInfo: usize) callconv(.c) void;
 pub const KEYEVENTF_KEYUP: DWORD = 0x0002;
 
-// Only for focus_grant.zig's foreground-lock workaround; real hotkeys go through the low-level hooks.
+/// Only for focus_grant.zig's foreground-lock workaround; real hotkeys go through the low-level hooks.
 pub extern "user32" fn RegisterHotKey(hWnd: ?HWND, id: c_int, fsModifiers: UINT, vk: UINT) callconv(.c) BOOL;
 pub extern "user32" fn UnregisterHotKey(hWnd: ?HWND, id: c_int) callconv(.c) BOOL;
 
@@ -744,7 +744,7 @@ pub const IMAGE_ICON = 1;
 // Only the modifiers isCtrlPressed and its siblings read; virtual_keys.zig holds every key code and aliases these.
 pub const VK_SHIFT = 0x10;
 pub const VK_CONTROL = 0x11;
-// Alt
+/// Alt.
 pub const VK_MENU = 0x12;
 pub const VK_LWIN = 0x5B;
 pub const VK_RWIN = 0x5C;
@@ -1245,7 +1245,7 @@ pub extern "shcore" fn GetDpiForMonitor(hMonitor: HMONITOR, dpiType: c_int, dpiX
 pub extern "user32" fn GetDpiForWindow(hWnd: HWND) callconv(.c) UINT;
 pub extern "user32" fn GetDpiForSystem() callconv(.c) UINT;
 
-// Sentinel pointer value, not a real pointer, like HWND_TOPMOST/HWND_NOTOPMOST.
+/// Sentinel pointer value, not a real pointer, like HWND_TOPMOST/HWND_NOTOPMOST.
 pub const DPI_AWARENESS_CONTEXT = *opaque {};
 pub const DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2: DPI_AWARENESS_CONTEXT = @ptrFromInt(@as(usize, @bitCast(@as(isize, -4))));
 pub extern "user32" fn SetProcessDpiAwarenessContext(value: DPI_AWARENESS_CONTEXT) callconv(.c) BOOL;

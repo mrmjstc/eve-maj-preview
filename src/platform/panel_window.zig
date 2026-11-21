@@ -33,8 +33,9 @@ pub const PanelWindow = struct {
     /// A smaller font for headers and secondary text; ensureSmallFont makes it.
     small_font: gdi_overlay.CachedFont = .{},
     bitmap: ?gdi_overlay.OverlayBitmap = null,
-    /// The client size; -1 forces an overlay's resize on the first frame, and a normal window's owner keeps it from WM_SIZE.
+    /// The client width; -1 forces an overlay's resize on the first frame, and a normal window's owner keeps it from WM_SIZE.
     width: i32 = -1,
+    /// The client height; like `width`.
     height: i32 = -1,
     last_signature: ?u64 = null,
     /// Where the settings last put the panel, so a drag isn't undone by followPosition until the settings change.
@@ -66,7 +67,7 @@ pub const PanelWindow = struct {
     pub fn initNative(allocator: std.mem.Allocator, instance: win32.HINSTANCE, class_name: [*:0]const u8, title: [*:0]const u8, client_rect: win32.RECT, is_topmost: bool) !PanelWindow {
         const width = win32.rectWidth(client_rect);
         const height = win32.rectHeight(client_rect);
-        const outer = outerSize(width, height);
+        const outer = outerSize(width, height, win32.dpiForPoint(.{ .x = client_rect.left, .y = client_rect.top }));
         const hwnd = win32.CreateWindowExA(withTopmost(NATIVE_EX_STYLE, is_topmost), class_name, title, NATIVE_STYLE, client_rect.left, client_rect.top, outer.cx, outer.cy, null, null, instance, null) orelse return error.CreateWindowFailed;
         errdefer _ = win32.DestroyWindow(hwnd);
         try markAsPanel(hwnd);
@@ -90,10 +91,10 @@ pub const PanelWindow = struct {
         };
     }
 
-    /// A normal window's full size for a client area of `width`×`height`.
-    pub fn outerSize(width: i32, height: i32) win32.SIZE {
+    /// A normal window's full size for a client area of `width`×`height`, its frame drawn at `dpi`.
+    pub fn outerSize(width: i32, height: i32, dpi: u32) win32.SIZE {
         var rect: win32.RECT = .{ .left = 0, .top = 0, .right = width, .bottom = height };
-        if (!win32.toBool(win32.AdjustWindowRectEx(&rect, NATIVE_STYLE, win32.FALSE, NATIVE_EX_STYLE))) slog.warn("Failed to measure the window's frame: error {d}", .{win32.GetLastError()});
+        if (!win32.toBool(win32.AdjustWindowRectExForDpi(&rect, NATIVE_STYLE, win32.FALSE, NATIVE_EX_STYLE, dpi))) slog.warn("Failed to measure the window's frame: error {d}", .{win32.GetLastError()});
         return .{ .cx = win32.rectWidth(rect), .cy = win32.rectHeight(rect) };
     }
 
@@ -111,7 +112,7 @@ pub const PanelWindow = struct {
         if (native.settled.cx == width and native.settled.cy == height) return;
         if (win32.isWindowZoomed(self.hwnd)) return;
         native.settled = .{ .cx = width, .cy = height };
-        const outer = outerSize(width, height);
+        const outer = outerSize(width, height, win32.GetDpiForWindow(self.hwnd));
         _ = win32.SetWindowPos(self.hwnd, win32.HWND_NOTOPMOST, 0, 0, outer.cx, outer.cy, win32.SWP_NOMOVE | win32.SWP_NOZORDER | win32.SWP_NOACTIVATE);
     }
 
