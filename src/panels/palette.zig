@@ -1,4 +1,4 @@
-//! The configuration window's colours, sizes and fonts, for panels drawn in GDI to match it; mirrors dialog/knots/style.zig.
+//! The colours, sizes and fonts the GDI panels share with the configuration window, whose dialog/knots/style.zig builds on them.
 const std = @import("std");
 const fonts = @import("../platform/fonts.zig");
 const types = @import("../config/types.zig");

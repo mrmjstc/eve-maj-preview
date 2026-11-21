@@ -1,32 +1,36 @@
 //! The configuration window's look: colours, sizes and every component's style.
+const std = @import("std");
 const ui = @import("ui");
 const fonts = @import("../../platform/fonts.zig");
+const palette = @import("../../panels/palette.zig");
+const color_convert = @import("color_convert.zig");
 const glyphs = @import("glyphs.zig");
 
 const Color = ui.Color;
 const Style = ui.Style;
 
+// The colours the GDI panels share come from palette, so the two can't drift apart.
 /// The window's frame (sidebar, header, footer, title bar): the darkest layer.
-pub const CHROME = color("#0b0c0d");
+pub const CHROME = color_convert.fromArgb(palette.CHROME);
 /// The content area behind the cards.
-pub const BG = color("#111214");
+pub const BG = color_convert.fromArgb(palette.BG);
 /// Cards, modals and popovers: a step lighter than BG, so they stand out by shade rather than outline.
-pub const PANEL = color("#1e1f22");
-pub const SURFACE = color("#2a2b2e");
+pub const PANEL = color_convert.fromArgb(palette.PANEL);
+pub const SURFACE = color_convert.fromArgb(palette.SURFACE);
 /// A lit row: between PANEL and SURFACE, so the controls on it still stand out.
-pub const ROW_HOVER = color("#242528");
-pub const SURFACE_ALT = color("#2f3033");
-pub const BORDER = color("#414245");
+pub const ROW_HOVER = color_convert.fromArgb(palette.ROW_HOVER);
+pub const SURFACE_ALT = color_convert.fromArgb(palette.SURFACE_ALT);
+pub const BORDER = color_convert.fromArgb(palette.BORDER);
 /// A card's outline: stronger than DIVIDER, so a card's edge outweighs the lines between its rows.
-pub const CARD_BORDER = color("#343538");
+pub const CARD_BORDER = color_convert.fromArgb(palette.CARD_BORDER);
 /// Between rows inside a section: quieter than BORDER.
-pub const DIVIDER = color("#2f3033");
-pub const BORDER_STRONG = color("#6b6e75");
-pub const TEXT = color("#e8e6e1");
-pub const TEXT_SECONDARY = color("#c4c0b6");
-pub const MUTED = color("#96948f");
+pub const DIVIDER = color_convert.fromArgb(palette.DIVIDER);
+pub const BORDER_STRONG = color_convert.fromArgb(palette.BORDER_STRONG);
+pub const TEXT = color_convert.fromArgb(palette.TEXT);
+pub const TEXT_SECONDARY = color_convert.fromArgb(palette.TEXT_SECONDARY);
+pub const MUTED = color_convert.fromArgb(palette.MUTED);
 /// Hints and intros: lighter than MUTED so small text stays readable, still a step under labels.
-pub const HINT_TEXT = color("#aeaca7");
+pub const HINT_TEXT = color_convert.fromArgb(palette.HINT_TEXT);
 pub const DESTRUCTIVE = color("#d3673f");
 pub const DESTRUCTIVE_FILL = color("#ad4527");
 pub const DESTRUCTIVE_FILL_HOVER = color("#bb4f30");
@@ -35,11 +39,11 @@ pub const WHITE = color("#ffffff");
 pub const INK_DARK = color("#1a1408");
 pub const INK_LIGHT = color("#f5f0e6");
 pub const SUCCESS = color("#5ec98f");
-pub const ERROR = color("#e05a4e");
+pub const ERROR = color_convert.fromArgb(palette.ERROR);
 /// Behind a hotkey whose combo conflicts.
-pub const ERROR_TINT = color("#2a1614");
-/// Warnings, yellower than the default accent so they never read as a control; mirrored by palette.CAUTION.
-pub const CAUTION = color("#e1c747");
+pub const ERROR_TINT = color_convert.fromArgb(palette.ERROR_TINT);
+/// Warnings, yellower than the default accent so they never read as a control.
+pub const CAUTION = color_convert.fromArgb(palette.CAUTION);
 pub const PURPLE = color("#a988d1");
 pub const SKY = color("#7fb3d9");
 
@@ -85,8 +89,16 @@ pub const FONT_SEMIBOLD_DATA = fonts.GEIST_SEMIBOLD_DATA;
 pub const CONTROL_HEIGHT = 28;
 /// The theme's `.md` corner radius.
 const RADIUS = 6;
-/// A tag's, swatch's or small mark's corners, mirrored by palette.SMALL_RADIUS.
+/// A tag's, swatch's or small mark's corners.
 const SMALL_RADIUS = 3;
+
+// The GDI panels' palette restates these in its own types, so they're checked rather than shared.
+comptime {
+    std.debug.assert(CONTROL_HEIGHT == palette.CONTROL_HEIGHT);
+    std.debug.assert(RADIUS == palette.RADIUS);
+    std.debug.assert(SMALL_RADIUS == palette.SMALL_RADIUS);
+    std.debug.assert(MENU_WIDTH == palette.MENU_WIDTH);
+}
 /// How far a section's text and controls sit in from its card's sides.
 const SECTION_EDGE = 12;
 /// Between sections: wider than a section's own gaps, so the space does the grouping.
