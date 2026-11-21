@@ -35,11 +35,9 @@ All relative to the exe folder (`main.zig` sets the cwd there).
 3. `--protocol`: forward to the running instance over `WM_COPYDATA` and exit. Done before the single-instance check.
 4. Claim the `Global\EVE-Maj-Preview-SingleInstance` mutex. If taken, send `evemajpreview://config` to the running instance and exit.
 5. Sweep leftover temp files, skipped if the working directory couldn't be set to the exe's folder. Load bundled fonts and start the hotkey hook thread, then `GlobalConfig` (applied at once by `app.applyGlobalSettings`: log level, debug console, Run key, protocol handler, as again after a Save), `CharacterIds` and the profile into a `ProfileStore`, which `App.init` takes as `App.Loaded`; then set `app.g_app`, start the dialog host and load the language.
-6. Build subsystems in dependency order: notification center → `Scout`'s event hooks → `ThumbnailSet` → `ChatlogMonitor` (worker stopped) → activity `Trackers` → start the chatlog worker.
-7. Create the hidden timer window, focus hook, tray icon, update check thread.
-8. Scan windows, populate thumbnails, add characters to the chatlog monitor.
-9. Create the `HotkeyManager`, install the focus grant, start the tick timer.
-10. Run the `GetMessageA` loop.
+6. Create the hidden timer window and hand it to `App.start`, which starts the notification center, Map Panel, `Scout`'s event hooks, focus hook and tray icon, then runs `restartSubsystems` from nothing running: scan windows, build the `ThumbnailSet`, create and wire the `ChatlogMonitor` and `Trackers`, start the worker, create the `HotkeyManager`, start the tick timer. It then queues the character-ID backfill and moves clients if `moveOnStartup` asks.
+7. Install the focus grant, start the update check thread.
+8. Run the `GetMessageA` loop.
 
 `App.deinit` tears down everything `App` owns in one sequence, each part before what it borrows, and copes with a startup that failed partway. `main.zig`'s own `defer`s cover only process-wide modules: the hook thread outlives `App.deinit`, which unregisters hooks through it, and the dialog host goes before it, while the store lives. `app.g_app` is cleared after `App.deinit`.
 
@@ -69,7 +67,7 @@ Reload entry points:
 | `saveSettings` (`DIALOG_HOST.save`) | Dialog Save | Commits the profile, `restartSubsystems` with the same store adopting a copy of the global draft, then writes and applies the global settings |
 | `onLiveProfileEdited` (`DIALOG_HOST.run`) | Every dialog edit | Restyle/reflow; rebuilds the thumbnail set only on a view-mode change |
 
-`restartSubsystems` runs the steps from `control/restart_plan.zig` (pure, tested): which subsystems are kept, paused or rebuilt, in what order, and what to bring back up if a step fails. A kept chatlog worker is paused until the new trackers are wired in and it has the profile's chat-alert rules (`apply_monitor_profile`). A new store is built before anything is torn down, so a load failure leaves the running profile intact.
+`restartSubsystems` runs the steps from `control/restart_plan.zig` (pure, tested), at startup as on a reload: which subsystems are kept, paused or rebuilt, in what order, and what to bring back up if a step fails. A kept chatlog worker is paused until the new trackers are wired in and it has the profile's chat-alert rules (`apply_monitor_profile`). A new store is built before anything is torn down, so a load failure leaves the running profile intact.
 
 ## Main thread messages
 

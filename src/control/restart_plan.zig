@@ -1,4 +1,4 @@
-//! The order a reload tears down and rebuilds what's set up from the profile, decided from facts about the running app; no I/O.
+//! The order startup builds, and a reload tears down and rebuilds, what's set up from the profile, decided from facts about the app; no I/O.
 const std = @import("std");
 
 /// Every step at most once.
@@ -138,6 +138,25 @@ fn expectBefore(plan: *const Plan, first: Step, second: Step) !void {
     const first_index = plan.indexOf(first) orelse return error.TestExpectedStep;
     const second_index = plan.indexOf(second) orelse return error.TestExpectedStep;
     try testing.expect(first_index < second_index);
+}
+
+test "startup from nothing builds every subsystem and stops none" {
+    const plan: Plan = .init(.{
+        .is_profile_replaced = false,
+        .has_thumbnail_set = false,
+        .has_monitor = false,
+        .is_monitor_on_next_folders = false,
+        .is_chatlog_enabled_next = true,
+        .has_global_draft = false,
+    });
+    try expectBefore(&plan, .rescan_windows, .build_thumbnail_set);
+    try expectBefore(&plan, .create_monitor, .start_monitor);
+    try expectBefore(&plan, .start_monitor, .add_monitor_characters);
+    try expectBefore(&plan, .create_hotkey_manager, .set_tick_interval);
+    try testing.expect(!has(&plan, .pause_monitor));
+    try testing.expect(!has(&plan, .destroy_monitor));
+    try testing.expect(!has(&plan, .install_profile));
+    try testing.expect(!has(&plan, .clear_log_readings));
 }
 
 test "a Save on the same log folders pauses the monitor and keeps the thumbnail set" {

@@ -75,14 +75,14 @@ pub const Loaded = struct {
     store: config.ProfileStore,
 };
 
-/// main.zig starts its subsystems in dependency order, and deinit tears them down; main thread only.
+/// start brings its subsystems up and deinit tears them down; main thread only.
 pub const App = struct {
     allocator: std.mem.Allocator,
     io: std.Io,
     store: config.ProfileStore,
     global_settings: config.GlobalConfig,
     character_ids: CharacterIds,
-    /// Its WinEvent hooks find it once main.zig calls listenForEvents, after which App mustn't move.
+    /// Its WinEvent hooks find it once start calls listenForEvents, after which App mustn't move.
     scout: scout_mod.Scout,
     /// Synced from Scout each tick; kept across a thumbnail set rebuild and a profile switch.
     roster: roster_mod.Roster,
@@ -143,6 +143,27 @@ pub const App = struct {
             .auto_colors = .init(allocator, io),
             .map_panel = .{ .host = PANEL_HOST },
         };
+    }
+
+    /// Everything main.zig doesn't set up itself, built by the restart plan from nothing running; once, before the message loop.
+    pub fn start(self: *App, timer_hwnd: win32.HWND) !void {
+        self.timer_hwnd = timer_hwnd;
+        self.store.live.logSettings();
+        self.notifications.start(self.panelContext(), PANEL_HOST, &self.intel.history);
+        self.map_panel.start(self.panelContext(), &self.intel, &self.global_settings);
+        self.scout.listenForEvents();
+        self.focus.start();
+        self.tray_icon = try tray.TrayIcon.init(self.allocator, timer_hwnd);
+        try self.restartSubsystems(timer_hwnd, null, null);
+        if (self.chatlog_monitor) |monitor| {
+            for (self.store.live.characters.items) |character_config| {
+                monitor.resolveCharacterId(character_config.name) catch |err| {
+                    slog.warn("Failed to queue ID backfill for '{s}': {}", .{ character_config.name, err });
+                };
+            }
+        }
+        // Only the tick's syncs move and minimize clients that joined, so these, already running, stay put unless asked.
+        if (self.store.live.autoMovePosition.moveOnStartup) self.moveClientsToSavedPositions();
     }
 
     /// Safe after a startup that failed partway, but only once background threads have finished.
@@ -449,13 +470,13 @@ pub const App = struct {
         }
 
         const now_seconds = std.Io.Timestamp.now(self.io, .real).toSeconds();
-        for (findings.session_starts.items) |start| {
-            const hwnd = self.scout.getHwndByName(start.character_name) orelse {
-                slog.debug("Dropped session start for '{s}': no window", .{start.character_name});
+        for (findings.session_starts.items) |session_start| {
+            const hwnd = self.scout.getHwndByName(session_start.character_name) orelse {
+                slog.debug("Dropped session start for '{s}': no window", .{session_start.character_name});
                 continue;
             };
             // The roster takes the backdated time from Scout on its next sync.
-            _ = self.scout.backdateLogin(hwnd, start.started_at, now_seconds);
+            _ = self.scout.backdateLogin(hwnd, session_start.started_at, now_seconds);
         }
     }
 
@@ -468,27 +489,27 @@ pub const App = struct {
         }
     }
 
-    pub fn tickIntervalFor(self: *const App, window_count: usize) win32.UINT {
+    fn tickIntervalFor(self: *const App, window_count: usize) win32.UINT {
         const is_dialog_open = if (self.dialog) |dialog| dialog.is_open() else false;
         if (window_count == 0 and !is_dialog_open) return IDLE_TICK_INTERVAL_MS;
         return self.store.saved.timer.scanIntervalMs;
     }
 
     /// Mirrors `windows` into the roster, and takes the foreground window as its active one.
-    pub fn syncRoster(self: *App, windows: []const scout_mod.EveWindow) void {
+    fn syncRoster(self: *App, windows: []const scout_mod.EveWindow) void {
         self.roster.sync(windows);
         self.roster.refreshConfig(&self.store.live, &self.auto_colors, .stale);
         self.roster.setActive(win32.GetForegroundWindow());
     }
 
     /// Replaces the running timer in place; false on failure.
-    pub fn setTickInterval(self: *App, timer_hwnd: win32.HWND, interval_ms: win32.UINT) bool {
+    fn setTickInterval(self: *App, timer_hwnd: win32.HWND, interval_ms: win32.UINT) bool {
         if (win32.SetTimer(timer_hwnd, TICK_TIMER_ID, interval_ms, null) == 0) return false;
         self.tick_interval_ms = interval_ms;
         return true;
     }
 
-    pub fn createThumbnailSet(self: *App) !*ThumbnailSet {
+    fn createThumbnailSet(self: *App) !*ThumbnailSet {
         const new_set = try self.allocator.create(ThumbnailSet);
         errdefer self.allocator.destroy(new_set);
         new_set.* = try ThumbnailSet.init(self.allocator, .{
@@ -539,7 +560,7 @@ pub const App = struct {
     }
 
     /// A hotkey registration failure is logged, not fatal.
-    pub fn createHotkeyManager(self: *App, timer_hwnd: win32.HWND) !void {
+    fn createHotkeyManager(self: *App, timer_hwnd: win32.HWND) !void {
         // Before anything can fail, so group cycling always matches the saved groups.
         self.cycle.reset(self.allocator, self.store.saved.hotkeyGroups.items.len);
         const manager = try self.allocator.create(HotkeyManager);
@@ -605,7 +626,7 @@ pub const App = struct {
     }
 
     /// Created with its worker thread stopped, so the trackers can be wired in before it runs.
-    pub fn createChatlogMonitor(self: *App) !*chatlog.ChatlogMonitor {
+    fn createChatlogMonitor(self: *App) !*chatlog.ChatlogMonitor {
         return chatlog.ChatlogMonitor.init(self.allocator, self.io, &self.global_settings.chatlog, &self.global_settings, &self.character_ids);
     }
 
@@ -660,7 +681,7 @@ pub const App = struct {
     }
 
     /// Every EVE client to its saved window position, as on startup or a profile switch when the settings ask.
-    pub fn moveClientsToSavedPositions(self: *App) void {
+    fn moveClientsToSavedPositions(self: *App) void {
         for (self.scout.getWindows()) |eve_window| {
             if (eve_window.is_eve_client) self.auto_move.moveToSavedPosition(&self.store.live, eve_window.hwnd, eve_window.character_name);
         }
@@ -683,7 +704,7 @@ pub const App = struct {
         self.auto_move.verify(live);
     }
 
-    /// Runs control/restart_plan.zig's steps; takes ownership of `replacement`, which becomes the running store.
+    /// Runs control/restart_plan.zig's steps, at startup and on a reload; takes ownership of `replacement`, which becomes the running store.
     fn restartSubsystems(self: *App, timer_hwnd: win32.HWND, replacement: ?config.ProfileStore, global_draft: ?*config.GlobalConfig) !void {
         var pending = replacement;
         errdefer if (pending) |*store| store.deinit();
@@ -729,6 +750,7 @@ pub const App = struct {
             },
             .adopt_global_draft => if (restart.global_draft) |draft| self.global_settings.adopt(draft),
             .destroy_hotkey_manager => {
+                if (self.hotkey_manager == null) return;
                 self.destroyHotkeyManager();
                 slog.debug("Cleaned up hotkey manager", .{});
             },
@@ -755,7 +777,7 @@ pub const App = struct {
                     slog.err("Failed to create thumbnail set: {}", .{err});
                     return err;
                 };
-                slog.debug("Recreated {} thumbnail(s)", .{restart.eve_windows.len});
+                slog.debug("Built {} thumbnail(s)", .{restart.eve_windows.len});
             },
             .populate_thumbnail_set => if (self.thumbnail_set) |thumbnail_set| thumbnail_set.populate(restart.eve_windows),
             .clear_log_readings => {
@@ -775,18 +797,23 @@ pub const App = struct {
             .start_monitor => if (self.chatlog_monitor) |monitor| startChatlogWorker(monitor),
             .add_monitor_characters => if (self.chatlog_monitor) |monitor| {
                 addChatlogCharacters(monitor, restart.eve_windows);
-                slog.info("Reinitialized chatlog monitoring", .{});
+                slog.info("Started chatlog monitoring", .{});
             },
             .create_hotkey_manager => {
                 self.createHotkeyManager(restart.timer_hwnd) catch |err| {
                     slog.err("Failed to create hotkey manager: {}", .{err});
                     return err;
                 };
-                slog.debug("Reinitialized hotkey manager", .{});
+                slog.debug("Created hotkey manager", .{});
             },
             .set_tick_interval => {
                 const new_interval = self.tickIntervalFor(restart.eve_windows.len);
                 if (!self.setTickInterval(restart.timer_hwnd, new_interval)) {
+                    // At startup there's no timer to keep, and without one nothing runs.
+                    if (self.tick_interval_ms == 0) {
+                        slog.err("Failed to create the tick timer", .{});
+                        return error.SetTimerFailed;
+                    }
                     slog.warn("Failed to update the timer interval to {} ms, keeping {} ms", .{ new_interval, self.tick_interval_ms });
                     return;
                 }
@@ -824,7 +851,7 @@ pub fn applyGlobalSettings(settings: *const config.GlobalConfig) void {
     if (settings.autoRegisterProtocol) registry.ensureRegistered();
 }
 
-pub fn addChatlogCharacters(monitor: *chatlog.ChatlogMonitor, windows: []const scout_mod.EveWindow) void {
+fn addChatlogCharacters(monitor: *chatlog.ChatlogMonitor, windows: []const scout_mod.EveWindow) void {
     for (windows) |eve_window| {
         if (!eve_window.is_eve_client) continue;
         monitor.addCharacter(eve_window.character_name) catch |err| {
@@ -833,7 +860,7 @@ pub fn addChatlogCharacters(monitor: *chatlog.ChatlogMonitor, windows: []const s
     }
 }
 
-pub fn startChatlogWorker(monitor: *chatlog.ChatlogMonitor) void {
+fn startChatlogWorker(monitor: *chatlog.ChatlogMonitor) void {
     monitor.startWorkerThread() catch |err| {
         slog.warn("Failed to start chatlog worker thread: {}", .{err});
     };

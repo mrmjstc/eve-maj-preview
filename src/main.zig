@@ -1,4 +1,4 @@
-//! Entry point: process setup, the single-instance check, building the App in dependency order, and the hidden timer window whose messages drive it.
+//! Entry point: process setup, the single-instance check, loading and starting the App, and the hidden timer window whose messages drive it.
 const std = @import("std");
 const build_options = @import("build_options");
 const win32 = @import("platform/win32.zig");
@@ -10,14 +10,12 @@ const arguments = @import("arguments.zig");
 const app_mod = @import("app.zig");
 const config = @import("config.zig");
 const focus = @import("control/focus.zig");
-const chatlog = @import("chatlog.zig");
 const character_ids_mod = @import("chatlog/character_ids.zig");
 const keyboard_hook = @import("hotkeys/keyboard_hook.zig");
 const hooks = @import("hotkeys/hooks.zig");
 const hook_thread = @import("hotkeys/hook_thread.zig");
 const tts = @import("notifications/tts.zig");
 const sound = @import("notifications/sound.zig");
-const tray = @import("tray.zig");
 const ipc = @import("protocol/ipc.zig");
 const run = @import("protocol/run.zig");
 const url = @import("protocol/url.zig");
@@ -118,63 +116,15 @@ fn mainImpl(init: std.process.Init) !void {
     // Before anything starts a thread, so it runs before the deinits of the state they use, even on a failed startup.
     defer waitForBackgroundThreads(&app, init.io);
 
-    // Not profile_name: loadProfile() may have fallen back to default, and this heals global settings to match.
-    app.global_settings.updateLastUsed(init.io, app.store.live.profile_name) catch |err| {
-        slog.warn("Failed to record '{s}' as the last used profile: {}", .{ app.store.live.profile_name, err });
-    };
-
-    app.store.live.logSettings();
-
-    app.notifications.start(app.panelContext(), app_mod.PANEL_HOST, &app.intel.history);
-    app.map_panel.start(app.panelContext(), &app.intel, &app.global_settings);
-
     defer tts.shutdown();
     defer sound.shutdown();
 
-    app.scout.listenForEvents();
-
-    const thumbnail_set = try app.createThumbnailSet();
-
-    if (app.global_settings.chatlog.enabled) {
-        app.chatlog_monitor = try app.createChatlogMonitor();
-    } else {
-        slog.info("Chatlog monitoring disabled", .{});
-    }
-
-    app.trackers.setup(&app.store.saved, app.chatlog_monitor);
-    if (app.chatlog_monitor) |monitor| monitor.applyProfile(&app.store.saved);
-
-    // Once the trackers and alert rules are in, so the worker never sees them unset.
-    if (app.chatlog_monitor) |monitor| startChatlogMonitoring(monitor, app.store.live.characters.items);
-
     const timer_hwnd = try createTimerWindow();
-    app.timer_hwnd = timer_hwnd;
-
-    app.focus.start();
-
-    app.tray_icon = try tray.TrayIcon.init(allocator, timer_hwnd);
-
-    if (app.global_settings.disableUpdateChecks) slog.info("Update checks are disabled", .{}) else startUpdateCheck(allocator, init.io);
-
-    try app.scout.scanForEveWindows(app.store.saved.windowFilters.items);
-
-    // Thumbnails first, since they need no I/O; the chatlog monitor's slower log discovery follows.
-    const eve_windows = app.scout.getWindows();
-    app.syncRoster(eve_windows);
-    // Only the tick's syncs move and minimize clients that joined, so these, already running, stay put unless asked.
-    if (app.store.live.autoMovePosition.moveOnStartup) app.moveClientsToSavedPositions();
-    thumbnail_set.populate(eve_windows);
-
-    if (app.chatlog_monitor) |monitor| app_mod.addChatlogCharacters(monitor, eve_windows);
-
-    try app.createHotkeyManager(timer_hwnd);
+    try app.start(timer_hwnd);
     focus_grant.install(timer_hwnd);
     defer focus_grant.uninstall();
 
-    if (!app.setTickInterval(timer_hwnd, app.tickIntervalFor(eve_windows.len))) {
-        slog.err("Failed to create timer", .{});
-        return error.SetTimerFailed;
-    }
+    if (app.global_settings.disableUpdateChecks) slog.info("Update checks are disabled", .{}) else startUpdateCheck(allocator, init.io);
 
     if (parsed.should_open_config) knots_host.open();
 
@@ -243,16 +193,6 @@ fn createTimerWindow() !win32.HWND {
         slog.warn("Failed to let commands through to an elevated instance, so protocol links and second launches may not reach it: error {d}", .{win32.GetLastError()});
     }
     return hwnd;
-}
-
-fn startChatlogMonitoring(monitor: *chatlog.ChatlogMonitor, characters: []const config.CharacterConfig) void {
-    app_mod.startChatlogWorker(monitor);
-    slog.debug("Chatlog monitoring enabled", .{});
-    for (characters) |character_config| {
-        monitor.resolveCharacterId(character_config.name) catch |err| {
-            slog.warn("Failed to queue ID backfill for '{s}': {}", .{ character_config.name, err });
-        };
-    }
 }
 
 /// Past the wait, ending the process is safer than tearing down what a thread still uses.
