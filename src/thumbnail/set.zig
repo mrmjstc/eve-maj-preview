@@ -546,7 +546,6 @@ pub const ThumbnailSet = struct {
             .hwnd = handles.hwnd,
             .text_hwnd = handles.text_hwnd,
             .source_hwnd = eve_window.hwnd,
-            .is_eve_client = eve_window.is_eve_client,
             .character_name = strings.character_name,
             .system_name = strings.system_name,
             .cached_group_badge_label = strings.group_badge_label,

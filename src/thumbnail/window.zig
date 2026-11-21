@@ -1,4 +1,4 @@
-//! One tracked EVE client: its record, and the two windows (DWM thumbnail or blank fill, plus layered text/border overlay) that show it.
+//! The two windows that show one client: its DWM thumbnail or a blank fill, and the layered text and border overlay over it.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const gdi_overlay = @import("../platform/gdi_overlay.zig");
@@ -30,8 +30,8 @@ pub const ThumbnailWindow = struct {
     text_hwnd: win32.HWND,
     /// Null while the thumbnail is blank; only applyLivePreview and dropLivePreview set it.
     thumbnail_id: ?win32.HTHUMBNAIL = null,
+    /// The roster client it shows.
     source_hwnd: win32.HWND,
-    is_eve_client: bool,
     /// Owned; ThumbnailSet frees it when it removes or renames the thumbnail.
     character_name: []const u8,
     /// Owned; the roster client's system as last drawn, which ThumbnailSet replaces when it differs.
@@ -46,6 +46,7 @@ pub const ThumbnailWindow = struct {
 
     render_cache: overlay.RenderCache = .{},
 
+    /// Follows ThumbnailSet.visibility, except while the region tool hides it.
     visibility_state: state.VisibilityState = .visible,
 
     cached_system_color: u32 = 0,
