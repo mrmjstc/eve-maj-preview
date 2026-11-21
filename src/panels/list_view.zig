@@ -27,7 +27,6 @@ const stack = @import("../notifications/stack.zig");
 const roster_mod = @import("../clients/roster.zig");
 const box = @import("../util/box.zig");
 const pixel_buffer = @import("../util/pixel_buffer.zig");
-const strings = @import("../util/strings.zig");
 const log = @import("../log.zig");
 
 const PanelWindow = panel_window.PanelWindow;
@@ -36,6 +35,7 @@ const Client = roster_mod.Client;
 const Roster = roster_mod.Roster;
 const ThumbnailSet = set.ThumbnailSet;
 const AutoColorStore = auto_colors_mod.AutoColorStore;
+const Line = list_look.Line;
 const slog = log.Scoped("list_view");
 
 const TEXT_BUFFER_SIZE: usize = 256;
@@ -91,17 +91,6 @@ const Focus = struct {
     }
 };
 
-/// A line of the last render: a system's heading, or rows side by side.
-const Line = struct {
-    top: i32,
-    bottom: i32,
-    /// Into `rows`.
-    first_row_index: usize,
-    row_count: usize,
-    /// Over the `row_count` rows from `first_row_index`, rather than those rows.
-    is_heading: bool = false,
-};
-
 const RowText = struct {
     /// Bold on every row, so a name's width doesn't change as it's activated.
     name_font: win32.HFONT,
@@ -136,6 +125,8 @@ pub const ListWindow = struct {
     rows: std.ArrayList(usize) = .empty,
     /// Each client's look at the last render, by the same index as the roster's clients.
     looks: std.ArrayList(Look) = .empty,
+    /// What ordering reads of each client at the last render, by the same index; borrows from the roster.
+    names: std.ArrayList(list_look.RowNames) = .empty,
     /// Each row's client, for clicks between renders.
     row_source_hwnds: std.ArrayList(win32.HWND) = .empty,
     /// From the last render, top to bottom; a line of rows is as tall as its tallest.
@@ -168,6 +159,7 @@ pub const ListWindow = struct {
         self.small_bold_font.deinit(self.panel.allocator);
         self.rows.deinit(self.panel.allocator);
         self.looks.deinit(self.panel.allocator);
+        self.names.deinit(self.panel.allocator);
         self.row_source_hwnds.deinit(self.panel.allocator);
         self.lines.deinit(self.panel.allocator);
         self.panel.deinit();
@@ -324,46 +316,8 @@ pub const ListWindow = struct {
 
     /// Puts `rows` in the configured order and records each row's client.
     fn sortRows(self: *ListWindow, clients: []const Client) !void {
-        const AlphabeticalContext = struct {
-            clients: []const Client,
-
-            fn lessThan(context: @This(), first_index: usize, second_index: usize) bool {
-                const first = &context.clients[first_index];
-                const second = &context.clients[second_index];
-                switch (strings.naturalOrder(first.display_name, second.display_name)) {
-                    .lt => return true,
-                    .gt => return false,
-                    .eq => {},
-                }
-                switch (strings.naturalOrder(first.character_name, second.character_name)) {
-                    .lt => return true,
-                    .gt => return false,
-                    .eq => return first_index < second_index,
-                }
-            }
-        };
-        const ConfiguredContext = struct {
-            clients: []const Client,
-            order_map: *const std.StringHashMap(usize),
-
-            fn lessThan(context: @This(), first_index: usize, second_index: usize) bool {
-                return config_mod.orderMapLessThan(context.order_map, context.clients[first_index].character_name, context.clients[second_index].character_name, first_index, second_index);
-            }
-        };
-
-        // Rows start in tracked order.
-        switch (self.config.listView.order) {
-            .Tracked => {},
-            .Alphabetical => std.sort.pdq(usize, self.rows.items, AlphabeticalContext{ .clients = clients }, AlphabeticalContext.lessThan),
-            .ConfiguredCharacters => {
-                // Built once per sort, not per comparison.
-                var order_map = try config_mod.buildCharacterOrderMap(self.config.characters.items, self.panel.allocator);
-                defer order_map.deinit();
-                std.sort.pdq(usize, self.rows.items, ConfiguredContext{ .clients = clients, .order_map = &order_map }, ConfiguredContext.lessThan);
-            },
-        }
-
-        if (self.config.listView.groupBySystem) try self.groupRows(clients);
+        const list_settings = &self.config.listView;
+        try list_look.orderRows(self.panel.allocator, self.rows.items, self.names.items, .{ .order = list_settings.order, .configured = self.config.characters.items, .groups_by_system = list_settings.groupBySystem });
         try self.row_source_hwnds.resize(self.panel.allocator, self.rows.items.len);
         for (self.rows.items, self.row_source_hwnds.items) |client_index, *hwnd| hwnd.* = clients[client_index].hwnd;
     }
@@ -479,10 +433,12 @@ pub const ListWindow = struct {
         const clients = roster.clients.items;
         const focus: Focus = .{ .active_hwnd = roster.active_hwnd, .dragged_hwnd = view.dragged_hwnd };
         try self.looks.resize(self.panel.allocator, clients.len);
+        try self.names.resize(self.panel.allocator, clients.len);
         self.rows.clearRetainingCapacity();
         var has_visible_row = false;
-        for (clients, self.looks.items, 0..) |*client, *look, i| {
+        for (clients, self.looks.items, self.names.items, 0..) |*client, *look, *names, i| {
             look.* = self.lookOf(client);
+            names.* = .{ .display_name = client.display_name, .character_name = client.character_name, .system_name = client.system_name };
             if (look.is_hidden) continue;
             try self.rows.append(self.panel.allocator, i);
             // As a thumbnail stays up while hidden: a revealing alert or a drag.
@@ -504,7 +460,9 @@ pub const ListWindow = struct {
         if (self.panel.isUnchanged(signature)) return;
 
         try self.sortRows(clients);
-        const lines_bottom = try self.layOutLines(clients, columns, sizes);
+        // Room for stats whether or not there are any yet, so the list doesn't grow when combat starts.
+        const row_height = if (list_look.showsAnyStat(self.statSettings())) sizes.stats_row_height else sizes.row_height;
+        const lines_bottom = try list_look.layOutLines(self.panel.allocator, &self.lines, self.rows.items, self.names.items, .{ .columns = @intCast(columns), .groups_by_system = list_settings.groupBySystem, .top = sizes.header_height, .row_height = row_height });
         try self.header_fonts.ensure(self.panel.allocator);
 
         const is_collapsed = list_settings.collapsed;
@@ -566,51 +524,6 @@ pub const ListWindow = struct {
             .{ .text = alert_text, .color = palette.ERROR, .fill = palette.ERROR_TINT },
         };
         panel_chrome.drawSummary(canvas, dc, &self.header_fonts, text_left, right, &runs);
-    }
-
-    /// Reorders `rows` so clients in one system sit together, as list_look.systemGroupOrder ranks them.
-    fn groupRows(self: *ListWindow, clients: []const Client) !void {
-        const allocator = self.panel.allocator;
-        const names = try allocator.alloc([]const u8, self.rows.items.len);
-        defer allocator.free(names);
-        for (self.rows.items, names) |client_index, *name| name.* = clients[client_index].system_name;
-        const order = try list_look.systemGroupOrder(allocator, names);
-        defer allocator.free(order);
-        const sorted = try allocator.dupe(usize, self.rows.items);
-        defer allocator.free(sorted);
-        for (order, self.rows.items) |position, *row| row.* = sorted[position];
-    }
-
-    /// Fills `lines`, with a heading over each system's rows while grouped; returns the last line's bottom.
-    fn layOutLines(self: *ListWindow, clients: []const Client, columns: i32, sizes: list_look.Metrics) !i32 {
-        const allocator = self.panel.allocator;
-        const column_count: usize = @intCast(columns);
-        const rows = self.rows.items;
-        // Room for stats whether or not there are any yet, so the list doesn't grow when combat starts.
-        const shows_stats = list_look.showsAnyStat(self.statSettings());
-        self.lines.clearRetainingCapacity();
-        var top = sizes.header_height;
-        var first_index: usize = 0;
-        while (first_index < rows.len) {
-            var group_end = rows.len;
-            if (self.config.listView.groupBySystem) {
-                const system_name = clients[rows[first_index]].system_name;
-                group_end = first_index + 1;
-                while (group_end < rows.len and std.mem.eql(u8, clients[rows[group_end]].system_name, system_name)) group_end += 1;
-                try self.lines.append(allocator, .{ .top = top, .bottom = top + list_look.GROUP_HEADING_HEIGHT, .first_row_index = first_index, .row_count = group_end - first_index, .is_heading = true });
-                top += list_look.GROUP_HEADING_HEIGHT;
-            }
-            var line_first_index = first_index;
-            while (line_first_index < group_end) {
-                const line_end = @min(line_first_index + column_count, group_end);
-                const height = if (shows_stats) sizes.stats_row_height else sizes.row_height;
-                try self.lines.append(allocator, .{ .top = top, .bottom = top + height, .first_row_index = line_first_index, .row_count = line_end - line_first_index });
-                top += height;
-                line_first_index = line_end;
-            }
-            first_index = group_end;
-        }
-        return top;
     }
 
     /// The system's name and security, a rule, and how many clients are there.
