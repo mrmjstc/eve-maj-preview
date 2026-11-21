@@ -83,7 +83,7 @@ pub const ListWindow = struct {
     store: *config_mod.ProfileStore,
     /// Borrows store.live.
     config: *const config_mod.Config,
-    /// For drag snapping to the thumbnails.
+    /// App's PANEL_HOST, which redraws read the clients from and drags snap through.
     host: panel_host.Host,
     instance: win32.HINSTANCE,
     row_input: RowInput,
@@ -209,7 +209,7 @@ pub const ListWindow = struct {
     /// Now, for input that changed what the panel shows, rather than on the next tick.
     pub fn redraw(self: *ListWindow) void {
         const thumbnail_set = self.host.thumbnail_set() orelse return;
-        self.render(thumbnail_set.thumbnails.items, thumbnail_set.active_source_hwnd) catch |err| {
+        self.render(thumbnail_set.thumbnails.items, if (self.host.roster()) |roster| roster.active_hwnd else null) catch |err| {
             slog.err("Failed to redraw list window: {}", .{err});
         };
     }

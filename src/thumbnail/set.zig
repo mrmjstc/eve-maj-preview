@@ -47,8 +47,8 @@ pub const ThumbnailSet = struct {
     renderer: renderer_mod.Renderer,
     auto_move: auto_move_mod.AutoMoveVerifier,
     drag_overlays: drag_overlays_mod.DragOverlays,
-    /// Sole "who's focused" source of truth; write only via reconcileThumbnailStates.
-    active_source_hwnd: ?win32.HWND = null,
+    /// The roster's active window as the thumbnails last showed it; only reconcileThumbnailStates writes it.
+    drawn_active_hwnd: ?win32.HWND = null,
     /// Borrowed from App, which keeps it across a thumbnail set rebuild.
     auto_colors: *AutoColorStore,
     /// Borrowed from App, which keeps it across a thumbnail set rebuild; holds the game state the thumbnails draw.
@@ -201,7 +201,7 @@ pub const ThumbnailSet = struct {
     }
 
     pub fn renderThumbnail(self: *ThumbnailSet, thumbnail: *ThumbnailWindow) !void {
-        try self.renderer.render(self.config, thumbnail, self.active_source_hwnd);
+        try self.renderer.render(self.config, thumbnail, self.roster.active_hwnd);
     }
 
     /// Logs a failure, with `context` in the message, instead of propagating it.
@@ -213,12 +213,6 @@ pub const ThumbnailSet = struct {
 
     pub fn hasThumbnail(self: *const ThumbnailSet, source_hwnd: win32.HWND) bool {
         return self.indexOfSource(source_hwnd) != null;
-    }
-
-    /// Whether `source_hwnd` is a tracked EVE client, not a window filter's window.
-    pub fn hasEveClient(self: *const ThumbnailSet, source_hwnd: win32.HWND) bool {
-        const index = self.indexOfSource(source_hwnd) orelse return false;
-        return self.thumbnails.items[index].is_eve_client;
     }
 
     /// Returns whether a reflow is needed to refill the spaces.
@@ -277,7 +271,7 @@ pub const ThumbnailSet = struct {
     fn updateThumbnailStates(self: *ThumbnailSet) void {
         if (self.thumbnails.items.len == 0) return;
 
-        self.reconcileThumbnailStates(win32.GetForegroundWindow());
+        self.reconcileThumbnailStates();
 
         const now = win32.Ticks.now();
         for (self.thumbnails.items) |*thumbnail| {
@@ -360,18 +354,19 @@ pub const ThumbnailSet = struct {
         }
     }
 
-    /// Sole writer of active_source_hwnd; call instead of setting it directly.
-    pub fn reconcileThumbnailStates(self: *ThumbnailSet, should_be_active_hwnd: ?win32.HWND) void {
-        const old_active = self.active_source_hwnd;
-        self.active_source_hwnd = should_be_active_hwnd;
-        const active_changed = old_active != should_be_active_hwnd;
-        const any_eve_has_focus = if (should_be_active_hwnd) |hwnd| self.hasThumbnail(hwnd) else false;
+    /// Takes up the roster's active window: redraws the thumbnails it left and reached, and shows any hidden while EVE had no focus.
+    pub fn reconcileThumbnailStates(self: *ThumbnailSet) void {
+        const old_active = self.drawn_active_hwnd;
+        const active = self.roster.active_hwnd;
+        self.drawn_active_hwnd = active;
+        const active_changed = old_active != active;
+        const any_eve_has_focus = if (active) |hwnd| self.roster.contains(hwnd) else false;
 
         for (self.thumbnails.items) |*thumbnail| {
             // Losing focus hides only after the debounce timer, so only regaining it applies here.
             if (any_eve_has_focus and self.applyAutoVisibility(thumbnail, true)) thumbnail.needs_render = true;
 
-            if (active_changed and (thumbnail.source_hwnd == old_active or thumbnail.source_hwnd == should_be_active_hwnd)) {
+            if (active_changed and (thumbnail.source_hwnd == old_active or thumbnail.source_hwnd == active)) {
                 thumbnail.needs_render = true;
             }
         }
@@ -379,7 +374,7 @@ pub const ThumbnailSet = struct {
 
     pub fn isEveWindowForeground(self: *const ThumbnailSet) bool {
         const foreground_hwnd = win32.GetForegroundWindow() orelse return false;
-        return self.hasThumbnail(foreground_hwnd);
+        return self.roster.contains(foreground_hwnd);
     }
 
     /// Call every tick, since pins fade with nothing to announce it.
@@ -513,7 +508,7 @@ pub const ThumbnailSet = struct {
     }
 
     fn dispatchContext(self: *const ThumbnailSet) dispatch.Context {
-        return .{ .allocator = self.allocator, .config = self.config, .auto_colors = self.auto_colors, .records = self.notification_records, .active_source_hwnd = self.active_source_hwnd };
+        return .{ .allocator = self.allocator, .config = self.config, .auto_colors = self.auto_colors, .records = self.notification_records, .active_source_hwnd = self.roster.active_hwnd };
     }
 
     fn destroyThumbnail(self: *ThumbnailSet, thumbnail: ThumbnailWindow) void {
@@ -664,8 +659,7 @@ pub const ThumbnailSet = struct {
             .system_name = strings.system_name,
             .cached_group_badge_label = strings.group_badge_label,
             .auto_minimize = .{ .inactive_since = win32.Ticks.now() },
-            // The new client isn't tracked yet, so isEveWindowForeground alone would miss it.
-            .visibility_state = state.VisibilityState.visible.afterAutoHide(self.focusHide(win32.GetForegroundWindow() == eve_window.hwnd or self.isEveWindowForeground())),
+            .visibility_state = state.VisibilityState.visible.afterAutoHide(self.focusHide(self.isEveWindowForeground())),
             .is_win32_enabled = is_win32_enabled,
         };
         thumbnail.refreshConfigCache(self.config, self.auto_colors);
@@ -676,7 +670,7 @@ pub const ThumbnailSet = struct {
     /// Reconciles focus afterwards, since the new client's window may already be the foreground one.
     fn addThumbnail(self: *ThumbnailSet, thumbnail: ThumbnailWindow) !void {
         try self.thumbnails.append(self.allocator, thumbnail);
-        self.reconcileThumbnailStates(win32.GetForegroundWindow());
+        self.reconcileThumbnailStates();
     }
 
     /// ClientList and Nothing modes only need a data record, not real Win32 windows.

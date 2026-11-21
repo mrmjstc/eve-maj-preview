@@ -237,11 +237,11 @@ pub const MapPanel = struct {
             scene.kills = &self.kills;
             scene.kill_names = &self.kill_names;
         }
-        if (self.host.roster()) |roster| scene.clients = roster.clients.items;
-        if (thumbnail_set) |active_set| {
-            scene.thumbnails = active_set.thumbnails.items;
-            scene.active_source_hwnd = active_set.active_source_hwnd;
+        if (self.host.roster()) |roster| {
+            scene.clients = roster.clients.items;
+            scene.active_source_hwnd = roster.active_hwnd;
         }
+        if (thumbnail_set) |active_set| scene.thumbnails = active_set.thumbnails.items;
         window.render(scene) catch |err| {
             slog.err("Failed to render Map Panel window: {}", .{err});
         };

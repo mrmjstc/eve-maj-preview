@@ -265,7 +265,7 @@ pub const App = struct {
 
         var scout_result = self.scout.update(should_force_scan, self.store.saved.windowFilters.items);
         defer scout_result.deinit(self.allocator);
-        self.roster.sync(scout_result.windows);
+        self.syncRoster(scout_result.windows);
         if (self.roster.clients.items.len == 0) self.auto_colors.flush();
         self.clearLoggedOutExclusions(scout_result.name_changes.items);
         // The Characters tab marks who's logged in, which only a login, logout or closed client changes.
@@ -274,17 +274,17 @@ pub const App = struct {
         }
         if (self.hotkey_manager) |manager| manager.syncFocusFilter(scout_result.windows);
         hook_bindings.logFailedPosts();
+        focus_mod.afterActiveRefresh(self, scout_result.name_changes.items);
 
         if (self.thumbnail_set) |thumbnail_set| {
             thumbnail_set.updateConnections(&self.map_panel.pins, tick_start.ms);
             thumbnail_set.update(scout_result.windows, scout_result.closed_windows.items, scout_result.name_changes.items);
             if (self.list_window) |*list_window| {
-                list_window.render(thumbnail_set.thumbnails.items, thumbnail_set.active_source_hwnd) catch |err| {
+                list_window.render(thumbnail_set.thumbnails.items, self.roster.active_hwnd) catch |err| {
                     slog.err("Failed to render list window: {}", .{err});
                 };
             }
-            focus_mod.afterThumbnailSetUpdate(self, thumbnail_set, scout_result.name_changes.items);
-            self.auto_minimizer.check(thumbnail_set.config, thumbnail_set.thumbnails.items, thumbnail_set.active_source_hwnd);
+            self.auto_minimizer.check(thumbnail_set.config, thumbnail_set.thumbnails.items, self.roster.active_hwnd);
 
             thumbnail_set.updateNotifications();
             thumbnail_set.checkHoverZoom();
@@ -378,8 +378,7 @@ pub const App = struct {
     fn isEveFocused(self: *const App) bool {
         const foreground = win32.GetForegroundWindow() orelse return false;
         if (win32.isOwnProcessWindow(foreground)) return true;
-        const thumbnail_set = self.thumbnail_set orelse return false;
-        return thumbnail_set.hasThumbnail(foreground);
+        return self.roster.contains(foreground);
     }
 
     fn deliverChatlogFindings(self: *App, findings: *const chatlog.Findings) void {
@@ -446,6 +445,12 @@ pub const App = struct {
         const is_dialog_open = if (self.dialog) |dialog| dialog.is_open() else false;
         if (window_count == 0 and !is_dialog_open) return IDLE_TICK_INTERVAL_MS;
         return self.store.saved.timer.scanIntervalMs;
+    }
+
+    /// Mirrors `windows` into the roster, and takes the foreground window as its active one.
+    pub fn syncRoster(self: *App, windows: []const scout_mod.EveWindow) void {
+        self.roster.sync(windows);
+        self.roster.setActive(win32.GetForegroundWindow());
     }
 
     /// Replaces the running timer in place; false on failure.
@@ -583,7 +588,7 @@ pub const App = struct {
         };
         self.scout.pruneNonMatchingWindows(self.store.saved.windowFilters.items);
         // The set built from these windows reads their clients.
-        self.roster.sync(self.scout.getWindows());
+        self.syncRoster(self.scout.getWindows());
         return self.scout.getWindows();
     }
 

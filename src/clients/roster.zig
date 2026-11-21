@@ -28,6 +28,8 @@ pub const Roster = struct {
     allocator: std.mem.Allocator,
     /// Searched linearly: there are only ever a few dozen.
     clients: std.ArrayList(Client),
+    /// The foreground window, a client's or not, as App last saw it; only setActive writes it.
+    active_hwnd: ?win32.HWND = null,
 
     pub fn init(allocator: std.mem.Allocator) Roster {
         return .{ .allocator = allocator, .clients = .empty };
@@ -96,6 +98,10 @@ pub const Roster = struct {
         if (jumped_at_ms) |now_ms| client.travel.recordJump(now_ms);
         client.revision +%= 1;
         slog.debug("Updated system for {s}: {s}", .{ client.character_name, system_name });
+    }
+
+    pub fn setActive(self: *Roster, hwnd: ?win32.HWND) void {
+        self.active_hwnd = hwnd;
     }
 
     /// Once log monitoring is off, so a stale system doesn't stay shown.
