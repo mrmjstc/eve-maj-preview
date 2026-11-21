@@ -14,7 +14,7 @@ const Fields = overlay_text.Fields;
 
 const STYLE_ROWS = [_]PopoverField{ .font, .background };
 const WINDOW_HINT = "The rate is averaged over this time.";
-const UPDATE_INTERVAL: PopoverField = .{ .number = .{ .field = "update_interval_ms", .label = "Update Interval", .unit = "s", .shows_seconds = true, .hint = "How often the number on the thumbnail changes." } };
+const UPDATE_INTERVAL: PopoverField = .{ .number = .{ .field = "update_interval_ms", .label = "Update Interval", .unit = "s", .shows_seconds = true, .hint = "How often the number changes." } };
 const RATE_WINDOW: PopoverField = .{ .number = .{ .field = "window_seconds", .label = "Averaging Window", .unit = "s", .hint = WINDOW_HINT } };
 const NEEDS_LOGS = "Requires Log Monitoring to be enabled.";
 const ALERTS_NEED_LOGS = "Without Log Monitoring, only alerts for your own actions, like Profile Switch, are shown.";
@@ -48,9 +48,9 @@ pub const CHIPS = [_]Chip{
             .{ .toggle = .{ .field = "useUniqueSystemColors", .label = "Unique System Colors", .disables_color = true, .hint = "Each system gets its own color; System Colors overrides it." } },
         } ++ STYLE_ROWS ++ [_]PopoverField{
             .{ .toggle = .{ .field = "showSystemConnections", .label = "Show Connections", .hint = "Replaces the name with a small map of the system and those a few gates out." } },
-            .{ .number = .{ .field = "systemConnectionJumps", .label = "Connection Jumps", .unit = "jumps", .singular_unit = "jump", .is_always_shown = true, .hint = "How many gates out the map reaches; it stops at the region's edge." } },
-            .{ .number = .{ .field = "systemConnectionMapWidth", .label = "Map Width", .unit = "px", .is_always_shown = true, .hint = "Names that don't fit are left out, so a bigger map shows more." } },
-            .{ .number = .{ .field = "systemConnectionMapHeight", .label = "Map Height", .unit = "px", .is_always_shown = true } },
+            .{ .number = .{ .field = "systemConnectionJumps", .label = "Connection Jumps", .unit = "jumps", .singular_unit = "jump", .hint = "How many gates out the map reaches; it stops at the region's edge." } },
+            .{ .number = .{ .field = "systemConnectionMapWidth", .label = "Map Width", .unit = "px", .hint = "Names that don't fit are left out, so a bigger map shows more." } },
+            .{ .number = .{ .field = "systemConnectionMapHeight", .label = "Map Height", .unit = "px" } },
             .{ .toggle = .{ .field = "showSystemConnectionIntel", .label = "Mark Systems With Intel", .hint = "Circles systems named in intel channels, like the map. Needs an intel rule." } },
         }),
     },
@@ -135,14 +135,18 @@ pub const CHIPS = [_]Chip{
         .fields = .snakeCase("", true),
         .show_field = "enabled",
         .needs_show_text = true,
+        .sub_gate_field = "show_isk_rate",
         .chatlog_notice = NEEDS_LOGS,
         .popover = &([_]PopoverField{
             .{ .toggle = .{ .field = "enabled", .label = "Show Mining Rate", .hint = "How much the character mines." } },
             .{ .toggle = .{ .field = "show_prefix", .label = "Show M: Prefix", .hint = "Puts M: before the rate so it's easy to tell apart." } },
             RATE_WINDOW,
             UPDATE_INTERVAL,
-            .{ .segmented = .{ .field = "m3_rate_unit", .label = "Mining Rate Unit", .options = &.{ "Per Minute", "Per Hour" }, .hint = "Shows m3 mined per minute or per hour." } },
-        } ++ STYLE_ROWS),
+            .{ .segmented = .{ .field = "m3_rate_unit", .label = "m3 Per", .options = &.{ "Minute", "Hour" }, .hint = "Shows m3 mined per minute or per hour." } },
+        } ++ STYLE_ROWS ++ [_]PopoverField{
+            .{ .toggle = .{ .field = "show_isk_rate", .label = "Show ISK Rate", .hint = "Uses the Mining tab's ore prices; fetch or enter them first." } },
+            .{ .segmented = .{ .field = "isk_rate_unit", .label = "ISK Per", .options = &.{ "Minute", "Hour" }, .hint = "Shows ISK earned per minute or per hour." } },
+        }),
     },
     .{
         .label = "Bounty Rate",
@@ -157,7 +161,7 @@ pub const CHIPS = [_]Chip{
             .{ .toggle = .{ .field = "show_prefix", .label = "Show ISK: Prefix", .hint = "Puts ISK: before the rate so it's easy to tell apart." } },
             RATE_WINDOW,
             UPDATE_INTERVAL,
-            .{ .segmented = .{ .field = "isk_rate_unit", .label = "ISK Rate Unit", .options = &.{ "Per Minute", "Per Hour" }, .hint = "Shows ISK earned per minute or per hour." } },
+            .{ .segmented = .{ .field = "isk_rate_unit", .label = "ISK Per", .options = &.{ "Minute", "Hour" }, .hint = "Shows ISK earned per minute or per hour." } },
         } ++ STYLE_ROWS),
     },
     .{
@@ -192,11 +196,11 @@ pub const CHIPS = [_]Chip{
 /// The settings struct a chip's fields live in.
 pub const Section = enum { thumbnail, notifications, combat, mining, bounty, resources, ping };
 
-/// Number, segmented and text rows show only in Advanced Mode, unless a number's `is_always_shown`; a `hint` is a tooltip on the label.
+/// A `hint` is a tooltip on the label.
 pub const PopoverField = union(enum) {
     /// A setting of the chip's section; `disables_color` greys out the font row's colour while it's on.
     toggle: struct { field: []const u8, label: []const u8, disables_color: bool = false, hint: ?[]const u8 = null },
-    number: struct { field: []const u8, label: []const u8, unit: []const u8, singular_unit: ?[]const u8 = null, shows_seconds: bool = false, is_always_shown: bool = false, hint: ?[]const u8 = null },
+    number: struct { field: []const u8, label: []const u8, unit: []const u8, singular_unit: ?[]const u8 = null, shows_seconds: bool = false, hint: ?[]const u8 = null },
     /// `options` names each tag in declaration order.
     segmented: struct { field: []const u8, label: []const u8, options: []const []const u8, hint: ?[]const u8 = null },
     text: struct { field: []const u8, label: []const u8, placeholder: []const u8, hint: ?[]const u8 = null },
@@ -309,7 +313,6 @@ pub fn showSettings(context: *ui.Frame, comptime chip: Chip, comptime index: usi
 
     const was_aligned = widgets.useAlignedRows(true);
     defer _ = widgets.useAlignedRows(was_aligned);
-    const is_advanced = session.global().get("advancedMode");
     var is_color_disabled = false;
     // Every row after the section's master switch, the chip's show switch or its sub-gate waits on it.
     var gates: [3]widgets.Group = undefined;
@@ -325,15 +328,15 @@ pub fn showSettings(context: *ui.Frame, comptime chip: Chip, comptime index: usi
                     gate_count += 1;
                 }
             },
-            .number => |number| if (is_advanced or number.is_always_shown) {
+            .number => |number| {
                 try bind.number(context, ref, number.field, number.label, .{ .unit = number.unit, .singular_unit = number.singular_unit, .shows_seconds = number.shows_seconds });
                 if (number.hint) |hint| try widgets.hintText(context, .str("knots.chip.hint:" ++ chip.label ++ ":" ++ number.field), hint);
             },
-            .segmented => |segmented| if (is_advanced) {
+            .segmented => |segmented| {
                 try bind.segmented(context, ref, segmented.field, segmented.label, segmented.options);
                 if (segmented.hint) |hint| try widgets.hintText(context, .str("knots.chip.hint:" ++ chip.label ++ ":" ++ segmented.field), hint);
             },
-            .text => |text| if (is_advanced) {
+            .text => |text| {
                 try bind.text(context, ref, text.field, text.label, text.placeholder);
                 if (text.hint) |hint| try widgets.hintText(context, .str("knots.chip.hint:" ++ chip.label ++ ":" ++ text.field), hint);
             },

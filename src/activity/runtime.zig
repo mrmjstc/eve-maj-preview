@@ -60,9 +60,9 @@ pub const Trackers = struct {
             if (!active_monitor.isWorkerStopped("trackers")) return;
         }
         const has_monitor = monitor != null;
-        self.reconcile(tracker_mod.CombatTracker, &self.combat, has_monitor and config.combat.enabled, config.combat.window_seconds, "Combat DPS");
-        self.reconcile(tracker_mod.MiningTracker, &self.mining, has_monitor and config.mining.enabled, config.mining.window_seconds, "Mining rate");
-        self.reconcile(tracker_mod.BountyTracker, &self.bounty, has_monitor and config.bounty.enabled, config.bounty.window_seconds, "Bounty rate");
+        self.reconcile(tracker_mod.CombatTracker, &self.combat, has_monitor and config.tracksCombat(), config.combat.window_seconds, "Combat DPS");
+        self.reconcile(tracker_mod.MiningTracker, &self.mining, has_monitor and config.tracksMining(), config.mining.window_seconds, "Mining rate");
+        self.reconcile(tracker_mod.BountyTracker, &self.bounty, has_monitor and config.tracksBounty(), config.bounty.window_seconds, "Bounty rate");
         self.setupSampler(resources_mod.ResourceTracker, &self.resources, config.resources.enabled, "Resource usage");
         self.setupSampler(ping_mod.PingTracker, &self.ping, config.ping.enabled, "Ping");
 

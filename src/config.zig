@@ -105,7 +105,7 @@ pub const AutoColorStore = auto_colors.AutoColorStore;
 
 pub const PROFILE_FORMAT_IDENTIFIER = "eve-maj-preview";
 /// Bumped only for schema changes needing a migration, independent of the release version; see config/migrate.zig and Config.fromWire.
-pub const PROFILE_FORMAT_VERSION: u32 = migrate.FOLLOWS_ACCENT_VERSION;
+pub const PROFILE_FORMAT_VERSION: u32 = migrate.LIST_RATES_VERSION;
 
 pub const ShownColors = struct {
     system_name_color: u32,
@@ -356,6 +356,20 @@ pub const Config = struct {
         };
     }
 
+    /// The thumbnails' overlay or the shown client list wants damage, so its tracker runs.
+    pub fn tracksCombat(self: *const Config) bool {
+        const list_view = &self.listView;
+        return self.combat.enabled or (self.display.viewMode.showsClientList() and (list_view.showIncomingDps or list_view.showOutgoingDps));
+    }
+
+    pub fn tracksMining(self: *const Config) bool {
+        return self.mining.enabled or (self.display.viewMode.showsClientList() and self.listView.showMiningRate);
+    }
+
+    pub fn tracksBounty(self: *const Config) bool {
+        return self.bounty.enabled or (self.display.viewMode.showsClientList() and self.listView.showBountyRate);
+    }
+
     /// Its badge-enabled groups by name or 1-based number ("1, Miners"), or "" for none; caller owns it.
     pub fn groupBadgeLabel(self: *const Config, allocator: std.mem.Allocator, character_name: []const u8) ![]const u8 {
         var label: std.Io.Writer.Allocating = .init(allocator);
@@ -490,6 +504,20 @@ test "an unset active colour and focused border follow the accent" {
 
     try testing.expectEqual(@as(u32, 0xFFD97AA0), config.listActiveColor());
     try testing.expectEqual(@as(u32, 0xFFD97AA0), config.focusedBorderColor());
+}
+
+test "a tracker runs for the shown client list's rate without the thumbnails' overlay" {
+    var config = try testConfig(
+        \\{"formatVersion": 6, "display": {"viewMode": "ClientList"}, "listView": {"showMiningRate": true}}
+    );
+    defer config.deinit();
+
+    try testing.expect(config.tracksMining());
+    try testing.expect(!config.tracksCombat());
+    config.display.viewMode = .Thumbnails;
+    try testing.expect(!config.tracksMining());
+    config.mining.enabled = true;
+    try testing.expect(config.tracksMining());
 }
 
 test "getOrCreateCharacter returns an existing character rather than adding another" {

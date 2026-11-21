@@ -342,9 +342,6 @@ pub const ListWindow = struct {
         hasher.update(std.mem.asBytes(&list_settings.showBountyPrefix));
         hasher.update(std.mem.asBytes(&list_settings.bountyRateColor));
         hasher.update(std.mem.asBytes(&list_settings.showTotals));
-        hasher.update(std.mem.asBytes(&self.config.combat.enabled));
-        hasher.update(std.mem.asBytes(&self.config.mining.enabled));
-        hasher.update(std.mem.asBytes(&self.config.bounty.enabled));
         hasher.update(std.mem.asBytes(&self.config.bounty.isk_rate_unit));
         hasher.update(std.mem.asBytes(&self.config.mining.m3_rate_unit));
         const hovered_address: usize = if (self.hovered_source_hwnd) |hovered| @intFromPtr(hovered) else 0;
@@ -389,7 +386,7 @@ pub const ListWindow = struct {
 
     fn statSettings(self: *const ListWindow) list_look.StatSettings {
         const config = self.config;
-        return .{ .list_settings = &config.listView, .combat = &config.combat, .mining = &config.mining, .bounty = &config.bounty };
+        return .{ .list_settings = &config.listView, .mining = &config.mining, .bounty = &config.bounty };
     }
 
     /// In writing order; empty when the list shows none.

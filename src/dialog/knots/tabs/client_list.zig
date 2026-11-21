@@ -37,6 +37,8 @@ const SAMPLE_LINE: ui.Style = .{ .width = .grow(), .direction = .row };
 const SAMPLE_VALUES = [list_look.STAT_COUNT]f32{ 412, 980, 21.4, 38_200_000 };
 /// Drawn in Fleet Invite's own colour, or the list's notification colour when it has none.
 const SAMPLE_NOTIFICATION = "Fleet Invite";
+/// Under a setting the thumbnails' overlay shares with the list.
+const SHARED_HINT = "The thumbnails use the same setting.";
 /// Two rates to a stats row, so each fits a column.
 const SAMPLES = [_]Sample{
     .{ .name = "Pilot Alpha", .state = .active, .system = "Jita", .security_tenths = 9 },
@@ -128,9 +130,8 @@ const Look = struct {
     }
 };
 
-/// The overlay switch shared with the thumbnails, then the list's own show, prefix and colour fields.
+/// The list's own show, prefix and colour fields for one rate, then its overlay's settings shared with the thumbnails.
 const StatRows = struct {
-    overlay_label: []const u8,
     show_field: []const u8,
     show_label: []const u8,
     show_hint: []const u8,
@@ -138,6 +139,12 @@ const StatRows = struct {
     prefix_label: []const u8,
     prefix_hint: []const u8,
     color_field: []const u8,
+    /// The profile section of the rate's overlay.
+    overlay: []const u8,
+    /// Null for DPS, always per second.
+    unit: ?struct { field: []const u8, label: []const u8, hint: []const u8 } = null,
+    /// Incoming DPS's only, as on the thumbnail preview.
+    has_excluded_weapons: bool = false,
 };
 
 var g_picker: panel_preview.Picker(Part) = .{ .part_key = .str("knots.client_list.part"), .popover_key = .str("knots.client_list.popover"), .selected = .names };
@@ -377,7 +384,7 @@ fn lookOf(arena: std.mem.Allocator, profile: *const config.Config, stage: panel_
     const shown = profile.shownColors();
     const active_color = if (shown.uses_unique_border_colors) style.UNIQUE_SAMPLE else shown.active_color;
     const uses_unique_names = list_settings.useUniqueCharacterNameColors;
-    const stat_settings: list_look.StatSettings = .{ .list_settings = list_settings, .combat = &profile.combat, .mining = &profile.mining, .bounty = &profile.bounty };
+    const stat_settings: list_look.StatSettings = .{ .list_settings = list_settings, .mining = &profile.mining, .bounty = &profile.bounty };
 
     var stat_labels: [list_look.STAT_COUNT]StatLabel = undefined;
     for (std.enums.values(list_look.Stat), SAMPLE_VALUES, &stat_labels) |stat, sample, *label| {
@@ -448,12 +455,10 @@ fn popover(context: *ui.Frame, list_view: ListRef) !void {
     try g_picker.closePopover(context, dialog, try settings(context, popover_ref, g_picker.selected));
 }
 
-/// Returns whether close was pressed; the overlays' rows take `list_view`'s index too.
+/// Returns whether close was pressed.
 fn settings(context: *ui.Frame, list_view: ListRef, part: Part) !bool {
     const is_close_clicked = try widgets.popoverTitle(context, .src(@src()), part.label());
     try requirementNotices(context, part);
-    var profile = session.profile();
-    profile.index = list_view.index;
 
     const was_aligned = widgets.useAlignedRows(true);
     defer _ = widgets.useAlignedRows(was_aligned);
@@ -467,7 +472,7 @@ fn settings(context: *ui.Frame, list_view: ListRef, part: Part) !bool {
             try bind.toggle(context, list_view, "useUniqueActiveColors", "Unique Character Active Colors");
             try widgets.hintText(context, .src(@src()), "Each character's mark gets its own color.");
             const group = try widgets.openGroup(context, .src(@src()), !list_view.get("useUniqueActiveColors"));
-            try bind.optionalColor(context, list_view, "activeColor", "Active Color", profile.ptr.accentColor);
+            try bind.optionalColor(context, list_view, "activeColor", "Active Color", session.profile().ptr.accentColor);
             try widgets.hintText(context, .src(@src()), "Marks the client you're in.");
             try group.close(context);
         },
@@ -504,8 +509,7 @@ fn settings(context: *ui.Frame, list_view: ListRef, part: Part) !bool {
             try widgets.hintText(context, .src(@src()), "The color of this text.");
             try shown.close(context);
         },
-        .incoming_dps => try statSettings(context, list_view, profile.child("combat"), .{
-            .overlay_label = "Enable Combat Overlays",
+        .incoming_dps => try statSettings(context, list_view, .{
             .show_field = "showIncomingDps",
             .show_label = "Show Incoming Damage",
             .show_hint = "Damage the character is taking per second.",
@@ -513,9 +517,10 @@ fn settings(context: *ui.Frame, list_view: ListRef, part: Part) !bool {
             .prefix_label = "Show IN: Prefix",
             .prefix_hint = "Puts IN: before the number so it's easy to tell apart.",
             .color_field = "incomingDpsColor",
+            .overlay = "combat",
+            .has_excluded_weapons = true,
         }),
-        .outgoing_dps => try statSettings(context, list_view, profile.child("combat"), .{
-            .overlay_label = "Enable Combat Overlays",
+        .outgoing_dps => try statSettings(context, list_view, .{
             .show_field = "showOutgoingDps",
             .show_label = "Show Outgoing Damage",
             .show_hint = "Damage the character is dealing per second.",
@@ -523,9 +528,9 @@ fn settings(context: *ui.Frame, list_view: ListRef, part: Part) !bool {
             .prefix_label = "Show OUT: Prefix",
             .prefix_hint = "Puts OUT: before the number so it's easy to tell apart.",
             .color_field = "outgoingDpsColor",
+            .overlay = "combat",
         }),
-        .mining_rate => try statSettings(context, list_view, profile.child("mining"), .{
-            .overlay_label = "Enable Mining Overlay",
+        .mining_rate => try statSettings(context, list_view, .{
             .show_field = "showMiningRate",
             .show_label = "Show Mining Rate",
             .show_hint = "How much the character mines.",
@@ -533,9 +538,10 @@ fn settings(context: *ui.Frame, list_view: ListRef, part: Part) !bool {
             .prefix_label = "Show M: Prefix",
             .prefix_hint = "Puts M: before the rate so it's easy to tell apart.",
             .color_field = "miningRateColor",
+            .overlay = "mining",
+            .unit = .{ .field = "m3_rate_unit", .label = "m3 Per", .hint = "Shows m3 mined per minute or per hour." },
         }),
-        .bounty_rate => try statSettings(context, list_view, profile.child("bounty"), .{
-            .overlay_label = "Enable Bounty Overlay",
+        .bounty_rate => try statSettings(context, list_view, .{
             .show_field = "showBountyRate",
             .show_label = "Show Bounty Rate",
             .show_hint = "ISK the character earns from bounties.",
@@ -543,6 +549,8 @@ fn settings(context: *ui.Frame, list_view: ListRef, part: Part) !bool {
             .prefix_label = "Show ISK: Prefix",
             .prefix_hint = "Puts ISK: before the rate so it's easy to tell apart.",
             .color_field = "bountyRateColor",
+            .overlay = "bounty",
+            .unit = .{ .field = "isk_rate_unit", .label = "ISK Per", .hint = "Shows ISK earned per minute or per hour." },
         }),
         .totals => {
             try bind.toggle(context, list_view, "showTotals", "Show Totals");
@@ -561,17 +569,13 @@ fn requirementNotices(context: *ui.Frame, part: Part) !void {
         .systems, .incoming_dps, .outgoing_dps, .mining_rate, .bounty_rate, .totals => true,
     };
     if (needs_chatlog and !is_monitoring) try widgets.notice(context, .src(@src()), "Requires Log Monitoring to be enabled.");
-    const stat_settings: list_look.StatSettings = .{ .list_settings = &profile.listView, .combat = &profile.combat, .mining = &profile.mining, .bounty = &profile.bounty };
+    const stat_settings: list_look.StatSettings = .{ .list_settings = &profile.listView, .mining = &profile.mining, .bounty = &profile.bounty };
     if (part == .totals and !list_look.showsAnyStat(stat_settings)) try widgets.notice(context, .src(@src()), "Needs at least one rate shown on the rows.");
     if (part == .notifications and !is_monitoring) try widgets.notice(context, .src(@src()), "Without Log Monitoring, only alerts for your own actions, like Profile Switch, are shown.");
     if (part == .notifications and !profile.thumbnail.notifications.enabled) try widgets.notice(context, .src(@src()), "Requires alerts switched on in the Alert Options tab.");
 }
 
-/// `overlay` is the rate's overlay session.Ref; its `enabled`, shared with the thumbnails, gates the list's rate.
-fn statSettings(context: *ui.Frame, list_view: ListRef, overlay: anytype, comptime rows: StatRows) !void {
-    try bind.toggle(context, overlay, "enabled", rows.overlay_label);
-    try widgets.hintText(context, .str("knots.client_list.overlay.hint:" ++ rows.show_field), "Also turns it on for thumbnails.");
-    const enabled = try widgets.openGroup(context, .str("knots.client_list.overlay:" ++ rows.show_field), overlay.get("enabled"));
+fn statSettings(context: *ui.Frame, list_view: ListRef, comptime rows: StatRows) !void {
     try bind.toggle(context, list_view, rows.show_field, rows.show_label);
     try widgets.hintText(context, .str("knots.client_list.shown.hint:" ++ rows.show_field), rows.show_hint);
     const shown = try widgets.openGroup(context, .str("knots.client_list.shown:" ++ rows.show_field), list_view.get(rows.show_field));
@@ -579,6 +583,30 @@ fn statSettings(context: *ui.Frame, list_view: ListRef, overlay: anytype, compti
     try widgets.hintText(context, .str("knots.client_list.prefix.hint:" ++ rows.show_field), rows.prefix_hint);
     try bind.rgb(context, list_view, rows.color_field, "Text Color");
     try widgets.hintText(context, .str("knots.client_list.color.hint:" ++ rows.show_field), "The color of this text.");
+    try sharedSettings(context, list_view.index, rows);
     try shown.close(context);
-    try enabled.close(context);
+}
+
+/// The same fields the thumbnail preview's popover edits for the rate.
+fn sharedSettings(context: *ui.Frame, list_index: usize, comptime rows: StatRows) !void {
+    var overlay = session.profile().child(rows.overlay);
+    // The thumbnail preview's popover binds these fields at the list's index.
+    overlay.index = list_index + 1;
+    const key = "knots.client_list.shared:" ++ rows.show_field;
+    try bind.number(context, overlay, "window_seconds", "Averaging Window", .{ .unit = "s" });
+    try widgets.hintText(context, .str(key ++ ":window"), "The rate is averaged over this time.");
+    try widgets.hintText(context, .str(key ++ ":window.shared"), SHARED_HINT);
+    try bind.number(context, overlay, "update_interval_ms", "Update Interval", .{ .unit = "s", .shows_seconds = true });
+    try widgets.hintText(context, .str(key ++ ":interval"), "How often the number changes.");
+    try widgets.hintText(context, .str(key ++ ":interval.shared"), SHARED_HINT);
+    if (rows.unit) |unit| {
+        try bind.segmented(context, overlay, unit.field, unit.label, &.{ "Minute", "Hour" });
+        try widgets.hintText(context, .str(key ++ ":unit"), unit.hint);
+        try widgets.hintText(context, .str(key ++ ":unit.shared"), SHARED_HINT);
+    }
+    if (rows.has_excluded_weapons) {
+        try bind.text(context, overlay, "damage_alert_excluded_weapons", "Exclude Weapons", "e.g. Smartbomb, Warp Scrambler");
+        try widgets.hintText(context, .str(key ++ ":weapons"), "Weapon names to ignore, separated by commas. Stops only the Taking Damage alert; the damage still counts.");
+        try widgets.hintText(context, .str(key ++ ":weapons.shared"), SHARED_HINT);
+    }
 }

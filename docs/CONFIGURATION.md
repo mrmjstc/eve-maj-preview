@@ -42,6 +42,7 @@ Profile file names: `<name>.json` with no path separators or `:*?"<>|`, not star
 - `formatVersion` below 3 migrates on load: `display.layoutMode`/`regionX`/`regionY`/`regionWidth`/`regionHeight`/`spacing`/`regionFitOrder`/`regionFitDirection`/`regionFitLimitToThumbnailSize` become an `Everyone` space (enabled only if `layoutMode` was `RegionFit`, with `takesUnassigned` and `takesLoginScreen`); `display.notLoggedInSpace*` becomes a `Login Screen` space ahead of it. Below 2, character `position`s are rescaled from DPI-unaware pixels.
 - `formatVersion` below 4 migrates on load: the Client List's and panels' `display` keys move into `listView`, `historyPanel`, `mapPanel` and `intelPanel`, dropping their prefix (`mapPanel.x` becomes `mapPanel.x`, `mapPanel.show` becomes `mapPanel.show`); a key already in its section wins.
 - `formatVersion` below 5 migrates on load: a `listView.activeColor` or `thumbnail.borderColor` still at the old default `0xFFD9A441` is removed, so it follows `accentColor`.
+- `formatVersion` below 6 migrates on load: `listView.showIncomingDps`/`showOutgoingDps`/`showMiningRate`/`showBountyRate` stay on only where `combat`/`mining`/`bounty.enabled` was on, and are removed otherwise.
 - A profile with `thumbnailSpaces` but no `display.placementMode` gets `ThumbnailSpaces` if any space is enabled.
 
 ## Value formats
@@ -68,7 +69,7 @@ Profile file names: `<name>.json` with no path separators or `:*?"<>|`, not star
 | Key | Type | Default | Notes |
 |---|---|---|---|
 | `app` | string | `"eve-maj-preview"` | Rewritten on save. |
-| `formatVersion` | int | `5` | Read only to migrate; rewritten on save. |
+| `formatVersion` | int | `6` | Read only to migrate; rewritten on save. |
 | `accentColor` | colour | `0xFFD9A441` | This profile's accent: the config dialog, the panels, and the unset `listView.activeColor` and `thumbnail.borderColor`. |
 
 Sections: `thumbnail`, `timer`, `display`, `listView`, `historyPanel`, `mapPanel`, `intelPanel`, `snapping`, `panelSnapping`, `interaction`, `autoMinimize`, `autoMovePosition`, `exclusion`, `closeAll`, `combat`, `mining`, `bounty`, `resources`, `ping`, `travel`, `hotkeys` (objects); `windowFilters`, `characters`, `systemColors`, `chatAlerts`, `hotkeyGroups`, `thumbnailSpaces` (arrays).
@@ -292,7 +293,7 @@ Every type except `HotkeySuspend`, `ProfileSwitch` and `AutoMinimizeToggle` also
 
 ### listView
 
-The Client List (`viewMode: ClientList` or `ThumbnailsAndList`): one row per client; click activates, Shift+click toggles exclusion, drag the header to move. With `ClientList` it uses its own colour, system name and auto-hide settings below instead of the `thumbnail` ones; with `ThumbnailsAndList` it follows the `thumbnail` ones (active colour from `borderColor`), except `useUniqueCharacterNameColors`, and hides with the thumbnails. Per-character colours, display names, `systemColors` and each overlay's `enabled` are always shared. Its position is `display.startX`/`startY`, which thumbnails also start from.
+The Client List (`viewMode: ClientList` or `ThumbnailsAndList`): one row per client; click activates, Shift+click toggles exclusion, drag the header to move. With `ClientList` it uses its own colour, system name and auto-hide settings below instead of the `thumbnail` ones; with `ThumbnailsAndList` it follows the `thumbnail` ones (active colour from `borderColor`), except `useUniqueCharacterNameColors`, and hides with the thumbnails. Per-character colours, display names, `systemColors` and the rate units are always shared. Its position is `display.startX`/`startY`, which thumbnails also start from.
 
 | Key | Type | Default | Range / values | Notes |
 |---|---|---|---|---|
@@ -318,7 +319,7 @@ The Client List (`viewMode: ClientList` or `ThumbnailsAndList`): one row per cli
 | `useUniqueActiveColors` | bool | `false` | | Character's generated colour as its active colour. |
 | `showNotifications` | bool | `true` | | |
 | `notificationColor` | colour | `0xFFFFFFFF` | | For types without `text_color`. |
-| `showIncomingDps`, `showOutgoingDps`, `showMiningRate`, `showBountyRate` | bool | `true` | | Each also needs its overlay's `enabled`. While any shows, every row keeps a second line for them under its name. |
+| `showIncomingDps`, `showOutgoingDps`, `showMiningRate`, `showBountyRate` | bool | `false` | | Independent of the thumbnails' overlay `enabled`. While any shows, every row keeps a second line for them under its name. |
 | `showIncomingPrefix`, `showOutgoingPrefix`, `showMiningPrefix`, `showBountyPrefix` | bool | `true` | | `IN:`, `OUT:`, `M:`, `ISK:`. |
 | `incomingDpsColor` | colour | `0xFFE05A4E` | | |
 | `outgoingDpsColor` | colour | `0xFF68CA6B` | | |
@@ -540,7 +541,7 @@ Incoming/outgoing DPS labels from gamelog `(combat)` lines. Lines with `" from "
 
 | Key | Type | Default | Range | Notes |
 |---|---|---|---|---|
-| `enabled` | bool | `false` | | |
+| `enabled` | bool | `false` | | The thumbnails' overlay; its tracker and alerts also run while the shown Client List shows the rate. |
 | `window_seconds` | int | `60` | 5–600 | **0 = default.** DPS = damage in window ÷ window. Early in a fight, damage after the first second ÷ elapsed; hidden for the first 3 s. |
 | `update_interval_ms` | int | `1000` | 1000–10000 | Display refresh. Alerts check every second. |
 | `show_incoming`, `show_outgoing` | bool | `true` | | |
@@ -565,7 +566,7 @@ m³/min and ISK rate from gamelog `(mining)` lines (normal and critical yields; 
 
 | Key | Type | Default | Range | Notes |
 |---|---|---|---|---|
-| `enabled` | bool | `false` | | |
+| `enabled` | bool | `false` | | The thumbnails' overlay; its tracker and alerts also run while the shown Client List shows the rate. |
 | `window_seconds` | int | `60` | 30–3600 | **0 = default.** Rate = m³ in window ÷ window. Early on, units after the first cycle ÷ time from first to latest yield. |
 | `update_interval_ms` | int | `1000` | 1000–10000 | |
 | `color` | colour | `0xFF7E98E7` | | |
@@ -589,7 +590,7 @@ ISK rate from gamelog `(bounty)` lines (`… ISK added to next bounty payout`). 
 
 | Key | Type | Default | Range | Notes |
 |---|---|---|---|---|
-| `enabled` | bool | `false` | | |
+| `enabled` | bool | `false` | | The thumbnails' overlay; its tracker and alerts also run while the shown Client List shows the rate. |
 | `window_seconds` | int | `1200` | 60–3600 | **0 = default.** |
 | `update_interval_ms` | int | `1000` | 1000–10000 | |
 | `color` | colour | `0xFFE1C747` | | |
@@ -600,7 +601,7 @@ ISK rate from gamelog `(bounty)` lines (`… ISK added to next bounty payout`). 
 | `position` | enum | `TopRight` | position | |
 | `offset_x`, `offset_y` | int | `0` | offset | |
 | `show_prefix` | bool | `true` | | `ISK:` |
-| `isk_rate_unit` | enum | `hour` | `hour` `minute` | |
+| `isk_rate_unit` | enum | `hour` | `hour` `minute` | The ISK rate's period, on thumbnails and the Client List. |
 
 ### resources
 

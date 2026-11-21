@@ -13,7 +13,9 @@ const SPACES_VERSION = 3;
 /// Profiles from before this kept the client list's and panels' settings in display, each name prefixed.
 const PANELS_VERSION = 4;
 /// Profiles from before this saved the old default amber as the list's active colour and focused border, rather than following the accent.
-pub const FOLLOWS_ACCENT_VERSION = 5;
+const FOLLOWS_ACCENT_VERSION = 5;
+/// Profiles from before this showed the client list's rates only while the thumbnails' overlay was on.
+pub const LIST_RATES_VERSION = 6;
 
 /// The amber both colours defaulted to before FOLLOWS_ACCENT_VERSION.
 const OLD_ACCENT_DEFAULT: u32 = 0xFFD9A441;
@@ -21,6 +23,14 @@ const OLD_ACCENT_DEFAULT: u32 = 0xFFD9A441;
 const ACCENT_FOLLOWERS = [_]struct { section: []const u8, key: []const u8 }{
     .{ .section = "listView", .key = "activeColor" },
     .{ .section = "thumbnail", .key = "borderColor" },
+};
+
+/// Each client list rate's switch, and the overlay section whose `enabled` it used to need.
+const LIST_RATES = [_]struct { key: []const u8, overlay: []const u8 }{
+    .{ .key = "showIncomingDps", .overlay = "combat" },
+    .{ .key = "showOutgoingDps", .overlay = "combat" },
+    .{ .key = "showMiningRate", .overlay = "mining" },
+    .{ .key = "showBountyRate", .overlay = "bounty" },
 };
 
 /// A display setting that moved into its own section under a new name.
@@ -140,6 +150,7 @@ pub fn profile(arena: std.mem.Allocator, root: *Value) !void {
     try placementModeFromSpaces(arena, root);
     try panelsFromDisplay(arena, root);
     followAccentFromOldDefault(root);
+    try listRatesFromOverlays(arena, root);
 }
 
 /// A profile's own chatlog section, from before Log Monitoring was shared by every profile; null when it has none.
@@ -165,6 +176,23 @@ fn followAccentFromOldDefault(root: *Value) void {
         const text = values.stringAt(section.*, follower.key) orelse continue;
         const color = wire.parseHexColor(text) catch continue;
         if (color == OLD_ACCENT_DEFAULT) _ = section.object.orderedRemove(follower.key);
+    }
+}
+
+/// Keeps each list rate shown only where its overlay was on; a hidden one is unset, as the switches now default to hidden.
+fn listRatesFromOverlays(arena: std.mem.Allocator, root: *Value) !void {
+    if (root.* != .object) return;
+    const version = values.integerAt(root.*, "formatVersion") orelse 1;
+    if (version >= LIST_RATES_VERSION) return;
+    for (LIST_RATES) |rate| {
+        const is_overlay_on = values.boolAt(root.object.get(rate.overlay), "enabled") orelse false;
+        const was_shown = values.boolAt(root.object.get("listView"), rate.key) orelse true;
+        if (is_overlay_on and was_shown) {
+            const list_view = try sectionObject(arena, root, "listView") orelse return;
+            try list_view.put(arena, rate.key, .{ .bool = true });
+        } else if (root.object.getPtr("listView")) |list_view| {
+            if (list_view.* == .object) _ = list_view.object.orderedRemove(rate.key);
+        }
     }
 }
 
@@ -382,6 +410,23 @@ test "a current profile's amber is a picked colour and stays" {
         \\{"formatVersion":5,"listView":{"activeColor":"0xFFD9A441"}}
     );
     try testing.expectEqualStrings("0xFFD9A441", values.stringAt(root.object.get("listView").?, "activeColor").?);
+}
+
+test "an old profile's list rates stay shown only where their overlay was on" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const root = try migrated(arena.allocator(),
+        \\{"formatVersion":5,"combat":{"enabled":true},"mining":{"enabled":false},"listView":{"showOutgoingDps":false}}
+    );
+    const list_view = root.object.get("listView").?;
+    try testing.expectEqual(true, values.boolAt(list_view, "showIncomingDps").?);
+    try testing.expect(values.get(list_view, "showOutgoingDps") == null);
+    try testing.expect(values.get(list_view, "showMiningRate") == null);
+    try testing.expect(values.get(list_view, "showBountyRate") == null);
+    const current = try migrated(arena.allocator(),
+        \\{"formatVersion":6,"listView":{"showMiningRate":true}}
+    );
+    try testing.expectEqual(true, values.boolAt(current.object.get("listView").?, "showMiningRate").?);
 }
 
 test "a panel setting already in its section wins, and a current profile's display is left alone" {

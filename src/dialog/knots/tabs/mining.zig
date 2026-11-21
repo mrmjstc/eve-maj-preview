@@ -1,4 +1,4 @@
-//! The configuration window's Mining tab: the mining overlay's switch, its rate units, its ISK rate and the ore prices; main thread only.
+//! The configuration window's Mining tab: the ore prices the mining overlay's ISK rate uses; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const config = @import("../../../config.zig");
@@ -22,23 +22,6 @@ const ORE_CATEGORIES = [_][]const u8{ "Ore", "Ice", "Moons", "Gas" };
 var g_is_table_shown = false;
 
 pub fn show(context: *ui.Frame) !void {
-    try chatlogNotice(context);
-    const ref = session.profile().child("mining");
-    const section = try widgets.openSection(context, "Mining Overlay", "Displays m3 mined on each thumbnail, calculated from EVE gamelogs.", &style.section);
-    try bind.toggle(context, ref, "enabled", "Enable Mining Overlay");
-    try widgets.hintText(context, .src(@src()), "Its averaging, update speed and look are set from Mining Rate on the thumbnail preview.");
-    const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
-    try bind.segmented(context, ref, "m3_rate_unit", "Mining Rate Unit", &.{ "Per Minute", "Per Hour" });
-    try widgets.hintText(context, .src(@src()), "Shows m3 mined per minute or per hour.");
-    try bind.toggle(context, ref, "show_isk_rate", "Show ISK Rate");
-    try widgets.hintText(context, .src(@src()), "Uses the prices below; fetch or enter them first.");
-    const isk_rate = try widgets.openGroup(context, .src(@src()), ref.get("show_isk_rate"));
-    try bind.segmented(context, ref, "isk_rate_unit", "ISK Rate Unit", &.{ "Per Minute", "Per Hour" });
-    try widgets.hintText(context, .src(@src()), "Shows ISK earned per minute or per hour.");
-    try isk_rate.close(context);
-    try options.close(context);
-    try section.close(context);
-
     const prices_section = try widgets.openSharedSection(context, "Ore / Ice / Gas Prices", "\"Fetch Prices\" pulls current Jita buy prices from EVE's market.", &style.section);
     try priceControls(context);
     if (g_is_table_shown) {
@@ -167,9 +150,4 @@ fn fetchedLabel(arena: std.mem.Allocator, fetched_at_seconds: i64) ![]const u8 {
         time.getMinutesIntoHour(),
     });
     return lang.format(arena, "Last fetched {date} EVE time", .{ .date = date });
-}
-
-fn chatlogNotice(context: *ui.Frame) !void {
-    if (session.global().ptr.chatlog.enabled) return;
-    try widgets.noticeWithButton(context, .str("knots.mining.chatlog"), "The Mining overlay requires Log Monitoring enabled to read logs.", "Go to Log Monitoring", .log_monitoring);
 }

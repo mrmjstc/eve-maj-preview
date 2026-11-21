@@ -101,10 +101,9 @@ pub const Metrics = struct {
     footer_height: i32,
 };
 
-/// The list's own settings and its overlay's, which also runs the tracker.
+/// The list's own settings, and the overlays' whose rate units it follows.
 pub const StatSettings = struct {
     list_settings: *const ListViewConfig,
-    combat: *const activity.CombatConfig,
     mining: *const activity.MiningConfig,
     bounty: *const activity.BountyConfig,
 };
@@ -183,7 +182,7 @@ pub fn pillBorder(alert_color: u32) u32 {
     return color.mix(alert_color, PANEL, PILL_BORDER_PERCENT);
 }
 
-/// Positions into `names`, each a row's system in display order, so rows sharing one sit together: the biggest group first, ties by first appearance, rows with none last; each group keeps its rows' order.
+/// Positions into `names` grouped by system: biggest group first, ties by first seen, rows with none last; each keeps its order.
 pub fn systemGroupOrder(allocator: std.mem.Allocator, names: []const []const u8) ![]usize {
     const Group = struct {
         name: []const u8,
@@ -228,10 +227,10 @@ pub fn countText(buffer: *[COUNT_TEXT_MAX]u8, count: usize) []const u8 {
 pub fn showsStat(settings: StatSettings, stat: Stat) bool {
     const list_settings = settings.list_settings;
     return switch (stat) {
-        .incoming_dps => settings.combat.enabled and list_settings.showIncomingDps,
-        .outgoing_dps => settings.combat.enabled and list_settings.showOutgoingDps,
-        .mining_rate => settings.mining.enabled and list_settings.showMiningRate,
-        .bounty_rate => settings.bounty.enabled and list_settings.showBountyRate,
+        .incoming_dps => list_settings.showIncomingDps,
+        .outgoing_dps => list_settings.showOutgoingDps,
+        .mining_rate => list_settings.showMiningRate,
+        .bounty_rate => list_settings.showBountyRate,
     };
 }
 
@@ -338,10 +337,9 @@ fn quantity(stat: Stat) []const u8 {
 
 const testing = std.testing;
 const TEST_LIST_SETTINGS: ListViewConfig = .{};
-const TEST_COMBAT: activity.CombatConfig = .{};
 const TEST_MINING: activity.MiningConfig = .{};
 const TEST_BOUNTY: activity.BountyConfig = .{};
-const TEST_STAT_SETTINGS: StatSettings = .{ .list_settings = &TEST_LIST_SETTINGS, .combat = &TEST_COMBAT, .mining = &TEST_MINING, .bounty = &TEST_BOUNTY };
+const TEST_STAT_SETTINGS: StatSettings = .{ .list_settings = &TEST_LIST_SETTINGS, .mining = &TEST_MINING, .bounty = &TEST_BOUNTY };
 
 test "textLeft starts the name at the padding when there's no indicator" {
     try testing.expectEqual(PADDING_X, textLeft(.None));
