@@ -21,7 +21,7 @@ const Box = layout.Box;
 const MetricSegment = metric_segments.MetricSegment;
 const TrafficSpan = types.TrafficSpan;
 
-/// The search box and pin side by side, and the cards under them.
+/// The search box, and the cards under it.
 const SIDE_COLUMN_WIDTH: i32 = 210;
 /// As wide as the column, so the results don't resize as names come and go.
 pub const SEARCH_WIDTH: i32 = SIDE_COLUMN_WIDTH;
@@ -779,10 +779,10 @@ pub fn drawSearchCard(canvas: pixel_buffer.Canvas, box: Box, is_open: bool, acce
     drawGlyphAt(canvas, .search, box.left + SEARCH_GLYPH_X, y, if (is_open) SEGMENT_TEXT else CARD_MUTED);
 }
 
-/// The always on top pin, like the dialog's icon buttons; `hover_accent` is set while it's hovered.
-pub fn drawPinButton(canvas: pixel_buffer.Canvas, box: Box, is_always_on_top: bool, hover_accent: ?u32) void {
+/// The always on top pin, like the dialog's icon buttons; `on_accent` is set while it's on and `hover_accent` while it's hovered.
+pub fn drawPinButton(canvas: pixel_buffer.Canvas, box: Box, on_accent: ?u32, hover_accent: ?u32) void {
     drawControl(canvas, box, if (hover_accent != null) CONTROL_HOVER else CONTROL_FILL, hover_accent);
-    drawMapControlGlyph(canvas, box, .always_on_top, is_always_on_top);
+    drawMapControlGlyph(canvas, box, .always_on_top, on_accent orelse CARD_MUTED);
 }
 
 /// Layers gets two stacked sheets, lit while its menu is open; Follow a crosshair in the active client's colour, grey while it's off.
@@ -814,7 +814,7 @@ pub fn drawZoomStack(canvas: pixel_buffer.Canvas, areas: Areas, hovered: ?MapCon
         const inner = insetBox(box, CARD_BORDER_WIDTH);
         if (hovered == control) segmented.fillButton(canvas, insetBox(box, segmented.BAR_INSET), SEGMENT_HOVER);
         if (control != .fit) drawDivider(canvas, inner.left, inner.right, box.bottom - 1);
-        drawMapControlGlyph(canvas, box, control, false);
+        drawMapControlGlyph(canvas, box, control, SEGMENT_TEXT);
     }
 }
 
@@ -1034,15 +1034,14 @@ fn drawCardFrame(canvas: pixel_buffer.Canvas, card: CardFrame, hovered_row: ?usi
     if (!card.is_collapsed) drawDivider(canvas, inner_left, inner_right, card.header.bottom - 1);
 }
 
-fn drawMapControlGlyph(canvas: pixel_buffer.Canvas, box: Box, control: MapControl, is_always_on_top: bool) void {
-    const x = @divTrunc(box.left + box.right, 2);
-    const y = @divTrunc(box.top + box.bottom, 2);
-    switch (control) {
-        .zoom_in => drawGlyphAt(canvas, .add, x, y, SEGMENT_TEXT),
-        .zoom_out => drawGlyphAt(canvas, .minus, x, y, SEGMENT_TEXT),
-        .fit => drawGlyphAt(canvas, .fit, x, y, SEGMENT_TEXT),
-        .always_on_top => drawGlyphAt(canvas, .pin, x, y, if (is_always_on_top) SEGMENT_TEXT else CARD_MUTED),
-    }
+fn drawMapControlGlyph(canvas: pixel_buffer.Canvas, box: Box, control: MapControl, glyph_color: u32) void {
+    const glyph: glyphs.Glyph = switch (control) {
+        .zoom_in => .add,
+        .zoom_out => .minus,
+        .fit => .fit,
+        .always_on_top => .pin,
+    };
+    drawGlyphAt(canvas, glyph, @divTrunc(box.left + box.right, 2), @divTrunc(box.top + box.bottom, 2), glyph_color);
 }
 
 /// Dashes carry on across the corners between `points`.

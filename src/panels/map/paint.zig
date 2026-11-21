@@ -72,7 +72,7 @@ const MAX_LEGENDS = 3;
 /// Fits a wormhole row's longest ship size, its gap and a u16 of hours.
 const DETAIL_TEXT_MAX = 16;
 /// Fits a route row's jumps and kills, each a u32.
-const ROUTE_DETAIL_MAX = 32;
+const ROUTE_DETAIL_MAX = 40;
 
 /// What the panel shows besides its own settings.
 pub const Scene = struct {
@@ -626,7 +626,7 @@ pub const Painter = struct {
         look.drawToggleDivider(canvas, chrome.toggle_bar, chrome.toggleDividerX());
 
         const hovered_control: ?look.MapControl = if (hover.kind == .map_control) @fromBackingInt(@intCast(hover.index)) else null;
-        look.drawPinButton(canvas, self.areas.mapControlBox(.always_on_top), map_settings.alwaysOnTop, if (hovered_control == .always_on_top) accent else null);
+        look.drawPinButton(canvas, self.areas.mapControlBox(.always_on_top), if (map_settings.alwaysOnTop) accent else null, if (hovered_control == .always_on_top) accent else null);
         look.drawZoomStack(canvas, self.areas, hovered_control);
 
         _ = panel_chrome.drawFitted(dc, title.slice(), title_x, title_y, list_look.NAME, title_room);
@@ -899,14 +899,14 @@ pub const Painter = struct {
         };
         defer mask.deinit();
         const radius = look.routeRadius(scale);
-        const lit = self.state.hoveredIndex(.route_row) orelse 0;
+        const lit_index = self.state.hoveredIndex(.route_row) orelse 0;
         for (routes.slice(), 0..) |*route, index| {
-            if (index == lit) continue;
+            if (index == lit_index) continue;
             self.fillRouteMask(&mask, route, radius);
             look.drawRoute(canvas, &mask, false);
         }
-        if (lit >= routes.count) return;
-        self.fillRouteMask(&mask, &routes.slice()[lit], radius);
+        if (lit_index >= routes.count) return;
+        self.fillRouteMask(&mask, &routes.slice()[lit_index], radius);
         look.drawRoute(canvas, &mask, true);
     }
 
