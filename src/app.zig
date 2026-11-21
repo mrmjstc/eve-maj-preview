@@ -6,6 +6,8 @@ const scout_mod = @import("clients/scout.zig");
 const roster_mod = @import("clients/roster.zig");
 const auto_colors_mod = @import("clients/auto_colors.zig");
 const exclusions_mod = @import("clients/exclusions.zig");
+const auto_move_mod = @import("clients/auto_move.zig");
+const actions = @import("clients/actions.zig");
 const activation = @import("control/activation.zig");
 const auto_minimize = @import("control/auto_minimize.zig");
 const focus_mod = @import("control/focus.zig");
@@ -84,6 +86,8 @@ pub const App = struct {
     auto_colors: auto_colors_mod.AutoColorStore,
     /// Kept across a Save or profile switch.
     exclusions: exclusions_mod.Exclusions,
+    /// Kept across a thumbnail set rebuild, so a client still loading through a profile switch is still corrected.
+    auto_move: auto_move_mod.AutoMoveVerifier,
     /// Kept across a thumbnail set rebuild.
     notifications: center.NotificationCenter = .{},
     /// Kept across a thumbnail set rebuild.
@@ -123,6 +127,7 @@ pub const App = struct {
             .global_settings = loaded.global_settings,
             .character_ids = loaded.character_ids,
             .exclusions = .init(allocator),
+            .auto_move = .init(allocator),
             .auto_minimizer = .init(allocator),
             .trackers = .init(allocator, io),
             .scout = .init(allocator),
@@ -148,6 +153,7 @@ pub const App = struct {
         self.trackers.deinit();
         self.destroyThumbnailSet();
         self.auto_minimizer.deinit();
+        self.auto_move.deinit();
         self.exclusions.deinit();
         self.auto_colors.deinit();
         self.roster.deinit();
@@ -273,6 +279,7 @@ pub const App = struct {
         var scout_result = self.scout.update(should_force_scan, self.store.saved.windowFilters.items);
         defer scout_result.deinit(self.allocator);
         self.syncRoster(scout_result.windows);
+        self.followNewClients();
         if (self.roster.clients.items.len == 0) self.auto_colors.flush();
         self.clearLoggedOutExclusions(scout_result.name_changes.items);
         // The Characters tab marks who's logged in, which only a login, logout or closed client changes.
@@ -505,8 +512,7 @@ pub const App = struct {
 
     fn buildThumbnailSet(self: *App, windows: []const scout_mod.EveWindow) !void {
         const new_set = try self.createThumbnailSet();
-        // Clients are already where the user put them; only startup and new arrivals auto-move.
-        new_set.populate(windows, .{ .should_move_to_saved = false });
+        new_set.populate(windows);
     }
 
     /// A hotkey registration failure is logged, not fatal.
@@ -617,18 +623,34 @@ pub const App = struct {
 
         if (profile_changed) {
             self.notifier().notifyAll(.{ .notification_type = .ProfileSwitch, .target = config.profileDisplayName(self.store.live.profile_name) });
-            if (self.global_settings.moveOnProfileSwitch) {
-                if (self.thumbnail_set) |thumbnail_set| self.moveClientsToSavedPositions(thumbnail_set);
-            }
+            if (self.global_settings.moveOnProfileSwitch) self.moveClientsToSavedPositions();
         }
 
         slog.info("=== Profile reload complete: {s} ===", .{new_profile_name});
     }
 
-    fn moveClientsToSavedPositions(self: *const App, thumbnail_set: *ThumbnailSet) void {
+    /// Every EVE client to its saved window position, as on startup or a profile switch when the settings ask.
+    pub fn moveClientsToSavedPositions(self: *App) void {
         for (self.scout.getWindows()) |eve_window| {
-            if (eve_window.is_eve_client) thumbnail_set.auto_move.moveToSavedPosition(thumbnail_set.config, eve_window.hwnd, eve_window.character_name);
+            if (eve_window.is_eve_client) self.auto_move.moveToSavedPosition(&self.store.live, eve_window.hwnd, eve_window.character_name);
         }
+    }
+
+    /// After the tick's sync: moves clients that joined or logged in to their saved positions, and starts new ones minimized, as the profile asks.
+    fn followNewClients(self: *App) void {
+        const live = &self.store.live;
+        for (self.roster.clients.items) |*client| {
+            if (!client.is_eve_client) continue;
+            switch (client.last_sync) {
+                .none => {},
+                .joined => {
+                    if (live.autoMovePosition.enabled) self.auto_move.moveToSavedPosition(live, client.hwnd, client.character_name);
+                    if (live.autoMinimize.startMinimized) actions.minimizeNewClient(live, client.hwnd);
+                },
+                .logged_in => if (live.autoMovePosition.enabled) self.auto_move.moveToSavedPosition(live, client.hwnd, client.character_name),
+            }
+        }
+        self.auto_move.verify(live);
     }
 
     /// Runs control/restart_plan.zig's steps; takes ownership of `replacement`, which becomes the running store.
@@ -705,7 +727,7 @@ pub const App = struct {
                 };
                 slog.debug("Recreated {} thumbnail(s)", .{restart.eve_windows.len});
             },
-            .populate_thumbnail_set => if (self.thumbnail_set) |thumbnail_set| thumbnail_set.populate(restart.eve_windows, .{ .should_move_to_saved = false }),
+            .populate_thumbnail_set => if (self.thumbnail_set) |thumbnail_set| thumbnail_set.populate(restart.eve_windows),
             .clear_log_readings => {
                 self.roster.clearLogReadings();
                 slog.debug("Cleared what the logs last showed", .{});

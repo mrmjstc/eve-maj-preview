@@ -4,8 +4,6 @@ const win32 = @import("../platform/win32.zig");
 const config_mod = @import("../config.zig");
 const types = @import("../config/types.zig");
 const scout = @import("../clients/scout.zig");
-const actions = @import("../clients/actions.zig");
-const auto_move_mod = @import("../clients/auto_move.zig");
 const exclusions_mod = @import("../clients/exclusions.zig");
 const roster_mod = @import("../clients/roster.zig");
 const auto_colors_mod = @import("../clients/auto_colors.zig");
@@ -41,7 +39,6 @@ pub const ThumbnailSet = struct {
     exclusions: *const exclusions_mod.Exclusions,
     destroy_event_hook: ?win32.HANDLE = null,
     renderer: renderer_mod.Renderer,
-    auto_move: auto_move_mod.AutoMoveVerifier,
     drag_overlays: drag_overlays_mod.DragOverlays,
     /// The roster's active window as the thumbnails last showed it; only reconcileThumbnailStates writes it.
     drawn_active_hwnd: ?win32.HWND = null,
@@ -59,12 +56,6 @@ pub const ThumbnailSet = struct {
     pub const repositionAllThumbnails = arrange.repositionAll;
     pub const resizeThumbnailIfNeeded = arrange.resizeIfNeeded;
     pub const reflowIfSpacesActive = arrange.reflowIfSpacesActive;
-
-    pub const PopulateOptions = struct {
-        should_move_to_saved: bool,
-        /// False at startup/reload so clients already running stay put.
-        should_minimize_new: bool = false,
-    };
 
     /// What App lends the set; each must outlive it.
     pub const Borrowed = struct {
@@ -99,7 +90,6 @@ pub const ThumbnailSet = struct {
             .thumbnails = .empty,
             .auto_colors = borrowed.auto_colors,
             .roster = borrowed.roster,
-            .auto_move = .init(allocator),
             .drag_overlays = .init(allocator),
             .renderer = .init(allocator),
             .instance = instance,
@@ -127,7 +117,6 @@ pub const ThumbnailSet = struct {
 
         for (self.thumbnails.items) |thumbnail| self.destroyThumbnail(thumbnail);
         self.thumbnails.deinit(self.allocator);
-        self.auto_move.deinit();
     }
 
     /// Hides the hover zoom once the cursor has left its thumbnail.
@@ -402,20 +391,16 @@ pub const ThumbnailSet = struct {
     }
 
     /// Reflows once at the end, since createThumbnail sizes each against the count so far.
-    pub fn populate(self: *ThumbnailSet, eve_windows: []const scout.EveWindow, options: PopulateOptions) void {
-        if (self.addMissingThumbnails(eve_windows, options) and arrange.hasCountDependentLayout(self)) self.repositionAllThumbnails();
+    pub fn populate(self: *ThumbnailSet, eve_windows: []const scout.EveWindow) void {
+        if (self.addMissingThumbnails(eve_windows) and arrange.hasCountDependentLayout(self)) self.repositionAllThumbnails();
     }
 
     pub fn update(self: *ThumbnailSet, eve_windows: []const scout.EveWindow, closed_windows: []const scout.ClosedWindow, name_changes: []const scout.NameChange) void {
         var needs_region_reflow = self.cleanupClosedThumbnails(closed_windows);
         self.updateThumbnailStates();
         needs_region_reflow = self.applyNameChanges(name_changes) or needs_region_reflow;
-        self.auto_move.verify(self.config);
 
-        const created_new = self.addMissingThumbnails(eve_windows, .{
-            .should_move_to_saved = self.config.autoMovePosition.enabled,
-            .should_minimize_new = self.config.autoMinimize.startMinimized,
-        });
+        const created_new = self.addMissingThumbnails(eve_windows);
         needs_region_reflow = (created_new and arrange.hasCountDependentLayout(self)) or needs_region_reflow;
 
         // One reflow for all three triggers above.
@@ -483,7 +468,7 @@ pub const ThumbnailSet = struct {
         self.refreshGroupBadge(thumbnail);
     }
 
-    /// The client went from the login screen to a character.
+    /// The client went from the login screen to a character: the thumbnail goes to its saved spot, while App moves the client's own window.
     fn onLogin(self: *ThumbnailSet, thumbnail: *ThumbnailWindow) void {
         const name = thumbnail.character_name;
         // A space ignores the saved spot; applyNameChanges' reflow places it instead.
@@ -495,10 +480,6 @@ pub const ThumbnailSet = struct {
             } else {
                 slog.debug("No saved thumbnail position for {s}, keeping current location", .{name});
             }
-        }
-
-        if (self.config.autoMovePosition.enabled) {
-            self.auto_move.moveToSavedPosition(self.config, thumbnail.source_hwnd, name);
         }
     }
 
@@ -532,7 +513,7 @@ pub const ThumbnailSet = struct {
     }
 
     /// Logs and skips failures; returns whether any were created.
-    fn addMissingThumbnails(self: *ThumbnailSet, eve_windows: []const scout.EveWindow, options: PopulateOptions) bool {
+    fn addMissingThumbnails(self: *ThumbnailSet, eve_windows: []const scout.EveWindow) bool {
         var created_new = false;
 
         for (eve_windows) |eve_window| {
@@ -544,13 +525,6 @@ pub const ThumbnailSet = struct {
                 continue;
             };
             created_new = true;
-
-            if (options.should_move_to_saved and eve_window.is_eve_client) {
-                self.auto_move.moveToSavedPosition(self.config, eve_window.hwnd, eve_window.character_name);
-            }
-            if (options.should_minimize_new and eve_window.is_eve_client) {
-                actions.minimizeNewClient(self.config, eve_window.hwnd);
-            }
         }
 
         return created_new;

@@ -167,7 +167,9 @@ fn mainImpl(init: std.process.Init) !void {
     // Thumbnails first, since they need no I/O; the chatlog monitor's slower log discovery follows.
     const eve_windows = app.scout.getWindows();
     app.syncRoster(eve_windows);
-    thumbnail_set.populate(eve_windows, .{ .should_move_to_saved = app.store.live.autoMovePosition.moveOnStartup });
+    // Only the tick's syncs move and minimize clients that joined, so these, already running, stay put unless asked.
+    if (app.store.live.autoMovePosition.moveOnStartup) app.moveClientsToSavedPositions();
+    thumbnail_set.populate(eve_windows);
 
     if (app.chatlog_monitor) |monitor| app_mod.addChatlogCharacters(monitor, eve_windows);
 

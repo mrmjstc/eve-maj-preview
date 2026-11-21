@@ -25,6 +25,9 @@ pub const Readings = struct {
     stats: *const ActivityStats = &NO_STATS,
 };
 
+/// What the last sync did to a client.
+pub const SyncChange = enum { none, joined, logged_in };
+
 /// Which clients Roster.refreshConfig reads the profile for.
 pub const Refresh = enum {
     /// After the profile changes.
@@ -62,6 +65,8 @@ pub const Client = struct {
     is_excluded_from_minimize: bool = false,
     /// From joining or a rename until refreshConfig reads the profile for the new name.
     is_config_stale: bool = true,
+    /// What the last sync did to it, for App to act on before the next.
+    last_sync: SyncChange = .none,
     /// Bumped whenever something a view shows changes, so views redraw by comparing it.
     revision: u32 = 0,
 };
@@ -84,6 +89,7 @@ pub const Roster = struct {
 
     /// Mirrors `windows`, adding, renaming and dropping clients; the only place clients come or go, so don't hold a *Client across it.
     pub fn sync(self: *Roster, windows: []const EveWindow) void {
+        for (self.clients.items) |*client| client.last_sync = .none;
         self.dropMissing(windows);
         for (windows) |*window| {
             const index = self.indexOf(window.hwnd) orelse {
@@ -293,6 +299,7 @@ pub const Roster = struct {
             .character_name = name,
             .logged_in_at = window.logged_in_at,
             .inactive_since = win32.Ticks.now(),
+            .last_sync = .joined,
         }) catch |err| {
             slog.err("Failed to add '{s}' to the roster: {}", .{ window.character_name, err });
             self.allocator.free(name);
@@ -308,11 +315,14 @@ pub const Roster = struct {
             return;
         };
         slog.debug("Renamed '{s}' to '{s}' in the roster", .{ client.character_name, name });
-        const is_logout = scout.isGenericCharacterName(name) and !scout.isGenericCharacterName(client.character_name);
+        const was_generic = scout.isGenericCharacterName(client.character_name);
+        const is_now_generic = scout.isGenericCharacterName(name);
+        const is_logout = is_now_generic and !was_generic;
         self.allocator.free(client.character_name);
         client.character_name = name;
         client.is_config_stale = true;
         client.revision +%= 1;
+        if (was_generic and !is_now_generic) client.last_sync = .logged_in;
         if (!is_logout) return;
         self.clearSystem(client);
         _ = client.notifications.clear(self.allocator);
@@ -378,6 +388,21 @@ test "logging out renames the client to the login screen's name and clears its l
     try testing.expect(scout.isGenericCharacterName(client.character_name));
     try testing.expect(client.logged_in_at.isZero());
     try testing.expectEqualStrings("", client.system_name);
+}
+
+test "a sync marks who joined and who logged in, and the next sync clears both" {
+    var roster: Roster = .init(testing.allocator);
+    defer roster.deinit();
+    roster.sync(&.{testWindow(1, "EVE", 0)});
+    try testing.expectEqual(SyncChange.joined, roster.clients.items[0].last_sync);
+
+    roster.sync(&.{ testWindow(1, "Alpha", 900), testWindow(2, "Beta", 700) });
+    try testing.expectEqual(SyncChange.logged_in, roster.clients.items[0].last_sync);
+    try testing.expectEqual(SyncChange.joined, roster.clients.items[1].last_sync);
+
+    roster.sync(&.{ testWindow(1, "Alpha", 900), testWindow(2, "Beta", 700) });
+    try testing.expectEqual(SyncChange.none, roster.clients.items[0].last_sync);
+    try testing.expectEqual(SyncChange.none, roster.clients.items[1].last_sync);
 }
 
 test "a renamed client waits for its profile settings, and an unchanged one doesn't" {
