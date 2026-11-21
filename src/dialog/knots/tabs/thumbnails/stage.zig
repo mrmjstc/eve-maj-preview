@@ -178,13 +178,10 @@ fn showChip(context: *ui.Frame, comptime chip: chips.Chip, comptime index: usize
     try tip.close(context);
 }
 
-/// Where the settings put a chip: its anchor's box corner plus the scaled offsets, kept on the stage.
+/// Where the settings put a chip, by the thumbnails' own rule with the offsets scaled.
 fn settledPosition(look: chips.Look, chip_size: [2]f32, stage_size: [2]f32, scale: f32) [2]f32 {
-    const anchor = anchorPosition(look.position, chip_size, stage_size);
-    return .{
-        std.math.clamp(anchor[0] + @as(f32, @floatFromInt(look.offset_x)) * scale, 0, @max(0, stage_size[0] - chip_size[0])),
-        std.math.clamp(anchor[1] + @as(f32, @floatFromInt(look.offset_y)) * scale, 0, @max(0, stage_size[1] - chip_size[1])),
-    };
+    const offset = [2]f32{ @as(f32, @floatFromInt(look.offset_x)) * scale, @as(f32, @floatFromInt(look.offset_y)) * scale };
+    return draw.placedOrigin(f32, look.position, chip_size, stage_size, offset);
 }
 
 /// Snapped flush to the nearest anchor when close, and held within the offset range.
@@ -194,7 +191,7 @@ fn dragTarget(mouse: [2]f64, grab: [2]f32, stage_box: Box, chip_size: [2]f32, st
         std.math.clamp(@as(f32, @floatCast(mouse[0])) - stage_box.x() - grab[0], 0, max[0]),
         std.math.clamp(@as(f32, @floatCast(mouse[1])) - stage_box.y() - grab[1], 0, max[1]),
     };
-    const anchor = anchorPosition(zoneFor(raw_position, chip_size, stage_size), chip_size, stage_size);
+    const anchor = draw.anchorOrigin(f32, zoneFor(raw_position, chip_size, stage_size), chip_size, stage_size);
     if (std.math.hypot(raw_position[0] - anchor[0], raw_position[1] - anchor[1]) < SNAP_DISTANCE) raw_position = anchor;
     return .{
         std.math.clamp(raw_position[0], @max(0, anchor[0] + range[0] * scale), @min(max[0], anchor[0] + range[1] * scale)),
@@ -205,7 +202,7 @@ fn dragTarget(mouse: [2]f64, grab: [2]f32, stage_box: Box, chip_size: [2]f32, st
 /// The anchor is the third the chip's centre lands in; offsets are the rest, in real pixels.
 fn dropResult(position: [2]f32, chip_size: [2]f32, stage_size: [2]f32, scale: f32, range: [2]f32) Drop {
     const zone = zoneFor(position, chip_size, stage_size);
-    const anchor = anchorPosition(zone, chip_size, stage_size);
+    const anchor = draw.anchorOrigin(f32, zone, chip_size, stage_size);
     return .{
         .anchor = zone,
         .offset = .{
@@ -221,14 +218,6 @@ fn zoneFor(position: [2]f32, chip_size: [2]f32, stage_size: [2]f32) types.TextPo
     const row: u8 = if (centre[1] < stage_size[1] / 3) 0 else if (centre[1] < stage_size[1] * 2 / 3) 1 else 2;
     // TextPosition's tags run in reading order, three to a row.
     return @fromBackingInt(@intCast(row * 3 + column));
-}
-
-/// The chip's top-left when it sits flush in `position`'s corner or edge.
-fn anchorPosition(position: types.TextPosition, chip_size: [2]f32, stage_size: [2]f32) [2]f32 {
-    const index = @backingInt(position);
-    const free_space = [2]f32{ @max(0, stage_size[0] - chip_size[0]), @max(0, stage_size[1] - chip_size[1]) };
-    const fractions = [3]f32{ 0, 0.5, 1 };
-    return .{ free_space[0] * fractions[index % 3], free_space[1] * fractions[index / 3] };
 }
 
 /// Covers the stage, centred and cropped by it.
@@ -297,7 +286,7 @@ fn scaleAlpha(argb: u32, alpha: f32) ui.Color {
 }
 
 comptime {
-    // zoneFor and anchorPosition rely on TextPosition's reading order.
+    // zoneFor relies on TextPosition's reading order.
     std.debug.assert(@backingInt(types.TextPosition.TopLeft) == 0);
     std.debug.assert(@backingInt(types.TextPosition.Center) == 4);
     std.debug.assert(@backingInt(types.TextPosition.BottomRight) == 8);
