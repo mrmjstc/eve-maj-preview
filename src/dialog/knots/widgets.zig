@@ -24,9 +24,7 @@ const slog = log.Scoped("dialog_knots");
 const MAX_ROW_HINTS = 128;
 /// A row's tooltip around its label is keyed as the row's own key indexed by this.
 const ROW_TOOLTIP_INDEX = 12;
-/// Dialog keys its panel as its own key indexed by this.
-const DIALOG_PANEL_INDEX = 2;
-/// openModal keys its heading as the modal's own key indexed by this, past Dialog's panel.
+/// openModal keys its heading as the modal's own key indexed by this, past Dialog's panel at 2.
 const MODAL_HEADING_INDEX = 3;
 /// Kept between a menu and the window's edges.
 const POPOVER_MARGIN: f32 = 8;
