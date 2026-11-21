@@ -138,7 +138,7 @@ pub const IntelPanelWindow = struct {
     instance: win32.HINSTANCE,
     /// Borrowed; outlives the window.
     intel_history: *const history.NotificationHistory,
-    rows: [history.CAPACITY]history_rows.Row = undefined,
+    rows: [history.CAPACITY]history_look.Row = undefined,
     row_count: usize = 0,
     /// Each row's system, for clicks after the history has moved on.
     row_systems: [history.CAPACITY]?universe.SystemIndex = undefined,
@@ -350,7 +350,7 @@ pub const IntelPanelWindow = struct {
             shown_count += 1;
         }
         const entries = shown_buf[0..shown_count];
-        self.row_count = history_rows.build(&self.rows, entries, history.CAPACITY, history_rows.buildOptions(history_settings, null));
+        self.row_count = history_look.build(&self.rows, entries, history.CAPACITY, history_look.buildOptions(history_settings, null));
         for (self.rows[0..self.row_count], self.row_systems[0..self.row_count]) |row, *system| system.* = entries[row.first_index].system;
 
         const panel_header_state = self.header();
@@ -474,7 +474,7 @@ pub const IntelPanelWindow = struct {
     }
 
     /// Its distance pill, system, clear tag and message, any merged count, the hovered row's buttons, then its age.
-    fn drawRow(self: *IntelPanelWindow, bitmap: *const gdi_overlay.OverlayBitmap, text: RowText, entries: []const history.Entry, row: history_rows.Row, index: usize, row_box: Box, now: win32.Ticks) void {
+    fn drawRow(self: *IntelPanelWindow, bitmap: *const gdi_overlay.OverlayBitmap, text: RowText, entries: []const history.Entry, row: history_look.Row, index: usize, row_box: Box, now: win32.Ticks) void {
         const canvas = bitmap.canvas();
         const dc = bitmap.mem_dc;
         const entry = &entries[row.first_index];

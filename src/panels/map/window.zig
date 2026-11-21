@@ -6,6 +6,7 @@ const panel_window = @import("../../platform/panel_window.zig");
 const config_mod = @import("../../config.zig");
 const types = @import("../../config/types.zig");
 const history = @import("../../notifications/history.zig");
+const history_look = @import("../history_look.zig");
 const history_rows = @import("../history_rows.zig");
 const list_look = @import("../list_look.zig");
 const destinations_mod = @import("destinations.zig");
@@ -273,7 +274,7 @@ pub const MapPanelWindow = struct {
         const tab = self.shownTab();
         const row_count = switch (tab) {
             .intel => blk: {
-                self.state.intel_row_count = history_rows.build(&self.state.intel_rows, entries, capacity, history_rows.buildOptions(&self.config.historyPanel, null));
+                self.state.intel_row_count = history_look.build(&self.state.intel_rows, entries, capacity, history_look.buildOptions(&self.config.historyPanel, null));
                 break :blk self.state.intel_row_count;
             },
             .kills => self.listKills(scene, capacity),

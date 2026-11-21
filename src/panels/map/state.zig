@@ -1,7 +1,7 @@
 //! What the Map Panel shows and what's under the cursor, which its input changes and its painting reads; no I/O.
 const std = @import("std");
 const history = @import("../../notifications/history.zig");
-const history_rows = @import("../history_rows.zig");
+const history_look = @import("../history_look.zig");
 const look = @import("look.zig");
 const metric_segments = @import("metric_segments.zig");
 const marks_mod = @import("marks.zig");
@@ -99,7 +99,7 @@ pub const MapState = struct {
     /// Rebuilt each render; borrows from the thumbnails.
     marks: marks_mod.Marks = .{},
     /// The Intel card's rows, from the last render.
-    intel_rows: [history.CAPACITY]history_rows.Row = undefined,
+    intel_rows: [history.CAPACITY]history_look.Row = undefined,
     intel_row_count: usize = 0,
     /// What the Kills tab lists, newest first, copied so a click finds the kill it showed.
     kill_rows: [look.MAX_INTEL_ROWS]zkill.Kill = undefined,

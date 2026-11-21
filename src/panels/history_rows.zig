@@ -1,4 +1,4 @@
-//! The rows of recent notifications the History and Intel panels list: which entries share one, and how they're drawn.
+//! How the History and Intel panels draw their rows, which history_look.build works out.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const panels = @import("../config/panels.zig");
@@ -16,6 +16,8 @@ const box_mod = @import("../util/box.zig");
 const pixel_buffer = @import("../util/pixel_buffer.zig");
 
 const Box = box_mod.Box;
+const Row = history_look.Row;
+const Names = history_look.Names;
 const Canvas = pixel_buffer.Canvas;
 const HistoryPanelConfig = panels.HistoryPanelConfig;
 const IntelPanelConfig = panels.IntelPanelConfig;
@@ -24,23 +26,6 @@ const NotificationConfig = notifications_mod.NotificationConfig;
 pub const INTEL_EMPTY_TEXT = "No intel yet";
 /// Granularity of the timestamp text baked into the render signature, so it doesn't redraw every scan tick.
 const TIMESTAMP_BUCKET_MS: u64 = 15_000;
-/// Fits every character a merged row can name, ", " apart.
-const NAMES_TEXT_MAX = history.CAPACITY * 16;
-
-/// `first_index` and `last_index` are newest-first history indices, equal unless merged.
-pub const Row = struct {
-    hwnd: win32.HWND,
-    count: usize,
-    first_index: usize,
-    last_index: usize,
-};
-
-pub const BuildOptions = struct {
-    /// Whose category filters apply; null lists every entry.
-    filter: ?*const HistoryPanelConfig = null,
-    merges: bool,
-    merge_window_ms: u64,
-};
 
 /// Where a two-line row is drawn, from its top-left text corner to `right`.
 pub const StackedArea = struct {
@@ -61,19 +46,6 @@ pub const HistoryText = struct {
     small_font: win32.HFONT,
     name_height: i32,
     small_height: i32,
-};
-
-/// The characters a merged row stands for, each once, ", " apart; newest first.
-pub const Names = struct {
-    buffer: [NAMES_TEXT_MAX]u8 = undefined,
-    length: usize = 0,
-    count: usize = 0,
-    /// Borrows from the entries; the one name while `count` is 1.
-    only: []const u8 = "",
-
-    pub fn text(self: *const Names) []const u8 {
-        return self.buffer[0..self.length];
-    }
 };
 
 /// Where an expanded row's names break onto lines.
@@ -98,11 +70,6 @@ pub const HistoryPlace = struct {
     name_lines: ?NameLines = null,
 };
 
-/// The History Panel's merge settings, which the Intel Panel follows too; `filter` is BuildOptions.filter.
-pub fn buildOptions(history_settings: *const HistoryPanelConfig, filter: ?*const HistoryPanelConfig) BuildOptions {
-    return .{ .filter = filter, .merges = history_settings.mergeEnabled, .merge_window_ms = @as(u64, @intCast(@max(0, history_settings.mergeWindowSec))) * std.time.ms_per_s };
-}
-
 /// What the Intel Panel's rows depend on, for a render signature.
 pub fn hashIntel(hasher: *std.hash.Wyhash, intel_history: *const history.NotificationHistory, entries: []const history.Entry, history_settings: *const HistoryPanelConfig, intel_settings: *const IntelPanelConfig, notifications: *const NotificationConfig) void {
     hasher.update(std.mem.asBytes(&intel_history.revision));
@@ -111,35 +78,6 @@ pub fn hashIntel(hasher: *std.hash.Wyhash, intel_history: *const history.Notific
     hasher.update(std.mem.asBytes(&history_settings.mergeEnabled));
     hasher.update(std.mem.asBytes(&history_settings.mergeWindowSec));
     hashEntries(hasher, entries, notifications, history_settings.showTimestamp);
-}
-
-/// Fills `rows` from `entries`, merging repeats, up to `capacity` rows; returns how many it filled.
-pub fn build(rows: []Row, entries: []const history.Entry, capacity: usize, options: BuildOptions) usize {
-    const row_limit = @min(capacity, rows.len);
-    var shown_count: usize = 0;
-    for (entries, 0..) |*entry, i| {
-        if (options.filter) |filter| {
-            if (!history_look.showsCategory(filter, notification.notificationCategory(entry.notification_type))) continue;
-        }
-
-        if (options.merges and shown_count > 0) {
-            const row = &rows[shown_count - 1];
-            const previous = &entries[row.last_index];
-            if (previous.notification_type == entry.notification_type and
-                std.mem.eql(u8, previous.text(), entry.text()) and
-                previous.timestamp.elapsedSince(entry.timestamp) <= options.merge_window_ms)
-            {
-                row.count += 1;
-                row.last_index = i;
-                continue;
-            }
-        }
-
-        if (shown_count >= row_limit) break;
-        rows[shown_count] = .{ .hwnd = entry.source_hwnd, .count = 1, .first_index = i, .last_index = i };
-        shown_count += 1;
-    }
-    return shown_count;
 }
 
 /// What the rows' pixels depend on, for a panel's render signature.
@@ -201,26 +139,6 @@ pub fn drawStacked(dc: win32.HDC, text: panel_chrome.Text, entries: []const hist
     }
     if (message.len == 0) return;
     _ = panel_chrome.drawFitted(dc, message, area.left, area.top + text.name_height + area.line_gap, messageColor(notifications, entry), area.right - area.left);
-}
-
-/// The distinct characters of `row`'s entries; any that won't fit the buffer are left out.
-pub fn mergedNames(entries: []const history.Entry, row: Row) Names {
-    var names: Names = .{};
-    const first = &entries[row.first_index];
-    for (entries[row.first_index .. row.last_index + 1]) |*entry| {
-        if (entry.notification_type != first.notification_type or !std.mem.eql(u8, entry.text(), first.text())) continue;
-        const name = entry.characterName();
-        if (containsName(names.text(), name)) continue;
-        const separator = if (names.length == 0) "" else ", ";
-        if (names.length + separator.len + name.len > names.buffer.len) break;
-        @memcpy(names.buffer[names.length..][0..separator.len], separator);
-        names.length += separator.len;
-        @memcpy(names.buffer[names.length..][0..name.len], name);
-        names.length += name.len;
-        names.count += 1;
-        if (names.count == 1) names.only = name;
-    }
-    return names;
 }
 
 /// Breaks after a name's comma where the line would pass `width`; the small font must be selected.
@@ -333,15 +251,6 @@ fn drawMutedBefore(dc: win32.HDC, text: []const u8, left: i32, right: *i32, top:
     right.* -= panel_chrome.wideTextWidth(dc, text);
     panel_chrome.drawWideLine(dc, text, @max(left, right.*), top, list_look.MUTED);
     right.* -= history_look.TEXT_GAP;
-}
-
-/// Whole names only, in a ", " list.
-fn containsName(names: []const u8, name: []const u8) bool {
-    var parts = std.mem.splitSequence(u8, names, ", ");
-    while (parts.next()) |part| {
-        if (std.mem.eql(u8, part, name)) return true;
-    }
-    return false;
 }
 
 fn messageColor(notifications: *const NotificationConfig, entry: *const history.Entry) u32 {

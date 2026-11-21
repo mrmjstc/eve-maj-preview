@@ -1,8 +1,10 @@
-//! The History Panel's look, shared by the panel and the config dialog's preview: its sizes, category chips and row text, in the client list's palette; no I/O.
+//! The History Panel's look, shared by the panel and the config dialog's preview: its sizes, category chips, row text, and which entries share a row; no I/O.
 const std = @import("std");
+const win32 = @import("../platform/win32.zig");
 const notification = @import("../notifications/notification.zig");
 const panels = @import("../config/panels.zig");
 const notifications_mod = @import("../config/notifications.zig");
+const history = @import("../notifications/history.zig");
 const glyphs = @import("glyphs.zig");
 const list_look = @import("list_look.zig");
 const palette = @import("palette.zig");
@@ -21,6 +23,8 @@ pub const TEXT_GAP: i32 = 6;
 pub const NAME_MAX_PERCENT = 50;
 /// Fits mergedText's and clientsText's longest results.
 pub const COUNT_TEXT_MAX = 24;
+/// Fits every character a merged row can name, ", " apart.
+const NAMES_TEXT_MAX = history.CAPACITY * 16;
 /// A row's sides.
 pub const PADDING_X: i32 = palette.PADDING_X;
 /// The square behind a row's category glyph.
@@ -90,6 +94,34 @@ pub const AfterSystem = struct {
     distance: []const u8,
     /// Borrows from the text split.
     message: []const u8,
+};
+
+/// `first_index` and `last_index` are newest-first history indices, equal unless merged.
+pub const Row = struct {
+    hwnd: win32.HWND,
+    count: usize,
+    first_index: usize,
+    last_index: usize,
+};
+
+pub const BuildOptions = struct {
+    /// Whose category filters apply; null lists every entry.
+    filter: ?*const HistoryPanelConfig = null,
+    merges: bool,
+    merge_window_ms: u64,
+};
+
+/// The characters a merged row stands for, each once, ", " apart; newest first.
+pub const Names = struct {
+    buffer: [NAMES_TEXT_MAX]u8 = undefined,
+    length: usize = 0,
+    count: usize = 0,
+    /// Borrows from the entries; the one name while `count` is 1.
+    only: []const u8 = "",
+
+    pub fn text(self: *const Names) []const u8 {
+        return self.buffer[0..self.length];
+    }
 };
 
 /// Rows grow with the font as the client list's do.
@@ -209,7 +241,120 @@ pub fn splitAfterSystem(text: []const u8) AfterSystem {
     return .{ .distance = distance, .message = std.mem.trimStart(u8, rest, ": ") };
 }
 
+/// The History Panel's merge settings, which the Intel Panel follows too; `filter` is BuildOptions.filter.
+pub fn buildOptions(history_settings: *const HistoryPanelConfig, filter: ?*const HistoryPanelConfig) BuildOptions {
+    return .{ .filter = filter, .merges = history_settings.mergeEnabled, .merge_window_ms = @as(u64, @intCast(@max(0, history_settings.mergeWindowSec))) * std.time.ms_per_s };
+}
+
+/// Fills `rows` from `entries`, merging repeats, up to `capacity` rows; returns how many it filled.
+pub fn build(rows: []Row, entries: []const history.Entry, capacity: usize, options: BuildOptions) usize {
+    const row_limit = @min(capacity, rows.len);
+    var shown_count: usize = 0;
+    for (entries, 0..) |*entry, i| {
+        if (options.filter) |filter| {
+            if (!showsCategory(filter, notification.notificationCategory(entry.notification_type))) continue;
+        }
+
+        if (options.merges and shown_count > 0) {
+            const row = &rows[shown_count - 1];
+            const previous = &entries[row.last_index];
+            if (previous.notification_type == entry.notification_type and
+                std.mem.eql(u8, previous.text(), entry.text()) and
+                previous.timestamp.elapsedSince(entry.timestamp) <= options.merge_window_ms)
+            {
+                row.count += 1;
+                row.last_index = i;
+                continue;
+            }
+        }
+
+        if (shown_count >= row_limit) break;
+        rows[shown_count] = .{ .hwnd = entry.source_hwnd, .count = 1, .first_index = i, .last_index = i };
+        shown_count += 1;
+    }
+    return shown_count;
+}
+
+/// The distinct characters of `row`'s entries; any that won't fit the buffer are left out.
+pub fn mergedNames(entries: []const history.Entry, row: Row) Names {
+    var names: Names = .{};
+    const first = &entries[row.first_index];
+    for (entries[row.first_index .. row.last_index + 1]) |*entry| {
+        if (entry.notification_type != first.notification_type or !std.mem.eql(u8, entry.text(), first.text())) continue;
+        const name = entry.characterName();
+        if (containsName(names.text(), name)) continue;
+        const separator = if (names.length == 0) "" else ", ";
+        if (names.length + separator.len + name.len > names.buffer.len) break;
+        @memcpy(names.buffer[names.length..][0..separator.len], separator);
+        names.length += separator.len;
+        @memcpy(names.buffer[names.length..][0..name.len], name);
+        names.length += name.len;
+        names.count += 1;
+        if (names.count == 1) names.only = name;
+    }
+    return names;
+}
+
+/// Whole names only, in a ", " list.
+fn containsName(names: []const u8, name: []const u8) bool {
+    var parts = std.mem.splitSequence(u8, names, ", ");
+    while (parts.next()) |part| {
+        if (std.mem.eql(u8, part, name)) return true;
+    }
+    return false;
+}
+
 const testing = std.testing;
+
+/// Never passed to Win32.
+fn testEntry(notification_type: notification.NotificationType, character_name: []const u8, text: []const u8, timestamp_ms: u64) history.Entry {
+    var entry: history.Entry = .{ .source_hwnd = @ptrFromInt(1), .notification_type = notification_type, .timestamp = .{ .ms = timestamp_ms } };
+    @memcpy(entry.character_name_buf[0..character_name.len], character_name);
+    entry.character_name_length = @intCast(character_name.len);
+    @memcpy(entry.text_buf[0..text.len], text);
+    entry.text_length = @intCast(text.len);
+    return entry;
+}
+
+test "repeats within the merge window merge into one row, and an older one starts its own" {
+    const entries = [_]history.Entry{
+        testEntry(.TakingDamage, "Alpha", "Under fire", 10_000),
+        testEntry(.TakingDamage, "Beta", "Under fire", 9_000),
+        testEntry(.TakingDamage, "Gamma", "Under fire", 1_000),
+    };
+    var rows: [4]Row = undefined;
+    const row_count = build(&rows, &entries, rows.len, .{ .merges = true, .merge_window_ms = 5_000 });
+    try testing.expectEqual(@as(usize, 2), row_count);
+    try testing.expectEqual(@as(usize, 2), rows[0].count);
+    try testing.expectEqual(@as(usize, 1), rows[0].last_index);
+    try testing.expectEqual(@as(usize, 2), rows[1].first_index);
+}
+
+test "a filtered-out category is left out, and the rows stop at capacity" {
+    const entries = [_]history.Entry{
+        testEntry(.MiningIdle, "Alpha", "Idle", 3_000),
+        testEntry(.TakingDamage, "Alpha", "Under fire", 2_000),
+        testEntry(.Docking, "Alpha", "Docked", 1_000),
+    };
+    var filter: HistoryPanelConfig = .{};
+    filter.showCategoryFilters = true;
+    filter.showMining = false;
+    var rows: [4]Row = undefined;
+    const row_count = build(&rows, &entries, 1, .{ .filter = &filter, .merges = false, .merge_window_ms = 0 });
+    try testing.expectEqual(@as(usize, 1), row_count);
+    try testing.expectEqual(@as(usize, 1), rows[0].first_index);
+}
+
+test "a merged row names each character once, newest first" {
+    const entries = [_]history.Entry{
+        testEntry(.TakingDamage, "Alpha", "Under fire", 3_000),
+        testEntry(.TakingDamage, "Beta", "Under fire", 2_000),
+        testEntry(.TakingDamage, "Alpha", "Under fire", 1_000),
+    };
+    const names = mergedNames(&entries, .{ .hwnd = @ptrFromInt(1), .count = 3, .first_index = 0, .last_index = 2 });
+    try testing.expectEqualStrings("Alpha, Beta", names.text());
+    try testing.expectEqual(@as(usize, 2), names.count);
+}
 
 test "layOutChips keeps chips on one line while they fit, then wraps" {
     const widths: [CATEGORY_COUNT]i32 = @splat(60);

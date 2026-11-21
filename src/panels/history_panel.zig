@@ -124,7 +124,7 @@ pub const HistoryPanelWindow = struct {
     instance: win32.HINSTANCE,
     /// Borrowed; outlives the window.
     history: *history_mod.NotificationHistory,
-    rows: [history_mod.CAPACITY]history_rows.Row = undefined,
+    rows: [history_mod.CAPACITY]history_look.Row = undefined,
     row_count: usize = 0,
     /// Each row's oldest entry's timestamp in ms, which newer repeats joining the row don't change.
     row_keys: [history_mod.CAPACITY]u64 = undefined,
@@ -273,7 +273,7 @@ pub const HistoryPanelWindow = struct {
         self.seen_ms = win32.Ticks.now().ms;
     }
 
-    fn isNew(self: *const HistoryPanelWindow, entries: []const history_mod.Entry, row: history_rows.Row) bool {
+    fn isNew(self: *const HistoryPanelWindow, entries: []const history_mod.Entry, row: history_look.Row) bool {
         return entries[row.first_index].timestamp.ms > self.seen_ms;
     }
 
@@ -327,7 +327,7 @@ pub const HistoryPanelWindow = struct {
 
         var entry_buf: [history_mod.CAPACITY]history_mod.Entry = undefined;
         const entries = notifications.snapshot(&entry_buf);
-        self.row_count = history_rows.build(&self.rows, entries, @intCast(@max(1, history_settings.maxRows)), history_rows.buildOptions(history_settings, history_settings));
+        self.row_count = history_look.build(&self.rows, entries, @intCast(@max(1, history_settings.maxRows)), history_look.buildOptions(history_settings, history_settings));
         for (self.rows[0..self.row_count], self.row_keys[0..self.row_count]) |row, *key| key.* = entries[row.last_index].timestamp.ms;
         const panel_header_state = self.header();
         const signature = self.computeRenderSignature(entries, notifications.revision, &panel_header_state);
@@ -435,10 +435,10 @@ pub const HistoryPanelWindow = struct {
             }
             follows_new = is_new;
 
-            var names: history_rows.Names = undefined;
+            var names: history_look.Names = undefined;
             var place: history_rows.HistoryPlace = .{ .box = undefined, .line_height = line_height, .is_new = is_new, .is_hovered = self.hovered_row == index, .shows_timestamp = history_settings.showTimestamp };
             if (row.count > 1) {
-                names = history_rows.mergedNames(entries, row);
+                names = history_look.mergedNames(entries, row);
                 place.names = &names;
                 if (self.expanded_key == key) {
                     _ = win32.SelectObject(dc, text.small_font);
