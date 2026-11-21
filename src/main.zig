@@ -148,8 +148,9 @@ fn mainImpl(init: std.process.Init) !void {
     }
 
     app.trackers.setup(&app.store.saved, app.chatlog_monitor);
+    if (app.chatlog_monitor) |monitor| monitor.applyProfile(&app.store.saved);
 
-    // Once the trackers are wired in, so the worker never sees them unset.
+    // Once the trackers and alert rules are in, so the worker never sees them unset.
     if (app.chatlog_monitor) |monitor| startChatlogMonitoring(monitor, app.store.live.characters.items);
 
     const timer_hwnd = try createTimerWindow();

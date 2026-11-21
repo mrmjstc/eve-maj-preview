@@ -708,6 +708,7 @@ pub const App = struct {
                 break :blk null;
             },
             .setup_trackers => self.trackers.setup(&self.store.saved, self.chatlog_monitor),
+            .apply_monitor_profile => if (self.chatlog_monitor) |monitor| monitor.applyProfile(&self.store.saved),
             .start_monitor => if (self.chatlog_monitor) |monitor| startChatlogWorker(monitor),
             .add_monitor_characters => if (self.chatlog_monitor) |monitor| {
                 addChatlogCharacters(monitor, restart.eve_windows);

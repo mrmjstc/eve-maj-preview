@@ -193,8 +193,14 @@ pub const ChatlogMonitor = struct {
         self.poll_interval_ms = chatlog_config.pollIntervalMs;
     }
 
-    /// Owned, since the worker reads it while a dialog preview may replace the config's copy; only while the worker is stopped.
-    pub fn setDamageAlertExcludedWeapons(self: *ChatlogMonitor, weapons: []const u8) void {
+    /// The profile's chat-alert rules and Taking Damage weapon filter; only while the worker is stopped.
+    pub fn applyProfile(self: *ChatlogMonitor, settings: *const config.Config) void {
+        self.setDamageAlertExcludedWeapons(settings.combat.damage_alert_excluded_weapons);
+        self.setChatAlerts(settings);
+    }
+
+    /// Owned, since the worker reads it while a dialog preview may replace the config's copy.
+    fn setDamageAlertExcludedWeapons(self: *ChatlogMonitor, weapons: []const u8) void {
         if (!self.isWorkerStopped("damage alert weapon filter")) return;
         const owned: []const u8 = if (weapons.len == 0) "" else self.allocator.dupe(u8, weapons) catch |err| {
             slog.err("Failed to copy damage alert weapon filter, keeping the previous one: {}", .{err});
@@ -204,8 +210,8 @@ pub const ChatlogMonitor = struct {
         self.damage_alert_excluded_weapons = owned;
     }
 
-    /// Copied, since the worker reads them while a dialog preview may replace the config's; only while the worker is stopped.
-    pub fn setChatAlerts(self: *ChatlogMonitor, settings: *const config.Config) void {
+    /// Copied, since the worker reads them while a dialog preview may replace the config's.
+    fn setChatAlerts(self: *ChatlogMonitor, settings: *const config.Config) void {
         if (!self.isWorkerStopped("chat alerts")) return;
         var muted: std.ArrayList([]const u8) = .empty;
         defer muted.deinit(self.allocator);

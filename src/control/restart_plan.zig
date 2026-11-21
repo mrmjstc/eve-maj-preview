@@ -34,6 +34,8 @@ pub const Step = enum {
     create_monitor,
     /// Wires the trackers into the monitor, which must not be running.
     setup_trackers,
+    /// Hands a kept or new monitor the profile's chat-alert rules and weapon filter, likewise only while it's stopped.
+    apply_monitor_profile,
     /// Skipped when there's no monitor, as after a failed create_monitor.
     start_monitor,
     add_monitor_characters,
@@ -76,7 +78,10 @@ pub const Plan = struct {
         if (keeps_monitor) plan.add(.apply_monitor_settings);
         if (creates_monitor) plan.add(.create_monitor);
         plan.add(.setup_trackers);
-        if (keeps_monitor or creates_monitor) plan.add(.start_monitor);
+        if (keeps_monitor or creates_monitor) {
+            plan.add(.apply_monitor_profile);
+            plan.add(.start_monitor);
+        }
         // A kept monitor still follows its characters' logs.
         if (creates_monitor) plan.add(.add_monitor_characters);
         plan.add(.create_hotkey_manager);
@@ -211,10 +216,14 @@ test "every plan stops the worker before what it reads changes, and starts it on
         if (stop) |stop_step| {
             if (has(&plan, .adopt_global_draft)) try expectBefore(&plan, stop_step, .adopt_global_draft);
             try expectBefore(&plan, stop_step, .setup_trackers);
+            if (has(&plan, .apply_monitor_profile)) try expectBefore(&plan, stop_step, .apply_monitor_profile);
         }
         if (has(&plan, .pause_monitor)) try expectBefore(&plan, .apply_monitor_settings, .start_monitor);
         if (has(&plan, .create_monitor)) try expectBefore(&plan, .create_monitor, .setup_trackers);
-        if (has(&plan, .start_monitor)) try expectBefore(&plan, .setup_trackers, .start_monitor);
+        if (has(&plan, .start_monitor)) {
+            try expectBefore(&plan, .setup_trackers, .start_monitor);
+            try expectBefore(&plan, .apply_monitor_profile, .start_monitor);
+        }
         try testing.expect(has(&plan, .build_thumbnail_set) != has(&plan, .populate_thumbnail_set));
         try expectBefore(&plan, .destroy_hotkey_manager, .create_hotkey_manager);
     }

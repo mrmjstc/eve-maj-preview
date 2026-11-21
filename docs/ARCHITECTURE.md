@@ -69,7 +69,7 @@ Reload entry points:
 | `saveSettings` (`DIALOG_HOST.save`) | Dialog Save | Commits the profile, `restartSubsystems` with the same store adopting a copy of the global draft, then writes and applies the global settings |
 | `onLiveProfileEdited` (`DIALOG_HOST.run`) | Every dialog edit | Restyle/reflow; rebuilds the thumbnail set only on a view-mode change |
 
-`restartSubsystems` runs the steps from `control/restart_plan.zig` (pure, tested): which subsystems are kept, paused or rebuilt, in what order, and what to bring back up if a step fails. A kept chatlog worker is paused until the new trackers are wired in. A new store is built before anything is torn down, so a load failure leaves the running profile intact.
+`restartSubsystems` runs the steps from `control/restart_plan.zig` (pure, tested): which subsystems are kept, paused or rebuilt, in what order, and what to bring back up if a step fails. A kept chatlog worker is paused until the new trackers are wired in and it has the profile's chat-alert rules (`apply_monitor_profile`). A new store is built before anything is torn down, so a load failure leaves the running profile intact.
 
 ## Main thread messages
 
