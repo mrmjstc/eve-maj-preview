@@ -1201,5 +1201,18 @@
   "Stays off while Click Through is on in the Mouse tab.": "Stays off while Click Through is on in the Mouse tab.",
   "Uses the excluded characters from the Mouse tab.": "Uses the excluded characters from the Mouse tab.",
   "Watches for characters left behind on a jump. Also on a hotkey and in the tray menu.": "Watches for characters left behind on a jump. Also on a hotkey and in the tray menu.",
-  "Routes avoid your Eve Stars account's saved list. Right-click a system on the map and pick Avoid System to add or remove it, or edit the list in Eve Stars' Settings.": "Routes avoid your Eve Stars account's saved list. Right-click a system on the map and pick Avoid System to add or remove it, or edit the list in Eve Stars' Settings."
+  "Routes avoid your Eve Stars account's saved list. Right-click a system on the map and pick Avoid System to add or remove it, or edit the list in Eve Stars' Settings.": "Routes avoid your Eve Stars account's saved list. Right-click a system on the map and pick Avoid System to add or remove it, or edit the list in Eve Stars' Settings.",
+  "Live Preview": "Live Preview",
+  "A live picture of each client, or a plain fill behind the texts.": "A live picture of each client, or a plain fill behind the texts.",
+  "Show Live Preview": "Show Live Preview",
+  "Off shows a plain fill, which is lighter on your PC; hover zoom then does nothing.": "Off shows a plain fill, which is lighter on your PC; hover zoom then does nothing.",
+  "Blank Color": "Blank Color",
+  "Fills thumbnails without a live preview. Characters can choose their own.": "Fills thumbnails without a live preview. Characters can choose their own.",
+  "Thumbnail Preview": "Thumbnail Preview",
+  "Default": "Default",
+  "Live": "Live",
+  "Blank": "Blank",
+  "Default follows the Appearance tab.": "Default follows the Appearance tab.",
+  "Use Dimmed Border Color": "Use Dimmed Border Color",
+  "A dark shade of each character's focused border color.": "A dark shade of each character's focused border color."
 }

@@ -1201,5 +1201,18 @@
   "Stays off while Click Through is on in the Mouse tab.": "Pozostaje wyłączone, gdy w zakładce Mysz włączone jest 'Przeklikiwanie'.",
   "Uses the excluded characters from the Mouse tab.": "Używa wykluczonych postaci z zakładki Mysz.",
   "Watches for characters left behind on a jump. Also on a hotkey and in the tray menu.": "Pilnuje postaci, które zostały w tyle przy skoku. Także pod skrótem i w menu zasobnika.",
-  "Routes avoid your Eve Stars account's saved list. Right-click a system on the map and pick Avoid System to add or remove it, or edit the list in Eve Stars' Settings.": "Trasy omijają zapisaną listę twojego konta Eve Stars. Kliknij prawym przyciskiem system na mapie i wybierz Omijaj system, aby go dodać lub usunąć, albo edytuj listę w ustawieniach Eve Stars."
+  "Routes avoid your Eve Stars account's saved list. Right-click a system on the map and pick Avoid System to add or remove it, or edit the list in Eve Stars' Settings.": "Trasy omijają zapisaną listę twojego konta Eve Stars. Kliknij prawym przyciskiem system na mapie i wybierz Omijaj system, aby go dodać lub usunąć, albo edytuj listę w ustawieniach Eve Stars.",
+  "Live Preview": "Podgląd na żywo",
+  "A live picture of each client, or a plain fill behind the texts.": "Obraz na żywo każdego klienta albo jednolite wypełnienie pod tekstami.",
+  "Show Live Preview": "Pokazuj podgląd na żywo",
+  "Off shows a plain fill, which is lighter on your PC; hover zoom then does nothing.": "Wyłączone pokazuje jednolite wypełnienie, które mniej obciąża komputer; zoom po najechaniu wtedy nie działa.",
+  "Blank Color": "Kolor pustej miniatury",
+  "Fills thumbnails without a live preview. Characters can choose their own.": "Wypełnia miniatury bez podglądu na żywo. Postacie mogą wybrać własny.",
+  "Thumbnail Preview": "Podgląd miniatury",
+  "Default": "Domyślny",
+  "Live": "Na żywo",
+  "Blank": "Pusta",
+  "Default follows the Appearance tab.": "Domyślny działa jak w zakładce Wygląd.",
+  "Use Dimmed Border Color": "Użyj przyciemnionego koloru ramki",
+  "A dark shade of each character's focused border color.": "Ciemny odcień koloru ramki aktywnej każdej postaci."
 }

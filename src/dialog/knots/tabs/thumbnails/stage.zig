@@ -65,16 +65,18 @@ pub fn show(context: *ui.Frame) !void {
     _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, stage_key.hash());
     const stage_box = measuredBox(ui_state, stage_key);
     const opacity = @as(f32, @floatFromInt(thumbnail.thumbnailOpacity)) / 255.0;
+    // Opaque, since the real fill ignores alpha.
+    const background = if (thumbnail.showLivePreview) CLIENT_BACKGROUND else thumbnail.blankFill(session.profile().ptr.focusedBorderColor()) | 0xFF000000;
     const stage_style = try arena.create(ui.Style);
     stage_style.* = .{
         .width = .fixed(stage_size[0]),
         .height = .fixed(stage_size[1]),
-        .background = .{ .color = scaleAlpha(CLIENT_BACKGROUND, opacity) },
+        .background = .{ .color = scaleAlpha(background, opacity) },
         .overflow = .hidden,
     };
     const stage = Rect{ .key = stage_key, .style = stage_style };
     _ = try stage.open(context);
-    try stageBackground(context, stage_size, opacity);
+    if (thumbnail.showLivePreview) try stageBackground(context, stage_size, opacity);
 
     inline for (chips.CHIPS, 0..) |chip, index| {
         try showChip(context, chip, index, stage_box, stage_size, scale);

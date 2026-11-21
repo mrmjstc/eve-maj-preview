@@ -82,6 +82,9 @@ Sections: `thumbnail`, `timer`, `display`, `listView`, `historyPanel`, `mapPanel
 |---|---|---|---|---|
 | `width` | int | `282` | 50–3840 | |
 | `height` | int | `158` | 50–2160 | |
+| `showLivePreview` | bool | `true` | | Off skips the DWM preview: a plain fill (`blankThumbnailColor`, or `blankDimsBorder`'s) under the overlay, and no hover zoom. Overridden per character by `characters[].preview`. |
+| `blankThumbnailColor` | colour | `0xFF000000` | | Fill of a thumbnail without a live preview; alpha ignored. |
+| `blankDimsBorder` | bool | `false` | | Fill with a dark shade (25%) of each character's focused border colour instead of `blankThumbnailColor`. |
 | `thumbnailOpacity` | int | `255` | opacity | Overridden per character by `characters[].opacity`. |
 | `applyOpacityToOverlayTexts` | bool | `true` | | Opacity also applies to texts, text backgrounds and borders. |
 | `activeThumbnailHidden` | bool | `false` | | Hide the focused client's thumbnail. |
@@ -713,6 +716,8 @@ Matched by exact `name`. Positions are saved automatically on drag.
 | `nameColor` | colour? | `null` | |
 | `displayName` | string? | `null` | Shown instead of `name` on thumbnails and the Client List. |
 | `opacity` | int? | `null` | opacity; `null` = `thumbnail.thumbnailOpacity`. |
+| `preview` | enum | `Default` | `Default` (= `thumbnail.showLivePreview`) `Live` `Blank` |
+| `blankThumbnailColor` | colour? | `null` | `null` = `thumbnail.blankThumbnailColor`, or the dimmed border with `thumbnail.blankDimsBorder`. |
 | `hotkey` | keys | | Activate this character. Shared keys cycle the sharers in profile order. |
 | `excludeFromMinimize` | bool | `false` | |
 | `excludeFromCloseAll` | bool | `false` | |

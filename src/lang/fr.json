@@ -1201,5 +1201,18 @@
   "Stays off while Click Through is on in the Mouse tab.": "Reste désactivé tant que 'Clics traversants' est actif dans l'onglet Souris.",
   "Uses the excluded characters from the Mouse tab.": "Utilise les personnages exclus de l'onglet Souris.",
   "Watches for characters left behind on a jump. Also on a hotkey and in the tray menu.": "Surveille les personnages laissés en arrière lors d'un saut. Aussi par raccourci et dans le menu de la zone de notification.",
-  "Routes avoid your Eve Stars account's saved list. Right-click a system on the map and pick Avoid System to add or remove it, or edit the list in Eve Stars' Settings.": "Les itinéraires évitent la liste enregistrée de votre compte Eve Stars. Faites un clic droit sur un système de la carte et choisissez Éviter le système pour l'ajouter ou le retirer, ou modifiez la liste dans les paramètres d'Eve Stars."
+  "Routes avoid your Eve Stars account's saved list. Right-click a system on the map and pick Avoid System to add or remove it, or edit the list in Eve Stars' Settings.": "Les itinéraires évitent la liste enregistrée de votre compte Eve Stars. Faites un clic droit sur un système de la carte et choisissez Éviter le système pour l'ajouter ou le retirer, ou modifiez la liste dans les paramètres d'Eve Stars.",
+  "Live Preview": "Aperçu en direct",
+  "A live picture of each client, or a plain fill behind the texts.": "Une image en direct de chaque client, ou un fond uni derrière les textes.",
+  "Show Live Preview": "Afficher l'aperçu en direct",
+  "Off shows a plain fill, which is lighter on your PC; hover zoom then does nothing.": "Désactivé affiche un fond uni, qui sollicite moins votre PC ; le zoom au survol ne fait alors rien.",
+  "Blank Color": "Couleur vide",
+  "Fills thumbnails without a live preview. Characters can choose their own.": "Remplit les miniatures sans aperçu en direct. Chaque personnage peut choisir la sienne.",
+  "Thumbnail Preview": "Aperçu de la miniature",
+  "Default": "Par défaut",
+  "Live": "En direct",
+  "Blank": "Vide",
+  "Default follows the Appearance tab.": "Par défaut suit l'onglet Apparence.",
+  "Use Dimmed Border Color": "Utiliser la couleur de bordure assombrie",
+  "A dark shade of each character's focused border color.": "Une teinte sombre de la couleur de bordure active de chaque personnage."
 }

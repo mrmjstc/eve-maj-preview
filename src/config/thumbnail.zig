@@ -4,10 +4,13 @@ const wire = @import("wire.zig");
 const ranges_mod = @import("ranges.zig");
 const notifications_mod = @import("notifications.zig");
 const connections = @import("../map/connections.zig");
+const color = @import("../util/color.zig");
 
 const NotificationConfig = notifications_mod.NotificationConfig;
 
 const BORDER_WIDTH = .{ 1, 50 };
+/// How much of the border colour a blankDimsBorder fill keeps over black.
+const BLANK_BORDER_PERCENT = 25;
 
 /// Decided live by ThumbnailWindow.effectiveRenderState, never saved.
 pub const ThumbnailState = enum {
@@ -41,6 +44,12 @@ pub const StateVisualConfig = struct {
 pub const ThumbnailConfig = struct {
     width: i32 = 282,
     height: i32 = 158,
+
+    /// Off skips the DWM preview, leaving a blankFill under the overlay.
+    showLivePreview: bool = true,
+    blankThumbnailColor: u32 = 0xFF000000,
+    /// Fills blank thumbnails with a dark shade of each one's focused border colour, in place of blankThumbnailColor.
+    blankDimsBorder: bool = false,
 
     showBorderWhenFocused: bool = true,
     borderWidth: u8 = 2,
@@ -112,6 +121,12 @@ pub const ThumbnailConfig = struct {
     alert: StateVisualConfig = .{ .showThumbnail = true },
     minimized: StateVisualConfig = .{ .showThumbnail = true },
     dragging: StateVisualConfig = .{ .showThumbnail = true },
+
+    /// A blank thumbnail's fill when its character has no colour of its own.
+    pub fn blankFill(self: *const ThumbnailConfig, active_border_color: u32) u32 {
+        if (!self.blankDimsBorder) return self.blankThumbnailColor;
+        return color.mix(active_border_color, 0xFF000000, BLANK_BORDER_PERCENT);
+    }
 
     pub fn getStateConfig(self: *const ThumbnailConfig, state: ThumbnailState) StateVisualConfig {
         return switch (state) {

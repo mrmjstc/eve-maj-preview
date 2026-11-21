@@ -177,6 +177,7 @@ fn detail(context: *ui.Frame, profile: ProfileRef) !void {
 
     try opacity(context, character);
     try widgets.hintText(context, .str("knots.character.opacity.hint"), "Matches the Appearance tab until you move this slider.");
+    try preview(context, character);
     try widgets.separator(context, .str("knots.character.separator.thumbnail"));
 
     try colors(context, character);
@@ -235,6 +236,39 @@ fn opacity(context: *ui.Frame, character: CharacterRef) !void {
         character.set("opacity", value);
     }
     try row.close(context);
+}
+
+/// The blank colour's swatch sits after the choice, dimmed unless the character ends up blank.
+fn preview(context: *ui.Frame, character: CharacterRef) !void {
+    const inherited = &session.profile().ptr.thumbnail;
+    const choice = character.get("preview");
+    const is_blank = !choice.showsLive(inherited.showLivePreview);
+    const choices = comptime std.enums.values(@TypeOf(choice));
+    // Aligned, so the swatch is the bare one the Colors group uses and the row sits at the right edge.
+    const was_aligned = widgets.useAlignedRows(true);
+    defer _ = widgets.useAlignedRows(was_aligned);
+    const row = try widgets.openBinding(context, ui.Key.str("knots.character.preview").indexed(character.index), "Thumbnail Preview");
+    const current = std.mem.indexOfScalar(@TypeOf(choice), choices, choice) orelse 0;
+    if (try widgets.segmented(context, ui.Key.str("knots.character.preview.options").indexed(character.index), &.{ "Default", "Live", "Blank" }, current)) |picked| {
+        character.set("preview", choices[picked]);
+    }
+    const swatch_group = try widgets.openInlineGroup(context, ui.Key.str("knots.character.blank").indexed(character.index), is_blank);
+    if (try widgets.optionalColorBox(context, ui.Key.str("knots.character.blank_color").indexed(character.index), character.get("blankThumbnailColor"), blankFallback(character) | OPAQUE)) |change| {
+        character.set("blankThumbnailColor", switch (change) {
+            .cleared => null,
+            .set => |argb| argb,
+        });
+    }
+    try swatch_group.close(context);
+    try row.close(context);
+    try widgets.hintText(context, .str("knots.character.preview.hint"), "Default follows the Appearance tab.");
+}
+
+/// What an unset blank colour follows, from the configured border colour since unique ones aren't known here.
+fn blankFallback(character: CharacterRef) u32 {
+    const profile = session.profile().ptr;
+    const own_border = if (character.get("borderColors")) |borders| borders.activeBorderColor else null;
+    return profile.thumbnail.blankFill(own_border orelse profile.focusedBorderColor());
 }
 
 fn colors(context: *ui.Frame, character: CharacterRef) !void {

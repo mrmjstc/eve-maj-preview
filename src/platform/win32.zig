@@ -1033,6 +1033,12 @@ pub extern "gdi32" fn CreateDIBSection(
 ) callconv(.c) ?HANDLE;
 pub extern "gdi32" fn DeleteDC(hdc: HDC) callconv(.c) BOOL;
 pub extern "gdi32" fn CreateSolidBrush(color: DWORD) callconv(.c) ?HBRUSH;
+pub extern "gdi32" fn GetStockObject(i: c_int) callconv(.c) ?HANDLE;
+/// Returns the previous colour, not success.
+pub extern "gdi32" fn SetDCBrushColor(hdc: HDC, color: DWORD) callconv(.c) DWORD;
+pub extern "user32" fn FillRect(hDC: HDC, lprc: *const RECT, hbr: HBRUSH) callconv(.c) c_int;
+/// GetStockObject's brush whose colour SetDCBrushColor sets, so a fill needs no brush of its own.
+pub const DC_BRUSH = 18;
 
 pub extern "dwmapi" fn DwmRegisterThumbnail(
     hwndDestination: HWND,
@@ -1597,7 +1603,7 @@ pub fn showFolderPicker(allocator: std.mem.Allocator, title: []const u8, owner: 
     return showAndGetPath(allocator, dialog, owner);
 }
 
-/// Restricted to `filter_spec` (e.g. "*.wav;*.mp3"), and opened in `start_folder` when it exists; otherwise like showFolderPicker.
+/// Restricted to `filter_spec` (e.g. "*.wav;*.mp3") and opened in `start_folder` when it exists.
 pub fn showFilePicker(allocator: std.mem.Allocator, title: []const u8, filter_name: []const u8, filter_spec: []const u8, start_folder: ?[]const u8, owner: ?HWND) !?[]const u8 {
     try initDialogCom();
     defer CoUninitialize();

@@ -702,7 +702,6 @@ pub const ThumbnailSet = struct {
         var thumbnail: ThumbnailWindow = .{
             .hwnd = handles.hwnd,
             .text_hwnd = handles.text_hwnd,
-            .thumbnail_id = handles.thumbnail_id,
             .source_hwnd = eve_window.hwnd,
             .is_eve_client = eve_window.is_eve_client,
             .session_start = eve_window.logged_in_at,
@@ -729,7 +728,7 @@ pub const ThumbnailSet = struct {
     fn createTrackingOnlyEntry(self: *ThumbnailSet, eve_window: *const scout.EveWindow, initial_system_name: []const u8) !void {
         // Never passed to Win32, since is_win32_enabled is false.
         const sentinel: win32.HWND = @ptrFromInt(1);
-        const thumbnail = try self.newThumbnailRecord(eve_window, initial_system_name, .{ .hwnd = sentinel, .text_hwnd = sentinel, .thumbnail_id = sentinel }, false);
+        const thumbnail = try self.newThumbnailRecord(eve_window, initial_system_name, .{ .hwnd = sentinel, .text_hwnd = sentinel }, false);
         errdefer self.freeThumbnailData(thumbnail);
         try self.addThumbnail(thumbnail);
 
@@ -759,6 +758,8 @@ pub const ThumbnailSet = struct {
 
         var thumbnail = try self.newThumbnailRecord(eve_window, initial_system_name, handles, true);
         errdefer self.freeThumbnailData(thumbnail);
+        try thumbnail.applyLivePreview();
+        errdefer thumbnail.dropLivePreview();
         // Before rendering, which can fail after creating the overlay bitmap.
         errdefer thumbnail.render_cache.deinit();
         try self.renderThumbnail(&thumbnail);

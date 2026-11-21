@@ -85,6 +85,10 @@ pub fn refreshVisuals(thumbnail_set: *ThumbnailSet) void {
         win32.setClickThroughStyle(thumbnail.hwnd, thumbnail_set.config.interaction.clickThrough);
         win32.setClickThroughStyle(thumbnail.text_hwnd, thumbnail_set.config.interaction.clickThrough);
         resizeIfNeeded(thumbnail_set, thumbnail, &cells);
+        // After the resize, since a newly registered preview takes the window's current size.
+        thumbnail.applyLivePreview() catch |err| {
+            slog.warn("Failed to switch the live preview of '{s}': {}", .{ thumbnail.character_name, err });
+        };
         thumbnail_set.renderThumbnailLogged(thumbnail, "visuals refresh");
     }
 }

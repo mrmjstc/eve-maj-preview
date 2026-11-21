@@ -1,6 +1,7 @@
 //! Per-character overrides and the helpers that rank characters by the configured list.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
+const types = @import("types.zig");
 const wire = @import("wire.zig");
 const key_list = @import("key_list.zig");
 const ranges_mod = @import("ranges.zig");
@@ -65,6 +66,8 @@ pub const CharacterConfig = struct {
     hideFromClientList: bool = false,
     notificationsMuted: bool = false,
     opacity: ?u8 = null,
+    preview: types.PreviewOverride = .Default,
+    blankThumbnailColor: ?u32 = null,
     /// The dialog's handle across renames and reorders; 0 until assigned (see config/patch.zig).
     id: u32 = 0,
 

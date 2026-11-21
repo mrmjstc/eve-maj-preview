@@ -70,6 +70,22 @@ pub const RoutePreference = enum { Shorter, Safer, LessSecure };
 /// How far back the map's kills and jumps reach, past Hour with an Eve Stars token; saved into profiles by name.
 pub const TrafficSpan = enum { Hour, Day, Week };
 
+/// A character's own choice of live or blank thumbnail; saved into profiles by name.
+pub const PreviewOverride = enum {
+    Default,
+    Live,
+    Blank,
+
+    /// Default follows `is_profile_live`, the profile's own showLivePreview.
+    pub fn showsLive(self: PreviewOverride, is_profile_live: bool) bool {
+        return switch (self) {
+            .Default => is_profile_live,
+            .Live => true,
+            .Blank => false,
+        };
+    }
+};
+
 /// In the order the Display tab offers them.
 pub const ViewMode = enum {
     Thumbnails,

@@ -316,6 +316,15 @@ pub const Config = struct {
         return self.characterSetting(character_name, "opacity", null) orelse self.thumbnail.thumbnailOpacity;
     }
 
+    pub fn showsLivePreview(self: *const Config, character_name: []const u8) bool {
+        return self.characterSetting(character_name, "preview", .Default).showsLive(self.thumbnail.showLivePreview);
+    }
+
+    /// `active_border_color` is the character's focused border colour, which blankDimsBorder dims.
+    pub fn getBlankThumbnailColor(self: *const Config, character_name: []const u8, active_border_color: u32) u32 {
+        return self.characterSetting(character_name, "blankThumbnailColor", null) orelse self.thumbnail.blankFill(active_border_color);
+    }
+
     pub fn getDisplayName(self: *const Config, character_name: []const u8) []const u8 {
         return self.characterSetting(character_name, "displayName", null) orelse character_name;
     }
@@ -474,6 +483,30 @@ test "a character's own settings override the profile's, which apply to unknown 
     const default_size = config.handPlacedSize("Bravo");
     try testing.expectEqual(config.thumbnail.width, default_size.width);
     try testing.expectEqual(config.thumbnail.height, default_size.height);
+}
+
+test "a character's preview choice overrides the profile's, and Default follows it" {
+    var config = try testConfig(
+        \\{"thumbnail": {"showLivePreview": false, "blankThumbnailColor": "0xFF102030"},
+        \\ "characters": [{"name": "Alpha", "preview": "Live"}, {"name": "Bravo", "blankThumbnailColor": "0xFF405060"}]}
+    );
+    defer config.deinit();
+
+    try testing.expect(config.showsLivePreview("Alpha"));
+    try testing.expect(!config.showsLivePreview("Bravo"));
+    try testing.expect(!config.showsLivePreview("Charlie"));
+    try testing.expectEqual(@as(u32, 0xFF405060), config.getBlankThumbnailColor("Bravo", 0xFFFFFFFF));
+    try testing.expectEqual(@as(u32, 0xFF102030), config.getBlankThumbnailColor("Charlie", 0xFFFFFFFF));
+}
+
+test "a dimmed border fill darkens the border colour, but a character's own colour still wins" {
+    var config = try testConfig(
+        \\{"thumbnail": {"blankDimsBorder": true}, "characters": [{"name": "Bravo", "blankThumbnailColor": "0xFF405060"}]}
+    );
+    defer config.deinit();
+
+    try testing.expectEqual(@as(u32, 0xFF3F2010), config.getBlankThumbnailColor("Alpha", 0xFFFF8040));
+    try testing.expectEqual(@as(u32, 0xFF405060), config.getBlankThumbnailColor("Bravo", 0xFFFF8040));
 }
 
 test "shownColors follows the client list's own settings in its view" {

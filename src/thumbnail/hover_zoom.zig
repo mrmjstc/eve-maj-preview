@@ -34,6 +34,8 @@ pub const HoverZoom = struct {
     pub fn show(self: *HoverZoom, instance: win32.HINSTANCE, font_cache: *FontCache, thumbnail: *const ThumbnailWindow, config: *const Config) void {
         if (self.source_hwnd == thumbnail.source_hwnd) return;
         self.hide();
+        // A blank thumbnail has no picture to enlarge.
+        if (thumbnail.thumbnail_id == null) return;
 
         const windows = self.windows orelse blk: {
             const created = create(instance) catch |err| {
@@ -104,13 +106,13 @@ pub const HoverZoom = struct {
         self.source_hwnd = null;
     }
 
-    /// Hides the zoom unless the cursor still rests on its thumbnail; also run per tick, since a hidden or moved thumbnail sends no mouse leave.
+    /// Hides the zoom unless the cursor still rests on its live thumbnail; also run per tick, since a hidden or moved thumbnail sends no mouse leave.
     pub fn check(self: *HoverZoom, config: *const Config, thumbnails: []const ThumbnailWindow) void {
         const source_hwnd = self.source_hwnd orelse return;
         const interaction = &config.interaction;
         if (!interaction.hoverZoomEnabled or interaction.clickThrough) return self.hide();
         for (thumbnails) |*thumbnail| {
-            if (thumbnail.source_hwnd == source_hwnd and isHovered(thumbnail)) return;
+            if (thumbnail.source_hwnd == source_hwnd and thumbnail.thumbnail_id != null and isHovered(thumbnail)) return;
         }
         self.hide();
     }

@@ -61,6 +61,7 @@ pub fn show(context: *ui.Frame) !void {
     if (view_mode.showsThumbnails()) {
         try text_overlays.show(context);
         try dimensions(context, thumbnail);
+        try livePreview(context, thumbnail);
         try borders(context, thumbnail);
         try visibility(context, thumbnail);
     }
@@ -143,6 +144,21 @@ fn clientRatio() ?f32 {
         if (width > 0 and height > 0) return @as(f32, @floatFromInt(width)) / @as(f32, @floatFromInt(height));
     }
     return null;
+}
+
+fn livePreview(context: *ui.Frame, thumbnail: ThumbnailRef) !void {
+    const section = try widgets.openSection(context, "Live Preview", "A live picture of each client, or a plain fill behind the texts.", &style.section);
+    try bind.toggle(context, thumbnail, "showLivePreview", "Show Live Preview");
+    try widgets.hintText(context, .src(@src()), "Off shows a plain fill, which is lighter on your PC; hover zoom then does nothing.");
+    const blank = try widgets.openGroup(context, .src(@src()), !thumbnail.get("showLivePreview"));
+    try bind.toggle(context, thumbnail, "blankDimsBorder", "Use Dimmed Border Color");
+    try widgets.hintText(context, .src(@src()), "A dark shade of each character's focused border color.");
+    const fixed_color = try widgets.openGroup(context, .src(@src()), !thumbnail.get("blankDimsBorder"));
+    try bind.rgb(context, thumbnail, "blankThumbnailColor", "Blank Color");
+    try widgets.hintText(context, .src(@src()), "Fills thumbnails without a live preview. Characters can choose their own.");
+    try fixed_color.close(context);
+    try blank.close(context);
+    try section.close(context);
 }
 
 fn borders(context: *ui.Frame, thumbnail: ThumbnailRef) !void {

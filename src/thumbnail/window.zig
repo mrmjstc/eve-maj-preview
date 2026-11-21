@@ -1,4 +1,4 @@
-//! One tracked EVE client: its record, and the two windows (DWM thumbnail plus layered text/border overlay) that show it.
+//! One tracked EVE client: its record, and the two windows (DWM thumbnail or blank fill, plus layered text/border overlay) that show it.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const gdi_overlay = @import("../platform/gdi_overlay.zig");
@@ -46,7 +46,8 @@ pub const ThumbnailWindow = struct {
     hwnd: win32.HWND,
     /// The layered text and border overlay.
     text_hwnd: win32.HWND,
-    thumbnail_id: win32.HTHUMBNAIL,
+    /// Null while the thumbnail is blank; only applyLivePreview and dropLivePreview set it.
+    thumbnail_id: ?win32.HTHUMBNAIL = null,
     source_hwnd: win32.HWND,
     is_eve_client: bool,
     /// Owned; ThumbnailSet frees it when it removes or renames the thumbnail.
@@ -90,6 +91,8 @@ pub const ThumbnailWindow = struct {
     cached_is_hidden_from_client_list: bool = false,
     cached_thumbnail_size: ?config_mod.CharacterThumbnailSizeConfig = null,
     cached_opacity: u8 = 255,
+    cached_shows_live_preview: bool = true,
+    cached_blank_color: u32 = 0,
     /// Owned; the badge-enabled groups this character is in, comma-joined ("1, 3"), or "" for none.
     cached_group_badge_label: []const u8,
 
@@ -106,6 +109,9 @@ pub const ThumbnailWindow = struct {
         self.cached_is_hidden_from_client_list = config.isHiddenFromClientList(self.character_name);
         self.cached_thumbnail_size = config.getCharacterSize(self.character_name);
         self.cached_opacity = config.getCharacterOpacity(self.character_name);
+        self.cached_shows_live_preview = config.showsLivePreview(self.character_name);
+        const own_border = if (self.cached_border_colors) |colors| colors.activeBorderColor else null;
+        self.cached_blank_color = config.getBlankThumbnailColor(self.character_name, own_border orelse config.focusedBorderColor());
     }
 
     /// Takes ownership of `new_text`; drops the render cache that borrows the old string before freeing it.
@@ -199,9 +205,49 @@ pub const ThumbnailWindow = struct {
         self.setThumbnailRect(size);
     }
 
+    /// Registers or drops the DWM preview to match cached_shows_live_preview, and repaints the fill under it.
+    pub fn applyLivePreview(self: *ThumbnailWindow) !void {
+        defer _ = win32.InvalidateRect(self.hwnd, null, win32.TRUE);
+        if (!self.cached_shows_live_preview) return self.dropLivePreview();
+        if (self.thumbnail_id != null) return;
+
+        var rect: win32.RECT = undefined;
+        if (!win32.toBool(win32.GetClientRect(self.hwnd, &rect))) return error.GetClientRectFailed;
+        var thumbnail_id: win32.HTHUMBNAIL = undefined;
+        if (win32.DwmRegisterThumbnail(self.hwnd, self.source_hwnd, &thumbnail_id) != 0) return error.DwmRegisterThumbnailFailed;
+        errdefer _ = win32.DwmUnregisterThumbnail(thumbnail_id);
+
+        const properties = thumbnailProperties(.{ .width = rect.right, .height = rect.bottom }, win32.DWM_TNP_VISIBLE | win32.DWM_TNP_RECTDESTINATION | win32.DWM_TNP_SOURCECLIENTAREAONLY);
+        if (win32.DwmUpdateThumbnailProperties(thumbnail_id, &properties) != 0) return error.DwmUpdateThumbnailPropertiesFailed;
+        self.thumbnail_id = thumbnail_id;
+    }
+
+    pub fn dropLivePreview(self: *ThumbnailWindow) void {
+        const id = self.thumbnail_id orelse return;
+        _ = win32.DwmUnregisterThumbnail(id);
+        self.thumbnail_id = null;
+    }
+
+    /// For hwnd's WM_ERASEBKGND; black under a live preview, where it only shows before DWM's first frame.
+    pub fn fillBackground(self: *const ThumbnailWindow, hdc: win32.HDC) void {
+        const color = if (self.thumbnail_id == null) self.cached_blank_color else 0;
+        var rect: win32.RECT = undefined;
+        if (!win32.toBool(win32.GetClientRect(self.hwnd, &rect))) {
+            slog.debug("Failed to read the size of '{s}' to fill its background", .{self.character_name});
+            return;
+        }
+        const brush = win32.GetStockObject(win32.DC_BRUSH) orelse {
+            slog.debug("Failed to get the DC brush to fill the background of '{s}'", .{self.character_name});
+            return;
+        };
+        _ = win32.SetDCBrushColor(hdc, gdi_overlay.toColorRef(color));
+        _ = win32.FillRect(hdc, &rect, brush);
+    }
+
     fn setThumbnailRect(self: *const ThumbnailWindow, size: Size) void {
+        const id = self.thumbnail_id orelse return;
         const properties = thumbnailProperties(size, win32.DWM_TNP_RECTDESTINATION);
-        _ = win32.DwmUpdateThumbnailProperties(self.thumbnail_id, &properties);
+        _ = win32.DwmUpdateThumbnailProperties(id, &properties);
     }
 };
 
@@ -217,7 +263,6 @@ pub const CreateOptions = struct {
 pub const Handles = struct {
     hwnd: win32.HWND,
     text_hwnd: win32.HWND,
-    thumbnail_id: win32.HTHUMBNAIL,
 };
 
 /// Passed in, since input handling sits above thumbnail/.
@@ -244,7 +289,7 @@ pub fn registerClasses(instance: win32.HINSTANCE, window_procedures: WindowProcs
     g_has_registered_classes = true;
 }
 
-/// Both windows stay hidden until the first render shows them.
+/// Both windows stay hidden until the first render shows them; applyLivePreview adds the DWM preview.
 pub fn create(allocator: std.mem.Allocator, instance: win32.HINSTANCE, source_hwnd: win32.HWND, character_name: []const u8, options: CreateOptions) !Handles {
     const position = options.position;
     const size = options.size;
@@ -272,13 +317,6 @@ pub fn create(allocator: std.mem.Allocator, instance: win32.HINSTANCE, source_hw
 
     if (!win32.toBool(win32.SetLayeredWindowAttributes(hwnd, 0, options.opacity, win32.LWA_ALPHA))) return error.SetLayeredWindowAttributesFailed;
 
-    var thumbnail_id: win32.HTHUMBNAIL = undefined;
-    if (win32.DwmRegisterThumbnail(hwnd, source_hwnd, &thumbnail_id) != 0) return error.DwmRegisterThumbnailFailed;
-    errdefer _ = win32.DwmUnregisterThumbnail(thumbnail_id);
-
-    const properties = thumbnailProperties(size, win32.DWM_TNP_VISIBLE | win32.DWM_TNP_RECTDESTINATION | win32.DWM_TNP_SOURCECLIENTAREAONLY);
-    if (win32.DwmUpdateThumbnailProperties(thumbnail_id, &properties) != 0) return error.DwmUpdateThumbnailPropertiesFailed;
-
     // Its own error name, since the error is the log's only clue to which window failed.
     const text_hwnd = win32.CreateWindowExA(
         win32.WS_EX_LAYERED | win32.WS_EX_TOPMOST | win32.WS_EX_TOOLWINDOW | win32.WS_EX_NOACTIVATE | click_through_style,
@@ -302,7 +340,7 @@ pub fn create(allocator: std.mem.Allocator, instance: win32.HINSTANCE, source_hw
     try link(hwnd, text_hwnd);
     try link(text_hwnd, hwnd);
 
-    return .{ .hwnd = hwnd, .text_hwnd = text_hwnd, .thumbnail_id = thumbnail_id };
+    return .{ .hwnd = hwnd, .text_hwnd = text_hwnd };
 }
 
 /// Shows the text overlay once its first render is in place, so it never flashes up empty.
@@ -315,12 +353,12 @@ pub fn showText(handles: Handles, position: config_mod.Position, size: Size) voi
 /// Render cache GDI objects first, and the DWM thumbnail before the window it draws into.
 pub fn destroy(thumbnail: *const ThumbnailWindow) void {
     thumbnail.render_cache.deinit();
-    destroyHandles(.{ .hwnd = thumbnail.hwnd, .text_hwnd = thumbnail.text_hwnd, .thumbnail_id = thumbnail.thumbnail_id });
+    if (thumbnail.thumbnail_id) |id| _ = win32.DwmUnregisterThumbnail(id);
+    destroyHandles(.{ .hwnd = thumbnail.hwnd, .text_hwnd = thumbnail.text_hwnd });
 }
 
 pub fn destroyHandles(handles: Handles) void {
     _ = win32.DestroyWindow(handles.text_hwnd);
-    _ = win32.DwmUnregisterThumbnail(handles.thumbnail_id);
     _ = win32.DestroyWindow(handles.hwnd);
 }
 

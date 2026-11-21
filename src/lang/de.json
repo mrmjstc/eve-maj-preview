@@ -1201,5 +1201,18 @@
   "Stays off while Click Through is on in the Mouse tab.": "Bleibt aus, solange 'Durchklicken' im Maus-Tab aktiv ist.",
   "Uses the excluded characters from the Mouse tab.": "Nutzt die ausgeschlossenen Charaktere aus dem Maus-Tab.",
   "Watches for characters left behind on a jump. Also on a hotkey and in the tray menu.": "Achtet auf Charaktere, die bei einem Sprung zurückbleiben. Auch per Hotkey und im Tray-Menü.",
-  "Routes avoid your Eve Stars account's saved list. Right-click a system on the map and pick Avoid System to add or remove it, or edit the list in Eve Stars' Settings.": "Routen meiden die gespeicherte Liste deines Eve-Stars-Kontos. Rechtsklicke ein System auf der Karte und wähle 'System meiden', um es hinzuzufügen oder zu entfernen, oder bearbeite die Liste in den Einstellungen von Eve Stars."
+  "Routes avoid your Eve Stars account's saved list. Right-click a system on the map and pick Avoid System to add or remove it, or edit the list in Eve Stars' Settings.": "Routen meiden die gespeicherte Liste deines Eve-Stars-Kontos. Rechtsklicke ein System auf der Karte und wähle 'System meiden', um es hinzuzufügen oder zu entfernen, oder bearbeite die Liste in den Einstellungen von Eve Stars.",
+  "Live Preview": "Live-Vorschau",
+  "A live picture of each client, or a plain fill behind the texts.": "Ein Live-Bild jedes Clients oder eine einfarbige Fläche hinter den Texten.",
+  "Show Live Preview": "Live-Vorschau anzeigen",
+  "Off shows a plain fill, which is lighter on your PC; hover zoom then does nothing.": "Aus zeigt eine einfarbige Fläche, die deinen PC weniger belastet; der Hover-Zoom tut dann nichts.",
+  "Blank Color": "Leere Farbe",
+  "Fills thumbnails without a live preview. Characters can choose their own.": "Füllt Thumbnails ohne Live-Vorschau. Charaktere können ihre eigene wählen.",
+  "Thumbnail Preview": "Thumbnail-Vorschau",
+  "Default": "Standard",
+  "Live": "Live",
+  "Blank": "Leer",
+  "Default follows the Appearance tab.": "Standard folgt dem Aussehen-Tab.",
+  "Use Dimmed Border Color": "Abgedunkelte Rahmenfarbe nutzen",
+  "A dark shade of each character's focused border color.": "Ein dunkler Ton der Fokus-Rahmenfarbe jedes Charakters."
 }

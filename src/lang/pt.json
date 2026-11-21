@@ -1201,5 +1201,18 @@
   "Stays off while Click Through is on in the Mouse tab.": "Permanece desligado enquanto 'Clicar Através' estiver ativo na aba Mouse.",
   "Uses the excluded characters from the Mouse tab.": "Usa os personagens excluídos da aba Mouse.",
   "Watches for characters left behind on a jump. Also on a hotkey and in the tray menu.": "Observa personagens que ficam para trás num salto. Também por atalho e no menu da bandeja.",
-  "Routes avoid your Eve Stars account's saved list. Right-click a system on the map and pick Avoid System to add or remove it, or edit the list in Eve Stars' Settings.": "As rotas evitam a lista guardada da tua conta Eve Stars. Clica com o botão direito num sistema do mapa e escolhe Evitar sistema para o adicionar ou remover, ou edita a lista nas definições do Eve Stars."
+  "Routes avoid your Eve Stars account's saved list. Right-click a system on the map and pick Avoid System to add or remove it, or edit the list in Eve Stars' Settings.": "As rotas evitam a lista guardada da tua conta Eve Stars. Clica com o botão direito num sistema do mapa e escolhe Evitar sistema para o adicionar ou remover, ou edita a lista nas definições do Eve Stars.",
+  "Live Preview": "Prévia ao Vivo",
+  "A live picture of each client, or a plain fill behind the texts.": "Uma imagem ao vivo de cada cliente, ou um preenchimento liso atrás dos textos.",
+  "Show Live Preview": "Mostrar Prévia ao Vivo",
+  "Off shows a plain fill, which is lighter on your PC; hover zoom then does nothing.": "Desligado mostra um preenchimento liso, que pesa menos no seu PC; o zoom ao passar o mouse não faz nada.",
+  "Blank Color": "Cor Vazia",
+  "Fills thumbnails without a live preview. Characters can choose their own.": "Preenche miniaturas sem prévia ao vivo. Cada personagem pode escolher a sua.",
+  "Thumbnail Preview": "Prévia da Miniatura",
+  "Default": "Padrão",
+  "Live": "Ao Vivo",
+  "Blank": "Vazia",
+  "Default follows the Appearance tab.": "Padrão segue a aba Aparência.",
+  "Use Dimmed Border Color": "Usar Cor da Borda Escurecida",
+  "A dark shade of each character's focused border color.": "Um tom escuro da cor da borda em foco de cada personagem."
 }

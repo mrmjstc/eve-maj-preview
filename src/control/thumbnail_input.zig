@@ -65,6 +65,13 @@ pub fn applyHoverCursor() bool {
 pub fn windowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
     switch (msg) {
         win32.WM_ACTIVATE => raiseTextOverlay(hwnd),
+        // The hover zoom shares the class but isn't a thumbnail, so it keeps the class's black brush.
+        win32.WM_ERASEBKGND => if (wParam != 0) {
+            const thumbnail_set = app.currentThumbnailSet() orelse return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
+            const thumbnail = thumbnail_set.getThumbnailByOverlayHwnd(hwnd) orelse return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
+            thumbnail.fillBackground(@ptrFromInt(wParam));
+            return 1;
+        },
         win32.WM_DPICHANGED => {
             // Position only; resizeThumbnailIfNeeded re-derives the size from our own scale formula.
             const suggested = win32.lparamToPtr(win32.RECT, lParam);

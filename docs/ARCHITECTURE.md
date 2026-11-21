@@ -149,7 +149,7 @@ Cross-thread data:
 
 **`thumbnail/window.zig`** (`ThumbnailWindow`): one per client, two HWNDs:
 
-1. A layered popup with the client's DWM thumbnail (`DwmRegisterThumbnail`).
+1. A layered popup with the client's DWM thumbnail (`DwmRegisterThumbnail`), or, with the live preview off for that character, no registration and a plain fill painted on `WM_ERASEBKGND`. `applyLivePreview()` registers or drops it when settings change.
 2. A layered window on top with the GDI overlay (border, texts, notifications).
 
 In `ClientList`/`Nothing` view modes both HWNDs are sentinels. Render state (active, inactive, alert, minimized, dragging) isn't stored; `effectiveRenderState()` derives it each render.

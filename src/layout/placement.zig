@@ -184,7 +184,6 @@ fn testThumbnail(character_name: []const u8) ThumbnailWindow {
     return .{
         .hwnd = sentinel,
         .text_hwnd = sentinel,
-        .thumbnail_id = sentinel,
         .source_hwnd = sentinel,
         .is_eve_client = true,
         .character_name = character_name,

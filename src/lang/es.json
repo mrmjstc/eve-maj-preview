@@ -1201,5 +1201,18 @@
   "Stays off while Click Through is on in the Mouse tab.": "Permanece desactivado mientras 'Clic a través' esté activado en la pestaña Ratón.",
   "Uses the excluded characters from the Mouse tab.": "Usa los personajes excluidos de la pestaña Ratón.",
   "Watches for characters left behind on a jump. Also on a hotkey and in the tray menu.": "Vigila a los personajes que se quedan atrás en un salto. También con un atajo y en el menú de la bandeja.",
-  "Routes avoid your Eve Stars account's saved list. Right-click a system on the map and pick Avoid System to add or remove it, or edit the list in Eve Stars' Settings.": "Las rutas evitan la lista guardada de tu cuenta de Eve Stars. Haz clic derecho en un sistema del mapa y elige Evitar sistema para añadirlo o quitarlo, o edita la lista en los ajustes de Eve Stars."
+  "Routes avoid your Eve Stars account's saved list. Right-click a system on the map and pick Avoid System to add or remove it, or edit the list in Eve Stars' Settings.": "Las rutas evitan la lista guardada de tu cuenta de Eve Stars. Haz clic derecho en un sistema del mapa y elige Evitar sistema para añadirlo o quitarlo, o edita la lista en los ajustes de Eve Stars.",
+  "Live Preview": "Vista en vivo",
+  "A live picture of each client, or a plain fill behind the texts.": "Una imagen en vivo de cada cliente, o un relleno liso detrás de los textos.",
+  "Show Live Preview": "Mostrar vista en vivo",
+  "Off shows a plain fill, which is lighter on your PC; hover zoom then does nothing.": "Desactivado muestra un relleno liso, que exige menos a tu PC; el zoom al pasar el cursor no hace nada.",
+  "Blank Color": "Color vacío",
+  "Fills thumbnails without a live preview. Characters can choose their own.": "Rellena las miniaturas sin vista en vivo. Cada personaje puede elegir el suyo.",
+  "Thumbnail Preview": "Vista de la miniatura",
+  "Default": "Predeterminado",
+  "Live": "En vivo",
+  "Blank": "Vacía",
+  "Default follows the Appearance tab.": "Predeterminado sigue la pestaña Apariencia.",
+  "Use Dimmed Border Color": "Usar color de borde atenuado",
+  "A dark shade of each character's focused border color.": "Un tono oscuro del color de borde enfocado de cada personaje."
 }

@@ -1201,5 +1201,18 @@
   "Stays off while Click Through is on in the Mouse tab.": "Отключено, пока на вкладке «Мышь» включен режим «Клики сквозь».",
   "Uses the excluded characters from the Mouse tab.": "Использует исключённых персонажей с вкладки «Мышь».",
   "Watches for characters left behind on a jump. Also on a hotkey and in the tray menu.": "Следит за персонажами, отставшими при прыжке. Также по горячей клавише и в меню трея.",
-  "Routes avoid your Eve Stars account's saved list. Right-click a system on the map and pick Avoid System to add or remove it, or edit the list in Eve Stars' Settings.": "Маршруты обходят сохранённый список вашего аккаунта Eve Stars. Щёлкните систему на карте правой кнопкой и выберите «Избегать систему», чтобы добавить или убрать её, или измените список в настройках Eve Stars."
+  "Routes avoid your Eve Stars account's saved list. Right-click a system on the map and pick Avoid System to add or remove it, or edit the list in Eve Stars' Settings.": "Маршруты обходят сохранённый список вашего аккаунта Eve Stars. Щёлкните систему на карте правой кнопкой и выберите «Избегать систему», чтобы добавить или убрать её, или измените список в настройках Eve Stars.",
+  "Live Preview": "Живой предпросмотр",
+  "A live picture of each client, or a plain fill behind the texts.": "Живое изображение каждого клиента или сплошная заливка под текстами.",
+  "Show Live Preview": "Показывать живой предпросмотр",
+  "Off shows a plain fill, which is lighter on your PC; hover zoom then does nothing.": "Выключено — сплошная заливка, которая меньше нагружает ПК; зум при наведении тогда не работает.",
+  "Blank Color": "Цвет пустой миниатюры",
+  "Fills thumbnails without a live preview. Characters can choose their own.": "Заливает миниатюры без живого предпросмотра. Персонажи могут выбрать свой.",
+  "Thumbnail Preview": "Предпросмотр миниатюры",
+  "Default": "По умолчанию",
+  "Live": "Живой",
+  "Blank": "Пустой",
+  "Default follows the Appearance tab.": "«По умолчанию» следует вкладке «Внешний вид».",
+  "Use Dimmed Border Color": "Затемнённый цвет рамки",
+  "A dark shade of each character's focused border color.": "Тёмный оттенок цвета активной рамки каждого персонажа."
 }
