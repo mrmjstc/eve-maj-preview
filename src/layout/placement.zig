@@ -4,13 +4,11 @@ const win32 = @import("../platform/win32.zig");
 const config_mod = @import("../config.zig");
 const types = @import("../config/types.zig");
 const scout = @import("../clients/scout.zig");
-const window = @import("../thumbnail/window.zig");
 const monitors = @import("monitors.zig");
 const region_grid = @import("region_grid.zig");
 const spaces = @import("spaces.zig");
 const log = @import("../log.zig");
 
-const ThumbnailWindow = window.ThumbnailWindow;
 const RegionFitGrid = region_grid.RegionFitGrid;
 const RegionFitCap = region_grid.RegionFitCap;
 const scalePixels = win32.scalePixels;
@@ -45,10 +43,11 @@ const Axis = enum {
     }
 };
 
-/// Read-only view over what thumbnail placement depends on: config plus the current thumbnail list (for counts and ranks).
+/// Read-only view over what thumbnail placement depends on: config plus the current thumbnails' names (for counts and ranks).
 pub const Layout = struct {
     config: *const config_mod.Config,
-    thumbnails: []const ThumbnailWindow,
+    /// Borrowed for the pass; one per thumbnail, in the set's order.
+    names: []const []const u8,
 
     /// Always null for the generic "not logged in" name, which never has a saved position of its own.
     fn savedPosition(self: Layout, character_name: []const u8) ?config_mod.Position {
@@ -59,9 +58,9 @@ pub const Layout = struct {
     /// Ranks this thumbnail's slot in the left-to-right spawn row, which only hand-placed thumbnails with no saved position join.
     fn unpositionedIndex(self: Layout, up_to: usize) usize {
         var count: usize = 0;
-        for (self.thumbnails[0..@min(up_to, self.thumbnails.len)]) |thumbnail| {
-            if (self.savedPosition(thumbnail.character_name) != null) continue;
-            if (spaces.spaceFor(self.config, thumbnail.character_name) != null) continue;
+        for (self.names[0..@min(up_to, self.names.len)]) |name| {
+            if (self.savedPosition(name) != null) continue;
+            if (spaces.spaceFor(self.config, name) != null) continue;
             count += 1;
         }
         return count;
@@ -69,8 +68,8 @@ pub const Layout = struct {
 
     pub fn spaceCounts(self: Layout) spaces.SpaceCounts {
         var counts: spaces.SpaceCounts = @splat(0);
-        for (self.thumbnails) |thumbnail| {
-            if (spaces.spaceFor(self.config, thumbnail.character_name)) |space_index| counts[space_index] += 1;
+        for (self.names) |name| {
+            if (spaces.spaceFor(self.config, name)) |space_index| counts[space_index] += 1;
         }
         return counts;
     }
@@ -178,23 +177,8 @@ fn savePosition(config: *config_mod.Config, character_name: []const u8, x: i32, 
     (try config.getOrCreateCharacter(character_name)).position = .{ .x = x, .y = y };
 }
 
-fn testThumbnail(character_name: []const u8) ThumbnailWindow {
-    // Only placement's arithmetic reads the record; the handles never reach Win32.
-    const sentinel: win32.HWND = @ptrFromInt(1);
-    return .{
-        .hwnd = sentinel,
-        .text_hwnd = sentinel,
-        .source_hwnd = sentinel,
-        .is_eve_client = true,
-        .character_name = character_name,
-        .system_name = "",
-        .auto_minimize = .{ .inactive_since = .{} },
-        .cached_group_badge_label = "",
-    };
-}
-
-fn spawnAt(config: *const config_mod.Config, thumbnails: []const ThumbnailWindow, character_name: []const u8, index: usize, bounds: win32.RECT) config_mod.Position {
-    const layout: Layout = .{ .config = config, .thumbnails = thumbnails };
+fn spawnAt(config: *const config_mod.Config, names: []const []const u8, character_name: []const u8, index: usize, bounds: win32.RECT) config_mod.Position {
+    const layout: Layout = .{ .config = config, .names = names };
     return layout.calculateThumbnailPosition(character_name, TEST_WIDTH, TEST_HEIGHT, index, bounds, 1.0);
 }
 
@@ -202,7 +186,7 @@ test "a saved position wins over the spawn row, and isn't scaled" {
     var config = try testConfig();
     defer config.deinit();
     try savePosition(&config, "Saved", 500, 600);
-    const layout: Layout = .{ .config = &config, .thumbnails = &.{} };
+    const layout: Layout = .{ .config = &config, .names = &.{} };
     const position = layout.calculateThumbnailPosition("Saved", TEST_WIDTH, TEST_HEIGHT, 0, TEST_BOUNDS, 2.0);
     try testing.expectEqual(@as(i32, 500), position.x);
     try testing.expectEqual(@as(i32, 600), position.y);
@@ -230,8 +214,8 @@ test "each unplaced thumbnail takes the next slot, skipping ones with saved posi
     var config = try testConfig();
     defer config.deinit();
     try savePosition(&config, "Saved", 500, 600);
-    const thumbnails = [_]ThumbnailWindow{ testThumbnail("First"), testThumbnail("Saved"), testThumbnail("Second") };
-    const position = spawnAt(&config, &thumbnails, "Second", 2, TEST_BOUNDS);
+    const names = [_][]const u8{ "First", "Saved", "Second" };
+    const position = spawnAt(&config, &names, "Second", 2, TEST_BOUNDS);
     try testing.expectEqual(@as(i32, 10 + TEST_WIDTH + 10), position.x);
     try testing.expectEqual(@as(i32, 10), position.y);
 }
@@ -239,8 +223,8 @@ test "each unplaced thumbnail takes the next slot, skipping ones with saved posi
 test "the spawn row wraps once it runs out of width" {
     var config = try testConfig();
     defer config.deinit();
-    const thumbnails = [_]ThumbnailWindow{ testThumbnail("A"), testThumbnail("B"), testThumbnail("C"), testThumbnail("D"), testThumbnail("E") };
-    const position = spawnAt(&config, &thumbnails, "E", 4, TEST_BOUNDS);
+    const names = [_][]const u8{ "A", "B", "C", "D", "E" };
+    const position = spawnAt(&config, &names, "E", 4, TEST_BOUNDS);
     try testing.expectEqual(@as(i32, 10), position.x);
     try testing.expectEqual(@as(i32, 10 + TEST_HEIGHT + 10), position.y);
 }
@@ -249,8 +233,8 @@ test "a spawn spot past the screen's bottom is clamped back near it" {
     var config = try testConfig();
     defer config.deinit();
     const short: win32.RECT = .{ .left = 0, .top = 0, .right = 1000, .bottom = 150 };
-    const thumbnails = [_]ThumbnailWindow{ testThumbnail("A"), testThumbnail("B"), testThumbnail("C"), testThumbnail("D"), testThumbnail("E") };
-    const position = spawnAt(&config, &thumbnails, "E", 4, short);
+    const names = [_][]const u8{ "A", "B", "C", "D", "E" };
+    const position = spawnAt(&config, &names, "E", 4, short);
     try testing.expectEqual(@as(i32, short.bottom - TEST_HEIGHT + 50), position.y);
 }
 

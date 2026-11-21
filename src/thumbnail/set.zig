@@ -8,7 +8,6 @@ const actions = @import("../clients/actions.zig");
 const auto_move_mod = @import("../clients/auto_move.zig");
 const exclusions_mod = @import("../clients/exclusions.zig");
 const drag_overlays_mod = @import("../drag/overlays.zig");
-const placement = @import("../layout/placement.zig");
 const spaces = @import("../layout/spaces.zig");
 const monitors = @import("../layout/monitors.zig");
 const state = @import("state.zig");
@@ -223,10 +222,6 @@ pub const ThumbnailSet = struct {
     /// Cached for the drag by showDragOverlays; null when the ghost outlines aren't shown.
     pub fn dragGhostGroups(self: *const ThumbnailSet) ?[]const drag_overlays_mod.GhostGroup {
         return self.drag_overlays.ghostGroups();
-    }
-
-    pub fn layout(self: *const ThumbnailSet) placement.Layout {
-        return .{ .config = self.config, .thumbnails = self.thumbnails.items };
     }
 
     pub fn renderThumbnail(self: *ThumbnailSet, thumbnail: *ThumbnailWindow) !void {
@@ -747,7 +742,7 @@ pub const ThumbnailSet = struct {
         const monitor_placement = monitors.resolveMonitorPlacement(&self.config.display);
         const monitor_bounds = if (monitor_placement) |mp| mp.bounds else null;
         const scale = win32.dpiToScale(monitors.dpiForMonitor(if (monitor_placement) |mp| mp.monitor else null));
-        const place = arrange.newPlace(self, name, monitor_bounds, scale);
+        const place = try arrange.newPlace(self, name, monitor_bounds, scale);
         const position = place.position;
         const size = place.size;
 

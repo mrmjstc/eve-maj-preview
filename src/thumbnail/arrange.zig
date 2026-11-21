@@ -16,8 +16,10 @@ const slog = log.Scoped("arrange");
 pub const Place = struct { position: config_mod.Position, size: Size };
 
 /// The end of its space until the next reflow ranks it, else its hand-placed spot.
-pub fn newPlace(thumbnail_set: *const ThumbnailSet, character_name: []const u8, monitor_bounds: ?win32.RECT, scale: f32) Place {
-    const layout = thumbnail_set.layout();
+pub fn newPlace(thumbnail_set: *const ThumbnailSet, character_name: []const u8, monitor_bounds: ?win32.RECT, scale: f32) !Place {
+    const names = try characterNames(thumbnail_set);
+    defer thumbnail_set.allocator.free(names);
+    const layout = layoutOf(thumbnail_set, names);
     if (spaces.spaceFor(thumbnail_set.config, character_name)) |space_index| {
         var counts = layout.spaceCounts();
         counts[space_index] += 1;
@@ -26,7 +28,7 @@ pub fn newPlace(thumbnail_set: *const ThumbnailSet, character_name: []const u8, 
         }
     }
     const size = handPlacedSize(thumbnail_set, character_name, scale);
-    return .{ .position = layout.calculateThumbnailPosition(character_name, size.width, size.height, thumbnail_set.thumbnails.items.len, monitor_bounds, scale), .size = size };
+    return .{ .position = layout.calculateThumbnailPosition(character_name, size.width, size.height, names.len, monitor_bounds, scale), .size = size };
 }
 
 /// Spaces size every cell from how many thumbnails they hold, so any arrival or departure reflows them all.
@@ -43,7 +45,10 @@ pub fn reflowIfSpacesActive(thumbnail_set: *ThumbnailSet) void {
 pub fn resizeIfNeeded(thumbnail_set: *ThumbnailSet, thumbnail: *ThumbnailWindow, cells: ?*const placement.SpaceCells) void {
     var fresh: placement.SpaceCells = undefined;
     const current_cells = cells orelse blk: {
-        fresh = spaceCells(thumbnail_set);
+        fresh = spaceCells(thumbnail_set) catch |err| {
+            slog.warn("Failed to work out the space cells to resize '{s}': {}", .{ thumbnail.character_name, err });
+            return;
+        };
         break :blk &fresh;
     };
     const target = targetSize(thumbnail_set, thumbnail.character_name, current_cells, windowScale(thumbnail));
@@ -72,7 +77,11 @@ pub fn refreshConfigCaches(thumbnail_set: *ThumbnailSet) void {
 pub fn refreshVisuals(thumbnail_set: *ThumbnailSet) void {
     // So a live auto-hide toggle reacts now, not on the next focus change.
     const any_eve_has_focus = thumbnail_set.isEveWindowForeground();
-    const cells = spaceCells(thumbnail_set);
+    // Null leaves each resize to work out the cells itself.
+    const cells: ?placement.SpaceCells = spaceCells(thumbnail_set) catch |err| blk: {
+        slog.warn("Failed to work out the space cells for a visuals refresh: {}", .{err});
+        break :blk null;
+    };
 
     for (thumbnail_set.thumbnails.items) |*thumbnail| {
         // Before the skip too: the client list shows tracking-only entries by their visibility.
@@ -84,7 +93,7 @@ pub fn refreshVisuals(thumbnail_set: *ThumbnailSet) void {
         _ = win32.SetLayeredWindowAttributes(thumbnail.hwnd, 0, thumbnail.cached_opacity, win32.LWA_ALPHA);
         win32.setClickThroughStyle(thumbnail.hwnd, thumbnail_set.config.interaction.clickThrough);
         win32.setClickThroughStyle(thumbnail.text_hwnd, thumbnail_set.config.interaction.clickThrough);
-        resizeIfNeeded(thumbnail_set, thumbnail, &cells);
+        resizeIfNeeded(thumbnail_set, thumbnail, if (cells) |*shared| shared else null);
         // After the resize, since a newly registered preview takes the window's current size.
         thumbnail.applyLivePreview() catch |err| {
             slog.warn("Failed to switch the live preview of '{s}': {}", .{ thumbnail.character_name, err });
@@ -105,14 +114,19 @@ pub fn beginDefer(thumbnail_set: *const ThumbnailSet) ?win32.HDWP {
 
 /// Never writes startX/startY, which can be live-dragged in the running app.
 pub fn repositionAll(thumbnail_set: *ThumbnailSet) void {
-    var assignment = assignSpaces(thumbnail_set) catch |err| {
+    const names = characterNames(thumbnail_set) catch |err| {
+        slog.err("Failed to list the thumbnails to reposition: {}", .{err});
+        return;
+    };
+    defer thumbnail_set.allocator.free(names);
+    var assignment = spaces.assign(thumbnail_set.allocator, thumbnail_set.config, names) catch |err| {
         slog.err("Failed to assign thumbnails to their spaces: {}", .{err});
         return;
     };
     defer assignment.deinit(thumbnail_set.allocator);
 
     var hdwp = beginDefer(thumbnail_set) orelse return;
-    const layout = thumbnail_set.layout();
+    const layout = layoutOf(thumbnail_set, names);
     const monitor_placement = monitors.resolveMonitorPlacement(&thumbnail_set.config.display);
     const monitor_bounds = if (monitor_placement) |mp| mp.bounds else null;
     const scale = win32.dpiToScale(monitors.dpiForMonitor(if (monitor_placement) |mp| mp.monitor else null));
@@ -160,23 +174,29 @@ pub fn reassertTopmost(thumbnail_set: *ThumbnailSet) void {
     _ = win32.EndDeferWindowPos(hdwp);
 }
 
-fn spaceCells(thumbnail_set: *const ThumbnailSet) placement.SpaceCells {
-    const layout = thumbnail_set.layout();
+fn spaceCells(thumbnail_set: *const ThumbnailSet) !placement.SpaceCells {
+    const names = try characterNames(thumbnail_set);
+    defer thumbnail_set.allocator.free(names);
+    const layout = layoutOf(thumbnail_set, names);
     return layout.spaceCells(&layout.spaceCounts());
+}
+
+/// Borrows each name from its thumbnail; caller frees the slice with the set's allocator.
+fn characterNames(thumbnail_set: *const ThumbnailSet) ![]const []const u8 {
+    const names = try thumbnail_set.allocator.alloc([]const u8, thumbnail_set.thumbnails.items.len);
+    for (thumbnail_set.thumbnails.items, names) |thumbnail, *name| name.* = thumbnail.character_name;
+    return names;
+}
+
+/// Borrows `names`, which must be in thumbnail order.
+fn layoutOf(thumbnail_set: *const ThumbnailSet, names: []const []const u8) placement.Layout {
+    return .{ .config = thumbnail_set.config, .names = names };
 }
 
 /// A space's cell is already physical pixels; only a hand-placed thumbnail's configured size is DPI-scaled.
 fn targetSize(thumbnail_set: *const ThumbnailSet, character_name: []const u8, cells: *const placement.SpaceCells, scale: f32) Size {
     if (placement.cellFor(thumbnail_set.config, cells, character_name)) |cell| return cellSize(cell);
     return handPlacedSize(thumbnail_set, character_name, scale);
-}
-
-/// Caller frees with Assignment.deinit.
-fn assignSpaces(thumbnail_set: *const ThumbnailSet) !spaces.Assignment {
-    const names = try thumbnail_set.allocator.alloc([]const u8, thumbnail_set.thumbnails.items.len);
-    defer thumbnail_set.allocator.free(names);
-    for (thumbnail_set.thumbnails.items, names) |thumbnail, *name| name.* = thumbnail.character_name;
-    return spaces.assign(thumbnail_set.allocator, thumbnail_set.config, names);
 }
 
 fn cellSize(cell: placement.SpaceCell) Size {
