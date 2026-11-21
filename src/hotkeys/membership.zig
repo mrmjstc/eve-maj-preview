@@ -11,9 +11,9 @@ const HotkeyManager = manager_mod.HotkeyManager;
 const ThumbnailSet = set.ThumbnailSet;
 const slog = log.Scoped("hotkeys");
 
-pub fn toggleThumbnailExclusion(manager: *HotkeyManager, thumbnail_set: *ThumbnailSet, source_hwnd: win32.HWND) void {
-    const thumbnail = thumbnail_set.getThumbnailBySourceHwnd(source_hwnd) orelse return;
-    const character_name = thumbnail.character_name;
+pub fn toggleExclusion(manager: *HotkeyManager, source_hwnd: win32.HWND) void {
+    const client = manager.roster.byHwnd(source_hwnd) orelse return;
+    const character_name = client.character_name;
 
     // Exclusions are by name, and every login-screen window shares "EVE", so one toggle would hit them all.
     if (scout.isGenericCharacterName(character_name)) {
@@ -21,27 +21,23 @@ pub fn toggleThumbnailExclusion(manager: *HotkeyManager, thumbnail_set: *Thumbna
         return;
     }
 
-    _ = manager.exclusions.toggle(character_name) catch |err| {
+    const is_excluded = manager.exclusions.toggle(character_name) catch |err| {
         slog.err("Failed to toggle exclusion for '{s}': {}", .{ character_name, err });
         return;
     };
     // The excluded list's order changed, so its cycle position no longer means anything.
     manager.cycle.excluded_index = null;
-    thumbnail_set.refreshExclusion(thumbnail);
+    manager.roster.bumpByName(character_name);
 
-    if (thumbnail.is_excluded_from_cycle and manager.live().exclusion.autoMinimizeExcluded) {
+    if (is_excluded and manager.live().exclusion.autoMinimizeExcluded) {
         animation.showClient(manager.live(), source_hwnd, win32.SW_FORCEMINIMIZE);
     }
 
-    manager.notifier.notify(source_hwnd, .{ .notification_type = .CycleExclusion, .state = if (thumbnail.is_excluded_from_cycle) .excluded else .included });
-
-    thumbnail_set.renderThumbnail(thumbnail) catch |err| {
-        slog.err("Failed to render thumbnail after exclusion toggle: {}", .{err});
-    };
+    manager.notifier.notify(source_hwnd, .{ .notification_type = .CycleExclusion, .state = if (is_excluded) .excluded else .included });
 
     slog.info("Toggled cycle exclusion for {s}: {s}", .{
         character_name,
-        if (thumbnail.is_excluded_from_cycle) "Excluded" else "Included",
+        if (is_excluded) "Excluded" else "Included",
     });
 }
 

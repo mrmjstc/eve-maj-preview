@@ -4,12 +4,11 @@ const win32 = @import("../platform/win32.zig");
 const focus_grant = @import("../platform/focus_grant.zig");
 const config_mod = @import("../config.zig");
 const animation = @import("../clients/animation.zig");
-const window = @import("../thumbnail/window.zig");
+const roster = @import("../clients/roster.zig");
 const minimize_rules = @import("minimize_rules.zig");
 const log = @import("../log.zig");
 
 const Config = config_mod.Config;
-const ThumbnailWindow = window.ThumbnailWindow;
 const slog = log.Scoped("auto_minimize");
 
 /// App owns it, so a thumbnail set rebuild keeps it.
@@ -43,10 +42,10 @@ pub const AutoMinimizer = struct {
     }
 
     /// Also true when the monitor has no live recorded client, sparing everyone there.
-    fn isLastActiveOnItsMonitor(self: *const AutoMinimizer, thumbnails: []const ThumbnailWindow, source_hwnd: win32.HWND) bool {
+    fn isLastActiveOnItsMonitor(self: *const AutoMinimizer, clients: []const roster.Client, source_hwnd: win32.HWND) bool {
         const monitor = win32.MonitorFromWindow(source_hwnd, win32.MONITOR_DEFAULTTONEAREST) orelse return true;
         const last_active = self.last_focused_by_monitor.get(monitor) orelse return true;
-        if (find(thumbnails, last_active) == null) return true;
+        if (find(clients, last_active) == null) return true;
         return last_active == source_hwnd;
     }
 
@@ -81,75 +80,69 @@ pub const AutoMinimizer = struct {
         };
     }
 
-    /// Call once per tick, after ThumbnailSet.update, whose updateThumbnailStates sets the was_minimized and active client it reads.
-    pub fn check(self: *AutoMinimizer, config: *const Config, thumbnails: []ThumbnailWindow, active_source_hwnd: ?win32.HWND) void {
+    /// Call once per tick, after Roster.refreshMinimized and setActive; `dragged_hwnd`'s client is never minimized or timed.
+    pub fn check(self: *AutoMinimizer, config: *const Config, clients: []roster.Client, active_source_hwnd: ?win32.HWND, dragged_hwnd: ?win32.HWND) void {
         const now = win32.Ticks.now();
         // Refreshed even while disabled, so re-enabling doesn't count the disabled stretch as inactivity.
-        for (thumbnails) |*thumbnail| {
-            if (thumbnail.is_dragged) continue;
-            if (thumbnail.isFocused(active_source_hwnd) or thumbnail.was_minimized) {
-                thumbnail.auto_minimize.inactive_since = now;
-            }
+        for (clients) |*client| {
+            if (client.hwnd == dragged_hwnd) continue;
+            if (client.hwnd == active_source_hwnd or client.was_minimized) client.inactive_since = now;
         }
 
         self.dropStaleOverride(config);
         if (!self.isEnabled(config)) return;
-        if (thumbnails.len == 0) return;
+        if (clients.len == 0) return;
 
         const settings: minimize_rules.Settings = .{
             .delay_ms = config.autoMinimize.delayMs,
             .exempts_last_active_on_focus_loss = config.autoMinimize.exemptLastActiveOnFocusLoss,
         };
         // active_source_hwnd is the literal foreground window, so it's non-null even on a non-EVE app.
-        const focused_eve_hwnd: ?win32.HWND = if (active_source_hwnd) |hwnd| (if (isEveClient(thumbnails, hwnd)) hwnd else null) else null;
+        const focused_eve_hwnd: ?win32.HWND = if (active_source_hwnd) |hwnd| (if (isEveClient(clients, hwnd)) hwnd else null) else null;
         const focused_monitor = if (focused_eve_hwnd) |hwnd| win32.MonitorFromWindow(hwnd, win32.MONITOR_DEFAULTTONEAREST) else null;
         var has_minimized_any = false;
 
-        for (thumbnails) |*thumbnail| {
+        for (clients) |*client| {
             // A minimized window is parked off-screen and reports the wrong monitor, but the rules skip it before reading that.
             const is_on_other_monitor = if (focused_monitor) |monitor|
-                win32.MonitorFromWindow(thumbnail.source_hwnd, win32.MONITOR_DEFAULTTONEAREST) != monitor
+                win32.MonitorFromWindow(client.hwnd, win32.MONITOR_DEFAULTTONEAREST) != monitor
             else
                 false;
-            const client: minimize_rules.Client = .{
-                .is_eve_client = thumbnail.is_eve_client,
-                .is_dragging = thumbnail.is_dragged,
-                .is_focused = thumbnail.isFocused(active_source_hwnd),
-                .was_minimized = thumbnail.was_minimized,
-                .is_excluded = thumbnail.cached_is_excluded_from_minimize,
-                .inactive_ms = now.elapsedSince(thumbnail.auto_minimize.inactive_since),
+            const facts: minimize_rules.Client = .{
+                .is_eve_client = client.is_eve_client,
+                .is_dragging = client.hwnd == dragged_hwnd,
+                .is_focused = client.hwnd == active_source_hwnd,
+                .was_minimized = client.was_minimized,
+                .is_excluded = client.is_excluded_from_minimize,
+                .inactive_ms = now.elapsedSince(client.inactive_since),
                 .is_on_other_monitor = is_on_other_monitor,
-                .is_last_active_on_its_monitor = self.isLastActiveOnItsMonitor(thumbnails, thumbnail.source_hwnd),
+                .is_last_active_on_its_monitor = self.isLastActiveOnItsMonitor(clients, client.hwnd),
             };
-            if (!minimize_rules.shouldMinimize(settings, client, focused_eve_hwnd != null)) continue;
-            if (!win32.isWindow(thumbnail.source_hwnd)) continue;
+            if (!minimize_rules.shouldMinimize(settings, facts, focused_eve_hwnd != null)) continue;
+            if (!win32.isWindow(client.hwnd)) continue;
 
-            animation.showClient(config, thumbnail.source_hwnd, win32.SW_FORCEMINIMIZE);
+            animation.showClient(config, client.hwnd, win32.SW_FORCEMINIMIZE);
             has_minimized_any = true;
-            slog.info("Auto-minimized {s} (inactive {}ms)", .{ thumbnail.character_name, client.inactive_ms });
+            slog.info("Auto-minimized {s} (inactive {}ms)", .{ client.character_name, facts.inactive_ms });
         }
 
+        // Minimizing the other windows can transiently steal focus from the active one.
         if (has_minimized_any) {
-            for (thumbnails) |*thumbnail| {
-                if (thumbnail.isFocused(active_source_hwnd) and win32.isWindow(thumbnail.source_hwnd)) {
-                    // Minimizing the other windows can transiently steal focus from the active one.
-                    focus_grant.forceSetForegroundWindow(thumbnail.source_hwnd);
-                    break;
-                }
-            }
+            const active = active_source_hwnd orelse return;
+            if (find(clients, active) != null and win32.isWindow(active)) focus_grant.forceSetForegroundWindow(active);
         }
     }
 };
 
-fn find(thumbnails: []const ThumbnailWindow, source_hwnd: win32.HWND) ?*const ThumbnailWindow {
-    for (thumbnails) |*thumbnail| {
-        if (thumbnail.source_hwnd == source_hwnd) return thumbnail;
+fn find(clients: []const roster.Client, hwnd: win32.HWND) ?*const roster.Client {
+    for (clients) |*client| {
+        if (client.hwnd == hwnd) return client;
     }
     return null;
 }
 
-/// Whether `source_hwnd` is a tracked EVE client, not a window filter's window.
-fn isEveClient(thumbnails: []const ThumbnailWindow, source_hwnd: win32.HWND) bool {
-    const thumbnail = find(thumbnails, source_hwnd) orelse return false;
-    return thumbnail.is_eve_client;
+/// Whether `hwnd` is a tracked EVE client, not a window filter's window.
+fn isEveClient(clients: []const roster.Client, hwnd: win32.HWND) bool {
+    const client = find(clients, hwnd) orelse return false;
+    return client.is_eve_client;
 }

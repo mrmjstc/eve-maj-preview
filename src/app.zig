@@ -48,7 +48,7 @@ const IDLE_TICK_INTERVAL_MS: win32.UINT = FORCED_SCAN_INTERVAL_MS;
 const TRAVEL_CHECK_INTERVAL_MS: u64 = 2000;
 const PROFILE_NAME_BUFFER_SIZE = 256;
 /// What the panels ask of App, which they can't import.
-pub const PANEL_HOST: panel_host.Host = .{ .thumbnail_set = currentThumbnailSet, .roster = currentRoster, .run = runPanelRequest };
+pub const PANEL_HOST: panel_host.Host = .{ .thumbnail_set = currentThumbnailSet, .roster = currentRoster, .exclusions = currentExclusions, .run = runPanelRequest };
 /// What the configuration window asks of App, which it can't import.
 pub const DIALOG_HOST: dialog_host.Host = .{ .thumbnail_set = currentThumbnailSet, .notifier = currentNotifier, .timer_window = currentTimerWindow, .save = saveDialogSettings, .run = runDialogRequest };
 
@@ -284,6 +284,8 @@ pub const App = struct {
         focus_mod.afterActiveRefresh(self, scout_result.name_changes.items);
 
         self.roster.expireAlerts(win32.Ticks.now());
+        const dragged_hwnd = if (self.thumbnail_set) |thumbnail_set| thumbnail_set.draggedSourceHwnd() else null;
+        self.roster.refreshMinimized(dragged_hwnd);
         if (self.thumbnail_set) |thumbnail_set| {
             thumbnail_set.updateConnections(&self.map_panel.pins, tick_start.ms);
             thumbnail_set.update(scout_result.windows, scout_result.closed_windows.items, scout_result.name_changes.items);
@@ -292,10 +294,9 @@ pub const App = struct {
                     slog.err("Failed to render list window: {}", .{err});
                 };
             }
-            self.auto_minimizer.check(thumbnail_set.config, thumbnail_set.thumbnails.items, self.roster.active_hwnd);
-
             thumbnail_set.checkHoverZoom();
         }
+        self.auto_minimizer.check(&self.store.live, self.roster.clients.items, self.roster.active_hwnd, dragged_hwnd);
 
         if (self.chatlog_monitor) |monitor| {
             monitor.update(&scout_result) catch |err| {
@@ -521,6 +522,7 @@ pub const App = struct {
             .exclusions = &self.exclusions,
             .notified_queue = &self.notifications.notified_queue,
             .notifier = self.notifier(),
+            .roster = &self.roster,
             .timer_hwnd = timer_hwnd,
         });
         self.hotkey_manager = manager;
@@ -685,6 +687,7 @@ pub const App = struct {
                 self.store = store;
                 restart.pending.* = null;
                 self.roster.clearAlerts();
+                self.roster.restartMinimizeDelays(win32.Ticks.now());
                 // Not dumped as at startup: it stalled switches with the debug console open.
                 slog.info("Loaded new config: {s}", .{self.store.saved.profile_name});
                 self.map_panel.sync(self.panelContext());
@@ -785,6 +788,12 @@ fn currentRoster() ?*const roster_mod.Roster {
 fn currentNotifier() ?notifier_mod.Notifier {
     const app = g_app orelse return null;
     return app.notifier();
+}
+
+/// For the panels; null outside the run.
+fn currentExclusions() ?*const exclusions_mod.Exclusions {
+    const app = g_app orelse return null;
+    return &app.exclusions;
 }
 
 fn currentTimerWindow() ?win32.HWND {

@@ -4,9 +4,11 @@ const win32 = @import("../platform/win32.zig");
 const config_mod = @import("../config.zig");
 const universe = @import("../map/universe.zig");
 const roster_mod = @import("../clients/roster.zig");
+const exclusions_mod = @import("../clients/exclusions.zig");
 const set = @import("../thumbnail/set.zig");
 
 const Roster = roster_mod.Roster;
+const Exclusions = exclusions_mod.Exclusions;
 const ThumbnailSet = set.ThumbnailSet;
 
 /// What a panel builds its window from; App's.
@@ -38,5 +40,7 @@ pub const Host = struct {
     thumbnail_set: *const fn () ?*ThumbnailSet,
     /// Null outside the run.
     roster: *const fn () ?*const Roster,
+    /// Null outside the run; cycle exclusions go by name.
+    exclusions: *const fn () ?*const Exclusions,
     run: *const fn (request: Request) void,
 };

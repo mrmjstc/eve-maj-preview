@@ -24,12 +24,6 @@ pub const SOURCE_HWND_PROP = "SOURCE_HWND";
 /// The owned strings the render cache borrows, so only replaceText may swap them.
 pub const OwnedText = enum { character_name, system_name, group_badge_label };
 
-/// Only AutoMinimizer.check writes it after creation.
-pub const AutoMinimizeState = struct {
-    /// When check's delay counts from: the last tick the thumbnail was Active or Minimized.
-    inactive_since: win32.Ticks,
-};
-
 pub const ThumbnailWindow = struct {
     hwnd: win32.HWND,
     /// The layered text and border overlay.
@@ -46,7 +40,6 @@ pub const ThumbnailWindow = struct {
     seen_revision: u32 = 0,
     /// Empty while showSystemConnections is off, or system_name isn't on the gate map; only ThumbnailSet.updateConnections writes it.
     connections: connections_mod.Connections = .{},
-    is_excluded_from_cycle: bool = false,
     /// Zero while no character is logged in.
     session_start: win32.Ticks = .{},
     needs_render: bool = false,
@@ -57,9 +50,6 @@ pub const ThumbnailWindow = struct {
     render_cache: overlay.RenderCache = .{},
 
     visibility_state: state.VisibilityState = .visible,
-    auto_minimize: AutoMinimizeState,
-    /// Catches a minimize/restore with no focus change; refreshed each tick except while dragged.
-    was_minimized: bool = false,
 
     cached_system_color: u32 = 0,
     /// Null when "Unique Character Name Colors" is off; callers fall back to their default.
@@ -69,7 +59,6 @@ pub const ThumbnailWindow = struct {
     /// Borrows from config or character_name.
     cached_display_name: []const u8 = "",
     cached_border_colors: ?config_mod.CharacterBorderColorsConfig = null,
-    cached_is_excluded_from_minimize: bool = false,
     cached_is_thumbnail_hidden: bool = false,
     cached_is_hidden_from_client_list: bool = false,
     cached_thumbnail_size: ?config_mod.CharacterThumbnailSizeConfig = null,
@@ -87,7 +76,6 @@ pub const ThumbnailWindow = struct {
         self.cached_list_name_color = if (is_logged_in) auto_colors.listNameColor(config, self.character_name) else null;
         self.cached_display_name = config.getDisplayName(self.character_name);
         self.cached_border_colors = if (is_logged_in) auto_colors.characterBorderColors(config, self.character_name) else null;
-        self.cached_is_excluded_from_minimize = config.isExcludedFromMinimize(self.character_name);
         self.cached_is_thumbnail_hidden = config.isThumbnailHidden(self.character_name);
         self.cached_is_hidden_from_client_list = config.isHiddenFromClientList(self.character_name);
         self.cached_thumbnail_size = config.getCharacterSize(self.character_name);

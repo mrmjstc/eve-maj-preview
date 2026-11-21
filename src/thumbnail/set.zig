@@ -161,7 +161,8 @@ pub const ThumbnailSet = struct {
     }
 
     pub fn renderThumbnail(self: *ThumbnailSet, thumbnail: *ThumbnailWindow) !void {
-        try self.renderer.render(self.config, thumbnail, self.roster.readingsOf(thumbnail.source_hwnd), self.roster.active_hwnd);
+        const is_excluded = self.exclusions.contains(thumbnail.character_name);
+        try self.renderer.render(self.config, thumbnail, self.roster.readingsOf(thumbnail.source_hwnd), is_excluded, self.roster.active_hwnd);
     }
 
     /// Logs a failure, with `context` in the message, instead of propagating it.
@@ -227,7 +228,7 @@ pub const ThumbnailSet = struct {
         thumbnail.replaceText(self.allocator, .group_badge_label, new_label);
     }
 
-    /// Reconciles focus, then marks thumbnails dirty whose minimized state changed.
+    /// Reconciles focus, then marks thumbnails dirty whose session timer moved on.
     fn updateThumbnailStates(self: *ThumbnailSet) void {
         if (self.thumbnails.items.len == 0) return;
 
@@ -239,12 +240,6 @@ pub const ThumbnailSet = struct {
 
             if (thumbnail.render_cache.settings) |cached| {
                 if (cached.show_session_timer and cached.session_minutes != (thumbnail.sessionMinutes(now) orelse 0)) thumbnail.needs_render = true;
-            }
-
-            const is_minimized = win32.isWindowIconic(thumbnail.source_hwnd);
-            if (is_minimized != thumbnail.was_minimized) {
-                thumbnail.was_minimized = is_minimized;
-                thumbnail.needs_render = true;
             }
         }
     }
@@ -400,12 +395,12 @@ pub const ThumbnailSet = struct {
         return any_login or any_logout;
     }
 
-    /// The only writer of is_excluded_from_cycle.
-    pub fn refreshExclusion(self: *ThumbnailSet, thumbnail: *ThumbnailWindow) void {
-        const is_excluded = self.exclusions.contains(thumbnail.character_name);
-        if (is_excluded == thumbnail.is_excluded_from_cycle) return;
-        thumbnail.is_excluded_from_cycle = is_excluded;
-        thumbnail.needs_render = true;
+    /// The client whose thumbnail is being dragged; only one is at a time.
+    pub fn draggedSourceHwnd(self: *const ThumbnailSet) ?win32.HWND {
+        for (self.thumbnails.items) |*thumbnail| {
+            if (thumbnail.is_dragged) return thumbnail.source_hwnd;
+        }
+        return null;
     }
 
     /// Reflows once at the end, since createThumbnail sizes each against the count so far.
@@ -488,7 +483,6 @@ pub const ThumbnailSet = struct {
         thumbnail.replaceText(self.allocator, .character_name, try self.allocator.dupe(u8, name));
         thumbnail.refreshConfigCache(self.config, self.auto_colors);
         self.refreshGroupBadge(thumbnail);
-        self.refreshExclusion(thumbnail);
     }
 
     /// The client went from the login screen to a character.
@@ -592,12 +586,10 @@ pub const ThumbnailSet = struct {
             .character_name = strings.character_name,
             .system_name = strings.system_name,
             .cached_group_badge_label = strings.group_badge_label,
-            .auto_minimize = .{ .inactive_since = win32.Ticks.now() },
             .visibility_state = state.VisibilityState.visible.afterAutoHide(self.focusHide(self.isEveWindowForeground())),
             .is_win32_enabled = is_win32_enabled,
         };
         thumbnail.refreshConfigCache(self.config, self.auto_colors);
-        self.refreshExclusion(&thumbnail);
         return thumbnail;
     }
 

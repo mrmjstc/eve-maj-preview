@@ -99,9 +99,10 @@ Roster.sync, refreshConfig, setActive mirror Scout's windows, read new names' se
 clearLoggedOutExclusions
 focus.afterActiveRefresh              record focus, resync cycle cursors
 Roster.expireAlerts                   drop expired alerts; flashing ones redraw
+Roster.refreshMinimized               each client's minimized state, skipping the dragged one
 ThumbnailSet.update                   create/destroy/rename thumbnails
-AutoMinimizer.check
 ThumbnailSet.checkHoverZoom
+AutoMinimizer.check                   over the roster's clients
 ChatlogMonitor.update + drain         -> deliverChatlogFindings -> Roster (systems), Notifier (alerts, intel), Scout
 NotificationCenter.update             History Panel
 MapPanel.update                       takes new stats, renders the map
@@ -146,7 +147,7 @@ Cross-thread data:
 
 **`clients/scout.zig`** (`Scout`): `EnumWindows` matched against `windowFilters` (class name, then exe path for new windows only). `trinityWindow` titles give the character name. Per-process `EVENT_OBJECT_NAMECHANGE`/`DESTROY` hooks catch renames and closes between scans; the destroy hook only records the hwnd, and `update()` drops it before handing out the window list, so the slice a tick borrows never changes under it. No creation hook: it would fire for every window on the desktop.
 
-**`clients/roster.zig`** (`Roster`, tested): one `Client` record per tracked window, kept by App for the whole run. `sync` mirrors Scout's window list once per tick, right after `Scout.update`, and is the only place clients are added or removed. It holds an owned copy of the name, the login time mirrored from Scout, the system (only `updateSystem` writes it, dropping stale log events; cleared at logout and when log monitoring goes off), Travel Mode's jumps, the activity readings (combat, mining and bounty rates cleared once monitoring is off), the alerts on screen and their throttle (expired each tick, cleared at logout, on a profile switch, and of log alerts once monitoring is off), when a click last brought it forward, the display name, character colour and minimize exclusion (`refreshConfig` reads them for new names each tick, and for everyone after a profile switch, Save or dialog edit), the active window (`active_hwnd`, the foreground window whether a client's or not; only `setActive` writes it), and a `revision` bumped on every change a view shows. A thumbnail set rebuild or profile switch keeps it, so nothing is carried across. Read by Travel Mode, the Map Panel's marks and their colours (through `panel_host.Host.roster`) and the Intel Panel's nearest client; `ThumbnailSet` copies each system onto its thumbnail when the revision moves and the text differs. More game state is moving onto it from `ThumbnailWindow`.
+**`clients/roster.zig`** (`Roster`, tested): one `Client` record per tracked window, kept by App for the whole run. `sync` mirrors Scout's window list once per tick, right after `Scout.update`, and is the only place clients are added or removed. It holds an owned copy of the name, the login time mirrored from Scout, the system (only `updateSystem` writes it, dropping stale log events; cleared at logout and when log monitoring goes off), Travel Mode's jumps, whether it was minimized and since when it's been idle (auto-minimize; the delay restarts on a profile switch), the activity readings (combat, mining and bounty rates cleared once monitoring is off), the alerts on screen and their throttle (expired each tick, cleared at logout, on a profile switch, and of log alerts once monitoring is off), when a click last brought it forward, the display name, character colour and minimize exclusion (`refreshConfig` reads them for new names each tick, and for everyone after a profile switch, Save or dialog edit), the active window (`active_hwnd`, the foreground window whether a client's or not; only `setActive` writes it), and a `revision` bumped on every change a view shows. A thumbnail set rebuild or profile switch keeps it, so nothing is carried across. Read by Travel Mode, the Map Panel's marks and their colours (through `panel_host.Host.roster`) and the Intel Panel's nearest client; `ThumbnailSet` copies each system onto its thumbnail when the revision moves and the text differs. Cycle exclusions aren't copied onto it: the overlay and the list ask App's `Exclusions` by name, and a toggle bumps the matching clients' revisions (`bumpByName`). More game state is moving onto it from `ThumbnailWindow`.
 
 **`thumbnail/set.zig`** (`ThumbnailSet`): the central mutable state. Owns the `ThumbnailWindow` list (linear search, a few dozen at most), keeps it in step with Scout, dispatches notifications, schedules layout and redraws. Holds the `Renderer`, auto-move verifier, and a drag's ghost overlay and hint (`DragOverlays`), and borrows App's `AutoColorStore`; callers outside `thumbnail/` reach the hover zoom and drag overlays through its methods, not `renderer`.
 
@@ -162,7 +163,6 @@ Per-thumbnail state owned by other modules:
 | Field | Owner |
 |---|---|
 | `render_cache` | `thumbnail/overlay.zig` |
-| `auto_minimize` | `control/auto_minimize.zig` |
 | `is_dragged` | `drag/thumbnail.zig` |
 
 Rendering:
@@ -257,7 +257,7 @@ Drawing and input:
 - **`control/activation.zig`** (`activate`): where every click, cycle and protocol switch ends. Restore, foreground, reconcile thumbnail states, dismiss click-suppressed notifications, sync cycle cursors.
 - **`platform/focus_grant.zig`**: `SetForegroundWindow` needs recent user input. A real `RegisterHotKey` on an unreachable combo is triggered with `keybd_event`; its `WM_HOTKEY` carries the foreground right.
 - **`control/focus.zig`** (`FocusTracker`): the `EVENT_SYSTEM_FOREGROUND` hook; sets the roster's active window and feeds the thumbnail set, auto-minimize and cycling, with or without a thumbnail set; auto-hides thumbnails after focus leaves EVE.
-- **`control/auto_minimize.zig`**: minimizes idle clients; decisions in `minimize_rules.zig` (pure, tested).
+- **`control/auto_minimize.zig`**: minimizes idle clients, reading each roster client's minimized state, idle time and minimize exclusion; decisions in `minimize_rules.zig` (pure, tested).
 - **`clients/`**: actions on EVE windows only (minimize, close, move, `animation.zig`'s `showClient`). Imports nothing from thumbnail, hotkey, drag or control.
 - **`control/thumbnail_input.zig`**: thumbnail window procs, passed into `thumbnail/` by App, and the client list's row input (`list_view.RowInput`). Left click → `activate`; shift-click → exclusion toggle; right drag → `drag/thumbnail.zig` (Ctrl moves all).
 - **`drag/`**: snapping (`snap_math.zig` pure), and `DragOverlays` (ghost outlines and the drag hint). Panel header drags are `panels/drag.zig`; `PanelWindow` tags its window so drags can find panels to snap to.

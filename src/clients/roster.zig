@@ -51,6 +51,10 @@ pub const Client = struct {
     last_click_time: win32.Ticks = .{},
     /// What the activity trackers last pushed; only Roster writes it.
     stats: ActivityStats = .{},
+    /// Catches a minimize or restore with no focus change; refreshMinimized keeps it current.
+    was_minimized: bool = false,
+    /// When auto-minimize's delay counts from: the last tick it was active or minimized; only AutoMinimizer.check writes it after joining.
+    inactive_since: win32.Ticks,
     /// Owned; the profile's display name for the character, else a copy of character_name.
     display_name: []const u8 = "",
     /// Null at the login screen or with "Unique Character Name Colors" off; callers fall back to their default.
@@ -162,6 +166,29 @@ pub const Roster = struct {
         if (@call(.auto, setter, .{&client.stats} ++ args)) client.revision +%= 1;
     }
 
+    /// Per tick; skips `dragged_hwnd`, whose thumbnail is being dragged, as its window's state is in flux.
+    pub fn refreshMinimized(self: *Roster, dragged_hwnd: ?win32.HWND) void {
+        for (self.clients.items) |*client| {
+            if (client.hwnd == dragged_hwnd) continue;
+            const is_minimized = win32.isWindowIconic(client.hwnd);
+            if (is_minimized == client.was_minimized) continue;
+            client.was_minimized = is_minimized;
+            client.revision +%= 1;
+        }
+    }
+
+    /// On a profile switch, so the new profile's delay starts from now, as AutoMinimizer.reset expects.
+    pub fn restartMinimizeDelays(self: *Roster, now: win32.Ticks) void {
+        for (self.clients.items) |*client| client.inactive_since = now;
+    }
+
+    /// For a change views draw that the roster doesn't hold, such as a cycle exclusion, which goes by name.
+    pub fn bumpByName(self: *Roster, character_name: []const u8) void {
+        for (self.clients.items) |*client| {
+            if (std.mem.eql(u8, client.character_name, character_name)) client.revision +%= 1;
+        }
+    }
+
     pub fn setActive(self: *Roster, hwnd: ?win32.HWND) void {
         self.active_hwnd = hwnd;
     }
@@ -265,6 +292,7 @@ pub const Roster = struct {
             .is_eve_client = window.is_eve_client,
             .character_name = name,
             .logged_in_at = window.logged_in_at,
+            .inactive_since = win32.Ticks.now(),
         }) catch |err| {
             slog.err("Failed to add '{s}' to the roster: {}", .{ window.character_name, err });
             self.allocator.free(name);

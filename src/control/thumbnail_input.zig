@@ -133,7 +133,10 @@ fn handleThumbnailShiftClick(running: *app.App, source_hwnd: win32.HWND) void {
         return;
     }
 
-    if (running.hotkey_manager) |manager| membership.toggleThumbnailExclusion(manager, thumbnail_set, source_hwnd);
+    const manager = running.hotkey_manager orelse return;
+    membership.toggleExclusion(manager, source_hwnd);
+    // Now rather than on the next tick, so the exclusion shows at once.
+    thumbnail_set.renderDirtyThumbnails(null);
 }
 
 fn dispatchClick(source_hwnd: win32.HWND, is_shift_pressed: bool) void {

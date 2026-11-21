@@ -294,7 +294,7 @@ pub fn renderOverlay(font_cache: *FontCache, cache: *RenderCache, target_hwnd: w
 }
 
 /// Reads what only Win32 can tell (DPI, client size, minimized, the clock); look.renderSettings decides the rest. `readings` are the client's.
-pub fn createRenderSettings(config: *const config_mod.Config, thumbnail: *const ThumbnailWindow, readings: roster.Readings, active_source_hwnd: ?win32.HWND) RenderSettings {
+pub fn createRenderSettings(config: *const config_mod.Config, thumbnail: *const ThumbnailWindow, readings: roster.Readings, is_excluded_from_cycle: bool, active_source_hwnd: ?win32.HWND) RenderSettings {
     // Read live, so fonts and size track the monitor this window is on now.
     const dpi_scale = win32.dpiToScale(win32.GetDpiForWindow(thumbnail.hwnd));
     const size = overlaySize(config, thumbnail, dpi_scale);
@@ -303,7 +303,7 @@ pub fn createRenderSettings(config: *const config_mod.Config, thumbnail: *const 
         .state = thumbnail.effectiveRenderState(active_source_hwnd, readings.alerts),
         .is_shown = thumbnail.isShown(readings.alerts),
         .is_focused = thumbnail.isFocused(active_source_hwnd),
-        .is_excluded_from_cycle = thumbnail.is_excluded_from_cycle,
+        .is_excluded_from_cycle = is_excluded_from_cycle,
         .is_hidden_for_character = thumbnail.cached_is_thumbnail_hidden,
         .display_name = thumbnail.cached_display_name,
         .system_name = thumbnail.system_name,

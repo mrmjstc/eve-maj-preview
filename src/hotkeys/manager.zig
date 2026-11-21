@@ -5,6 +5,7 @@ const vk = @import("../platform/virtual_keys.zig");
 const scout_mod = @import("../clients/scout.zig");
 const actions = @import("../clients/actions.zig");
 const exclusions_mod = @import("../clients/exclusions.zig");
+const roster_mod = @import("../clients/roster.zig");
 const config_mod = @import("../config.zig");
 const url = @import("../protocol/url.zig");
 const set = @import("../thumbnail/set.zig");
@@ -64,6 +65,7 @@ pub const Borrowed = struct {
     exclusions: *exclusions_mod.Exclusions,
     notified_queue: *const notified_queue_mod.NotifiedQueue,
     notifier: notifier_mod.Notifier,
+    roster: *roster_mod.Roster,
     /// The hidden window hotkeys post to.
     timer_hwnd: win32.HWND,
 };
@@ -98,6 +100,8 @@ pub const HotkeyManager = struct {
     notified_queue: *const notified_queue_mod.NotifiedQueue,
     /// Shows the alerts for membership changes and saved-position moves.
     notifier: notifier_mod.Notifier,
+    /// Borrowed; outlives the manager.
+    roster: *roster_mod.Roster,
     /// What syncFocusFilter last handed the hook thread; null until it first does, so a recreated manager sends it again.
     sent_focus_filter: ?hook_bindings.FocusFilter = null,
 
@@ -117,6 +121,7 @@ pub const HotkeyManager = struct {
             .exclusions = borrowed.exclusions,
             .notified_queue = borrowed.notified_queue,
             .notifier = borrowed.notifier,
+            .roster = borrowed.roster,
         };
     }
 
@@ -381,7 +386,9 @@ pub const HotkeyManager = struct {
             return;
         };
         slog.info("Toggle exclusion hotkey pressed for: {s}", .{eve_window.character_name});
-        membership.toggleThumbnailExclusion(self, thumbnail_set orelse return, eve_window.hwnd);
+        membership.toggleExclusion(self, eve_window.hwnd);
+        // Now rather than on the next tick, so the exclusion shows at once.
+        if (thumbnail_set) |active_set| active_set.renderDirtyThumbnails(null);
     }
 
     fn closeForegroundClient(self: *const HotkeyManager) void {

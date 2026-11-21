@@ -271,6 +271,12 @@ pub const ListWindow = struct {
         return roster.readingsOf(thumbnail.source_hwnd);
     }
 
+    /// From cycling, which goes by name.
+    fn isExcluded(self: *const ListWindow, thumbnail: *const ThumbnailWindow) bool {
+        const exclusions = self.host.exclusions() orelse return false;
+        return exclusions.contains(thumbnail.character_name);
+    }
+
     /// Puts `rows` in the configured order and records each row's client.
     fn sortRows(self: *ListWindow, thumbnails: []const ThumbnailWindow) !void {
         const AlphabeticalContext = struct {
@@ -366,7 +372,7 @@ pub const ListWindow = struct {
             hashString(&hasher, thumbnail.cached_display_name);
             hashString(&hasher, thumbnail.system_name);
             hasher.update(std.mem.asBytes(&render_state));
-            hasher.update(std.mem.asBytes(&thumbnail.is_excluded_from_cycle));
+            hasher.update(std.mem.asBytes(&self.isExcluded(thumbnail)));
             hasher.update(std.mem.asBytes(&readings.stats.incoming_dps));
             hasher.update(std.mem.asBytes(&readings.stats.outgoing_dps));
             hasher.update(std.mem.asBytes(&readings.stats.mining_rate));
@@ -620,7 +626,7 @@ pub const ListWindow = struct {
         const render_state = thumbnail.effectiveRenderState(active_source_hwnd, alerts);
         const is_active = render_state == .active;
         const is_alert = render_state == .alert;
-        const is_excluded = thumbnail.is_excluded_from_cycle;
+        const is_excluded = self.isExcluded(thumbnail);
         const active_color = self.resolveActiveBadgeColor(thumbnail);
 
         const background: u32 = if (is_alert)
@@ -684,7 +690,7 @@ pub const ListWindow = struct {
             const lead: Lead = if (notification.lead) |lead| .{ .length = @min(lead.length, line.len), .color = lead.color } else .{ .length = 0, .color = text_color };
             return drawPill(canvas, dc, slot, line, lead, text_color, alertColor(alerts));
         }
-        if (thumbnail.is_excluded_from_cycle) return drawRightAligned(dc, slot, "Excluded", list_look.MUTED);
+        if (self.isExcluded(thumbnail)) return drawRightAligned(dc, slot, "Excluded", list_look.MUTED);
         // Grouped rows sit under their system's heading.
         if (!list_settings.showSystemName or list_settings.groupBySystem or thumbnail.system_name.len == 0) return slot.right;
 
