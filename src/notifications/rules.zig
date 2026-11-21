@@ -1,12 +1,18 @@
-//! Whether a notification shows on a thumbnail: the settings and suppression rules, decided from facts about the thumbnail; no I/O.
+//! Whether a notification shows on a thumbnail, and whether any can be heard: the settings and suppression rules; no I/O.
 const std = @import("std");
 const config_notifications = @import("../config/notifications.zig");
+const chat_alerts = @import("../config/chat_alerts.zig");
+const notification = @import("notification.zig");
 
+const ChatAlertConfig = chat_alerts.ChatAlertConfig;
 const NotificationConfig = config_notifications.NotificationConfig;
 const NotificationTypeConfig = config_notifications.NotificationTypeConfig;
+const NotificationType = notification.NotificationType;
 
 /// Why a notification is held back.
 pub const Hold = enum { notifications_off, character_muted, type_off, focused, recently_clicked, throttled };
+
+pub const AudioEffect = enum { speech, sound };
 
 pub const Situation = struct {
     is_muted: bool,
@@ -26,6 +32,30 @@ pub fn holdReason(settings: *const NotificationConfig, type_config: Notification
     if (type_config.suppress_when_clicked and situation.since_click_ms < settings.suppress_click_duration_ms) return .recently_clicked;
     if (situation.is_throttled) return .throttled;
     return null;
+}
+
+/// Whether an alert holdReason can let through plays `effect`; a character's mute doesn't count, as another may not be muted.
+/// `is_intel_muted`: the Intel Panel's mute, which silences chat intel.
+pub fn hasAudibleAlert(settings: *const NotificationConfig, chat_rules: []const ChatAlertConfig, is_intel_muted: bool, effect: AudioEffect) bool {
+    if (!settings.enabled) return false;
+    for (std.enums.values(NotificationType)) |notification_type| {
+        if (notification_type == .ChatIntel and is_intel_muted) continue;
+        const type_config = settings.getTypeConfig(notification_type);
+        if (type_config.enabled and plays(&type_config, effect)) return true;
+    }
+    for (chat_rules) |*rule| {
+        if (!rule.enabled or !rule.alert.enabled) continue;
+        if (rule.kind == .intel and is_intel_muted) continue;
+        if (plays(&rule.alert, effect)) return true;
+    }
+    return false;
+}
+
+fn plays(type_config: *const NotificationTypeConfig, effect: AudioEffect) bool {
+    return switch (effect) {
+        .speech => type_config.tts_enabled,
+        .sound => type_config.sound_enabled and type_config.sound_path != null,
+    };
 }
 
 const testing = std.testing;
@@ -75,4 +105,24 @@ test "with several rules applying, the first in order is reported" {
     try testing.expectEqual(Hold.notifications_off, holdReason(&.{ .enabled = false }, suppressing, everything).?);
     try testing.expectEqual(Hold.character_muted, holdReason(&.{}, suppressing, everything).?);
     try testing.expectEqual(Hold.focused, holdReason(&.{}, suppressing, with("is_focused", true)).?);
+}
+
+test "speech and sound count only for alert types that can still fire" {
+    var settings: NotificationConfig = .{};
+    settings.type_configs.map.getPtr(.FleetInvite).* = .{ .tts_enabled = true, .enabled = false };
+    settings.type_configs.map.getPtr(.Docking).* = .{ .sound_enabled = true };
+    try testing.expect(!hasAudibleAlert(&settings, &.{}, false, .speech));
+    try testing.expect(!hasAudibleAlert(&settings, &.{}, false, .sound));
+
+    settings.type_configs.map.getPtr(.FleetInvite).enabled = true;
+    try testing.expect(hasAudibleAlert(&settings, &.{}, false, .speech));
+    settings.enabled = false;
+    try testing.expect(!hasAudibleAlert(&settings, &.{}, false, .speech));
+}
+
+test "a turned-off chat rule is silent, and the Intel Panel's mute silences intel rules but not keyword ones" {
+    const speaking: NotificationTypeConfig = .{ .tts_enabled = true };
+    try testing.expect(!hasAudibleAlert(&.{}, &.{.{ .enabled = false, .alert = speaking }}, false, .speech));
+    try testing.expect(!hasAudibleAlert(&.{}, &.{.{ .kind = .intel, .alert = speaking }}, true, .speech));
+    try testing.expect(hasAudibleAlert(&.{}, &.{.{ .kind = .keyword, .alert = speaking }}, true, .speech));
 }

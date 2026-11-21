@@ -123,6 +123,7 @@ pub const INVALID_HANDLE_VALUE = @as(HANDLE, @ptrFromInt(@as(usize, @bitCast(@as
 pub const FILE_NOTIFY_CHANGE_FILE_NAME = 0x00000001;
 pub const WAIT_OBJECT_0 = 0x00000000;
 pub const WAIT_TIMEOUT = 0x00000102;
+pub const WAIT_FAILED = 0xFFFFFFFF;
 
 pub const HWND_TOPMOST: HWND = @ptrFromInt(@as(usize, @bitCast(@as(isize, -1))));
 pub const HWND_NOTOPMOST: HWND = @ptrFromInt(@as(usize, @bitCast(@as(isize, -2))));
@@ -1373,8 +1374,8 @@ pub fn selfExecutableDirPath(buffer: []u8) ![]const u8 {
 }
 
 /// `target` is a file path or URL, opened with its default handler.
-pub fn shellOpen(target: [*:0]const u8, workdir: ?[*:0]const u8) bool {
-    const result = ShellExecuteA(null, "open", target, null, workdir, SW_SHOW);
+pub fn shellOpen(target: [*:0]const u8, working_directory: ?[*:0]const u8) bool {
+    const result = ShellExecuteA(null, "open", target, null, working_directory, SW_SHOW);
     return @intFromPtr(result) > 32;
 }
 
@@ -1778,9 +1779,9 @@ pub inline fn lparamY(lParam: LPARAM) i32 {
     return @as(i16, @truncate(lParam >> 16));
 }
 
-/// `ptr` is any pointer.
-pub inline fn ptrToLparam(ptr: anytype) LPARAM {
-    return @as(LPARAM, @bitCast(@intFromPtr(ptr)));
+/// `pointer` is any pointer.
+pub inline fn ptrToLparam(pointer: anytype) LPARAM {
+    return @as(LPARAM, @bitCast(@intFromPtr(pointer)));
 }
 
 pub inline fn lparamToPtr(comptime T: type, lParam: LPARAM) *T {

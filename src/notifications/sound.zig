@@ -297,6 +297,11 @@ pub fn playAlert(path: []const u8, volume_percent: u8, is_minor: bool) void {
     g_worker.pushAlert(.{ .path = copy, .volume_percent = volume_percent, .is_minor = is_minor }, MAX_WAITING_ALERTS);
 }
 
+/// Unloads Media Foundation while nothing plays; the next alert loads it again.
+pub fn stopIfIdle() void {
+    g_worker.stopIfIdle();
+}
+
 /// Call once during app shutdown.
 pub fn shutdown() void {
     g_worker.shutdown();

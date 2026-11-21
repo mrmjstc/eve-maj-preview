@@ -57,7 +57,7 @@ const DISPPARAMS = extern struct {
     cNamedArgs: u32,
 };
 
-/// Driven via late-bound Invoke rather than a hand-rolled ISpVoice vtable, since IDispatch's layout is fixed while SAPI's real vtable order is easy to mis-transcribe.
+/// Driven through late-bound Invoke, since ISpVoice's real vtable order is easy to mis-transcribe.
 const IDispatch = extern struct {
     vtable: *const IDispatchVtbl,
 
@@ -160,7 +160,7 @@ const TtsEngine = struct {
         };
     }
 
-    /// Blocks until finished: SpVoice's Invoke only accepts the Text-only call, not one with Flags, so this must never run on the main thread.
+    /// Blocks until spoken, as SpVoice's Invoke rejects the Flags that would make it asynchronous.
     fn speak(self: *const TtsEngine, text: []const u8) void {
         const wide_text = std.unicode.utf8ToUtf16LeAllocZ(std.heap.page_allocator, text) catch |err| {
             slog.warn("Failed to convert TTS text to UTF-16: {}", .{err});
@@ -236,7 +236,7 @@ pub fn setVoiceSettings(volume_percent: u8, rate: i8) void {
     g_worker.push(.{ .set_rate = rate });
 }
 
-/// Returns at once; alerts are spoken in order, past `max_waiting` the oldest waiting one is dropped, `is_minor` ones first, and none are spoken if SAPI is unavailable.
+/// Returns at once; past `max_waiting` the oldest waiting alerts are dropped, `is_minor` ones first.
 pub fn speakAlert(text: []const u8, max_waiting: usize, is_minor: bool) void {
     if (!g_worker.start()) return;
     const copy = std.heap.page_allocator.dupe(u8, text) catch |err| {
@@ -246,6 +246,11 @@ pub fn speakAlert(text: []const u8, max_waiting: usize, is_minor: bool) void {
     // Chat text reaches here, and SAPI can take text that opens with a tag for markup.
     std.mem.replaceScalar(u8, copy, '<', ' ');
     g_worker.pushAlert(.{ .speak = .{ .text = copy, .is_minor = is_minor } }, max_waiting);
+}
+
+/// Unloads SAPI while nothing is spoken; the next alert loads it again.
+pub fn stopIfIdle() void {
+    g_worker.stopIfIdle();
 }
 
 /// Call once during app shutdown.

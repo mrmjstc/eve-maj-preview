@@ -15,6 +15,7 @@ const hook_bindings = @import("hotkeys/hook_bindings.zig");
 const launch = @import("hotkeys/launch.zig");
 const profile_switch = @import("hotkeys/profile_switch.zig");
 const center = @import("notifications/center.zig");
+const alert_effects = @import("notifications/alert_effects.zig");
 const list_view = @import("panels/list_view.zig");
 const map_panel_mod = @import("panels/map_panel.zig");
 const panel_host = @import("panels/panel_host.zig");
@@ -252,6 +253,8 @@ pub const App = struct {
         const should_force_scan = schedule.nextTickWouldBeLate(tick_start.elapsedSince(self.last_forced_scan), FORCED_SCAN_INTERVAL_MS, self.tick_interval_ms);
         if (should_force_scan) self.last_forced_scan = tick_start;
         if (self.tray_icon) |*icon| icon.retryIfMissing(tick_start);
+        // Checked each tick rather than on Save, so an alert still playing then can finish first.
+        if (should_force_scan) alert_effects.releaseUnused(&self.store.live);
 
         var scout_result = self.scout.update(should_force_scan, self.store.saved.windowFilters.items);
         defer scout_result.deinit(self.allocator);

@@ -1,8 +1,7 @@
-//! A lazily started thread that runs queued commands in order on an engine it owns; shared by speech and sound alerts.
+//! A thread, started on demand and stopped when idle, that runs queued commands in order on an engine it owns; shared by speech and sound alerts.
 const std = @import("std");
+const win32 = @import("../platform/win32.zig");
 const log = @import("../log.zig");
-
-const POLL_MS: i64 = 50;
 
 /// `Engine`: `init`, `run` and `deinit`, all called on the worker thread.
 /// `Command.deinit`: frees what it owns once run or dropped.
@@ -18,14 +17,18 @@ pub fn Worker(comptime Command: type, comptime Engine: type, comptime scope: []c
         mutex: std.Io.Mutex = .init,
         /// Guarded by mutex.
         queue: std.ArrayList(Command) = .empty,
+        /// Guarded by mutex; set while the worker runs a command it has popped.
+        is_busy: bool = false,
         /// Main thread only.
         thread: ?std.Thread = null,
         /// Main thread only; set once the worker can't start, so it isn't retried.
         has_failed: bool = false,
-        /// Set by the main thread in shutdown, read by the worker each poll.
+        /// Set by the main thread to stop the worker, read by the worker each time it wakes.
         should_exit: std.atomic.Value(bool) = .init(false),
         /// Set by the worker when its engine fails to start.
         has_engine_failed: std.atomic.Value(bool) = .init(false),
+        /// Main thread only, the worker getting its own copy; auto-reset, signalled by each push and by stop.
+        wake_event: ?win32.HANDLE = null,
 
         const Self = @This();
 
@@ -35,13 +38,22 @@ pub fn Worker(comptime Command: type, comptime Engine: type, comptime scope: []c
                 if (!self.has_engine_failed.load(.acquire)) return true;
                 thread.join();
                 self.thread = null;
+                self.closeWakeEvent();
                 self.has_failed = true;
                 return false;
             }
             if (self.has_failed) return false;
 
-            self.thread = std.Thread.spawn(.{}, run, .{self}) catch |err| {
+            const wake_event = win32.CreateEventA(null, win32.FALSE, win32.FALSE, null) orelse {
+                slog.warn("Failed to create the {s} thread's wake event: error {d}", .{ description, win32.GetLastError() });
+                self.has_failed = true;
+                return false;
+            };
+            self.wake_event = wake_event;
+            self.should_exit.store(false, .release);
+            self.thread = std.Thread.spawn(.{}, run, .{ self, wake_event }) catch |err| {
                 slog.warn("Failed to start the {s} thread: {}", .{ description, err });
+                self.closeWakeEvent();
                 self.has_failed = true;
                 return false;
             };
@@ -56,7 +68,7 @@ pub fn Worker(comptime Command: type, comptime Engine: type, comptime scope: []c
             };
         }
 
-        /// Like push, then drops the oldest waiting alerts past `max_waiting`, minor ones first, so a flood can't delay new ones without limit; below 1 counts as 1, keeping `command` itself unless it's minor and the rest aren't.
+        /// Like push, then drops the oldest waiting alerts past `max_waiting`, at least 1, minor ones first.
         pub fn pushAlert(self: *Self, command: Command, max_waiting: usize) void {
             self.append(command, @max(max_waiting, 1)) catch |err| {
                 slog.warn("Failed to queue a {s} alert: {}", .{ description, err });
@@ -66,16 +78,51 @@ pub fn Worker(comptime Command: type, comptime Engine: type, comptime scope: []c
 
         /// Call once during app shutdown; drops anything still queued.
         pub fn shutdown(self: *Self) void {
+            self.stop();
+            while (self.pop()) |command| command.deinit();
+        }
+
+        /// Ends the thread and its engine unless it has work the join would wait on; the next start runs it again.
+        pub fn stopIfIdle(self: *Self) void {
+            if (self.thread == null) return;
+            if (!self.isIdle()) return;
+            self.stop();
+        }
+
+        /// Only the main thread pushes, so the worker can't be handed anything between this and stop.
+        fn isIdle(self: *Self) bool {
+            self.mutex.lock(self.io) catch |err| {
+                slog.warn("Failed to check whether {s} is idle, leaving it running: {}", .{ description, err });
+                return false;
+            };
+            defer self.mutex.unlock(self.io);
+            return self.queue.items.len == 0 and !self.is_busy;
+        }
+
+        fn stop(self: *Self) void {
             const thread = self.thread orelse return;
             self.should_exit.store(true, .release);
+            self.wake();
             thread.join();
             self.thread = null;
-            while (self.pop()) |command| command.deinit();
+            self.closeWakeEvent();
         }
 
         fn append(self: *Self, command: Command, max_waiting_alerts: ?usize) !void {
             const dropped_count = try self.appendLocked(command, max_waiting_alerts);
+            self.wake();
             if (dropped_count > 0) slog.info("Dropped {d} waiting alert(s) for {s}, keeping the newest {d}", .{ dropped_count, description, max_waiting_alerts orelse 0 });
+        }
+
+        fn wake(self: *const Self) void {
+            const event = self.wake_event orelse return;
+            if (!win32.toBool(win32.SetEvent(event))) slog.warn("Failed to wake the {s} thread: error {d}", .{ description, win32.GetLastError() });
+        }
+
+        fn closeWakeEvent(self: *Self) void {
+            const event = self.wake_event orelse return;
+            _ = win32.CloseHandle(event);
+            self.wake_event = null;
         }
 
         /// How many alerts it dropped and freed, which the caller logs outside the lock.
@@ -120,7 +167,20 @@ pub fn Worker(comptime Command: type, comptime Engine: type, comptime scope: []c
             return self.queue.orderedRemove(0);
         }
 
-        fn run(self: *Self) void {
+        /// Worker thread only: pop, marking the worker busy until the next call finds the queue empty.
+        fn next(self: *Self) ?Command {
+            self.mutex.lock(self.io) catch |err| {
+                slog.warn("Failed to lock the {s} queue: {}", .{ description, err });
+                return null;
+            };
+            defer self.mutex.unlock(self.io);
+            self.is_busy = self.queue.items.len > 0;
+            if (!self.is_busy) return null;
+            return self.queue.orderedRemove(0);
+        }
+
+        /// `wake_event` stays open until this returns and is joined.
+        fn run(self: *Self, wake_event: win32.HANDLE) void {
             var engine = Engine.init() catch |err| {
                 slog.warn("Failed to start {s}, so its alerts won't play: {}", .{ description, err });
                 self.has_engine_failed.store(true, .release);
@@ -128,12 +188,16 @@ pub fn Worker(comptime Command: type, comptime Engine: type, comptime scope: []c
             };
             defer engine.deinit();
             slog.info("Started {s}", .{description});
+            defer slog.info("Stopped {s}", .{description});
 
             while (!self.should_exit.load(.acquire)) {
-                const command = self.pop() orelse {
-                    std.Io.sleep(self.io, .fromMilliseconds(POLL_MS), .awake) catch |err| {
-                        slog.debug("Failed to sleep between {s} polls: {}", .{ description, err });
-                    };
+                const command = self.next() orelse {
+                    // A push between the empty pop and this wait leaves the event signalled, so it isn't missed.
+                    if (win32.WaitForSingleObject(wake_event, win32.INFINITE) == win32.WAIT_FAILED) {
+                        slog.err("Failed to wait for {s}, so its alerts won't play: error {d}", .{ description, win32.GetLastError() });
+                        self.has_engine_failed.store(true, .release);
+                        return;
+                    }
                     continue;
                 };
                 defer command.deinit();
@@ -254,6 +318,22 @@ test "a new minor alert never pushes out one that isn't" {
     var buffer: [8]u8 = undefined;
     try testing.expectEqualSlices(u8, &.{1}, drainIds(&worker, &buffer));
     try testing.expectEqualSlices(u8, &.{2}, log_entries.freed());
+}
+
+test "the worker is busy from taking a command until it finds the queue empty" {
+    var log_entries: FreedLog = .{};
+    var worker: TestWorker = .{ .io = testing.io };
+    try testing.expect(worker.isIdle());
+    worker.push(.{ .id = 1, .is_alert = true, .freed_log = &log_entries });
+    try testing.expect(!worker.isIdle());
+
+    const taken = worker.next() orelse return error.TestExpectedCommand;
+    taken.deinit();
+    try testing.expect(!worker.isIdle());
+    try testing.expectEqual(null, worker.next());
+    try testing.expect(worker.isIdle());
+    var buffer: [8]u8 = undefined;
+    try testing.expectEqualSlices(u8, &.{}, drainIds(&worker, &buffer));
 }
 
 test "push keeps every alert" {
