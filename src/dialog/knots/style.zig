@@ -1015,7 +1015,8 @@ pub const icon_button_confirm: Style = confirm_button.with(.{ .width = .fixed(CO
 pub const master_detail: Style = .{ .width = .grow(), .direction = .row, .gap = 8, .padding = .init(0, 0, 0, ROW_INSET) };
 /// A master-detail filling the rest of its section, for a tab that fills the window.
 pub const master_detail_fill: Style = master_detail.with(.{ .height = .grow() });
-pub const roster_filters: Style = roster.with(.{ .height = .fit(), .overflow = .visible });
+/// A little over a space with Behavior and Order By needs, so picking another space doesn't resize the card.
+pub const spaces_master_detail: Style = master_detail.with(.{ .height = .{ .kind = .fit, .min = 420 } });
 /// A roster in a scrolling tab whose rows scroll inside it, so adding one doesn't push it off the bottom.
 pub const roster_fixed: Style = roster.with(.{ .height = .fixed(220) });
 pub const detail_fit: Style = .{ .width = .grow(), .direction = .column, .gap = 8 };

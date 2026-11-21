@@ -592,7 +592,6 @@
   "Region": "Región",
   "No hotkey groups yet: add some in the Hotkey Groups tab to put their characters in this space.": "No hay grupos de atajos todavía: añade algunos en la pestaña Grupos de atajos para poner sus personajes en este espacio.",
   "{name} (no such group)": "{name} (grupo inexistente)",
-  "Click a group to put its characters in this space, and again to take it out.": "Haz clic en un grupo para poner sus personajes en este espacio, y de nuevo para sacarlos.",
   "Characters in '{group}' go to '{space}' instead.": "Los personajes en '{group}' van a '{space}' en su lugar.",
   "Draw": "Dibujar",
   "Edit": "Editar",

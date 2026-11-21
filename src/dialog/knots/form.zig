@@ -138,8 +138,7 @@ const Tab = enum {
     fn fills(self: Tab) bool {
         return switch (self) {
             .characters, .hotkey_groups, .event_alerts, .chat_alerts => true,
-            .placement => placement.fillsWindow(),
-            .client_windows, .appearance, .mining, .notification_history, .map_panel, .hotkeys, .mouse, .notifications, .general, .about, .backups => false,
+            .placement, .client_windows, .appearance, .mining, .notification_history, .map_panel, .hotkeys, .mouse, .notifications, .general, .about, .backups => false,
         };
     }
 

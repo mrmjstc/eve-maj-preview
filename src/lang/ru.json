@@ -592,7 +592,6 @@
   "Region": "Область",
   "No hotkey groups yet: add some in the Hotkey Groups tab to put their characters in this space.": "Пока нет групп горячих клавиш: добавьте их на вкладке «Группы горячих клавиш», чтобы поместить их персонажей в это пространство.",
   "{name} (no such group)": "{name} (нет такой группы)",
-  "Click a group to put its characters in this space, and again to take it out.": "Кликните по группе, чтобы поместить ее персонажей в это пространство, и повторно, чтобы убрать.",
   "Characters in '{group}' go to '{space}' instead.": "Персонажи из «{group}» отправляются в «{space}».",
   "Draw": "Рисовать",
   "Edit": "Изменить",

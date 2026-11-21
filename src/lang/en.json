@@ -592,7 +592,6 @@
   "Region": "Region",
   "No hotkey groups yet: add some in the Hotkey Groups tab to put their characters in this space.": "No hotkey groups yet: add some in the Hotkey Groups tab to put their characters in this space.",
   "{name} (no such group)": "{name} (no such group)",
-  "Click a group to put its characters in this space, and again to take it out.": "Click a group to put its characters in this space, and again to take it out.",
   "Characters in '{group}' go to '{space}' instead.": "Characters in '{group}' go to '{space}' instead.",
   "Draw": "Draw",
   "Edit": "Edit",

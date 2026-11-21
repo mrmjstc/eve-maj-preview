@@ -81,11 +81,6 @@ pub fn show(context: *ui.Frame) !void {
     try panelSnapping(context);
 }
 
-/// Spaces mode fills the window like Characters; Manual's settings, or both modes during a search, scroll instead.
-pub fn fillsWindow() bool {
-    return session.showsThumbnails() and session.profile().ptr.display.placementMode == .ThumbnailSpaces and !search.isActive();
-}
-
 fn thumbnailPlacement(context: *ui.Frame) !void {
     const profile = session.profile();
     const display = profile.child("display");
@@ -112,7 +107,7 @@ fn thumbnailPlacement(context: *ui.Frame) !void {
         try manual_section.close(context);
     }
     if (shows_spaces) {
-        const spaces_section = try widgets.openSection(context, "Thumbnail Spaces", "Screen areas that arrange hotkey groups. Drag to reorder; the higher one wins.", if (fillsWindow()) &style.fill_section else &style.section);
+        const spaces_section = try widgets.openSection(context, "Thumbnail Spaces", "Screen areas that arrange hotkey groups. Drag to reorder; the higher one wins.", &style.section);
         try spacesMode(context);
         try spaces_section.close(context);
     }
@@ -193,20 +188,14 @@ fn manual(context: *ui.Frame, display: DisplayRef) !void {
 
 fn spacesMode(context: *ui.Frame) !void {
     const profile = session.profile();
-    const is_filling = fillsWindow();
-    const master_detail = Rect{ .key = .src(@src()), .style = if (is_filling) &style.master_detail_fill else &style.master_detail };
+    const master_detail = Rect{ .key = .src(@src()), .style = &style.spaces_master_detail };
     _ = try master_detail.open(context);
-    try roster(context, profile, is_filling);
-    if (is_filling) {
-        const pane = try widgets.openScrollPane(context, .str("knots.space.detail"), style.detail_scroll);
-        try selectedDetail(context, profile);
-        try pane.close(context);
-    } else {
-        const stack = Rect{ .key = .src(@src()), .style = &style.detail_fit };
-        _ = try stack.open(context);
-        try selectedDetail(context, profile);
-        try stack.close(context);
-    }
+    try roster(context, profile);
+    // As tall as the selected space's settings, so none scroll out of sight; the tab scrolls instead.
+    const stack = Rect{ .key = .src(@src()), .style = &style.detail_fit };
+    _ = try stack.open(context);
+    try selectedDetail(context, profile);
+    try stack.close(context);
     try master_detail.close(context);
 }
 
@@ -228,9 +217,10 @@ fn selectedIndex(items: []const config.ThumbnailSpace) ?usize {
     return 0;
 }
 
-fn roster(context: *ui.Frame, profile: ProfileRef, is_filling: bool) !void {
+fn roster(context: *ui.Frame, profile: ProfileRef) !void {
     const items = profile.ptr.thumbnailSpaces.items;
-    const list = try widgets.openRoster(context, .str("knots.space.roster"), if (is_filling) &style.roster else &style.roster_filters, is_filling);
+    // Stretched to the details beside it, Add Space at the bottom.
+    const list = try widgets.openRoster(context, .str("knots.space.roster"), &style.roster, true);
     if (items.len == 0) {
         try widgets.boxedText(context, .src(@src()), "No spaces yet.", &style.roster_empty, &style.roster_empty_text);
     }
@@ -454,7 +444,6 @@ fn holds(context: *ui.Frame, profile: ProfileRef, space: SpaceRef) !void {
         })).clicked) toggled = chip;
     }
     try grid.close(context);
-    try widgets.paragraph(context, .src(@src()), "Click a group to put its characters in this space, and again to take it out.");
 
     const chip = toggled orelse return;
     const name = chip.name orelse try nameUnnamedGroup(arena, profile, chip.group_index);
