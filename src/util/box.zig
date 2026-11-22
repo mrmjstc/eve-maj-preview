@@ -21,6 +21,11 @@ pub const Box = struct {
         return false;
     }
 
+    /// A negative `amount` grows it.
+    pub fn inset(self: Box, amount: i32) Box {
+        return .{ .left = self.left + amount, .top = self.top + amount, .right = self.right - amount, .bottom = self.bottom - amount };
+    }
+
     pub fn containsPoint(self: Box, x: i32, y: i32) bool {
         return x >= self.left and x < self.right and y >= self.top and y < self.bottom;
     }

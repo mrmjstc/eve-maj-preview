@@ -494,14 +494,15 @@ pub const Painter = struct {
 
         // The selection and cursor go on the canvas first, as GDI's text lands on top.
         const canvas = bitmap.canvas();
-        const height: usize = @intCast(@max(0, text.name_height));
+        const bottom = y + text.name_height;
         const range = open.selection();
         if (range.start != range.end) {
             const start = std.math.clamp(stops.x_positions[range.start], left, right);
             const end = std.math.clamp(stops.x_positions[range.end], left, right);
-            pixel_buffer.fillRect(canvas, @intCast(@max(0, start)), @intCast(@max(0, y)), @intCast(end - start), height, look.SEARCH_SELECTION);
+            pixel_buffer.fillBox(canvas, .{ .left = start, .top = y, .right = end, .bottom = bottom }, look.SEARCH_SELECTION);
         }
-        pixel_buffer.fillRect(canvas, @intCast(@max(0, stops.x_positions[open.cursor])), @intCast(@max(0, y)), 1, height, list_look.NAME);
+        const cursor_x = stops.x_positions[open.cursor];
+        pixel_buffer.fillBox(canvas, .{ .left = cursor_x, .top = y, .right = cursor_x + 1, .bottom = bottom }, list_look.NAME);
 
         // Only whole characters, since nothing clips GDI's text to the box.
         var first: usize = 0;

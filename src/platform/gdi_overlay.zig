@@ -3,9 +3,11 @@ const std = @import("std");
 const win32 = @import("win32.zig");
 const fonts = @import("fonts.zig");
 const pixel_buffer = @import("../util/pixel_buffer.zig");
+const box = @import("../util/box.zig");
 const utf8 = @import("../util/utf8.zig");
 const log = @import("../log.zig");
 
+const Box = box.Box;
 const slog = log.Scoped("gdi_overlay");
 
 /// Translucent black backing shared by the small hint boxes and labels drawn over the desktop.
@@ -287,12 +289,9 @@ pub fn createInstalledFont(dc: win32.HDC, name: [:0]const u8, height_px: i32, we
 
 /// A filled, bordered, rounded button with `label` centered in `font`; `rect` is in bitmap coordinates.
 pub fn drawButtonFace(bitmap: *const OverlayBitmap, rect: win32.RECT, label: []const u8, font: win32.HFONT, face: ButtonFace) void {
-    const x: usize = @intCast(rect.left);
-    const y: usize = @intCast(rect.top);
-    const width: usize = @intCast(win32.rectWidth(rect));
-    const height: usize = @intCast(win32.rectHeight(rect));
-    pixel_buffer.fillRoundedRect(bitmap.canvas(), x, y, width, height, face.radius, face.border);
-    pixel_buffer.fillRoundedRect(bitmap.canvas(), x + face.border_px, y + face.border_px, width - 2 * face.border_px, height - 2 * face.border_px, face.radius -| face.border_px, face.fill);
+    const button: Box = .{ .left = rect.left, .top = rect.top, .right = rect.right, .bottom = rect.bottom };
+    pixel_buffer.fillRoundedBox(bitmap.canvas(), button, face.radius, face.border);
+    pixel_buffer.fillRoundedBox(bitmap.canvas(), button.inset(@intCast(face.border_px)), face.radius -| face.border_px, face.fill);
 
     const old_font = win32.SelectObject(bitmap.mem_dc, font);
     defer {
@@ -302,8 +301,8 @@ pub fn drawButtonFace(bitmap: *const OverlayBitmap, rect: win32.RECT, label: []c
     const text_size = measureTextSizeUtf8(label_buf_size, bitmap.mem_dc, label);
     const text_width: usize = @intCast(text_size.cx);
     const text_height: usize = @intCast(text_size.cy);
-    const text_x: i32 = @intCast(x + (width -| text_width) / 2);
-    const text_y: i32 = @intCast(y + (height -| text_height) / 2);
+    const text_x = rect.left + @divTrunc(@max(0, win32.rectWidth(rect) - text_size.cx), 2);
+    const text_y = rect.top + @divTrunc(@max(0, win32.rectHeight(rect) - text_size.cy), 2);
     drawTextUtf8(label_buf_size, bitmap.mem_dc, text_x, text_y, label, face.text_color);
     pixel_buffer.fixTextAlphaRect(bitmap.canvas(), text_x, text_y, text_width, text_height);
 }

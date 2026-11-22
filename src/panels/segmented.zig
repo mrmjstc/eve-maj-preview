@@ -58,8 +58,7 @@ pub fn drawBar(canvas: pixel_buffer.Canvas, bar: Box) void {
 
 /// Behind a picked, lit or hovered button.
 pub fn fillButton(canvas: pixel_buffer.Canvas, button: Box, fill: u32) void {
-    if (button.right <= button.left or button.bottom <= button.top or button.left < 0 or button.top < 0) return;
-    pixel_buffer.fillRoundedRect(canvas, @intCast(button.left), @intCast(button.top), @intCast(button.right - button.left), @intCast(button.bottom - button.top), RADIUS, fill);
+    pixel_buffer.fillRoundedBox(canvas, button, RADIUS, fill);
 }
 
 /// The accent behind the picked button, the hover behind a hovered one, else nothing.

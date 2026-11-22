@@ -168,13 +168,13 @@ fn drawBox(bitmap: *const gdi_overlay.OverlayBitmap, fonts: Fonts, grid: *const 
     if (colors.lit_row) |lit| {
         if (lit < rows.len and rows[lit].role == .item) {
             const cell = grid.cell(lit);
-            pixel_buffer.fillRoundedRect(canvas, @intCast(cell.left), @intCast(cell.top), @intCast(cell.right - cell.left), @intCast(cell.bottom - cell.top), popup_look.ROW_RADIUS, colors.lit_color);
+            pixel_buffer.fillRoundedBox(canvas, cell, popup_look.ROW_RADIUS, colors.lit_color);
         }
     }
     for (rows, 0..) |*row, index| {
         const cell = grid.cell(index);
         const middle = cell.top + @divTrunc(cell.bottom - cell.top, 2);
-        if (row.has_rule_below) pixel_buffer.fillRect(canvas, @intCast(cell.left), @intCast(cell.bottom - 1), @intCast(cell.right - cell.left), 1, popup_look.MENU_RULE);
+        if (row.has_rule_below) pixel_buffer.fillBox(canvas, .{ .left = cell.left, .top = cell.bottom - 1, .right = cell.right, .bottom = cell.bottom }, popup_look.MENU_RULE);
         if (row.has_submenu) popup_look.drawSubmenuArrow(canvas, cell.right - popup_look.MENU_RIGHT_INSET, middle, popup_look.MENU_MUTED);
         if (row.is_checked) popup_look.drawCheck(canvas, cell.left + popup_look.MENU_CHECK_LEFT, middle, colors.check_color);
         if (row.glyph) |glyph| glyphs.draw(canvas, glyph, cell.left + popup_look.MENU_CHECK_LEFT, middle - @divTrunc(glyphs.SIZE, 2), row.color);

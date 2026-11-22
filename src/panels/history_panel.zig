@@ -395,9 +395,8 @@ pub const HistoryPanelWindow = struct {
             const is_on = history_look.isCategoryEnabled(&self.config.historyPanel, category);
             const fill = if (is_on) palette.PANEL else list_look.PANEL;
             const label_color = if (is_on) palette.TEXT else palette.MUTED;
-            const chip_width: usize = @intCast(chip.right - chip.left);
-            pixel_buffer.fillRoundedRect(canvas, @intCast(chip.left), @intCast(chip.top), chip_width, @intCast(history_look.CHIP_HEIGHT), history_look.CHIP_RADIUS, if (is_on) palette.BORDER else palette.DIVIDER);
-            pixel_buffer.fillRoundedRect(canvas, @intCast(chip.left + 1), @intCast(chip.top + 1), chip_width - 2, @intCast(history_look.CHIP_HEIGHT - 2), history_look.CHIP_RADIUS - 1, fill);
+            pixel_buffer.fillRoundedBox(canvas, chip, history_look.CHIP_RADIUS, if (is_on) palette.BORDER else palette.DIVIDER);
+            pixel_buffer.fillRoundedBox(canvas, chip.inset(1), history_look.CHIP_RADIUS - 1, fill);
             const dot_x = chip.left + history_look.CHIP_PADDING_X + history_look.CHIP_DOT_RADIUS;
             pixel_buffer.fillCircle(canvas, dot_x, chip.top + @divTrunc(history_look.CHIP_HEIGHT, 2), @floatFromInt(history_look.CHIP_DOT_RADIUS), if (is_on) history_look.categoryColor(category) else palette.BORDER);
             const text_y = chip.top + @divTrunc(history_look.CHIP_HEIGHT - text_height, 2);
@@ -406,7 +405,7 @@ pub const HistoryPanelWindow = struct {
             panel_chrome.drawLine(dc, label, label_x, text_y, label_color);
             panel_chrome.drawLine(dc, count_text, label_x + panel_chrome.textWidth(dc, label) + history_look.CHIP_TEXT_GAP, text_y, history_look.chipCountColor(label_color, fill));
         }
-        pixel_buffer.fillRect(canvas, 0, @intCast(layout.bottom - 1), canvas.width, 1, list_look.DIVIDER);
+        pixel_buffer.fillBox(canvas, .{ .left = 0, .top = layout.bottom - 1, .right = panel_width, .bottom = layout.bottom }, list_look.DIVIDER);
         return layout;
     }
 

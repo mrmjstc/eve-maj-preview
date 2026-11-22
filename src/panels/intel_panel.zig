@@ -434,7 +434,7 @@ pub const IntelPanelWindow = struct {
             const label_x = segment.left + @divTrunc(segment.right - segment.left - panel_chrome.textWidth(dc, label), 2);
             panel_chrome.drawLine(dc, label, label_x, segment.top + @divTrunc(segment.bottom - segment.top - panel_chrome.lineHeight(dc), 2), segmented.labelColor(self.rangeState(range), accent));
         }
-        pixel_buffer.fillRect(canvas, 0, @intCast(layout.bottom - 1), canvas.width, 1, list_look.DIVIDER);
+        pixel_buffer.fillBox(canvas, .{ .left = 0, .top = layout.bottom - 1, .right = panel_width, .bottom = layout.bottom }, list_look.DIVIDER);
         return layout;
     }
 
@@ -477,7 +477,7 @@ pub const IntelPanelWindow = struct {
         const dc = bitmap.mem_dc;
         const entry = &entries[row.first_index];
         const is_hovered = self.hovered_row == index;
-        if (is_hovered) pixel_buffer.fillRect(canvas, @intCast(row_box.left), @intCast(row_box.top), @intCast(row_box.right - row_box.left), @intCast(row_box.bottom - row_box.top), list_look.ROW_HOVER);
+        if (is_hovered) pixel_buffer.fillBox(canvas, row_box, list_look.ROW_HOVER);
         const is_old = now.elapsedSince(entry.timestamp) > intel_look.OLD_AFTER_MS;
         const center_y = row_box.top + @divTrunc(row_box.bottom - row_box.top, 2);
 
@@ -491,7 +491,8 @@ pub const IntelPanelWindow = struct {
         const pill_width = @max(intel_look.PILL_MIN_WIDTH, pill_text_width + 2 * intel_look.PILL_PADDING_X);
         const pill_left = row_box.left + intel_look.PADDING_X;
         const swatch = intel_look.pillSwatch(jumps);
-        pixel_buffer.fillRoundedRect(canvas, @intCast(pill_left), @intCast(center_y - @divTrunc(intel_look.PILL_HEIGHT, 2)), @intCast(pill_width), @intCast(intel_look.PILL_HEIGHT), intel_look.PILL_RADIUS, intel_look.faded(swatch.fill, is_old));
+        const pill_top = center_y - @divTrunc(intel_look.PILL_HEIGHT, 2);
+        pixel_buffer.fillRoundedBox(canvas, .{ .left = pill_left, .top = pill_top, .right = pill_left + pill_width, .bottom = pill_top + intel_look.PILL_HEIGHT }, intel_look.PILL_RADIUS, intel_look.faded(swatch.fill, is_old));
         panel_chrome.drawLine(dc, pill_text, pill_left + @divTrunc(pill_width - pill_text_width, 2), small_y, intel_look.faded(swatch.text, is_old));
 
         var content_right = row_box.right - intel_look.PADDING_X;
@@ -520,7 +521,7 @@ pub const IntelPanelWindow = struct {
             _ = win32.SelectObject(dc, text.small_font);
             const clear = intel_look.clearSwatch();
             const tag_width = @min(panel_chrome.textWidth(dc, intel_look.CLEAR_TEXT) + 2 * intel_look.TAG_PADDING_X, content_right - x);
-            pixel_buffer.fillRoundedRect(canvas, @intCast(x), @intCast(small_y - 1), @intCast(tag_width), @intCast(small_height + 2), intel_look.TAG_RADIUS, intel_look.faded(clear.fill, is_old));
+            pixel_buffer.fillRoundedBox(canvas, .{ .left = x, .top = small_y - 1, .right = x + tag_width, .bottom = small_y + small_height + 1 }, intel_look.TAG_RADIUS, intel_look.faded(clear.fill, is_old));
             _ = panel_chrome.drawFitted(dc, intel_look.CLEAR_TEXT, x + intel_look.TAG_PADDING_X, small_y, intel_look.faded(clear.text, is_old), tag_width - 2 * intel_look.TAG_PADDING_X);
             x += tag_width + history_look.TEXT_GAP;
         }
@@ -540,7 +541,7 @@ pub const IntelPanelWindow = struct {
             const action_box: Box = .{ .left = left, .top = center_y - @divTrunc(intel_look.ACTION_SIZE, 2), .right = left + intel_look.ACTION_SIZE, .bottom = center_y - @divTrunc(intel_look.ACTION_SIZE, 2) + intel_look.ACTION_SIZE };
             self.action_boxes[action_index] = action_box;
             const is_lit = self.hovered_action == action;
-            if (is_lit) pixel_buffer.fillRoundedRect(canvas, @intCast(action_box.left), @intCast(action_box.top), @intCast(intel_look.ACTION_SIZE), @intCast(intel_look.ACTION_SIZE), intel_look.ACTION_RADIUS, palette.SURFACE);
+            if (is_lit) pixel_buffer.fillRoundedBox(canvas, action_box, intel_look.ACTION_RADIUS, palette.SURFACE);
             const inset = @divTrunc(intel_look.ACTION_SIZE - glyphs.SIZE, 2);
             glyphs.draw(canvas, actionGlyph(action), action_box.left + inset, action_box.top + inset, if (is_lit) palette.TEXT else palette.MUTED);
             left -= intel_look.ACTION_GAP;

@@ -1,5 +1,8 @@
 //! Drawing rects, lines and circles in a raw 0xAARRGGBB pixel buffer, and fixing GDI text's alpha; no I/O.
 const std = @import("std");
+const box_mod = @import("box.zig");
+
+const Box = box_mod.Box;
 
 /// A Mask's steps to the pixel, which caps how deep it can tell apart at about 16 pixels.
 const MASK_DEPTH_STEPS: f32 = 16;
@@ -127,6 +130,9 @@ const RowSpan = struct {
 /// A rect's part inside a pixel buffer, and how thick its outline can be.
 const ClippedRect = struct { left: usize, top: usize, right: usize, bottom: usize, thickness: usize };
 
+/// A box's part inside a pixel buffer, as pixel indices.
+const ClippedBox = struct { left: usize, top: usize, right: usize, bottom: usize };
+
 /// GDI text leaves alpha at 0, so non-black pixels still at 0 become opaque; alpha other drawing set is kept.
 pub fn fixTextAlphaRect(canvas: Canvas, x: i32, y: i32, rect_width: usize, rect_height: usize) void {
     const width = canvas.width;
@@ -162,25 +168,38 @@ pub fn fillRect(canvas: Canvas, x: usize, y: usize, rect_width: usize, rect_heig
     }
 }
 
-/// Corners anti-aliased as fillCircle; no-ops if the rect would overrun the buffer's row width.
-pub fn fillRoundedRect(canvas: Canvas, x: usize, y: usize, rect_width: usize, rect_height: usize, radius: usize, argb: u32) void {
-    if (x + rect_width > canvas.width) return;
-    const corner_radius = @min(radius, @min(rect_width, rect_height) / 2);
+/// Clipped to the canvas; an empty box draws nothing.
+pub fn fillBox(canvas: Canvas, box: Box, argb: u32) void {
+    const clipped = clippedBox(canvas, box) orelse return;
+    fillRect(canvas, clipped.left, clipped.top, clipped.right - clipped.left, clipped.bottom - clipped.top, argb);
+}
+
+/// Corners anti-aliased as fillCircle; clipped to the canvas, keeping the corners that fall on it.
+pub fn fillRoundedBox(canvas: Canvas, box: Box, radius: usize, argb: u32) void {
+    if (box.right <= box.left or box.bottom <= box.top) return;
+    const box_width: usize = @intCast(box.right - box.left);
+    const box_height: usize = @intCast(box.bottom - box.top);
+    const corner_radius = @min(radius, @min(box_width, box_height) / 2);
+    const corner: i32 = @intCast(corner_radius);
     const arc_radius: f32 = @floatFromInt(corner_radius);
-    for (0..rect_height) |row| {
-        const from_edge = @min(row, rect_height - 1 - row);
+    for (0..box_height) |row| {
+        const y = box.top + @as(i32, @intCast(row));
+        if (y < 0) continue;
+        if (y >= canvas.height) break;
+        const from_edge = @min(row, box_height - 1 - row);
         if (from_edge >= corner_radius) {
-            fillRect(canvas, x, y + row, rect_width, 1, argb);
+            fillBox(canvas, .{ .left = box.left, .top = y, .right = box.right, .bottom = y + 1 }, argb);
             continue;
         }
-        fillRect(canvas, x + corner_radius, y + row, rect_width - 2 * corner_radius, 1, argb);
+        fillBox(canvas, .{ .left = box.left + corner, .top = y, .right = box.right - corner, .bottom = y + 1 }, argb);
         const offset_y = arc_radius - @as(f32, @floatFromInt(from_edge)) - 0.5;
         for (0..corner_radius) |column| {
             // From the corner arc's centre to this pixel's centre.
             const offset_x = arc_radius - @as(f32, @floatFromInt(column)) - 0.5;
             const coverage = std.math.clamp(arc_radius + 0.5 - @sqrt(offset_x * offset_x + offset_y * offset_y), 0, 1);
-            blendPixel(canvas, @intCast(x + column), @intCast(y + row), argb, coverage);
-            blendPixel(canvas, @intCast(x + rect_width - 1 - column), @intCast(y + row), argb, coverage);
+            const column_offset: i32 = @intCast(column);
+            blendPixel(canvas, box.left + column_offset, y, argb, coverage);
+            blendPixel(canvas, box.right - 1 - column_offset, y, argb, coverage);
         }
     }
 }
@@ -375,6 +394,16 @@ fn clampedTo(value: i32, limit: usize) usize {
     return @intCast(std.math.clamp(value, 0, @as(i32, @intCast(limit))));
 }
 
+/// Null when nothing of the box is inside the canvas.
+fn clippedBox(canvas: Canvas, box: Box) ?ClippedBox {
+    const left = @max(box.left, 0);
+    const top = @max(box.top, 0);
+    const right = @min(box.right, @as(i32, @intCast(canvas.width)));
+    const bottom = @min(box.bottom, @as(i32, @intCast(canvas.height)));
+    if (right <= left or bottom <= top) return null;
+    return .{ .left = @intCast(left), .top = @intCast(top), .right = @intCast(right), .bottom = @intCast(bottom) };
+}
+
 /// Null when nothing of the rect is inside the canvas.
 fn clipToCanvas(canvas: Canvas, x: i32, y: i32, rect_width: usize, rect_height: usize, thickness: usize) ?ClippedRect {
     const left: usize = @intCast(std.math.clamp(x, 0, @as(i32, @intCast(canvas.width))));
@@ -405,9 +434,27 @@ test "fillCoverage paints by coverage and clips what falls off the canvas" {
     try testing.expectEqual(@as(u32, 0xFFFFFFFF), buffer[5]);
 }
 
-test "fillRoundedRect softens its corners alike and fills its middle" {
+test "fillBox clips a box hanging off each edge to the part on the canvas" {
+    var buffer: [4 * 3]u32 = @splat(0);
+    const canvas: Canvas = .{ .pixels = &buffer, .width = 4, .height = 3 };
+    fillBox(canvas, .{ .left = -2, .top = -5, .right = 1, .bottom = 1 }, 1);
+    fillBox(canvas, .{ .left = 3, .top = 2, .right = 9, .bottom = 9 }, 2);
+    try testing.expectEqualSlices(u32, &.{ 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2 }, &buffer);
+}
+
+test "fillBox draws nothing for a box off the canvas, empty or inside out" {
+    var buffer: [4 * 3]u32 = @splat(0);
+    const canvas: Canvas = .{ .pixels = &buffer, .width = 4, .height = 3 };
+    fillBox(canvas, .{ .left = -4, .top = 0, .right = 0, .bottom = 3 }, 1);
+    fillBox(canvas, .{ .left = 0, .top = 3, .right = 4, .bottom = 6 }, 1);
+    fillBox(canvas, .{ .left = 2, .top = 1, .right = 2, .bottom = 2 }, 1);
+    fillBox(canvas, .{ .left = 3, .top = 2, .right = 1, .bottom = 0 }, 1);
+    for (buffer) |pixel| try testing.expectEqual(@as(u32, 0), pixel);
+}
+
+test "fillRoundedBox softens its corners alike and fills its middle" {
     var buffer: [6 * 6]u32 = @splat(0xFF000000);
-    fillRoundedRect(.{ .pixels = &buffer, .width = 6, .height = 6 }, 0, 0, 6, 6, 3, 0xFFFFFFFF);
+    fillRoundedBox(.{ .pixels = &buffer, .width = 6, .height = 6 }, .{ .left = 0, .top = 0, .right = 6, .bottom = 6 }, 3, 0xFFFFFFFF);
     try testing.expectEqual(@as(u32, 0xFF000000), buffer[0]);
     try testing.expect(buffer[1] != 0xFF000000 and buffer[1] != 0xFFFFFFFF);
     try testing.expectEqual(buffer[1], buffer[4]);
@@ -415,10 +462,15 @@ test "fillRoundedRect softens its corners alike and fills its middle" {
     try testing.expectEqual(@as(u32, 0xFFFFFFFF), buffer[3 * 6 + 3]);
 }
 
-test "fillRoundedRect skips a rect that would overrun the row" {
-    var buffer: [4 * 4]u32 = @splat(0xFF000000);
-    fillRoundedRect(.{ .pixels = &buffer, .width = 4, .height = 4 }, 2, 0, 4, 4, 1, 0xFFFFFFFF);
-    for (buffer) |pixel| try testing.expectEqual(@as(u32, 0xFF000000), pixel);
+test "fillRoundedBox clipped at the canvas keeps the corners left on it" {
+    var whole: [6 * 6]u32 = @splat(0xFF000000);
+    fillRoundedBox(.{ .pixels = &whole, .width = 6, .height = 6 }, .{ .left = 0, .top = 0, .right = 6, .bottom = 6 }, 3, 0xFFFFFFFF);
+    // The same box three pixels left and up, so only its bottom-right quarter lands.
+    var clipped: [3 * 3]u32 = @splat(0xFF000000);
+    fillRoundedBox(.{ .pixels = &clipped, .width = 3, .height = 3 }, .{ .left = -3, .top = -3, .right = 3, .bottom = 3 }, 3, 0xFFFFFFFF);
+    for (0..3) |y| {
+        try testing.expectEqualSlices(u32, whole[(y + 3) * 6 + 3 .. (y + 3) * 6 + 6], clipped[y * 3 .. y * 3 + 3]);
+    }
 }
 
 test "drawRectOutline moves a rect starting off the buffer onto its edge" {

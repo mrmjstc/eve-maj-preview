@@ -153,9 +153,9 @@ pub fn tooltipBox(area: Box, x: i32, y: i32, width: i32, height: i32) Box {
 
 /// A rounded box with a one-pixel border, as the dialog draws its tooltips, menus and cards.
 pub fn drawBorderedBox(canvas: pixel_buffer.Canvas, box: Box, radius: usize, fill: u32, border: u32) void {
-    if (box.left < 0 or box.top < 0 or box.right - box.left < 2 or box.bottom - box.top < 2) return;
-    pixel_buffer.fillRoundedRect(canvas, @intCast(box.left), @intCast(box.top), @intCast(box.right - box.left), @intCast(box.bottom - box.top), radius, border);
-    pixel_buffer.fillRoundedRect(canvas, @intCast(box.left + 1), @intCast(box.top + 1), @intCast(box.right - box.left - 2), @intCast(box.bottom - box.top - 2), radius -| 1, fill);
+    if (box.right - box.left < 2 or box.bottom - box.top < 2) return;
+    pixel_buffer.fillRoundedBox(canvas, box, radius, border);
+    pixel_buffer.fillRoundedBox(canvas, box.inset(1), radius -| 1, fill);
 }
 
 /// A menu's or tooltip's box, as the dialog draws both.

@@ -176,13 +176,13 @@ pub fn historyRowHeight(line_height: i32, small_height: i32, name_line_count: us
 pub fn drawHistoryRow(canvas: Canvas, dc: win32.HDC, text: HistoryText, entries: []const history.Entry, row: Row, notifications: *const NotificationConfig, place: HistoryPlace, now: win32.Ticks) void {
     const entry = &entries[row.first_index];
     const row_box = place.box;
-    if (place.is_hovered) pixel_buffer.fillRect(canvas, @intCast(row_box.left), @intCast(row_box.top), @intCast(row_box.right - row_box.left), @intCast(row_box.bottom - row_box.top), list_look.ROW_HOVER);
+    if (place.is_hovered) pixel_buffer.fillBox(canvas, row_box, list_look.ROW_HOVER);
 
     const category = notification.notificationCategory(entry.notification_type);
     const left = row_box.left + history_look.PADDING_X;
     const right = row_box.right - history_look.PADDING_X;
     const tile_top = row_box.top + @divTrunc(place.line_height - history_look.TILE_SIZE, 2);
-    pixel_buffer.fillRoundedRect(canvas, @intCast(left), @intCast(tile_top), @intCast(history_look.TILE_SIZE), @intCast(history_look.TILE_SIZE), history_look.TILE_RADIUS, history_look.tileColor(category));
+    pixel_buffer.fillRoundedBox(canvas, .{ .left = left, .top = tile_top, .right = left + history_look.TILE_SIZE, .bottom = tile_top + history_look.TILE_SIZE }, history_look.TILE_RADIUS, history_look.tileColor(category));
     const glyph_inset = @divTrunc(history_look.TILE_SIZE - history_look.TILE_GLYPH_SIZE, 2);
     glyphs.drawSized(canvas, history_look.categoryGlyph(category), history_look.TILE_GLYPH_SIZE, left + glyph_inset, tile_top + glyph_inset, history_look.categoryColor(category));
 
@@ -221,7 +221,7 @@ pub fn drawHistoryRow(canvas: Canvas, dc: win32.HDC, text: HistoryText, entries:
         _ = win32.SelectObject(dc, text.small_font);
         const pill_left = @min(x, message_end) + history_look.TEXT_GAP;
         const pill_width = merged_width - history_look.TEXT_GAP;
-        pixel_buffer.fillRoundedRect(canvas, @intCast(pill_left), @intCast(small_y - 1), @intCast(pill_width), @intCast(text.small_height + 2), history_look.MERGED_RADIUS, palette.SURFACE);
+        pixel_buffer.fillRoundedBox(canvas, .{ .left = pill_left, .top = small_y - 1, .right = pill_left + pill_width, .bottom = small_y + text.small_height + 1 }, history_look.MERGED_RADIUS, palette.SURFACE);
         panel_chrome.drawWideLine(dc, merged, pill_left + history_look.MERGED_PADDING_X, small_y, palette.TEXT_SECONDARY);
     }
 
@@ -242,7 +242,8 @@ pub fn drawEarlier(canvas: Canvas, dc: win32.HDC, font: win32.HFONT, top: i32, p
     const right = panel_width - history_look.PADDING_X;
     const text_width = panel_chrome.drawFitted(dc, history_look.EARLIER_TEXT, left, top + @divTrunc(history_look.EARLIER_HEIGHT - text_height, 2), list_look.MUTED, right - left);
     const rule_left = left + text_width + history_look.EARLIER_RULE_GAP;
-    if (rule_left < right) pixel_buffer.fillRect(canvas, @intCast(rule_left), @intCast(top + @divTrunc(history_look.EARLIER_HEIGHT, 2)), @intCast(right - rule_left), 1, list_look.DIVIDER);
+    const rule_top = top + @divTrunc(history_look.EARLIER_HEIGHT, 2);
+    pixel_buffer.fillBox(canvas, .{ .left = rule_left, .top = rule_top, .right = right, .bottom = rule_top + 1 }, list_look.DIVIDER);
 }
 
 /// Flush against `right`, no further left than `left`, then moves `right` past it and a gap; UTF-8.

@@ -131,7 +131,7 @@ pub fn drawSummary(canvas: Canvas, dc: win32.HDC, fonts: *const HeaderFonts, lef
         const inset: i32 = if (run.fill != null) PILL_PADDING_X else 0;
         if (run.fill) |fill| {
             const pill_width = @min(wideTextWidth(dc, run.text) + 2 * inset, right - x);
-            pixel_buffer.fillRoundedRect(canvas, @intCast(x), @intCast(y - 1), @intCast(pill_width), @intCast(text_height + 2), PILL_RADIUS, fill);
+            pixel_buffer.fillRoundedBox(canvas, .{ .left = x, .top = y - 1, .right = x + pill_width, .bottom = y + text_height + 1 }, PILL_RADIUS, fill);
         }
         x += drawFitted(dc, run.text, x + inset, y, run.color, right - x - 2 * inset) + 2 * inset + HEADER_TEXT_GAP;
     }
@@ -205,7 +205,7 @@ fn fillHeader(canvas: Canvas, header: *const Header) void {
     pixel_buffer.fillRect(canvas, 0, 0, canvas.width, @intCast(panel_header.HEIGHT), palette.CHROME);
     if (!header.is_collapsed) pixel_buffer.fillRect(canvas, 0, @intCast(panel_header.HEIGHT - 1), canvas.width, 1, list_look.DIVIDER);
     if (header.hovered) |hit| {
-        if (layout.boxOf(hit)) |lit_box| pixel_buffer.fillRoundedRect(canvas, @intCast(lit_box.left), @intCast(lit_box.top), @intCast(lit_box.right - lit_box.left), @intCast(lit_box.bottom - lit_box.top), HEADER_BUTTON_RADIUS, palette.SURFACE);
+        if (layout.boxOf(hit)) |lit_box| pixel_buffer.fillRoundedBox(canvas, lit_box, HEADER_BUTTON_RADIUS, palette.SURFACE);
     }
     const chevron_glyph: glyphs.Glyph = if (header.is_collapsed) .chevron_right else .chevron_down;
     drawGlyphIn(canvas, layout.chevron, chevron_glyph, if (panel_header.sameHit(header.hovered, .chevron)) palette.TEXT else palette.MUTED);

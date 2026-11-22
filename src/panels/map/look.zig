@@ -713,7 +713,7 @@ pub fn drawGrid(canvas: pixel_buffer.Canvas, area: Box, view: layout.View) void 
     while (y < area.bottom) : (y += GRID_SPACING) {
         var x = start_x;
         while (x < area.right) : (x += GRID_SPACING) {
-            pixel_buffer.fillRect(canvas, @intCast(x), @intCast(y), 1, 1, GRID_DOT);
+            pixel_buffer.fillBox(canvas, .{ .left = x, .top = y, .right = x + 1, .bottom = y + 1 }, GRID_DOT);
         }
     }
 }
@@ -730,7 +730,7 @@ pub fn drawCard(canvas: pixel_buffer.Canvas, box: Box) void {
 
 /// A one-pixel line across a card at `y`, between its rows or under a heading.
 pub fn drawDivider(canvas: pixel_buffer.Canvas, left: i32, right: i32, y: i32) void {
-    fillBox(canvas, .{ .left = left, .top = y, .right = right, .bottom = y + 1 }, 0, CONTROL_DIVIDER);
+    pixel_buffer.fillBox(canvas, .{ .left = left, .top = y, .right = right, .bottom = y + 1 }, CONTROL_DIVIDER);
 }
 
 /// The title, like the dialog's profile menu button; `accent` is set while it's hovered or its list is open.
@@ -764,7 +764,7 @@ pub fn drawToggleMark(canvas: pixel_buffer.Canvas, box: Box, toggle: Toggle, is_
 /// Between Follow and the toggles before it.
 pub fn drawToggleDivider(canvas: pixel_buffer.Canvas, bar: Box, x: i32) void {
     const inset = segmented.BAR_INSET + TOGGLE_DIVIDER_INSET;
-    fillBox(canvas, .{ .left = x, .top = bar.top + inset, .right = x + 1, .bottom = bar.bottom - inset }, 0, CONTROL_DIVIDER);
+    pixel_buffer.fillBox(canvas, .{ .left = x, .top = bar.top + inset, .right = x + 1, .bottom = bar.bottom - inset }, CONTROL_DIVIDER);
 }
 
 /// Points down while what it heads is closed, or up while it's open.
@@ -777,8 +777,8 @@ pub fn drawZoomStack(canvas: pixel_buffer.Canvas, areas: Areas, hovered: ?MapCon
     drawControl(canvas, areas.zoomStack(), CONTROL_FILL, null);
     for ([_]MapControl{ .zoom_in, .zoom_out, .fit }) |control| {
         const box = areas.mapControlBox(control);
-        const inner = insetBox(box, CARD_BORDER_WIDTH);
-        if (hovered == control) segmented.fillButton(canvas, insetBox(box, segmented.BAR_INSET), SEGMENT_HOVER);
+        const inner = box.inset(CARD_BORDER_WIDTH);
+        if (hovered == control) segmented.fillButton(canvas, box.inset(segmented.BAR_INSET), SEGMENT_HOVER);
         if (control != .fit) drawDivider(canvas, inner.left, inner.right, box.bottom - 1);
         drawMapControlGlyph(canvas, box, control, SEGMENT_TEXT);
     }
@@ -791,7 +791,7 @@ pub fn drawLegendSwatch(canvas: pixel_buffer.Canvas, left: i32, top: i32, line_h
     if (is_area) {
         popup_look.drawBorderedBox(canvas, swatch, LEGEND_SWATCH_RADIUS, color.mix(shade, CONTROL_FILL, LEGEND_AREA_TINT_PERCENT), shade);
     } else {
-        fillBox(canvas, swatch, LEGEND_SWATCH_RADIUS, shade);
+        pixel_buffer.fillRoundedBox(canvas, swatch, LEGEND_SWATCH_RADIUS, shade);
     }
 }
 
@@ -808,7 +808,7 @@ pub fn drawRamp(canvas: pixel_buffer.Canvas, left: i32, top: i32, line_height: i
         const signed_index: i32 = @intCast(index);
         const from = left + @divTrunc(LEGEND_RAMP_WIDTH * signed_index, count);
         const to = left + @divTrunc(LEGEND_RAMP_WIDTH * (signed_index + 1), count);
-        pixel_buffer.fillRect(canvas, @intCast(from), @intCast(y), @intCast(to - from), @intCast(LEGEND_RAMP_HEIGHT), shade);
+        pixel_buffer.fillBox(canvas, .{ .left = from, .top = y, .right = to, .bottom = y + LEGEND_RAMP_HEIGHT }, shade);
     }
 }
 
@@ -962,9 +962,9 @@ fn drawCardFrame(canvas: pixel_buffer.Canvas, card: CardFrame, hovered_row: ?usi
     drawCard(canvas, card.box);
     const inner_left = card.box.left + ROW_INSET;
     const inner_right = card.box.right - ROW_INSET;
-    if (is_header_hovered) fillBox(canvas, rowHighlight(card.header, inner_left, inner_right), segmented.RADIUS, SEGMENT_HOVER);
+    if (is_header_hovered) pixel_buffer.fillRoundedBox(canvas, rowHighlight(card.header, inner_left, inner_right), segmented.RADIUS, SEGMENT_HOVER);
     if (hovered_row) |index| {
-        if (index < card.rows.len) fillBox(canvas, rowHighlight(card.rows[index], inner_left, inner_right), segmented.RADIUS, SEGMENT_HOVER);
+        if (index < card.rows.len) pixel_buffer.fillRoundedBox(canvas, rowHighlight(card.rows[index], inner_left, inner_right), segmented.RADIUS, SEGMENT_HOVER);
     }
     if (!card.is_collapsed) drawDivider(canvas, inner_left, inner_right, card.header.bottom - 1);
 }
@@ -1023,16 +1023,6 @@ fn rowHighlight(row: Box, left: i32, right: i32) Box {
 /// Its border takes `accent` while lit, as the dialog's controls do on hover.
 fn drawControl(canvas: pixel_buffer.Canvas, box: Box, fill: u32, accent: ?u32) void {
     popup_look.drawBorderedBox(canvas, box, palette.RADIUS, fill, accent orelse CONTROL_BORDER);
-}
-
-fn insetBox(box: Box, by: i32) Box {
-    return .{ .left = box.left + by, .top = box.top + by, .right = box.right - by, .bottom = box.bottom - by };
-}
-
-/// Skipped while `box` is empty or reaches off the canvas's top or left, which the pixel calls can't take.
-fn fillBox(canvas: pixel_buffer.Canvas, box: Box, radius: usize, fill: u32) void {
-    if (box.left < 0 or box.top < 0 or box.right <= box.left or box.bottom <= box.top) return;
-    pixel_buffer.fillRoundedRect(canvas, @intCast(box.left), @intCast(box.top), @intCast(box.right - box.left), @intCast(box.bottom - box.top), radius, fill);
 }
 
 /// Centred on `x`,`y`.

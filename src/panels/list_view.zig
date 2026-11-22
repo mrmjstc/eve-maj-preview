@@ -35,6 +35,7 @@ const Roster = roster_mod.Roster;
 const ThumbnailSet = set.ThumbnailSet;
 const AutoColorStore = auto_colors_mod.AutoColorStore;
 const Line = list_look.Line;
+const Box = box.Box;
 const slog = log.Scoped("list_view");
 
 const TEXT_BUFFER_SIZE: usize = 256;
@@ -212,7 +213,7 @@ pub const ListWindow = struct {
     }
 
     /// The ⋯ button in screen pixels.
-    fn menuButton(self: *const ListWindow) ?box.Box {
+    fn menuButton(self: *const ListWindow) ?Box {
         const button = self.headerLayout().boxOf(.{ .button = .menu }) orelse return null;
         return panel_menu.screenBox(&self.panel, button);
     }
@@ -552,7 +553,8 @@ pub const ListWindow = struct {
             if (x < text_right) x += panel_chrome.drawFitted(dc, security.securityText(&security_buffer, security_tenths), x, y, security.securityTextColor(security_tenths), text_right - x);
         }
         const rule_left = x + list_look.GROUP_HEADING_GAP;
-        if (rule_left < text_right) pixel_buffer.fillRect(canvas, @intCast(rule_left), @intCast(line.top + @divTrunc(line.bottom - line.top, 2)), @intCast(text_right - rule_left), 1, list_look.DIVIDER);
+        const rule_top = line.top + @divTrunc(line.bottom - line.top, 2);
+        pixel_buffer.fillBox(canvas, .{ .left = rule_left, .top = rule_top, .right = text_right, .bottom = rule_top + 1 }, list_look.DIVIDER);
     }
 
     /// A rule, then each rate the rows show added up.
@@ -562,7 +564,7 @@ pub const ListWindow = struct {
             var readings_buffer: [list_look.STAT_COUNT]list_look.StatReading = undefined;
             list_look.addReadings(&totals, self.statReadings(&clients[client_index], &readings_buffer));
         }
-        pixel_buffer.fillRect(canvas, 0, @intCast(top), @intCast(panel_width), 1, list_look.DIVIDER);
+        pixel_buffer.fillBox(canvas, .{ .left = 0, .top = top, .right = panel_width, .bottom = top + 1 }, list_look.DIVIDER);
         const y = top + @divTrunc(height - text.small_height, 2);
         const left = list_look.PADDING_X;
         const right = panel_width - list_look.PADDING_X;
@@ -596,7 +598,7 @@ pub const ListWindow = struct {
             list_look.ROW_HOVER
         else
             list_look.PANEL;
-        if (background != list_look.PANEL) pixel_buffer.fillRect(canvas, @intCast(column_left), @intCast(row_top), @intCast(column_width), @intCast(row_height), background);
+        if (background != list_look.PANEL) pixel_buffer.fillBox(canvas, .{ .left = column_left, .top = row_top, .right = column_left + column_width, .bottom = row_top + row_height }, background);
 
         const badge_color: u32 = if (is_excluded)
             list_look.BADGE_EXCLUDED
@@ -691,7 +693,7 @@ fn drawIndicator(canvas: pixel_buffer.Canvas, style: types.ListIndicatorStyle, c
             if (glow_background) |background| pixel_buffer.fillCircle(canvas, center_x, center_y, @floatFromInt(radius + list_look.GLOW_WIDTH), list_look.glowColor(argb, background));
             pixel_buffer.fillCircle(canvas, center_x, center_y, @floatFromInt(radius), argb);
         },
-        .Square => pixel_buffer.fillRect(canvas, @intCast(center_x - radius), @intCast(center_y - radius), @intCast(radius * 2), @intCast(radius * 2), argb),
+        .Square => pixel_buffer.fillBox(canvas, .{ .left = center_x - radius, .top = center_y - radius, .right = center_x + radius, .bottom = center_y + radius }, argb),
         .None => {},
     }
 }
@@ -711,11 +713,9 @@ fn drawPill(canvas: pixel_buffer.Canvas, dc: win32.HDC, slot: Slot, text: []cons
     if (room <= 0) return slot.right;
     const text_width = @min(panel_chrome.wideTextWidth(dc, text), room);
     const left = slot.right - text_width - 2 * padding;
-    const top = slot.y - 1;
-    const pill_width: usize = @intCast(text_width + 2 * padding);
-    const pill_height: usize = @intCast(slot.text_height + 2);
-    pixel_buffer.fillRoundedRect(canvas, @intCast(left), @intCast(top), pill_width, pill_height, list_look.PILL_RADIUS, list_look.pillBorder(alert_color));
-    pixel_buffer.fillRoundedRect(canvas, @intCast(left + 1), @intCast(top + 1), pill_width - 2, pill_height - 2, list_look.PILL_RADIUS - 1, list_look.pillFill(alert_color));
+    const pill: Box = .{ .left = left, .top = slot.y - 1, .right = left + text_width + 2 * padding, .bottom = slot.y + slot.text_height + 1 };
+    pixel_buffer.fillRoundedBox(canvas, pill, list_look.PILL_RADIUS, list_look.pillBorder(alert_color));
+    pixel_buffer.fillRoundedBox(canvas, pill.inset(1), list_look.PILL_RADIUS - 1, list_look.pillFill(alert_color));
     const lead_width = panel_chrome.drawFitted(dc, text[0..lead.length], left + padding, slot.y, lead.color, text_width);
     _ = panel_chrome.drawFitted(dc, text[lead.length..], left + padding + lead_width, slot.y, text_color, text_width - lead_width);
     return left;

@@ -176,7 +176,7 @@ pub const PanelMenu = struct {
         const text_right = row_box.right - popup_look.MENU_RIGHT_INSET;
         const is_lit = if (self.hovered) |hit| std.meta.eql(hit, Hit{ .row = index }) else false;
         switch (row) {
-            .rule => pixel_buffer.fillRect(canvas, @intCast(row_box.left + panel_menu_look.RULE_INSET), @intCast(middle), @intCast(row_box.right - row_box.left - 2 * panel_menu_look.RULE_INSET), 1, popup_look.MENU_RULE),
+            .rule => pixel_buffer.fillBox(canvas, .{ .left = row_box.left + panel_menu_look.RULE_INSET, .top = middle, .right = row_box.right - panel_menu_look.RULE_INSET, .bottom = middle + 1 }, popup_look.MENU_RULE),
             .toggle => |setting| {
                 if (is_lit) fillLit(canvas, row_box);
                 if (contents.isOn(setting)) popup_look.drawCheck(canvas, row_box.left + popup_look.MENU_CHECK_LEFT, middle, contents.accent);
@@ -208,11 +208,12 @@ pub const PanelMenu = struct {
             .opacity => {
                 const track = self.layout.track;
                 drawLabel(dc, fonts.label, panel_menu_look.OPACITY_LABEL, text_left, middle, track.left, palette.TEXT);
-                const track_width: usize = @intCast(track.right - track.left);
-                const track_height: usize = @intCast(track.bottom - track.top);
-                pixel_buffer.fillRoundedRect(canvas, @intCast(track.left), @intCast(track.top), track_width, track_height, track_height / 2, palette.BORDER);
+                const track_radius: usize = @intCast(@divTrunc(track.bottom - track.top, 2));
+                pixel_buffer.fillRoundedBox(canvas, track, track_radius, palette.BORDER);
                 const knob_x = panel_menu_look.knobX(track, contents.opacity);
-                if (knob_x > track.left) pixel_buffer.fillRoundedRect(canvas, @intCast(track.left), @intCast(track.top), @intCast(knob_x - track.left), track_height, track_height / 2, contents.accent);
+                var filled = track;
+                filled.right = knob_x;
+                pixel_buffer.fillRoundedBox(canvas, filled, track_radius, contents.accent);
                 pixel_buffer.fillCircle(canvas, knob_x, middle, @floatFromInt(panel_menu_look.KNOB_RADIUS), contents.accent);
                 var percent_buf: [panel_menu_look.PERCENT_TEXT_MAX]u8 = undefined;
                 const percent = panel_menu_look.percentText(&percent_buf, contents.opacity);
@@ -360,7 +361,7 @@ fn windowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: w
 }
 
 fn fillLit(canvas: Canvas, row_box: Box) void {
-    pixel_buffer.fillRoundedRect(canvas, @intCast(row_box.left), @intCast(row_box.top), @intCast(row_box.right - row_box.left), @intCast(row_box.bottom - row_box.top), popup_look.ROW_RADIUS, popup_look.MENU_LIT);
+    pixel_buffer.fillRoundedBox(canvas, row_box, popup_look.ROW_RADIUS, popup_look.MENU_LIT);
 }
 
 /// Centred on `middle`, cut short at `right`.
