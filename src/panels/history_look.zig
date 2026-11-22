@@ -7,7 +7,7 @@ const notifications_mod = @import("../config/notifications.zig");
 const history = @import("../notifications/history.zig");
 const glyphs = @import("glyphs.zig");
 const list_look = @import("list_look.zig");
-const palette = @import("palette.zig");
+const palette = @import("../palette.zig");
 const box = @import("../util/box.zig");
 const color = @import("../util/color.zig");
 

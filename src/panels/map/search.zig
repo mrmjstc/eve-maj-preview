@@ -4,8 +4,8 @@ const list_look = @import("../list_look.zig");
 const popup_look = @import("../popup_look.zig");
 const search = @import("../../map/search.zig");
 const universe = @import("../../map/universe.zig");
-const fixed_text = @import("../../util/fixed_text.zig");
 const security_mod = @import("../../map/security.zig");
+const fixed_text = @import("../../util/fixed_text.zig");
 
 const FixedText = fixed_text.FixedText;
 const PopupRow = popup_look.PopupRow;
@@ -233,11 +233,11 @@ fn hitLabel(hit: search.Hit) HitLabel {
     const info = universe.systemInfo(system);
     const name = universe.systemName(system);
     var security_buf: [security_mod.SECURITY_TEXT_MAX]u8 = undefined;
-    const security = security_mod.securityText(&security_buf, info.security_tenths);
+    const security_text = security_mod.securityText(&security_buf, info.security_tenths);
     const start = name.len + popup_look.POPUP_PART_GAP.len;
     return .{
-        .text = .print("{s}" ++ popup_look.POPUP_PART_GAP ++ "{s}" ++ popup_look.POPUP_PART_GAP ++ "{s}", .{ name, security, universe.regionName(info.region) }),
-        .security = .{ .start = start, .end = start + security.len, .color = security_mod.securityTextColor(info.security_tenths) },
+        .text = .print("{s}" ++ popup_look.POPUP_PART_GAP ++ "{s}" ++ popup_look.POPUP_PART_GAP ++ "{s}", .{ name, security_text, universe.regionName(info.region) }),
+        .security = .{ .start = start, .end = start + security_text.len, .color = security_mod.securityTextColor(info.security_tenths) },
     };
 }
 

@@ -160,7 +160,7 @@ pub const AutoColorStore = struct {
             slog.info("Left '{s}' as it was: it couldn't be read, so this run's colours aren't saved", .{AUTO_COLORS_FILE});
             return;
         }
-        var arena = std.heap.ArenaAllocator.init(self.allocator);
+        var arena: std.heap.ArenaAllocator = .init(self.allocator);
         defer arena.deinit();
 
         const file = File{

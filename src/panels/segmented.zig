@@ -1,6 +1,6 @@
 //! The segmented control the panels share, after the dialog's: a bordered bar of buttons, the picked one filled with the accent; no I/O.
 const std = @import("std");
-const palette = @import("palette.zig");
+const palette = @import("../palette.zig");
 const popup_look = @import("popup_look.zig");
 const box = @import("../util/box.zig");
 const color = @import("../util/color.zig");

@@ -2,7 +2,7 @@
 const std = @import("std");
 const ui = @import("ui");
 const fonts = @import("../../platform/fonts.zig");
-const palette = @import("../../panels/palette.zig");
+const palette = @import("../../palette.zig");
 const color_convert = @import("color_convert.zig");
 const glyphs = @import("glyphs.zig");
 

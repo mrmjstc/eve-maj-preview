@@ -7,7 +7,7 @@ const characters = @import("../config/characters.zig");
 const color = @import("../util/color.zig");
 const stat_text = @import("../activity/stat_text.zig");
 const strings = @import("../util/strings.zig");
-const palette = @import("palette.zig");
+const palette = @import("../palette.zig");
 const panel_header = @import("panel_header.zig");
 
 const ListViewConfig = panels.ListViewConfig;

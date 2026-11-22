@@ -37,7 +37,7 @@ pub const Interpreter = struct {
     /// Borrows the monitor's set of followed characters, so their own chat never alerts; worker only.
     own_characters: *const std.StringHashMap(void),
     /// Read by the worker for ore prices, which only change while it's stopped.
-    global_settings: ?*config.GlobalConfig,
+    global_settings: ?*const config.GlobalConfig,
     /// Read by the worker; set by setTrackers only while it's stopped.
     combat_tracker: ?*tracker_mod.CombatTracker = null,
     /// Read by the worker; set by setTrackers only while it's stopped.
@@ -46,7 +46,7 @@ pub const Interpreter = struct {
     bounty_tracker: ?*tracker_mod.BountyTracker = null,
     /// Owned and freed in deinit; read by the worker, and set only while it's stopped.
     damage_alert_excluded_weapons: []const u8 = "",
-    /// Owned; freed in deinit; read by the worker, and set only while it's stopped.
+    /// Owned and freed in deinit; read by the worker, and set only while it's stopped.
     alert_rules: ?RuleSet = null,
     /// Worker only.
     client_systems: routing.ClientSystems = .{},

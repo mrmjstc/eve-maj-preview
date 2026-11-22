@@ -17,10 +17,10 @@ const layout = @import("../../map/layout.zig");
 const stats_mod = @import("../../map/stats.zig");
 const activity_mod = @import("../../map/activity.zig");
 const evestars = @import("../../map/evestars.zig");
-const fixed_text = @import("../../util/fixed_text.zig");
-const utf8 = @import("../../util/utf8.zig");
 const security = @import("../../map/security.zig");
 const markers = @import("../../map/markers.zig");
+const fixed_text = @import("../../util/fixed_text.zig");
+const utf8 = @import("../../util/utf8.zig");
 
 const Activity = activity_mod.Activity;
 const Campaign = campaigns_mod.Campaign;

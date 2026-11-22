@@ -11,8 +11,8 @@ const universe = @import("../../map/universe.zig");
 const jump_range = @import("../../map/jump_range.zig");
 const evestars = @import("../../map/evestars.zig");
 const system_links = @import("../../map/system_links.zig");
+const security = @import("../../map/security.zig");
 const fixed_text = @import("../../util/fixed_text.zig");
-const security_mod = @import("../../map/security.zig");
 
 const FixedText = fixed_text.FixedText;
 const PopupRow = popup_look.PopupRow;
@@ -381,11 +381,11 @@ fn shipGlyph(ship: jump_range.Ship) glyphs.Glyph {
 fn headingRow(system: SystemIndex) PopupRow {
     const info = universe.systemInfo(system);
     const name = universe.systemName(system);
-    var security_buffer: [security_mod.SECURITY_TEXT_MAX]u8 = undefined;
-    const security = security_mod.securityText(&security_buffer, info.security_tenths);
+    var security_buffer: [security.SECURITY_TEXT_MAX]u8 = undefined;
+    const security_text = security.securityText(&security_buffer, info.security_tenths);
     return .{
-        .text = .print("{s}{s}", .{ name, security }),
-        .accent = .{ .start = name.len, .end = name.len + security.len, .color = security_mod.securityTextColor(info.security_tenths) },
+        .text = .print("{s}{s}", .{ name, security_text }),
+        .accent = .{ .start = name.len, .end = name.len + security_text.len, .color = security.securityTextColor(info.security_tenths) },
         .value = .print("{s}", .{universe.regionName(info.region)}),
         .role = .title,
         .has_rule_below = true,

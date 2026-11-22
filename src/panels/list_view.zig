@@ -7,13 +7,14 @@ const config_mod = @import("../config.zig");
 const types = @import("../config/types.zig");
 const list_look = @import("list_look.zig");
 const universe = @import("../map/universe.zig");
+const security = @import("../map/security.zig");
 const window = @import("../thumbnail/window.zig");
 const state = @import("../thumbnail/state.zig");
 const set = @import("../thumbnail/set.zig");
 const scout = @import("../clients/scout.zig");
 const auto_colors_mod = @import("../clients/auto_colors.zig");
 const header_panel = @import("header_panel.zig");
-const palette = @import("palette.zig");
+const palette = @import("../palette.zig");
 const panel_chrome = @import("panel_chrome.zig");
 const panel_header = @import("panel_header.zig");
 const panel_host = @import("panel_host.zig");
@@ -25,7 +26,6 @@ const stack = @import("../notifications/stack.zig");
 const roster_mod = @import("../clients/roster.zig");
 const box = @import("../util/box.zig");
 const pixel_buffer = @import("../util/pixel_buffer.zig");
-const security = @import("../map/security.zig");
 const log = @import("../log.zig");
 
 const PanelWindow = panel_window.PanelWindow;
@@ -544,8 +544,8 @@ pub const ListWindow = struct {
 
         var x = list_look.PADDING_X;
         x += panel_chrome.drawFitted(dc, heading, x, y, list_look.MUTED, text_right - x);
-        if (self.config.listView.showSystemSecurity) security: {
-            const system = universe.findSystem(system_name) orelse break :security;
+        if (self.config.listView.showSystemSecurity) security_suffix: {
+            const system = universe.findSystem(system_name) orelse break :security_suffix;
             const security_tenths = universe.systemInfo(system).security_tenths;
             var security_buffer: [security.SECURITY_TEXT_MAX]u8 = undefined;
             x += list_look.SECURITY_GAP;
@@ -654,8 +654,8 @@ pub const ListWindow = struct {
         if (!list_settings.showSystemName or list_settings.groupBySystem or client.system_name.len == 0) return slot.right;
 
         var system_slot = slot;
-        if (list_settings.showSystemSecurity) security: {
-            const system = universe.findSystem(client.system_name) orelse break :security;
+        if (list_settings.showSystemSecurity) security_suffix: {
+            const system = universe.findSystem(client.system_name) orelse break :security_suffix;
             const security_tenths = universe.systemInfo(system).security_tenths;
             var security_buffer: [security.SECURITY_TEXT_MAX]u8 = undefined;
             system_slot.right = drawRightAligned(dc, slot, security.securityText(&security_buffer, security_tenths), security.securityTextColor(security_tenths)) - list_look.SECURITY_GAP;

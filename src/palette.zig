@@ -1,7 +1,7 @@
-//! The colours, sizes and fonts the GDI panels share with the configuration window, whose dialog/knots/style.zig builds on them.
+//! The app's colours, sizes and fonts, shared by the GDI panels, the map's markers and the configuration window, whose dialog/knots/style.zig builds on them.
 const std = @import("std");
-const fonts = @import("../platform/fonts.zig");
-const types = @import("../config/types.zig");
+const fonts = @import("platform/fonts.zig");
+const types = @import("config/types.zig");
 
 /// A button's or field's height.
 pub const CONTROL_HEIGHT: i32 = 28;

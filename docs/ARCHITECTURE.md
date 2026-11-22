@@ -185,7 +185,6 @@ Rendering:
 - `panels/panel_menu.zig` + `panel_menu_look.zig` (pure, tested): the ⋯ menu, a borderless topmost window of its own under the button, shared by those three panels; each supplies what it shows and what its rows do.
 - `panels/panel_section.zig`: what those three panels' settings sections share (keep on top, lock, opacity, folding, position), changed through `ProfileStore.updateSection` by the section's name.
 - `panels/segmented.zig` (pure, tested): the segmented control the Map Panel's metric bar, the Intel Panel's range filter and the ⋯ menu's Order row share.
-- `panels/palette.zig`: the configuration window's colours, sizes and fonts, so the GDI panels match it.
 - `thumbnail/hover_zoom.zig` + `layout/zoom.zig`: click-through enlarged copy under the cursor.
 
 Layout (`layout/`, mostly pure):
@@ -362,6 +361,7 @@ A second exe, `eve-maj-sim` (`zig build sim`), that stands in for EVE clients so
 |---|---|
 | `log.zig` | Buffered rotating file log, `Scoped(name)`, debug console |
 | `crash.zig` | Exception handlers, panic handler, minidump |
+| `palette.zig` | The app's colours, sizes and fonts; the GDI panels, the map's markers and the configuration window (through `dialog/knots/style.zig`) all build on it, so they match |
 | `messages.zig` | The app's window messages and the timer window's timer IDs, kept unique; `win32.zig` keeps only Windows' own |
 | `tray.zig` | Tray icon and menu; its toggles run as hotkey actions through `App.commands().runGlobal` |
 | `update.zig` | GitHub release check |

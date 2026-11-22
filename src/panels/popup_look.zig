@@ -1,7 +1,7 @@
 //! Where the boxes panels draw over themselves go, and how they look: tooltips, menus and their submenus; no I/O.
 const std = @import("std");
 const glyphs = @import("glyphs.zig");
-const palette = @import("palette.zig");
+const palette = @import("../palette.zig");
 const box_mod = @import("../util/box.zig");
 const fixed_text = @import("../util/fixed_text.zig");
 const pixel_buffer = @import("../util/pixel_buffer.zig");

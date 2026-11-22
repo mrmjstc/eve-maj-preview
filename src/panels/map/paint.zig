@@ -35,11 +35,11 @@ const faction_warfare = @import("../../map/faction_warfare.zig");
 const evestars = @import("../../map/evestars.zig");
 const zkill = @import("../../map/zkill.zig");
 const intel_pins = @import("../../map/intel_pins.zig");
+const security = @import("../../map/security.zig");
+const markers = @import("../../map/markers.zig");
 const roster = @import("../../clients/roster.zig");
 const fixed_text = @import("../../util/fixed_text.zig");
 const pixel_buffer = @import("../../util/pixel_buffer.zig");
-const security = @import("../../map/security.zig");
-const markers = @import("../../map/markers.zig");
 const log = @import("../../log.zig");
 
 const Activity = activity_mod.Activity;

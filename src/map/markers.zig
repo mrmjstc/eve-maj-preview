@@ -1,6 +1,6 @@
 //! The marks the Map Panel and the thumbnails' connections overlay draw alike: system markers, rings, gates, exits and intel halos.
 const std = @import("std");
-const palette = @import("../panels/palette.zig");
+const palette = @import("../palette.zig");
 const layout = @import("layout.zig");
 const color = @import("../util/color.zig");
 const pixel_buffer = @import("../util/pixel_buffer.zig");
