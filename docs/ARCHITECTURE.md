@@ -6,7 +6,7 @@ How `src/` fits together. For related docs, see [CONFIGURATION.md](CONFIGURATION
 
 - One executable, `eve-maj-preview.exe` (`src/main.zig`), built for the Windows subsystem. A console opens only when the log level is `debug`.
 - The configuration window runs in-process on the main thread using `knots` and Vulkan. `zig build config` launches the app with `--config`.
-- `zig build test` runs `src/tests.zig` (Debug build), which imports every tested module. `zig build check` type-checks without emitting a binary; ZLS runs it on save.
+- `zig build test` runs `src/tests.zig` (Debug build), which imports every tested module. `zig build check` type-checks without emitting a binary; ZLS runs it on save. End-to-end tests live in `tools/ui_tests/`.
 - `knots` is vendored in `deps/knots/`. Local changes are marked `EVE-Maj patch` and listed in `deps/knots/PATCHES.md`.
 
 ## Files on disk
@@ -135,6 +135,7 @@ Driven by `WM_TIMER` at `timer.scanIntervalMs`, or every 1 s while no EVE window
 14. Trackers.tick                   throttled push of rates and resources onto the roster; alerts via Notifier
 15. travel_left_behind.check        every ~2 s
 16. adjust tick interval            active scan rate or 1 s idle rate
+17. publishState                    rewrite the state file when it changed; only when EVE_MAJ_STATE_FILE is set
 ```
 
 ## Threads and concurrency
@@ -399,6 +400,14 @@ A second exe, `eve-maj-sim` (`zig build sim`), that stands in for EVE clients so
 - `lines.zig` *(pure, tested against `chatlog/lines.zig` and `gamelog_events.zig`)*: every log name, header and line it writes.
 - `schedule.zig` (pure, tested): timed steps for bursts, routes and guided tests, run from a 100 ms timer so the window never blocks. `scenarios.zig`: the guided tests.
 - `journal.zig`: the activity feed. `view.zig`, `window.zig`: the knots window. `win32_sim.zig`: Win32 declarations only the simulator uses, an allowed exception to keeping them in `platform/win32.zig`.
+
+## End-to-end tests (`tools/ui_tests/`)
+
+Python (stdlib and ctypes only) that drives the built app against simulated clients. Run `python tools/ui_tests/run.py [name-substring ...]` with the app closed, since it's single-instance.
+
+- `harness.py`: copies the app into a temp folder with its own profile and global settings (protocol registration and update checks off), starts `eve-maj-sim --client` copies named `exefile.exe`, sends protocol links through a second launch, and presses keys only while a test client has focus.
+- `diagnostics/state_file.zig`: with `EVE_MAJ_STATE_FILE` set, the app writes each thumbnail's current name, window handles and visibility plus the active client as JSON, because a thumbnail window's title keeps the name it was created with. The harness joins it with what Win32 reports for positions and visibility.
+- `run.py`: the tests, each in a fresh sandbox.
 
 ## Other modules
 

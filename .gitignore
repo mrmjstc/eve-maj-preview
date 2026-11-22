@@ -28,3 +28,4 @@ build-release-dev.ps1
 nul
 update-winget.ps1
 manifests/
+__pycache__/
