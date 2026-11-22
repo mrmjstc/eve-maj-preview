@@ -72,7 +72,7 @@ fn versionFact(context: *ui.Frame) !void {
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = lang.text("Version:"), .style = &style.fact_label });
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = build_options.version, .style = &style.hint_plain });
     var buf: [VERSION_TEXT_MAX]u8 = undefined;
-    if (update.g_update_status.copyVersionZ(session.appContext().io, &buf)) |version| {
+    if (update.g_update_status.terminatedVersion(session.appContext().io, &buf)) |version| {
         const label = try lang.format(context.arena(), "{version} available", .{ .version = version });
         if ((try context.interact(Button{ .key = .src(@src()), .label = label, .style = &style.link })).clicked) {
             update_notice.openIfAvailable();

@@ -7,6 +7,8 @@ const log = @import("log.zig");
 
 const slog = log.Scoped("update");
 
+const RELEASES_URL = "https://github.com/mrmjstc/eve-maj-preview/releases";
+
 /// Written by the background check thread, read on the main thread.
 pub const UpdateStatus = struct {
     mutex: std.Io.Mutex = .init,
@@ -63,16 +65,16 @@ pub const UpdateStatus = struct {
     }
 
     /// Null if no update is available or the URL doesn't fit in `buf`.
-    pub fn copyUrlZ(self: *UpdateStatus, io: std.Io, buf: []u8) ?[:0]const u8 {
-        return self.copyFieldZ(io, "url", buf);
+    pub fn terminatedUrl(self: *UpdateStatus, io: std.Io, buf: []u8) ?[:0]const u8 {
+        return self.terminatedField(io, "url", buf);
     }
 
     /// Null if no update is available or the version doesn't fit in `buf`.
-    pub fn copyVersionZ(self: *UpdateStatus, io: std.Io, buf: []u8) ?[:0]const u8 {
-        return self.copyFieldZ(io, "version", buf);
+    pub fn terminatedVersion(self: *UpdateStatus, io: std.Io, buf: []u8) ?[:0]const u8 {
+        return self.terminatedField(io, "version", buf);
     }
 
-    fn copyFieldZ(self: *UpdateStatus, io: std.Io, comptime field: []const u8, buf: []u8) ?[:0]const u8 {
+    fn terminatedField(self: *UpdateStatus, io: std.Io, comptime field: []const u8, buf: []u8) ?[:0]const u8 {
         self.mutex.lock(io) catch |err| {
             slog.warn("Failed to lock update status mutex: {}", .{err});
             return null;
@@ -131,7 +133,7 @@ pub fn checkForUpdatesBackground(allocator: std.mem.Allocator, io: std.Io) void 
 
 pub fn openReleasesPage(io: std.Io) void {
     var url_buffer: [512]u8 = undefined;
-    const url = g_update_status.copyUrlZ(io, &url_buffer) orelse "https://github.com/mrmjstc/eve-maj-preview/releases";
+    const url = g_update_status.terminatedUrl(io, &url_buffer) orelse RELEASES_URL;
 
     slog.info("Opening releases page: {s}", .{url});
 
@@ -198,7 +200,12 @@ fn checkForUpdates(allocator: std.mem.Allocator) !?UpdateInfo {
 
         if (release_semver.order(current_semver) != .gt) continue;
 
-        if (latest == null) latest = .{ .version = tag_name.string, .url = html_url.string };
+        if (latest == null) {
+            // Opened through the shell, so only this repo's release pages are trusted.
+            const is_release_page = std.mem.startsWith(u8, html_url.string, RELEASES_URL ++ "/");
+            if (!is_release_page) slog.warn("Failed to use release URL '{s}', opening the releases page instead", .{html_url.string});
+            latest = .{ .version = tag_name.string, .url = if (is_release_page) html_url.string else RELEASES_URL };
+        }
 
         const release_notes = if (release.get("body")) |body_value|
             (if (body_value == .string) body_value.string else null)

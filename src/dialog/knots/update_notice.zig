@@ -118,8 +118,8 @@ fn check(context: *ui.Frame) void {
 
 /// False while no release has been found.
 fn openWithRelease(io: std.Io) bool {
-    const version = update.g_update_status.copyVersionZ(io, &g_version_buf) orelse return false;
-    const url = update.g_update_status.copyUrlZ(io, &g_url_buf) orelse return false;
+    const version = update.g_update_status.terminatedVersion(io, &g_version_buf) orelse return false;
+    const url = update.g_update_status.terminatedUrl(io, &g_url_buf) orelse return false;
     g_version = version;
     g_url = url;
     if (g_notes) |notes| g_allocator.free(notes);
