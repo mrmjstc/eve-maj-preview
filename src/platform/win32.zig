@@ -52,6 +52,7 @@ pub const WM_CLOSE = 0x0010;
 pub const WM_ENDSESSION = 0x0016;
 pub const WM_ERASEBKGND = 0x0014;
 pub const WM_NCHITTEST = 0x0084;
+pub const WM_NCLBUTTONDOWN = 0x00A1;
 /// wParam is the WM_NCHITTEST result under the cursor; sent without CS_DBLCLKS.
 pub const WM_NCLBUTTONDBLCLK = 0x00A3;
 pub const WM_TIMER = 0x0113;

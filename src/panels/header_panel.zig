@@ -51,7 +51,7 @@ pub fn HeaderPanel(comptime Window: type, comptime class_name: [*:0]const u8) ty
                 }
             }
             const thumbnail_set = if (window) |open| open.host.thumbnail_set() else null;
-            if (drag.handleMessage(thumbnail_set, hwnd, msg, lParam, panel_header.HEIGHT)) |result| return result;
+            if (drag.handleMessage(thumbnail_set, hwnd, msg, wParam, lParam, panel_header.HEIGHT)) |result| return result;
             const open = window orelse return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
             switch (msg) {
                 win32.WM_EXITSIZEMOVE => {

@@ -309,7 +309,7 @@ fn mapPanelWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, l
     // The frame's edges and title bar are Windows' own to hit test.
     if (msg != win32.WM_NCHITTEST) {
         const thumbnail_set = if (owner) |map_panel| map_panel.host.thumbnail_set() else null;
-        if (drag.handleMessage(thumbnail_set, hwnd, msg, lParam, 0)) |result| return result;
+        if (drag.handleMessage(thumbnail_set, hwnd, msg, wParam, lParam, 0)) |result| return result;
     }
     switch (msg) {
         win32.WM_CLOSE => {
