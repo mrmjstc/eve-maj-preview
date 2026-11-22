@@ -253,7 +253,7 @@ Driven by `WM_TIMER` at `timer.scanIntervalMs`, or every 1 s while no EVE window
 
 | File(s) | Role |
 |---|---|
-| `universe.zig` | The embedded map, built by `.claude/tools/build_universe.py`. |
+| `universe.zig` | The embedded map, built by `tools/build_universe.py`. |
 | `layout.zig` | Positions on CCP's flattened map, up to four regions side by side with the gates between them bent around systems; exits and portals (stubs to Thera, Turnur or an Ansiblex gate's far end); zoom and pan; label placement. |
 | `overview.zig` | New Eden as bubbles, for picking a region. |
 | `markers.zig` | *(tested)* Marks the Map Panel and the thumbnails' connection map draw alike: system markers, rings, gate colours, exits and intel halos. |

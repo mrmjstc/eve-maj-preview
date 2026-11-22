@@ -1,4 +1,4 @@
-//! The stargate map of New Eden, built from CCP's static data by .claude/tools/build_universe.py; no I/O.
+//! The stargate map of New Eden, built from CCP's static data by tools/build_universe.py; no I/O.
 const std = @import("std");
 
 /// Layout in the script's docstring; embedded, so it needs no parsing or allocation.
