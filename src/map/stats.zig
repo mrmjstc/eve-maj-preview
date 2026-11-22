@@ -163,7 +163,9 @@ pub const Snapshot = struct {
         self.has_npc_delta = true;
     }
 
-    /// Eve Stars' last hour and the one before, by SystemIndex, for NPC delta before a second snapshot; only when its last hour is this snapshot's, which every system's NPC kills matching shows; whether it applied.
+    /// NPC delta before a second snapshot, set only when Eve Stars' last hour is this one, as every system's NPC kills matching shows; whether it applied.
+    /// `last_hour`: Eve Stars' NPC kills by SystemIndex.
+    /// `hour_before`: the hour before it, likewise.
     pub fn applyHourBefore(self: *Snapshot, last_hour: []const u32, hour_before: []const u32) bool {
         if (!self.has_kills or self.has_npc_delta) return false;
         for (self.systems, last_hour) |stats, kills| {

@@ -143,7 +143,7 @@ const RegionNames = struct {
 pub const Tooltip = struct {
     lines: [TOOLTIP_MAX_LINES][TOOLTIP_LINE_MAX]u8 = undefined,
     lengths: [TOOLTIP_MAX_LINES]usize = undefined,
-    /// Each line's label, in a column before its text; empty for none; static.
+    /// Each line's label, in a column before its text, or empty; static.
     labels: [TOOLTIP_MAX_LINES][]const u8 = undefined,
     colors: [TOOLTIP_MAX_LINES]u32 = undefined,
     line_count: usize = 0,
@@ -541,7 +541,7 @@ pub fn killShipName(names: ?*const KillNames, kill: *const Kill) []const u8 {
     return known.get(kill.ship_type_id) orelse "Unknown ship";
 }
 
-/// The victim's alliance or corporation; empty while unknown; borrows from `names`.
+/// The victim's alliance or corporation, empty while unknown; borrows from `names`.
 pub fn killVictimName(names: ?*const KillNames, kill: *const Kill) []const u8 {
     const known = names orelse return "";
     return known.get(kill.victim_id) orelse "";

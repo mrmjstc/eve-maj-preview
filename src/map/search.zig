@@ -47,7 +47,7 @@ pub const Hits = struct {
     }
 };
 
-/// Names starting with `query` come before those only containing it, regions before systems, and trade hubs before other systems; ignores case and hyphens.
+/// Names starting with `query` before those containing it, regions before systems and trade hubs before other systems; ignores case and hyphens.
 pub fn find(query: []const u8) Hits {
     var hits: Hits = .{};
     var key_buffer: [MAX_QUERY_LENGTH]u8 = undefined;

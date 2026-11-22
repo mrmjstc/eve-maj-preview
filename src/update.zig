@@ -14,7 +14,7 @@ pub const UpdateStatus = struct {
     version: ?[]const u8 = null,
     /// Owned; guarded by mutex.
     url: ?[]const u8 = null,
-    /// Owned; guarded by mutex; every newer release's notes under its tag name, null if none had notes.
+    /// Every newer release's notes under its tag name, null if none had notes; owned, guarded by mutex.
     notes: ?[]const u8 = null,
     /// Frees the strings above; guarded by mutex.
     allocator: ?std.mem.Allocator = null,

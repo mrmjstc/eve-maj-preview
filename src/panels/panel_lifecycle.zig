@@ -34,7 +34,8 @@ pub fn close(panel: anytype, store: *config_mod.ProfileStore) void {
     if (panel.window != null) panel.destroyWindow();
 }
 
-/// Keeps `created` in `slot`, its window linked to `owner`, or to itself where `slot` keeps it when null; logs a failure, naming the panel by `name`, and leaves `slot` null.
+/// Keeps `created` in `slot`; on failure logs it, naming the panel `name`, and leaves `slot` null.
+/// `owner`: what its window links to, or null for the window `slot` keeps.
 pub fn install(comptime Window: type, slot: *?Window, created: anyerror!Window, owner: ?*anyopaque, name: []const u8) void {
     slot.* = created catch |err| {
         slog.err("Failed to create the {s} window: {}", .{ name, err });

@@ -51,7 +51,7 @@ const Output = struct {
     }
 };
 
-/// Null if a known `{name}` has no value; unknown names and other backslashes stay as typed, a typed `\n` becomes a line break, and the result points into `buf`.
+/// Null if a known `{name}` has no value, else in `buf`; a typed `\n` breaks the line, and unknown names and other backslashes stay as typed.
 pub fn render(template: []const u8, placeholders: []const Placeholder, values: Values, buf: []u8) ?[]const u8 {
     var out: Output = .{ .buf = buf };
     var i: usize = 0;

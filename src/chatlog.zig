@@ -499,7 +499,6 @@ pub const ChatlogMonitor = struct {
             slog.err("Failed to queue session start for '{s}': {}", .{ character_name, err });
         };
     }
-
 };
 
 fn drainLogged(comptime T: type, from: *queue.Queue(T), to: *std.ArrayList(T), kind: []const u8) void {

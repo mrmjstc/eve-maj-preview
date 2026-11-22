@@ -244,7 +244,8 @@ pub fn clone(comptime T: type, value: T, allocator: std.mem.Allocator) !T {
     return out;
 }
 
-/// `out` must hold its defaults, and on failure holds only what was copied, for `deinit`; runtime fields without pointers (a list item's id) are copied, and the caller sets the rest.
+/// Runtime fields without pointers, like a list item's id, are copied; the caller sets the rest.
+/// `out`: holds its defaults, and on failure only what was copied, for `deinit`.
 pub fn cloneInto(comptime R: type, value: *const R, allocator: std.mem.Allocator, out: *R) !void {
     const info = @typeInfo(R).@"struct";
     inline for (info.field_names, info.field_types) |name, F| {
@@ -280,7 +281,7 @@ pub fn parseMigrated(comptime T: type, allocator: std.mem.Allocator, json_text: 
     var tree = try std.json.parseFromSlice(std.json.Value, allocator, json_text, .{ .duplicate_field_behavior = .use_last });
     defer tree.deinit();
 
-    var scratch = std.heap.ArenaAllocator.init(allocator);
+    var scratch: std.heap.ArenaAllocator = .init(allocator);
     defer scratch.deinit();
     if (migrate) |upgrade| try upgrade(scratch.allocator(), &tree.value);
     if (!readable.dropUnreadable(T, scratch.allocator(), &tree.value, null)) return error.UnexpectedToken;
@@ -289,7 +290,7 @@ pub fn parseMigrated(comptime T: type, allocator: std.mem.Allocator, json_text: 
 
 /// The indented JSON of `settings.toWire(arena)`, as saved to disk; caller owns the result.
 pub fn toJsonAlloc(allocator: std.mem.Allocator, settings: anytype) ![]u8 {
-    var arena = std.heap.ArenaAllocator.init(allocator);
+    var arena: std.heap.ArenaAllocator = .init(allocator);
     defer arena.deinit();
     const saved = try settings.toWire(arena.allocator());
     return std.json.Stringify.valueAlloc(allocator, saved, .{

@@ -173,7 +173,7 @@ pub fn drawWideLine(dc: win32.HDC, text: []const u8, x: i32, y: i32, color: u32)
     gdi_overlay.drawTextUtf8(MAX_TEXT_LENGTH, dc, x, y, text, color & 0x00FF_FFFF);
 }
 
-/// UTF-8, as chat can be; cut short with "..." to fit `max_width` pixels; returns the width drawn.
+/// Cut short with "..." to fit `max_width` pixels, as UTF-8, which chat can be; returns the width drawn.
 pub fn drawFitted(dc: win32.HDC, text: []const u8, x: i32, y: i32, color: u32, max_width: i32) i32 {
     var out: [MAX_TEXT_LENGTH:0]u8 = undefined;
     const fitted = gdi_overlay.truncateUtf8ToFit(MAX_TEXT_LENGTH, dc, &out, text, @intCast(@max(0, max_width)));

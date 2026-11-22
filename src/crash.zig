@@ -83,7 +83,7 @@ fn firstChanceExceptionHandler(info: *win32.EXCEPTION_POINTERS) callconv(.c) win
     return win32.EXCEPTION_CONTINUE_SEARCH;
 }
 
-/// Names the modules holding the faulting code and the word on top of its stack, which after a call through a null pointer is the caller's return address.
+/// Names the modules of the faulting code and of the stack's top word, which after a call through a null pointer is the caller's return address.
 fn logFaultLocation(info: *win32.EXCEPTION_POINTERS, code_address: usize) void {
     var code_buf: [LOCATION_LEN]u8 = undefined;
     const code = describeAddress(&code_buf, code_address);

@@ -23,7 +23,7 @@ const NPC_HOURS_INTERVAL_MS: u64 = 2 * std.time.ms_per_min;
 pub const ActivityFeed = struct {
     /// When the sums are next asked for, in ms since boot; main thread only.
     next_totals_ms: u64 = 0,
-    /// What the newest sums were asked for; null before the first; main thread only.
+    /// What the newest sums were asked for, null before the first; main thread only.
     asked_span: ?TrafficSpan = null,
     /// Shared with the sums' thread.
     totals: handoff.Job(Activity) = .{},

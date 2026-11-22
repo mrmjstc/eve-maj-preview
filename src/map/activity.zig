@@ -14,7 +14,7 @@ const NPC_HOURS = 2;
 /// Eve Stars' sums over a span, by SystemIndex.
 pub const Activity = struct {
     allocator: std.mem.Allocator,
-    /// By SystemIndex; owned; npc_delta and holder stay unset, as those come from ESI.
+    /// By SystemIndex, owned; npc_delta and holder stay unset, as those come from ESI.
     systems: []SystemStats,
     span: TrafficSpan,
     /// Fewer than the span's where Eve Stars hasn't kept that many hours yet.
@@ -22,7 +22,7 @@ pub const Activity = struct {
     /// 0 past the week Eve Stars keeps jumps for.
     jump_hours: u32,
 
-    /// `body` is GET /activity's answer for every system; a system the map doesn't have is skipped; caller destroys.
+    /// `body` is GET /activity's answer for every system, skipping any the map doesn't have; caller destroys the result.
     pub fn create(allocator: std.mem.Allocator, span: TrafficSpan, body: []const u8) !*Activity {
         var arena: std.heap.ArenaAllocator = .init(allocator);
         defer arena.deinit();
@@ -61,7 +61,9 @@ pub const NpcHours = struct {
     /// By SystemIndex; owned.
     hour_before: []u32,
 
-    /// `last_hour_body` and `two_hours_body` are GET /activity's answers for the last one and two hours; null when Eve Stars hasn't kept two, or the answers end at different hours; caller destroys.
+    /// Null when Eve Stars hasn't kept two hours, or the answers end at different hours; caller destroys the result.
+    /// `last_hour_body`: GET /activity's answer for the last hour.
+    /// `two_hours_body`: its answer for the last two hours.
     pub fn create(allocator: std.mem.Allocator, last_hour_body: []const u8, two_hours_body: []const u8) !?*NpcHours {
         var arena: std.heap.ArenaAllocator = .init(allocator);
         defer arena.deinit();

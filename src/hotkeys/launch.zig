@@ -52,7 +52,7 @@ pub fn activateApp(global_settings: *const config.GlobalConfig, app_index: usize
 pub fn cycleApps(global_settings: *const config.GlobalConfig, is_forward: bool) void {
     const apps = global_settings.appHotkeys.items;
     const current = foregroundAppIndex(apps);
-    var it = cycle_order.CycleOrder.init(current, apps.len, .{ .is_forward = is_forward });
+    var it: cycle_order.CycleOrder = .init(current, apps.len, .{ .is_forward = is_forward });
     while (it.next()) |index| {
         const name = apps[index].executableName;
         if (name.len == 0) continue;

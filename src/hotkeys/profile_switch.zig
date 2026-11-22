@@ -7,7 +7,7 @@ const log = @import("../log.zig");
 
 const slog = log.Scoped("hotkeys");
 
-/// The profile after or before `current_profile` in the profiles folder, wrapping; null, logged, when there's none; owned by the caller.
+/// The profile after or before `current_profile` in the profiles folder, wrapping, which the caller owns; null, logged, when there's none.
 pub fn cycleTarget(allocator: std.mem.Allocator, io: std.Io, current_profile: []const u8, is_forward: bool) ?[]const u8 {
     slog.info("{s} profile hotkey pressed", .{if (is_forward) "Next" else "Previous"});
 
@@ -26,7 +26,7 @@ pub fn cycleTarget(allocator: std.mem.Allocator, io: std.Io, current_profile: []
     }
 
     const current_index = strings.indexOfString(profiles.items, current_profile);
-    var order = cycle_order.CycleOrder.init(current_index, profiles.items.len, .{ .is_forward = is_forward });
+    var order: cycle_order.CycleOrder = .init(current_index, profiles.items.len, .{ .is_forward = is_forward });
     const target_profile = profiles.items[order.next().?];
     slog.info("Cycling to {s} profile: {s} -> {s}", .{ if (is_forward) "next" else "previous", current_profile, target_profile });
     return allocator.dupe(u8, target_profile) catch |err| {

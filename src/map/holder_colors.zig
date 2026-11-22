@@ -133,7 +133,7 @@ pub fn factionColor(id: u32) ?u32 {
     return null;
 }
 
-/// The hue most of a logo's coloured pixels share, brought to the map's lightness; null when too little of it has colour. `pixels` is RGBA, 4 bytes a pixel.
+/// The hue most of a logo's coloured RGBA `pixels` share, at the map's lightness; null when too little of it has colour.
 pub fn logoColor(pixels: []const u8) ?u32 {
     var weights: [HUE_BINS]f32 = @splat(0);
     var sums_a: [HUE_BINS]f32 = @splat(0);

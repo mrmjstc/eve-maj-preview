@@ -18,7 +18,7 @@ pub const SpaceCounts = [MAX_SPACES]usize;
 pub const Assignment = struct {
     /// Per name: index into thumbnailSpaces, or null when it's placed by hand or its thumbnail is hidden; owned, freed in deinit.
     space_indices: []?usize,
-    /// Per name: its cell within its space; unused when placed by hand; owned, freed in deinit.
+    /// Each name's cell within its space, unused when placed by hand; owned, freed in deinit.
     rank: []usize,
     counts: SpaceCounts = @splat(0),
 
@@ -92,7 +92,7 @@ pub fn unassignedSpaceIn(items: []const ThumbnailSpace) ?usize {
     return firstActiveWith(items, "holdsUnassigned") orelse firstActiveWith(items, "takesUnassigned");
 }
 
-/// The first active space holding one of this character's hotkey groups, else where unassigned characters go; null when it's placed by hand or its thumbnail is hidden.
+/// The first active space holding one of the character's hotkey groups, else the unassigned one; null when placed by hand or its thumbnail is hidden.
 pub fn spaceFor(config: *const Config, character_name: []const u8) ?usize {
     // A hidden thumbnail takes no cell, so its space closes up around it rather than leaving a gap.
     if (config.isThumbnailHidden(character_name)) return null;

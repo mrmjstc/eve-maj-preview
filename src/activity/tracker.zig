@@ -35,7 +35,7 @@ const WindowSum = struct {
         }
     }
 
-    /// The window's total (a young streak's from its first moment) rated to now or the newest event, within what a full ring still covers; null while too short to trust.
+    /// The total rated to now or the newest event, within what a full ring covers, a young streak's from its start; null while too short to trust.
     fn rate(self: WindowSum, streak_start: Ticks, now: Ticks, window_ms: u64, ring_full_from: ?Ticks, warm_up: WarmUp) ?f32 {
         if (self.event_count == 0) return 0.0;
         if (ring_full_from) |from| {

@@ -11,7 +11,7 @@ const CharacterConfig = characters.CharacterConfig;
 const HotkeyGroupConfig = hotkeys_config.HotkeyGroupConfig;
 const slog = log.Scoped("hotkeys");
 
-/// Visits each index in [0, item_count) once from one step past `cursor`, or the first in its direction when that's stale, stopping at the end unless it `wraps`.
+/// Visits each index below item_count once, from one past `cursor`, or the first in its direction when stale; stops at the end unless it `wraps`.
 pub const CycleOrder = struct {
     index: usize,
     item_count: usize,
@@ -41,7 +41,7 @@ pub const CycleOrder = struct {
     }
 };
 
-/// Character name -> configured-order index, rebuilt only when the Characters list's names/order change, which is far less often than cycle hotkeys are pressed.
+/// Character name to configured-order index, rebuilt only when the Characters list's names or order change, far less often than cycling presses.
 pub const CharacterOrderCache = struct {
     map: ?std.StringHashMap(usize) = null,
     signature: u64 = 0,
@@ -164,7 +164,7 @@ pub fn planGroupCycle(cycle: GroupCycle, clients: anytype) GroupStep {
         if (indexOfHwnd(cycle.not_logged_in_hwnds, cycle.last_not_logged_in_hwnd)) |i| found_index = member_count + i;
     }
 
-    var it = CycleOrder.init(found_index, total_count, .{ .is_forward = cycle.is_forward, .wraps = !cycle.chain.stops_at_ends });
+    var it: CycleOrder = .init(found_index, total_count, .{ .is_forward = cycle.is_forward, .wraps = !cycle.chain.stops_at_ends });
     while (it.next()) |position| {
         if (position >= member_count) return .{ .not_logged_in = .{ .hwnd = cycle.not_logged_in_hwnds[position - member_count], .position = position, .total_count = total_count } };
         const member = chainMember(cycle.groups, cycle.group_indices, position);
@@ -244,7 +244,7 @@ fn memberHwnd(cycle: GroupCycle, member: ChainMember, clients: anytype) ?win32.H
 }
 
 fn characterOrderSignature(configured: []const CharacterConfig) u64 {
-    var hasher = std.hash.Wyhash.init(0);
+    var hasher: std.hash.Wyhash = .init(0);
     for (configured) |character| {
         hasher.update(character.name);
         // The map's keys borrow these names, so a reallocated but equal name (a discarded dialog preview) must rebuild it too.

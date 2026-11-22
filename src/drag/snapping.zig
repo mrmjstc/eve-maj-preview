@@ -65,7 +65,7 @@ fn snapToEdges(thumbnail_set: *const ThumbnailSet, settings: anytype, drag: Drag
 }
 
 fn applyThumbnailEdgeSnapping(thumbnail_set: *const ThumbnailSet, drag: Drag, threshold: i32) SnapPosition {
-    var snap = snap_math.EdgeSnap.init(drag.x, drag.y, drag.width, drag.height, threshold);
+    var snap: snap_math.EdgeSnap = .init(drag.x, drag.y, drag.width, drag.height, threshold);
     for (thumbnail_set.thumbnails.items) |thumbnail| {
         if (thumbnail.hwnd == drag.hwnd or thumbnail.text_hwnd == drag.hwnd) continue;
         if (!win32.isWindow(thumbnail.hwnd)) continue;
@@ -122,10 +122,10 @@ fn applyGhostSnapping(thumbnail_set: *ThumbnailSet, drag: Drag, threshold: i32) 
         break :blk fresh;
     };
 
-    var dock = snap_math.Dock.init(drag.x, drag.y, threshold);
+    var dock: snap_math.Dock = .init(drag.x, drag.y, threshold);
     for (groups) |group| dock.consider(group.rect);
 
-    var snap = snap_math.EdgeSnap.init(dock.position.x, dock.position.y, drag.width, drag.height, threshold);
+    var snap: snap_math.EdgeSnap = .init(dock.position.x, dock.position.y, drag.width, drag.height, threshold);
     for (groups) |group| snap.toward(group.rect);
     return snap.position();
 }

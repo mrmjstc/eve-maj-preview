@@ -169,7 +169,7 @@ pub const Destinations = struct {
         self.avoid_read_change_count = self.avoid_change_count;
     }
 
-    /// Names `system` on the account's avoid list or takes it off, showing the change before Eve Stars answers; one avoided only as part of an area says so instead.
+    /// Adds `system` to the account's avoid list or takes it off, showing it before Eve Stars answers; one avoided only within an area says so instead.
     pub fn toggleAvoid(self: *Destinations, allocator: std.mem.Allocator, token: []const u8, system: SystemIndex, now_ms: u64) void {
         const name = universe.systemName(system);
         if (self.avoid.avoidanceOf(system) == .in_area) {

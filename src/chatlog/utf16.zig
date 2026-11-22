@@ -11,7 +11,9 @@ pub fn completeLen(data: []const u8) usize {
     return length;
 }
 
-/// Null for no whole unit; `out` needs 3 bytes per UTF-16 unit, `units` one per byte pair, and an unpaired surrogate becomes U+FFFD rather than losing the rest.
+/// Null for no whole unit; an unpaired surrogate becomes U+FFFD rather than losing the rest.
+/// `out`: 3 bytes per UTF-16 unit.
+/// `units`: one per byte pair.
 pub fn decodeInto(units: []u16, out: []u8, data: []const u8) ?[]u8 {
     const unit_count = data.len / 2;
     if (unit_count == 0) return null;

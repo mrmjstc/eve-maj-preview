@@ -314,7 +314,7 @@ fn intelText(notification: Notification, buf: []u8) []const u8 {
     return chatText(shown, wording, &CHAT_INTEL, "Chat intel", buf);
 }
 
-/// `message` with whole-word matches of `name` taken out, in any case, and the punctuation that leaves at its ends; cut to `out`'s length, and the result points into it.
+/// `message` without whole-word matches of `name` in any case, or the punctuation that leaves at its ends; cut to `out`'s length, pointing into it.
 fn withoutName(message: []const u8, name: []const u8, out: []u8) []const u8 {
     var length: usize = 0;
     var index: usize = 0;

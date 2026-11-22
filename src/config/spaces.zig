@@ -110,7 +110,7 @@ fn indexOfSpace(items: []const ThumbnailSpace, comptime mark: []const u8) ?usize
 const testing = std.testing;
 
 test "a list missing the special spaces gets Login Screen first and Unassigned Characters second, both off" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     var list: std.ArrayList(ThumbnailSpace) = .empty;
     try list.append(arena.allocator(), .{ .name = "Miners" });

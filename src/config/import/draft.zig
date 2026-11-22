@@ -165,7 +165,7 @@ pub fn toValue(arena: std.mem.Allocator, comptime T: type, value: *const T, path
     return std.json.parseFromSliceLeaky(Value, arena, out.written(), .{});
 }
 
-/// The ops that bring `draft` into `doc`, matching list items by name (case-insensitively) and dropping the dialog's untouched placeholder once real entries arrive.
+/// The ops bringing `draft` into `doc`; list items match by name, ignoring case, and the dialog's untouched placeholder goes once real entries arrive.
 pub fn toOps(arena: std.mem.Allocator, draft: *const Draft, doc: *const Config) ![]const patch.Op {
     var ops: std.ArrayList(patch.Op) = .empty;
     var it = draft.root.iterator();

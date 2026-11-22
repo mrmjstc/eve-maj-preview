@@ -128,7 +128,7 @@ pub const HookBindings = struct {
         self.send(.deinit);
     }
 
-    /// Hook thread only: whether it matched and was posted; unless requires_exact_modifiers, an unbound combo falls back to the bare key's binding, so an unrelated held modifier doesn't block it.
+    /// Hook thread only; whether it posted, an unbound combo using its bare key's binding unless requires_exact_modifiers, so a held modifier can't block it.
     pub fn dispatch(self: *const HookBindings, base_vk: u32, modifiers: u32, is_repeat: bool) bool {
         const map = if (self.map) |*m| m else return false;
         const id = map.get(vk.combineKey(base_vk, modifiers)) orelse

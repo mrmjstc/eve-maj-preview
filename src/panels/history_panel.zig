@@ -292,7 +292,7 @@ pub const HistoryPanelWindow = struct {
 
     fn computeRenderSignature(self: *const HistoryPanelWindow, entries: []const history_mod.Entry, revision: u32, panel_header_state: *const panel_chrome.Header) u64 {
         const history_settings = &self.config.historyPanel;
-        var hasher = std.hash.Wyhash.init(0);
+        var hasher: std.hash.Wyhash = .init(0);
         panel_chrome.hashHeader(&hasher, panel_header_state);
         hasher.update(std.mem.asBytes(&history_settings.width));
         hasher.update(std.mem.asBytes(&history_settings.height));

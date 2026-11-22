@@ -54,7 +54,9 @@ const PriceFetchContext = struct {
     results: *std.ArrayList(Price),
 };
 
-/// Each ore's Jita buy price via its compressed variant, from the public ESI API, leaving out unmatched names; `allocator` must be thread-safe, and the result is in `arena`.
+/// Each ore's Jita buy price via its compressed variant, from ESI, leaving out unmatched names.
+/// `allocator`: thread-safe.
+/// `arena`: holds the result.
 pub fn fetchOrePrices(allocator: std.mem.Allocator, arena: std.mem.Allocator, io: std.Io, names: []const []const u8) !Prices {
     var session = try http_client.Session.init();
     defer session.deinit();

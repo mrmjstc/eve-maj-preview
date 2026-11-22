@@ -189,7 +189,7 @@ pub const RecentHits = struct {
 
 /// The channel is left out, so a message pasted into two channels alerts once.
 pub fn messageKey(message: lines.ChatMessage) u64 {
-    var hasher = std.hash.Wyhash.init(0);
+    var hasher: std.hash.Wyhash = .init(0);
     hasher.update(message.speaker);
     hasher.update(">");
     hasher.update(message.body);

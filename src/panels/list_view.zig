@@ -324,7 +324,7 @@ pub const ListWindow = struct {
     /// A hash of everything that affects the rendered pixels, to skip the redraw when nothing changed.
     fn computeRenderSignature(self: *const ListWindow, clients: []const Client, focus: Focus, panel_header_state: *const panel_chrome.Header) u64 {
         const list_settings = &self.config.listView;
-        var hasher = std.hash.Wyhash.init(0);
+        var hasher: std.hash.Wyhash = .init(0);
         panel_chrome.hashHeader(&hasher, panel_header_state);
         hasher.update(std.mem.asBytes(&self.rows.items.len));
         hasher.update(std.mem.asBytes(&list_settings.columns));

@@ -22,7 +22,7 @@ const Placeholders = struct {
     }
 
     fn contains(text: []const u8, wanted: []const u8) bool {
-        var names = Placeholders.init(text);
+        var names: Placeholders = .init(text);
         while (names.next()) |name| {
             if (std.mem.eql(u8, name, wanted)) return true;
         }
@@ -57,11 +57,11 @@ pub fn fill(writer: *std.Io.Writer, template: []const u8, args: anytype) std.Io.
 
 /// Whether `template`'s placeholders are the same set as `english`'s, so a translation can't lose or invent one.
 fn hasSamePlaceholders(english: []const u8, template: []const u8) bool {
-    var english_names = Placeholders.init(english);
+    var english_names: Placeholders = .init(english);
     while (english_names.next()) |name| {
         if (!Placeholders.contains(template, name)) return false;
     }
-    var names = Placeholders.init(template);
+    var names: Placeholders = .init(template);
     while (names.next()) |name| {
         if (!Placeholders.contains(english, name)) return false;
     }

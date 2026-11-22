@@ -321,7 +321,7 @@ fn spacesFromDisplay(arena: std.mem.Allocator, root: *Value) !void {
     const display = root.object.get("display") orelse return;
     if (display != .object) return;
 
-    var spaces = std.json.Array.init(arena);
+    var spaces: std.json.Array = .init(arena);
     // First, so a client at the login screen keeps landing in its own space ahead of the catch-all.
     if (try rectFields(arena, display, "notLoggedInSpaceX", "notLoggedInSpaceY", "notLoggedInSpaceWidth", "notLoggedInSpaceHeight")) |fields| {
         var space = fields;
@@ -417,7 +417,7 @@ fn migrated(arena: std.mem.Allocator, json: []const u8) !Value {
 }
 
 test "an old fit region becomes an enabled catch-all space, login-screen clients included, with its settings" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     const root = try migrated(arena.allocator(),
         \\{"formatVersion":2,"display":{"layoutMode":"RegionFit","regionX":10,"regionY":20,"regionWidth":300,"regionHeight":200,
@@ -438,7 +438,7 @@ test "an old fit region becomes an enabled catch-all space, login-screen clients
 }
 
 test "the not-logged-in space comes first and holds the login screen" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     const root = try migrated(arena.allocator(),
         \\{"formatVersion":2,"display":{"layoutMode":"RegionFit","regionX":0,"regionY":0,"regionWidth":800,"regionHeight":400,
@@ -455,7 +455,7 @@ test "the not-logged-in space comes first and holds the login screen" {
 }
 
 test "a region drawn but left unused migrates as a disabled space" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     const root = try migrated(arena.allocator(),
         \\{"formatVersion":2,"display":{"layoutMode":"Custom","regionX":0,"regionY":0,"regionWidth":800,"regionHeight":400}}
@@ -465,7 +465,7 @@ test "a region drawn but left unused migrates as a disabled space" {
 }
 
 test "a region missing a coordinate and a current profile are left alone" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     const partial = try migrated(arena.allocator(),
         \\{"formatVersion":2,"display":{"layoutMode":"RegionFit","regionX":0,"regionY":0,"regionWidth":800}}
@@ -478,7 +478,7 @@ test "a region missing a coordinate and a current profile are left alone" {
 }
 
 test "a profile with an enabled space from before placementMode uses thumbnail spaces" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     const root = try migrated(arena.allocator(),
         \\{"formatVersion":3,"display":{},"thumbnailSpaces":[{"name":"Off","enabled":false},{"name":"On"}]}
@@ -487,7 +487,7 @@ test "a profile with an enabled space from before placementMode uses thumbnail s
 }
 
 test "a saved placementMode, or no enabled space, is left alone" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     const saved = try migrated(arena.allocator(),
         \\{"formatVersion":3,"display":{"placementMode":"Manual"},"thumbnailSpaces":[{"name":"On"}]}
@@ -500,7 +500,7 @@ test "a saved placementMode, or no enabled space, is left alone" {
 }
 
 test "the client list's and panels' display settings move into their own sections, renamed" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     const root = try migrated(arena.allocator(),
         \\{"formatVersion":3,"display":{"startX":5,"listViewColumns":3,"showMapPanel":true,"mapPanelRouteAvoidZone2":true,
@@ -516,7 +516,7 @@ test "the client list's and panels' display settings move into their own section
 }
 
 test "the old default amber is unset so it follows the accent, and a picked colour stays" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     const root = try migrated(arena.allocator(),
         \\{"formatVersion":4,"listView":{"activeColor":"0xFFD9A441"},"thumbnail":{"borderColor":"0xFF112233"}}
@@ -526,7 +526,7 @@ test "the old default amber is unset so it follows the accent, and a picked colo
 }
 
 test "a current profile's amber is a picked colour and stays" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     const root = try migrated(arena.allocator(),
         \\{"formatVersion":5,"listView":{"activeColor":"0xFFD9A441"}}
@@ -535,7 +535,7 @@ test "a current profile's amber is a picked colour and stays" {
 }
 
 test "an old profile's list rates stay shown only where their overlay was on" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     const root = try migrated(arena.allocator(),
         \\{"formatVersion":5,"combat":{"enabled":true},"mining":{"enabled":false},"listView":{"showOutgoingDps":false}}
@@ -552,7 +552,7 @@ test "an old profile's list rates stay shown only where their overlay was on" {
 }
 
 test "an old profile's client list takes its position from the thumbnails' start position, and a current profile's is left alone" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     const root = try migrated(arena.allocator(),
         \\{"formatVersion":6,"display":{"startX":120,"startY":340}}
@@ -567,7 +567,7 @@ test "an old profile's client list takes its position from the thumbnails' start
 }
 
 test "a panel setting already in its section wins, and a current profile's display is left alone" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     const both = try migrated(arena.allocator(),
         \\{"formatVersion":3,"display":{"listViewColumns":3},"listView":{"columns":2}}
@@ -580,7 +580,7 @@ test "a panel setting already in its section wins, and a current profile's displ
 }
 
 test "an old profile's alerts split into notifications and thumbnail.alertText" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     const root = try migrated(arena.allocator(),
         \\{"formatVersion":7,"thumbnail":{"width":300,"notifications":{"enabled":false,"color":"0xFF112233","font_size":14,"bg_color":"0x80000000","tts_volume":40,"type_configs":{"FleetInvite":{"enabled":false}}}}}
@@ -601,7 +601,7 @@ test "an old profile's alerts split into notifications and thumbnail.alertText" 
 }
 
 test "an alert setting already in its new section wins, and a regrouped profile's thumbnail alerts are left alone" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     const both = try migrated(arena.allocator(),
         \\{"formatVersion":7,"thumbnail":{"notifications":{"tts_volume":40,"font_size":14},"alertText":{"font_size":20}},"notifications":{"tts_volume":70}}
@@ -615,7 +615,7 @@ test "an alert setting already in its new section wins, and a regrouped profile'
 }
 
 test "an old profile's combat and mining texts move to thumbnail, enabled as shown, and the tracking stays" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     const root = try migrated(arena.allocator(),
         \\{"formatVersion":7,"combat":{"enabled":true,"window_seconds":30,"incoming_font_size":16,"damage_alert_excluded_weapons":"Smartbomb"},
@@ -640,7 +640,7 @@ test "an old profile's combat and mining texts move to thumbnail, enabled as sho
 }
 
 test "an old profile's bounty, resources and ping texts move to thumbnail, keeping their sampling" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     const root = try migrated(arena.allocator(),
         \\{"formatVersion":7,"bounty":{"enabled":true,"isk_rate_unit":"minute","position":"Center"},
@@ -658,7 +658,7 @@ test "an old profile's bounty, resources and ping texts move to thumbnail, keepi
 }
 
 test "a rate text setting already in thumbnail wins over its tracker's" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     const root = try migrated(arena.allocator(),
         \\{"formatVersion":7,"combat":{"enabled":true},"thumbnail":{"combatText":{"shown":false}}}
@@ -668,7 +668,7 @@ test "a rate text setting already in thumbnail wins over its tracker's" {
 }
 
 test "an old profile's intel pin settings move out of mapPanel, and a value already in intel wins" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     const root = try migrated(arena.allocator(),
         \\{"formatVersion":7,"mapPanel":{"intelShrinkSec":120,"intelShowClear":false,"showIntel":true}}
@@ -685,7 +685,7 @@ test "an old profile's intel pin settings move out of mapPanel, and a value alre
 }
 
 test "a display-era intel setting reaches intel through mapPanel" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     const root = try migrated(arena.allocator(),
         \\{"formatVersion":3,"display":{"mapPanelIntelShrinkSec":45}}
@@ -694,7 +694,7 @@ test "a display-era intel setting reaches intel through mapPanel" {
 }
 
 test "the Intel Panel takes a copy of the History Panel's list settings, keeping any of its own" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     const root = try migrated(arena.allocator(),
         \\{"formatVersion":7,"historyPanel":{"fontSize":14,"showTimestamp":true,"mergeWindowSec":30,"maxRows":20},"intelPanel":{"mergeWindowSec":5}}
@@ -708,7 +708,7 @@ test "the Intel Panel takes a copy of the History Panel's list settings, keeping
 }
 
 test "a regrouped profile's intel settings are left alone" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     const root = try migrated(arena.allocator(),
         \\{"formatVersion":8,"mapPanel":{"intelShrinkSec":120},"historyPanel":{"fontSize":14}}
@@ -718,7 +718,7 @@ test "a regrouped profile's intel settings are left alone" {
 }
 
 test "a profile's chatlog section is found, and nothing else passes for one" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     const with = try std.json.parseFromSliceLeaky(Value, arena.allocator(), "{\"chatlog\":{\"enabled\":true}}", .{});
     try testing.expect(values.boolAt(profileChatlog(with).?, "enabled").?);
@@ -727,7 +727,7 @@ test "a profile's chatlog section is found, and nothing else passes for one" {
 }
 
 test "global settings saved before Log Monitoring was shared have no chatlog section" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     const older = try std.json.parseFromSliceLeaky(Value, arena.allocator(), "{\"lastUsedProfile\":\"default.json\"}", .{});
     try testing.expect(!hasSharedChatlog(older));

@@ -259,7 +259,7 @@ pub fn writeDisplayKey(writer: anytype, combined: u32) !void {
     try writeCombo(writer, combined, displayKeyName(extractVk(combined), &buf));
 }
 
-/// A combined value (see combineKey) from "F9", "Ctrl+Alt+F9" or the old "0x0278" form; null when unbindable, which the caller logs, except a lone modifier, logged here.
+/// A combined value (see combineKey) from "F9", "Ctrl+Alt+F9" or old "0x0278"; null when unbindable, logged here for a lone modifier, else by the caller.
 pub fn parseVirtualKey(key_text: []const u8) ?u32 {
     return parseCombo(key_text, parseBaseKey);
 }
@@ -336,7 +336,7 @@ fn parseModifierToken(token: []const u8) ?u32 {
     return null;
 }
 
-/// A name from KEY_NAMES, writeVirtualKey's "VK<hex>", or one of the aliases hand-edited profiles may use (a shifted OEM character, "Control", "LWin", "RWin").
+/// A KEY_NAMES name, writeVirtualKey's "VK<hex>", or an alias hand-edited profiles use: a shifted OEM character, "Control", "LWin", "RWin".
 fn parseBaseKey(key_text: []const u8) ?u32 {
     for (KEY_NAMES) |key| {
         if (std.ascii.eqlIgnoreCase(key.name, key_text)) return key.vk_code;

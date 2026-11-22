@@ -330,7 +330,7 @@ pub fn routeUrl(allocator: std.mem.Allocator, from_id: u32, to_id: u32, options:
     return allocator.dupe(u8, url.written());
 }
 
-/// `body` is GET /route's answer; a system the map doesn't have is left out of its route; `arena` is scratch.
+/// `body` is GET /route's answer, leaving any system the map doesn't have out of its route; `arena` is scratch.
 pub fn parseRoutes(arena: std.mem.Allocator, body: []const u8) !Routes {
     const answer = try parseAnswer(RouteAnswer, arena, body);
     const from = systemOf(answer.from) orelse return error.InvalidSystem;
@@ -362,7 +362,7 @@ pub fn avoidBody(allocator: std.mem.Allocator, list: *const AvoidList) ![]u8 {
     return allocator.dupe(u8, body.written());
 }
 
-/// `body` is GET or PUT /avoid's answer; a place the map doesn't have is kept, but marks no system; `arena` is scratch.
+/// `body` is GET or PUT /avoid's answer, keeping a place the map doesn't have though it marks no system; `arena` is scratch.
 pub fn parseAvoid(arena: std.mem.Allocator, body: []const u8) !AvoidList {
     const answer = try parseAnswer(AvoidAnswer, arena, body);
     var list: AvoidList = .{};
@@ -413,7 +413,7 @@ pub fn parseTargets(arena: std.mem.Allocator, body: []const u8) !Targets {
     return targets;
 }
 
-/// `body` is GET /ansiblex's answer; a gate at a system the map doesn't have is skipped; `arena` is scratch.
+/// `body` is GET /ansiblex's answer, skipping a gate at a system the map doesn't have; `arena` is scratch.
 pub fn parseBridges(arena: std.mem.Allocator, body: []const u8) !Bridges {
     const answer = try parseAnswer(BridgesAnswer, arena, body);
     var parsed: Bridges = .{ .is_ready = answer.ready };

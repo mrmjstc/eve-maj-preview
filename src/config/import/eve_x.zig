@@ -87,7 +87,7 @@ pub fn defaultProfile(root: Value) ?[]const u8 {
 }
 
 pub fn sections(draft: *Draft, root: Value, profile_name: []const u8) ![]const Section {
-    const source = Source.init(root, profile_name);
+    const source: Source = .init(root, profile_name);
     const position_count = countPositions(values.objectAt(source.profile, "Thumbnail Positions"));
     const color_count = if (source.areColorsActive()) countNames(values.arrayAt(source.customColors(), "CharNames")) else 0;
     const hotkey_count = countHotkeys(source.characterHotkeys());
@@ -125,7 +125,7 @@ pub fn hasText(text: ?[]const u8) bool {
 }
 
 pub fn build(draft: *Draft, root: Value, profile_name: []const u8, chosen: []const []const u8) !void {
-    const source = Source.init(root, profile_name);
+    const source: Source = .init(root, profile_name);
     if (draft_mod.isChosen(chosen, "thumbnailAppearance")) try appearance(draft, source);
     if (draft_mod.isChosen(chosen, "characterPositions")) try characterPositions(draft, source);
     if (draft_mod.isChosen(chosen, "characterColorsHotkeys")) try colorsAndHotkeys(draft, source);

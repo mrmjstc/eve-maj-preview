@@ -13,7 +13,7 @@ pub const ICON_SIZE = 16;
 /// The sizes the glyphs are built at; a box gets the largest that fits it.
 const SIZES = [_]usize{ 10, 12, 14, 16 };
 
-/// The glyph centred in a `box`-sized square, moved onto whole device pixels by `snap` (see snapOffset); `color`'s alpha is scaled by each pixel's coverage.
+/// The glyph centred in a `box`-sized square, snapped to whole device pixels by `snap` (see snapOffset), with `color`'s alpha scaled by coverage.
 pub fn commands(arena: std.mem.Allocator, glyph: Glyph, box: f32, snap: [2]f32, color: [4]f32) ![]const DrawCmd {
     inline for (0..SIZES.len) |position| {
         const size = SIZES[SIZES.len - 1 - position];

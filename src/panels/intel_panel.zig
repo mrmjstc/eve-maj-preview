@@ -311,7 +311,7 @@ pub const IntelPanelWindow = struct {
 
     fn computeRenderSignature(self: *const IntelPanelWindow, intel_history: *const history.NotificationHistory, entries: []const history.Entry, total_count: usize, panel_header_state: *const panel_chrome.Header) u64 {
         const intel_settings = &self.config.intelPanel;
-        var hasher = std.hash.Wyhash.init(0);
+        var hasher: std.hash.Wyhash = .init(0);
         panel_chrome.hashHeader(&hasher, panel_header_state);
         hasher.update(std.mem.asBytes(&intel_settings.width));
         hasher.update(std.mem.asBytes(&intel_settings.height));

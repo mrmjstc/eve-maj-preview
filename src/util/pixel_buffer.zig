@@ -314,7 +314,7 @@ pub fn fillMask(canvas: Canvas, mask: *const Mask, argb: u32) void {
     }
 }
 
-/// A band `thickness` wide inside the shape's edge, anti-aliased on both sides; a shape the canvas cuts off isn't outlined there. `mask` must be the canvas's size.
+/// A band `thickness` wide inside the shape's edge, anti-aliased both sides, not drawn where the canvas cuts it off; `mask` is the canvas's size.
 pub fn outlineMask(canvas: Canvas, mask: *const Mask, thickness: f32, argb: u32) void {
     if (mask.isEmpty()) return;
     for (mask.top..mask.bottom) |pixel_y| {

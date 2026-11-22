@@ -457,7 +457,7 @@ pub const MapPanelWindow = struct {
 
     fn computeRenderSignature(self: *const MapPanelWindow, scene: Scene, now_ms: u64, intel_entries: []const history.Entry) u64 {
         const map_settings = &self.config.mapPanel;
-        var hasher = std.hash.Wyhash.init(0);
+        var hasher: std.hash.Wyhash = .init(0);
         hasher.update(std.mem.asBytes(&self.layoutSignature()));
         hasher.update(std.mem.asBytes(&map_settings.opacity));
         hasher.update(std.mem.asBytes(&map_settings.metric));
@@ -506,7 +506,7 @@ pub const MapPanelWindow = struct {
 
     /// What `layout` depends on.
     fn layoutSignature(self: *const MapPanelWindow) u64 {
-        var hasher = std.hash.Wyhash.init(1);
+        var hasher: std.hash.Wyhash = .init(1);
         hasher.update(std.mem.sliceAsBytes(self.state.regions.slice()));
         hasher.update(std.mem.asBytes(&self.state.layout.view));
         self.hashAreaAndFonts(&hasher);
@@ -536,7 +536,7 @@ pub const MapPanelWindow = struct {
 
     /// Only when the regions or fonts change, as a pan or zoom keeps every label's width; with `dc` holding the label font, after `layout` is built.
     fn measureLabels(self: *MapPanelWindow, dc: win32.HDC) void {
-        var hasher = std.hash.Wyhash.init(4);
+        var hasher: std.hash.Wyhash = .init(4);
         hasher.update(std.mem.sliceAsBytes(self.state.regions.slice()));
         self.hashFonts(&hasher);
         const signature = hasher.final();
@@ -557,7 +557,7 @@ pub const MapPanelWindow = struct {
     }
 
     fn ensureOverview(self: *MapPanelWindow, dc: win32.HDC, areas: look.Areas, fonts: ?MapFonts) void {
-        var hasher = std.hash.Wyhash.init(3);
+        var hasher: std.hash.Wyhash = .init(3);
         self.hashAreaAndFonts(&hasher);
         const signature = hasher.final();
         if (self.state.overview_signature == signature) return;
@@ -601,7 +601,7 @@ pub const MapPanelWindow = struct {
                 end_count += 1;
             }
         }
-        var hasher = std.hash.Wyhash.init(6);
+        var hasher: std.hash.Wyhash = .init(6);
         hasher.update(std.mem.asBytes(&self.state.layout_signature));
         for (ends[0..end_count]) |end| {
             hasher.update(std.mem.asBytes(&end.system));
@@ -622,7 +622,7 @@ pub const MapPanelWindow = struct {
         if (campaigns) |shown| {
             for (self.state.layout.nodes[0..node_count], has_timer[0..node_count]) |node, *is_timed| is_timed.* = shown.soonestIn(node.system) != null;
         }
-        var hasher = std.hash.Wyhash.init(5);
+        var hasher: std.hash.Wyhash = .init(5);
         hasher.update(std.mem.asBytes(&self.state.layout_signature));
         hasher.update(std.mem.sliceAsBytes(covered));
         hasher.update(std.mem.sliceAsBytes(has_timer[0..node_count]));

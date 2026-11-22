@@ -254,7 +254,7 @@ fn formatLine(buf: []u8, comptime text_format: []const u8, args: anytype) []cons
     return writer.buffered();
 }
 
-/// Rotates to .old, replacing any previous one; if another program holds the log open, keeps appending and tries again next flush; caller holds g_log_mutex.
+/// Caller holds g_log_mutex; replaces any .old, and while another program holds the log open, keeps appending and tries again next flush.
 fn rotate() void {
     if (g_log_file) |f| f.close(g_io);
     g_log_file = null;
@@ -268,7 +268,7 @@ fn rotate() void {
     g_log_file = cwd.createFile(g_io, LOG_FILE_NAME, .{ .read = true, .truncate = renamed }) catch null;
 }
 
-/// Rotates first if the file is full; the end is read, not tracked, since a second instance may have appended; caller holds g_log_mutex.
+/// Caller holds g_log_mutex; rotates first if the file is full, reading its end rather than tracking it, since a second instance may have appended.
 fn appendLocked(bytes: []const u8) void {
     var file = logFile() orelse return;
     var end = file.length(g_io) catch return;

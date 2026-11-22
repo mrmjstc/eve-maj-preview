@@ -160,7 +160,7 @@ pub const Scout = struct {
         self.has_stale_process_hooks = true;
     }
 
-    /// Hands `window` to the next update's closed_windows, so the thumbnail set and chatlog let it go like any closed client; false (already logged) if it couldn't be.
+    /// Hands `window` to the next update's closed_windows, so the thumbnails and chatlog let it go; false, already logged, if it couldn't.
     fn reportClosed(self: *Scout, window: EveWindow) bool {
         const name = self.allocator.dupe(u8, window.character_name) catch |err| {
             slog.err("Failed to allocate closed character name '{s}': {}", .{ window.character_name, err });
@@ -361,7 +361,7 @@ pub const Scout = struct {
         return null;
     }
 
-    /// Drops windows no filter matches any more, which scanning skips as already tracked, and renames non-EVE windows after a renamed filter; call after a reload, before recreating thumbnails.
+    /// After a reload, before rebuilding thumbnails: drops windows no filter matches, which scans skip as tracked, and renames those a renamed filter hit.
     pub fn pruneNonMatchingWindows(self: *Scout, filters: []const WindowFilterConfig) void {
         var i: usize = self.windows.items.len;
         while (i > 0) {

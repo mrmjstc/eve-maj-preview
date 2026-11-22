@@ -147,7 +147,7 @@ const TestSettings = struct {
 };
 
 test "dropUnreadable reports the path of each setting it drops, keeping the rest" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     const json =
         \\{"mode": "c", "names": ["a", 5], "inner": {"x": "no", "y": 3}, "named": {"first": {"on": true}, "second": {"on": 7}}}
@@ -169,7 +169,7 @@ test "dropUnreadable reports the path of each setting it drops, keeping the rest
 }
 
 test "dropUnreadable checks items one by one, and a section without defaults whole" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     var tree = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), "{\"keys\": [\"a\", \"bad\", \"b\"], \"point\": {\"x\": \"no\", \"y\": 3}}", .{});
     var skipped: std.ArrayList([]const u8) = .empty;
@@ -183,7 +183,7 @@ test "dropUnreadable checks items one by one, and a section without defaults who
 }
 
 test "dropUnreadable fails when the value isn't an object of settings at all" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     var tree = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), "[1, 2]", .{});
     try testing.expect(!dropUnreadable(TestSettings, arena.allocator(), &tree, null));

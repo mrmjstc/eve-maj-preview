@@ -171,7 +171,7 @@ pub fn oklchToRgb(lightness: f32, chroma: f32, hue_degrees: f32) ?u32 {
     return (linearToSrgbByte(red) << 16) | (linearToSrgbByte(green) << 8) | linearToSrgbByte(blue);
 }
 
-/// The palette colour (0xRRGGBB) farthest in OKLab from everything in `taken`; `seed_string` picks the start and breaks ties, so the result is deterministic.
+/// The palette colour (0xRRGGBB) farthest in OKLab from all of `taken`; `seed_string` picks the start and breaks ties, so it's deterministic.
 fn pickDistinctColor(seed_string: []const u8, taken: []const u32) u32 {
     const candidates = DISTINCT_PALETTE.candidates[0..DISTINCT_PALETTE.count];
     const count = candidates.len;

@@ -64,7 +64,7 @@ const Clients = struct {
 /// Cycles to the next running character sharing this hotkey.
 pub fn activatePerCharacterGroup(commands: *const Commands, group: *bindings.CharacterGroup) ?win32.HWND {
     const member_count = group.character_indices.len;
-    var it = CycleOrder.init(group.current_index, member_count, .{ .is_forward = true });
+    var it: CycleOrder = .init(group.current_index, member_count, .{ .is_forward = true });
     while (it.next()) |member_index| {
         const character_index = group.character_indices[member_index];
         if (character_index >= commands.config.characters.items.len) continue;
@@ -155,7 +155,7 @@ pub fn cycleExcluded(commands: *const Commands, is_forward: bool) ?win32.HWND {
         return null;
     }
 
-    var it = CycleOrder.init(commands.cycle.excluded_index, excluded_count, .{ .is_forward = is_forward });
+    var it: CycleOrder = .init(commands.cycle.excluded_index, excluded_count, .{ .is_forward = is_forward });
     while (it.next()) |name_index| {
         const character_name = excluded_names[name_index];
 
@@ -189,7 +189,7 @@ pub fn cycleNotified(commands: *const Commands, is_forward: bool) ?win32.HWND {
     }
 
     const found_index = if (commands.cycle.last_notified_name) |last_name| strings.indexOfString(names.items, last_name) else null;
-    var it = CycleOrder.init(found_index, notified_count, .{ .is_forward = is_forward });
+    var it: CycleOrder = .init(found_index, notified_count, .{ .is_forward = is_forward });
     while (it.next()) |index| {
         const character_name = names.items[index];
 
@@ -232,7 +232,7 @@ pub fn cycleAllClients(commands: *const Commands, is_forward: bool) ?win32.HWND 
     }
 
     const respects_exclusions = commands.liveGlobal().cycleAllClientsRespectExclusions;
-    var it = CycleOrder.init(found_index, window_count, .{ .is_forward = is_forward });
+    var it: CycleOrder = .init(found_index, window_count, .{ .is_forward = is_forward });
     while (it.next()) |index| {
         const eve_window = windows[order[index]];
         if (scout.isGenericCharacterName(eve_window.character_name)) continue;
@@ -270,7 +270,7 @@ pub fn cycleNotLoggedIn(commands: *const Commands, is_forward: bool) ?win32.HWND
         }
     }
 
-    var it = CycleOrder.init(found_index, hwnd_count, .{ .is_forward = is_forward });
+    var it: CycleOrder = .init(found_index, hwnd_count, .{ .is_forward = is_forward });
     const index = it.next() orelse {
         slog.debug("No not-logged-in client to cycle to", .{});
         return null;

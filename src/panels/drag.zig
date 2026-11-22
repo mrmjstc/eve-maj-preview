@@ -13,7 +13,7 @@ var g_panel_drag_anchor_rect: win32.RECT = .{ .left = 0, .top = 0, .right = 0, .
 /// How far in from the window rect each side of the drawn frame sits; nonzero only for a normal window's invisible resize borders.
 var g_panel_drag_frame_inset: win32.RECT = .{ .left = 0, .top = 0, .right = 0, .bottom = 0 };
 
-/// Handles a panel's header drag, snapping (none without a `thumbnail_set`) and background erase; null for any other message, WM_EXITSIZEMOVE included, for the panel to save where it landed.
+/// Header drag, snapping (none without `thumbnail_set`) and background erase; null for the rest, WM_EXITSIZEMOVE included, so the panel saves its place.
 pub fn handleMessage(thumbnail_set: ?*const ThumbnailSet, hwnd: win32.HWND, msg: win32.UINT, lParam: win32.LPARAM, header_height: i32) ?win32.LRESULT {
     switch (msg) {
         win32.WM_NCHITTEST => {
@@ -50,7 +50,7 @@ fn beginPanelDrag(hwnd: win32.HWND) void {
     };
 }
 
-/// Recomputes the intended position from the cursor's movement since the drag began, ignoring Windows' possibly already-snapped `rect`, then snaps its drawn frame.
+/// Places it by the cursor's move since the drag began, not Windows' possibly already-snapped `rect`, then snaps the drawn frame.
 fn updatePanelDragRect(thumbnail_set: ?*const ThumbnailSet, hwnd: win32.HWND, rect: *win32.RECT) void {
     const width = rect.right - rect.left;
     const height = rect.bottom - rect.top;
