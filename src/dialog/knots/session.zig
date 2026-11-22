@@ -3,10 +3,10 @@ const std = @import("std");
 const win32 = @import("../../platform/win32.zig");
 const config = @import("../../config.zig");
 const patch = @import("../../config/patch.zig");
+const field_strings = @import("../../config/field_strings.zig");
 const set = @import("../../thumbnail/set.zig");
 const dialog_host = @import("../dialog_host.zig");
 const notifier_mod = @import("../../notifications/notifier.zig");
-const field_strings = @import("field_strings.zig");
 const reorder_math = @import("reorder_math.zig");
 const log = @import("../../log.zig");
 

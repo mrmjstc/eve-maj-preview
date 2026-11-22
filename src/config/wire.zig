@@ -2,6 +2,7 @@
 const std = @import("std");
 const key_list = @import("key_list.zig");
 const readable = @import("readable.zig");
+const field_strings = @import("field_strings.zig");
 const log = @import("../log.zig");
 
 const KeyList = key_list.KeyList;
@@ -159,7 +160,7 @@ pub fn freeField(comptime T: type, value: *T, default: ?T, allocator: std.mem.Al
     } else if (comptime ListItem(T)) |Item| {
         freeList(Item, value, allocator);
     } else if (T == []const u8) {
-        freeOwnedString(allocator, value.*, default orelse "");
+        if (field_strings.isOwned(value.*, default orelse "")) allocator.free(value.*);
     } else if (T == ?[]const u8) {
         if (value.*) |s| allocator.free(s);
     }
@@ -385,15 +386,11 @@ fn cloneField(comptime T: type, value: T, allocator: std.mem.Allocator) !T {
         for (value.items) |item| list.appendAssumeCapacity(try cloneField(Item, item, allocator));
         return list;
     }
-    // Empty stays a literal, which freeOwnedString skips.
+    // Empty stays a literal, which freeField skips.
     if (T == []const u8) return if (value.len == 0) "" else try allocator.dupe(u8, value);
     if (T == ?[]const u8) return if (value) |s| try allocator.dupe(u8, s) else null;
     if (comptime hasPointers(T)) @compileError(@typeName(T) ++ " holds pointers, so it needs its own clone to avoid sharing them");
     return value;
-}
-
-fn freeOwnedString(allocator: std.mem.Allocator, text: []const u8, default: []const u8) void {
-    if (text.len != 0 and text.ptr != default.ptr) allocator.free(text);
 }
 
 const testing = std.testing;
