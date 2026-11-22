@@ -15,7 +15,7 @@ pub const FocusTracker = struct {
     is_hide_timer_pending: bool = false,
     /// The client hotkey cycling was last synced to; null while focus is outside EVE, so a client focused before its thumbnail exists is synced once it does.
     synced_hwnd: ?win32.HWND = null,
-    /// For the return-to-last-app hotkey: the last focused window that isn't a tracked client, ours or the desktop shell.
+    /// For the return-to-last-app hotkey: the last focused window that isn't a client, ours or the desktop shell.
     last_non_eve_foreground: ?win32.HWND = null,
 
     pub fn start(self: *FocusTracker) void {
@@ -63,7 +63,7 @@ pub fn onClientFocused(app: *App, hwnd: win32.HWND) bool {
     return true;
 }
 
-/// Per tick, after App.syncRoster: records the active client for auto-minimize, and re-syncs cycling when it was renamed or just appeared.
+/// Per tick, after App.syncRoster: records the active client for auto-minimize, and takes up a focus or rename the focus hook missed.
 pub fn afterActiveRefresh(app: *App, name_changes: []const scout.NameChange) void {
     const active = app.roster.active_hwnd orelse return;
     if (app.roster.isEveClient(active)) app.auto_minimizer.recordFocus(active);
@@ -72,11 +72,15 @@ pub fn afterActiveRefresh(app: *App, name_changes: []const scout.NameChange) voi
         return;
     }
 
+    if (app.focus.synced_hwnd != active) {
+        _ = onClientFocused(app, active);
+        return;
+    }
     // Cycle cursors are keyed by name and a rename fires no focus event, so the focused window must re-sync under its new one.
     const was_renamed = for (name_changes) |change| {
         if (change.hwnd == active) break true;
     } else false;
-    if (was_renamed or app.focus.synced_hwnd != active) syncCycles(app, active);
+    if (was_renamed) syncCycles(app, active);
 }
 
 /// The hide debounce timer fired, so no EVE window has had focus for hideDebounceMs.
@@ -111,6 +115,12 @@ fn foregroundProc(_: win32.HANDLE, _: win32.DWORD, hwnd: win32.HWND, _: win32.LO
 
     if (!app.roster.contains(hwnd)) {
         app.focus.synced_hwnd = null;
+        // A client opens focused before a scan finds it: not another app, nor a reason to hide; afterActiveRefresh takes it up.
+        if (scout.matchesFilters(app.store.saved.windowFilters.items, hwnd)) {
+            slog.debug("Client window focused before a scan found it (hwnd={*})", .{hwnd});
+            app.focus.cancelHideTimer(app.timer_hwnd);
+            return;
+        }
         if (!win32.isOwnProcessWindow(hwnd) and !win32.isDesktopShellWindow(hwnd)) app.focus.last_non_eve_foreground = hwnd;
 
         const auto_hide = app.store.live.shownAutoHide();

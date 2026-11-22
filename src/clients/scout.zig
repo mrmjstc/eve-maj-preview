@@ -399,6 +399,19 @@ pub fn anyCharacterLoggedIn(windows: []const EveWindow) bool {
     return false;
 }
 
+/// Whether a scan would track `hwnd`, for a window focused before a scan has found it.
+pub fn matchesFilters(filters: []const WindowFilterConfig, hwnd: win32.HWND) bool {
+    // Class first, as in a scan: most windows focused fail it, sparing their process a query.
+    var class_name_buffer: [MAX_CLASS_NAME_LENGTH:0]u8 = undefined;
+    const class_name = win32.getClassName(hwnd, &class_name_buffer) orelse return false;
+    if (matchingFilter(filters, class_name, null) == null) return false;
+    var process_id: win32.DWORD = 0;
+    _ = win32.GetWindowThreadProcessId(hwnd, &process_id);
+    var executable_path_buffer: [win32.MAX_PATH:0]u8 = undefined;
+    const executable_path = win32.queryProcessExecutablePath(process_id, &executable_path_buffer) orelse return false;
+    return matchingFilter(filters, class_name, executable_path) != null;
+}
+
 /// "EVE - CharacterName" gives "CharacterName"; the whole title when nothing follows a " - ".
 fn extractCharacterName(title: []const u8) []const u8 {
     const dash_index = std.mem.find(u8, title, " - ") orelse return title;
