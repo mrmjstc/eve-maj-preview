@@ -236,6 +236,7 @@ Driven by `WM_TIMER` at `timer.scanIntervalMs`, or every 1 s while no EVE window
 | `window.zig` | `MapPanelWindow`: the window, the regions it shows and saves, client marks, render signature, and layout, label and overview caches. |
 | `input.zig` | Mouse and keyboard to `MapState` changes, menu actions and search. Hands back a redraw `Response`; doesn't import `map_panel.zig`. |
 | `state.zig` | *(pure, tested)* `MapState`: what the map shows and what's under the cursor, hit testing included. |
+| `scene.zig` | `Scene`: what `MapPanel` hands each render besides the settings, and which of its layers (storms, incursions, sov timers, wormholes, Ansiblex) the settings let through. |
 | `paint.zig` | Draws a frame from `MapState` without changing it, handing back the row and popup boxes the next hit test needs. |
 | `menu.zig` | *(pure, tested)* The right-click menus on a system and a region, and the Layers checklist. |
 | `search.zig` | *(pure, tested)* The search's query, cursor, selection and results. |
@@ -407,7 +408,8 @@ Python (stdlib and ctypes only) that drives the built app against simulated clie
 
 - `harness.py`: copies the app into a temp folder with its own profile and global settings (protocol registration and update checks off), starts `eve-maj-sim --client` copies named `exefile.exe`, sends protocol links through a second launch, and presses keys only while a test client has focus.
 - `diagnostics/state_file.zig`: with `EVE_MAJ_STATE_FILE` set, the app writes what it shows as JSON: each thumbnail (name, handles, visibility, badge, and what its overlay last drew), each client (system, alerts, rates), the alert and intel histories, sound and speech counts, and each open panel's drawn text, plus the active client, cycle exclusions, suspended hotkeys and groups. A thumbnail window's title keeps the name it was created with, so tests read names from here. The harness joins it with what Win32 reports for positions and visibility.
-- `diagnostics/recorder.zig`: per-window copies of the last render. `App` makes them only while the state file is on and hands them to `thumbnail/overlay.zig`, `panels/panel_chrome.zig` (whose draw helpers record every panel's text into a `panels/drawn_text.zig` record) and `notifications/alert_effects.zig`; otherwise each costs a null check.
+- `diagnostics/app_state.zig`: builds the snapshot from the parts of `App` it's handed (`Sources`), so it doesn't import `app.zig`. Its `Recorders` are made only while the state file is on.
+- `diagnostics/recorder.zig`: per-window copies of the last render. `Recorders` hands them to `thumbnail/overlay.zig`, `panels/panel_chrome.zig` (whose draw helpers record every panel's text into a `panels/drawn_text.zig` record) and `notifications/alert_effects.zig`; otherwise each costs a null check.
 - `eve_logs.py`: writes chatlogs and gamelogs as EVE does, so tests can feed alerts, systems, chat and activity.
 - `run.py`: runs `tests/test_<area>.py`; `--failed` reruns only what the last run failed. Each module shares one sandboxed app, and each test switches it to a profile of its own; a failed test, or exclusions or suspended hotkeys left behind, restart it. `@fresh` tests get an app of their own, for global settings.
 - `coverage.py`: lists every setting as `Struct.field`, read from `src/config/`, and the tests that claim it with `@covers`.
