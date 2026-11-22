@@ -360,6 +360,8 @@ def test_a_states_own_look_overrides_the_base_border_and_text(session):
 def test_a_state_can_hide_the_thumbnail(session):
     session.use({"thumbnail": {"inactive": {"showThumbnail": False}}})
     session.start_clients(ALPHA, BRAVO)
+    # Alpha's thumbnail starts hidden, so wait on the app's client list before switching to it.
+    wait_for("the app to find both clients", lambda: session.client_state(ALPHA) and session.client_state(BRAVO))
     session.switch_to(ALPHA)
     session.wait_for_thumbnails({ALPHA})
 
