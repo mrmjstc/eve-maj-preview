@@ -506,7 +506,7 @@ The Intel Panel lists every report that names a system in a channel an intel rul
 | Key | Type | Default | Range | Notes |
 |---|---|---|---|---|
 | `show` | bool | `false` | | Reports are collected whether or not this is on. Intel never goes to the Alert History panel. |
-| `attached` | bool | `true` | | Draw it as a card over the map, below its search, showing 2 to 6 reports as they fit, with a Kills tab beside it while `mapPanel.showKills` is on; the settings below marked *detached* don't apply. Turned off in the dialog, the panel stays up past its auto-hide, like the tray toggle. |
+| `attached` | bool | `true` | | Draw it as a card over the map, below its search, showing 2 to 6 reports as they fit, with a Kills tab beside it while `mapPanel.showKills` is on; the settings below marked *detached* don't apply. Turned off, the panel stays up with no character logged in, like the tray toggle. |
 | `x`, `y` | int | `1100`, `60` | screen | *Detached.* |
 | `width` | int | `340` | 160–3840 | *Detached.* |
 | `height` | int | `400` | 120–2160 | *Detached.* |
