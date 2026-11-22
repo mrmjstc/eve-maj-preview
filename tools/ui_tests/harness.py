@@ -56,6 +56,28 @@ user32.GetForegroundWindow.restype = wintypes.HWND
 user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
 user32.keybd_event.argtypes = [wintypes.BYTE, wintypes.BYTE, wintypes.DWORD, ctypes.c_void_p]
 user32.SetCursorPos.argtypes = [ctypes.c_int, ctypes.c_int]
+user32.GetCursorPos.argtypes = [ctypes.POINTER(wintypes.POINT)]
+user32.mouse_event.argtypes = [wintypes.DWORD, wintypes.DWORD, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p]
+user32.WindowFromPoint.argtypes = [wintypes.POINT]
+user32.WindowFromPoint.restype = wintypes.HWND
+user32.GetAncestor.argtypes = [wintypes.HWND, wintypes.UINT]
+user32.GetAncestor.restype = wintypes.HWND
+user32.GetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int]
+user32.GetWindowLongW.restype = wintypes.LONG
+user32.LoadCursorW.argtypes = [wintypes.HINSTANCE, ctypes.c_void_p]
+user32.LoadCursorW.restype = wintypes.HANDLE
+
+
+class CURSORINFO(ctypes.Structure):
+    _fields_ = [("cbSize", wintypes.DWORD), ("flags", wintypes.DWORD), ("hCursor", wintypes.HANDLE), ("ptScreenPos", wintypes.POINT)]
+
+
+user32.GetCursorInfo.argtypes = [ctypes.POINTER(CURSORINFO)]
+MOUSE_BUTTONS = {"left": (0x0002, 0x0004), "right": (0x0008, 0x0010)}
+VK_CONTROL = 0x11
+GWL_EXSTYLE = -20
+WS_EX_TRANSPARENT = 0x00000020
+SYSTEM_CURSORS = {"Default": 32512, "Hand": 32649, "Crosshair": 32515, "Move": 32646, "Help": 32651}
 user32.GetLayeredWindowAttributes.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD), ctypes.POINTER(wintypes.BYTE), ctypes.POINTER(wintypes.DWORD)]
 user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wintypes.UINT]
 user32.GetDC.argtypes = [wintypes.HWND]
@@ -226,6 +248,27 @@ def close_to(color: tuple[int, int, int], expected: tuple[int, int, int], tolera
     return all(abs(c - e) <= tolerance for c, e in zip(color, expected))
 
 
+def cursor_position() -> tuple[int, int]:
+    point = wintypes.POINT()
+    user32.GetCursorPos(ctypes.byref(point))
+    return point.x, point.y
+
+
+def current_cursor() -> int:
+    info = CURSORINFO(cbSize=ctypes.sizeof(CURSORINFO))
+    user32.GetCursorInfo(ctypes.byref(info))
+    return info.hCursor or 0
+
+
+def system_cursor(name: str) -> int:
+    """The shared handle of a system cursor, the same in every process."""
+    return user32.LoadCursorW(None, ctypes.c_void_p(SYSTEM_CURSORS[name])) or 0
+
+
+def extended_style(hwnd: int) -> int:
+    return user32.GetWindowLongW(hwnd, GWL_EXSTYLE) & 0xFFFFFFFF
+
+
 def foreground_hwnd() -> int:
     return user32.GetForegroundWindow() or 0
 
@@ -334,6 +377,7 @@ class Session:
         self.profile_count = 0
 
     def __enter__(self) -> "Session":
+        self.cursor_at_start = cursor_position()
         self._prepare()
         self.start()
         return self
@@ -341,6 +385,7 @@ class Session:
     def __exit__(self, *_exc):
         self.close_clients()
         self.stop()
+        user32.SetCursorPos(*self.cursor_at_start)
         shutil.rmtree(self.dir, ignore_errors=True)
 
     def start(self):
@@ -378,7 +423,11 @@ class Session:
         write_json(self.dir / "profiles" / name, merged(default_profile(), profile or {}))
         self.protocol(f"evemajpreview://profile/{name}")
         wait_for(f"profile '{name}' to load", lambda: (self.state() or {}).get("profile") == name,
-                 details=lambda: (self.state() or {}).get("profile"))
+                 details=lambda: f"{(self.state() or {}).get('profile')}; log: {self.log_lines('profile', 'protocol')[-6:]}")
+
+    def log_lines(self, *words: str) -> list[str]:
+        """The app's log lines mentioning any of `words`, case-insensitively."""
+        return [line for line in self.log_text().splitlines() if any(w.lower() in line.lower() for w in words)]
 
     def write_profile(self, file_name: str, profile: dict | None = None):
         """An extra profile beside the test's own, laid over default_profile()."""
@@ -525,9 +574,82 @@ class Session:
 
     def hover(self, character_name: str):
         window = self.thumbnails()[character_name].window
-        user32.SetCursorPos((window.left + window.right) // 2, (window.top + window.bottom) // 2)
-        # The app reads the hovered thumbnail from mouse messages, so give it a moment to see the move.
-        time.sleep(0.2)
+        self.move_cursor((window.left + window.right) // 2, (window.top + window.bottom) // 2)
+
+    def move_cursor(self, x: int, y: int):
+        user32.SetCursorPos(x, y)
+        # The app reads the cursor from mouse messages, so give it a moment to see the move.
+        time.sleep(0.15)
+
+    def park_cursor(self):
+        """Clear of every thumbnail and client, so a resting cursor can't hover or zoom one."""
+        bounds = monitors()[0].work_area
+        self.move_cursor(bounds[2] - 5, bounds[1] + 5)
+
+    def _owns_point(self, x: int, y: int) -> bool:
+        hwnd = user32.WindowFromPoint(wintypes.POINT(x, y))
+        root = user32.GetAncestor(hwnd, 2) if hwnd else 0
+        window = describe(root) if root else None
+        pids = {c.process.pid for c in self.clients.values()} | ({self.app.pid} if self.app else set())
+        return window is not None and window.pid in pids
+
+    def _button(self, button: str, is_down: bool):
+        down, up = MOUSE_BUTTONS[button]
+        user32.mouse_event(down if is_down else up, 0, 0, 0, None)
+        time.sleep(0.1)
+
+    def mouse_down(self, x: int, y: int, button: str = "left"):
+        """Refuses unless the window under the point is the app's or a test client's."""
+        self.move_cursor(x, y)
+        if not self._owns_point(x, y):
+            raise TestFailure(f"Refused to press the mouse at ({x}, {y}), which isn't over a test window")
+        self._button(button, True)
+
+    def mouse_up(self, button: str = "left"):
+        self._button(button, False)
+
+    def click(self, x: int, y: int, button: str = "left", modifiers: tuple[int, ...] = ()):
+        for modifier in modifiers:
+            self.key_down(modifier)
+        try:
+            self.mouse_down(x, y, button)
+            self.mouse_up(button)
+        finally:
+            for modifier in reversed(modifiers):
+                self.key_up(modifier)
+
+    def click_thumbnail(self, character_name: str, modifiers: tuple[int, ...] = ()):
+        self.click(*self.thumbnails()[character_name].window.point(0.5, 0.5), modifiers=modifiers)
+
+    def drag_thumbnail(self, character_name: str, to: tuple[int, int], modifiers: tuple[int, ...] = (), while_held=None):
+        """Right-drags the thumbnail so its top-left would land on `to` before any snapping.
+
+        `while_held`, when given, runs with the button still down, for what only shows mid-drag.
+        """
+        window = self.thumbnails()[character_name].window
+        grab_x, grab_y = window.width // 2, window.height // 2
+        start = (window.left + grab_x, window.top + grab_y)
+        end = (to[0] + grab_x, to[1] + grab_y)
+        for modifier in modifiers:
+            self.key_down(modifier)
+        try:
+            self.mouse_down(*start, button="right")
+            for step in range(1, 6):
+                user32.SetCursorPos(start[0] + (end[0] - start[0]) * step // 5, start[1] + (end[1] - start[1]) * step // 5)
+                time.sleep(0.05)
+            time.sleep(0.2)
+            if while_held:
+                while_held()
+            self.mouse_up("right")
+        finally:
+            for modifier in reversed(modifiers):
+                self.key_up(modifier)
+        self.park_cursor()
+
+    def extra_thumbnail_windows(self) -> list[Window]:
+        """The app's visible thumbnail-class windows that aren't a client's thumbnail, i.e. the hover zoom."""
+        listed = {t.window.hwnd for t in self.thumbnail_list()}
+        return [w for w in self.app_windows("EVE_THUMBNAIL_CLASS") if w.hwnd not in listed]
 
     def log_text(self) -> str:
         path = self.dir / "logs" / "eve-maj.log"

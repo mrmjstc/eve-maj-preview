@@ -40,6 +40,7 @@ NOT_TESTED = {
     "CharacterConfig.windowSize": "only for the config dialog's preview",
     "ThumbnailSpace.name": "a label in the dialog only",
     "DisplayConfig.hideThumbnailsDuringRegionSelect": "the config dialog's region tool",
+    "InteractionConfig.animationStyle": "turns Windows' animation off only for the instant of each call; restoring it is tested",
 }
 
 
