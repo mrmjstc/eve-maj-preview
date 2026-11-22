@@ -38,6 +38,7 @@ const tray = @import("tray.zig");
 const dialog_host = @import("dialog/dialog_host.zig");
 const registry = @import("protocol/registry.zig");
 const schedule = @import("util/schedule.zig");
+const state_file = @import("diagnostics/state_file.zig");
 const messages = @import("messages.zig");
 const log = @import("log.zig");
 
@@ -123,6 +124,8 @@ pub const App = struct {
     last_forced_scan: win32.Ticks = .{},
     tick_interval_ms: win32.UINT = 0,
     last_travel_check: win32.Ticks = .{},
+    /// Null unless the end-to-end tests asked for it.
+    state_report: ?state_file.StateFile = null,
 
     /// Takes ownership of `loaded`, which deinit frees.
     pub fn init(allocator: std.mem.Allocator, io: std.Io, instance: win32.HINSTANCE, loaded: Loaded) App {
@@ -141,6 +144,7 @@ pub const App = struct {
             .roster = .init(allocator),
             .auto_colors = .init(allocator, io),
             .map_panel = .{ .host = PANEL_HOST },
+            .state_report = .init(if (config.environMap()) |environ_map| environ_map.get(state_file.ENVIRONMENT_VARIABLE) else null),
         };
     }
 
@@ -192,6 +196,7 @@ pub const App = struct {
         self.store.deinit();
         self.character_ids.deinit();
         self.global_settings.deinit();
+        if (self.state_report) |*report| report.deinit(self.allocator);
     }
 
     /// Shows alerts on the roster's clients, with or without a thumbnail set.
@@ -383,6 +388,28 @@ pub const App = struct {
                 }
             }
         }
+        self.publishState();
+    }
+
+    fn publishState(self: *App) void {
+        const report = if (self.state_report) |*report| report else return;
+        var arena_state: std.heap.ArenaAllocator = .init(self.allocator);
+        defer arena_state.deinit();
+        const arena = arena_state.allocator();
+        const thumbnails: []const set.ThumbnailWindow = if (self.thumbnail_set) |thumbnail_set| thumbnail_set.thumbnails.items else &.{};
+        const entries = arena.alloc(state_file.Snapshot.Thumbnail, thumbnails.len) catch |err| {
+            slog.warn("Failed to gather the app state: {}", .{err});
+            return;
+        };
+        for (thumbnails, entries) |*thumbnail, *entry| entry.* = .{
+            .character_name = thumbnail.character_name,
+            .hwnd = @intFromPtr(thumbnail.hwnd),
+            .source_hwnd = @intFromPtr(thumbnail.source_hwnd),
+            .visibility = thumbnail.visibility_state,
+            .is_hidden_by_character = thumbnail.cached_is_thumbnail_hidden,
+        };
+        const active_hwnd: ?usize = if (self.roster.active_hwnd) |hwnd| @intFromPtr(hwnd) else null;
+        report.publish(self.allocator, self.io, .{ .profile = self.store.live.profile_name, .active_hwnd = active_hwnd, .thumbnails = entries });
     }
 
     /// Writes what only teardown would, for an exit that skips it: Windows ending the session, or a background thread outlasting the wait at exit.
