@@ -12,10 +12,14 @@ import os
 import shutil
 import subprocess
 import tempfile
+import sys
 import time
+from contextlib import contextmanager
 from ctypes import wintypes
 from dataclasses import dataclass
 from pathlib import Path
+
+from eve_logs import CharacterLogs
 
 REPO = Path(__file__).resolve().parents[2]
 BIN = REPO / "zig-out" / "bin"
@@ -37,6 +41,9 @@ SW_MINIMIZE = 6
 VK_SHIFT = 0x10
 VK_F13 = 0x7C
 BYSTANDER_NAME = "Bystander"
+BYSTANDER_EXES = ("bystander.exe", "onlooker.exe")
+# src/panels/panel_header.zig's HEIGHT, in physical pixels: the strip a panel drags by, and all a folded one shows.
+PANEL_HEADER_HEIGHT = 34
 
 user32 = ctypes.WinDLL("user32", use_last_error=True)
 WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
@@ -159,6 +166,8 @@ class Thumbnail:
     is_hidden_by_character: bool
     group_badge: str
     window: Window
+    # What its last render drew (src/diagnostics/state_file.zig's Overlay); None before the first.
+    overlay: dict | None = None
 
     @property
     def is_shown(self) -> bool:
@@ -216,6 +225,55 @@ def monitors() -> list[Monitor]:
 
     user32.EnumDisplayMonitors(None, None, MONITORENUMPROC(visit), 0)
     return found
+
+
+MOUSEEVENTF_MOVE, MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_VIRTUALDESK = 0x0001, 0x8000, 0x4000
+SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN = 76, 77, 78, 79
+# A borderless window of one colour, from a second Python so this one needn't pump messages; per-monitor DPI aware so its pixels are the screen's.
+BACKDROP_SCRIPT = """
+import ctypes, sys, tkinter
+ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+left, top, width, height, color = int(sys.argv[1]), int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4]), sys.argv[5]
+root = tkinter.Tk()
+root.overrideredirect(True)
+root.configure(bg=color)
+root.geometry(f"{width}x{height}+{left}+{top}")
+root.mainloop()
+"""
+
+
+def move_mouse(x: int, y: int):
+    """As real input, which Windows' own move loop follows; SetCursorPos alone can leave it a step behind."""
+    left, top = user32.GetSystemMetrics(SM_XVIRTUALSCREEN), user32.GetSystemMetrics(SM_YVIRTUALSCREEN)
+    width, height = user32.GetSystemMetrics(SM_CXVIRTUALSCREEN), user32.GetSystemMetrics(SM_CYVIRTUALSCREEN)
+    normal_x = round((x - left) * 65535 / max(1, width - 1))
+    normal_y = round((y - top) * 65535 / max(1, height - 1))
+    user32.mouse_event(MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK, normal_x, normal_y, 0, None)
+
+
+@contextmanager
+def backdrop(rect: tuple[int, int, int, int], color: str):
+    """A plain window of `color` (e.g. "#ff0000") over `rect` (left, top, right, bottom), under any topmost window."""
+    left, top, right, bottom = rect
+    process = subprocess.Popen([sys.executable, "-c", BACKDROP_SCRIPT, str(left), str(top), str(right - left), str(bottom - top), color])
+    try:
+        time.sleep(1.0)
+        yield
+    finally:
+        process.kill()
+        process.wait(timeout=5)
+
+
+def client_to_screen(hwnd: int, x: int, y: int) -> tuple[int, int]:
+    point = wintypes.POINT(x, y)
+    user32.ClientToScreen(hwnd, ctypes.byref(point))
+    return point.x, point.y
+
+
+def client_size(hwnd: int) -> tuple[int, int]:
+    rect = wintypes.RECT()
+    user32.GetClientRect(hwnd, ctypes.byref(rect))
+    return rect.right - rect.left, rect.bottom - rect.top
 
 
 def layered_alpha(hwnd: int) -> int | None:
@@ -302,7 +360,7 @@ def default_profile() -> dict:
     """A partial profile: anything left out loads with its default."""
     return {
         "app": "eve-maj-preview",
-        "formatVersion": 7,
+        "formatVersion": 8,
         "thumbnail": {"width": 240, "height": 135, "showLivePreview": True, "activeThumbnailHidden": False},
         "display": {"startX": 100, "startY": 100, "newThumbnailSpacing": 10, "placementMode": "Manual"},
     }
@@ -321,6 +379,7 @@ class Client:
 
     def __init__(self, exe: Path, name: str):
         self.name = name
+        self.exe = exe
         self.process = subprocess.Popen([str(exe), "--client", name], cwd=exe.parent)
         self.hwnd = 0
 
@@ -372,6 +431,7 @@ class Session:
         self.dir = Path(tempfile.mkdtemp(prefix="eve-maj-ui-"))
         self.exe = self.dir / APP_EXE.name
         self.state_path = self.dir / "state.json"
+        self.logs_dir = self.dir / "EVE" / "logs"
         self.app: subprocess.Popen | None = None
         self.clients: dict[str, Client] = {}
         self.profile_count = 0
@@ -424,6 +484,11 @@ class Session:
         self.protocol(f"evemajpreview://profile/{name}")
         wait_for(f"profile '{name}' to load", lambda: (self.state() or {}).get("profile") == name,
                  details=lambda: f"{(self.state() or {}).get('profile')}; log: {self.log_lines('profile', 'protocol')[-6:]}")
+        # The alert history outlasts a profile switch, so the last test's entries would count in this one.
+        # Only when there's something to clear: the link can land late, and seen empty first, it would clear this test's alerts.
+        if self.history():
+            self.protocol("evemajpreview://hotkey/clear_notification_history")
+            wait_for("the alert history to clear", lambda: not self.history(), details=self.history)
 
     def log_lines(self, *words: str) -> list[str]:
         """The app's log lines mentioning any of `words`, case-insensitively."""
@@ -452,7 +517,8 @@ class Session:
         clients_dir.mkdir()
         # scout.zig only counts windows owned by an exe named exefile.exe, so the bystander's copy isn't a client.
         shutil.copy2(SIM_EXE, clients_dir / "exefile.exe")
-        shutil.copy2(SIM_EXE, clients_dir / "bystander.exe")
+        for exe in BYSTANDER_EXES:
+            shutil.copy2(SIM_EXE, clients_dir / exe)
         profiles = self.dir / "profiles"
         profiles.mkdir()
         settings = {
@@ -464,6 +530,10 @@ class Session:
             "runOnStartup": False,
             **self.global_settings,
         }
+        chatlog = settings.get("chatlog")
+        if chatlog and chatlog.get("enabled"):
+            settings["chatlog"] = {"chatlogDir": str(self.logs_dir / "Chatlogs"), "gamelogDir": str(self.logs_dir / "Gamelogs"),
+                                   "pollIntervalMs": 100, **chatlog}
         write_json(profiles / "global.settings.json", settings)
         write_json(profiles / "default.json", self.profile)
 
@@ -476,15 +546,94 @@ class Session:
     def start_clients(self, *names: str) -> list[Client]:
         return [self.start_client(name) for name in names]
 
-    def start_bystander(self) -> Client:
-        """A window that looks like a client but isn't one to the app; it takes focus when it opens."""
-        bystander = Client(self.dir / "clients" / "bystander.exe", BYSTANDER_NAME)
-        self.clients[BYSTANDER_NAME] = bystander
+    def start_logged_client(self, name: str, system: str = "Jita", channels: tuple[str, ...] = ()) -> CharacterLogs:
+        """Writes the character's session logs, then starts its client and waits for the app to follow them.
+
+        Needs log reading on: `GLOBAL_SETTINGS = {"chatlog": {"enabled": True}}` in the module.
+        """
+        logs = CharacterLogs(self.logs_dir, name, system, channels)
+        self.start_client(name)
+        wait_for(f"the app to read {name}'s system from its logs", lambda: self.system_of(name) == system,
+                 details=lambda: self.system_of(name))
+        return logs
+
+    def client_state(self, name: str) -> dict:
+        return next((c for c in (self.state() or {}).get("clients", []) if c["character_name"] == name), {})
+
+    def system_of(self, name: str) -> str:
+        return self.client_state(name).get("system_name", "")
+
+    def alerts(self, name: str) -> list[str]:
+        """The types of the alerts up on the client, newest first."""
+        return [a["notification_type"] for a in self.client_state(name).get("alerts", [])]
+
+    def alert(self, name: str, notification_type: str) -> dict | None:
+        return next((a for a in self.client_state(name).get("alerts", []) if a["notification_type"] == notification_type), None)
+
+    def wait_for_alert(self, name: str, notification_type: str, timeout_s: float = 5.0) -> dict:
+        return wait_for(f"a {notification_type} alert on {name}", lambda: self.alert(name, notification_type),
+                        timeout_s, details=lambda: self.alerts(name))
+
+    def overlay(self, name: str) -> dict:
+        """The thumbnail's last render, waiting for its first."""
+        def drawn():
+            thumbnail = next((t for t in self.thumbnail_list() if t.character_name == name), None)
+            return thumbnail.overlay if thumbnail else None
+        return wait_for(f"{name}'s thumbnail to render", drawn)
+
+    def drawn_texts(self, name: str, element: str) -> list[dict]:
+        """The texts of one element (thumbnail/overlay.zig's Element) the thumbnail last drew, top to bottom."""
+        return [t for t in self.overlay(name)["texts"] if t["element"] == element]
+
+    def wait_for_text(self, name: str, element: str, timeout_s: float = 6.0) -> dict:
+        texts = wait_for(f"{name}'s {element} text", lambda: self.drawn_texts(name, element), timeout_s,
+                         details=lambda: [t["element"] for t in self.overlay(name)["texts"]])
+        return texts[0]
+
+    def history(self) -> list[dict]:
+        return (self.state() or {}).get("history", [])
+
+    def panel_window(self, class_name: str) -> Window | None:
+        """The app's visible window of a panel's class, if it shows."""
+        windows = self.app_windows(class_name)
+        return windows[0] if windows else None
+
+    def wait_for_panel_window(self, class_name: str, timeout_s: float = 5.0) -> Window:
+        return wait_for(f"a {class_name} window", lambda: self.panel_window(class_name), timeout_s)
+
+    def panel(self, kind: str) -> dict | None:
+        """A panel's entry in the state file (src/diagnostics/state_file.zig's Panel), while it has a window."""
+        return next((p for p in (self.state() or {}).get("panels", []) if p["kind"] == kind), None)
+
+    def panel_texts(self, kind: str) -> list[dict]:
+        """What the panel's last render drew as text, in drawing order."""
+        return (self.panel(kind) or {}).get("texts", [])
+
+    def panel_strings(self, kind: str) -> list[str]:
+        return [t["text"] for t in self.panel_texts(kind)]
+
+    def wait_for_panel_text(self, kind: str, matches, timeout_s: float = 6.0) -> dict:
+        """The first text the panel drew that equals `matches`, or that `matches` accepts when it's a function."""
+        accepts = matches if callable(matches) else (lambda text: text == matches)
+        found = lambda: next((t for t in self.panel_texts(kind) if accepts(t["text"])), None)
+        return wait_for(f"the {kind} panel to draw {matches if isinstance(matches, str) else 'the text'}", found, timeout_s,
+                        details=lambda: self.panel_strings(kind))
+
+    def history_count(self, notification_type: str) -> int:
+        return sum(entry["notification_type"] == notification_type for entry in self.history())
+
+    def start_bystander(self, exe: str = BYSTANDER_EXES[0], name: str = BYSTANDER_NAME) -> Client:
+        """A window that looks like a client but isn't one to the app; it takes focus when it opens.
+
+        `exe` is one of BYSTANDER_EXES, so two bystanders can be told apart by executable.
+        """
+        bystander = Client(self.dir / "clients" / exe, name)
+        self.clients[name] = bystander
         bystander.wait_ready()
         return bystander
 
     def running_names(self) -> set[str]:
-        return {name for name, c in self.clients.items() if c.process.poll() is None and name != BYSTANDER_NAME}
+        return {name for name, c in self.clients.items() if c.process.poll() is None and c.exe.name not in BYSTANDER_EXES}
 
     def state(self) -> dict | None:
         """The app's latest state file, or None while it's missing or mid-replace."""
@@ -500,7 +649,7 @@ class Session:
             window = describe(entry["hwnd"])
             if window:
                 found.append(Thumbnail(entry["character_name"], entry["source_hwnd"], entry["visibility"],
-                                       entry["is_hidden_by_character"], entry["group_badge"], window))
+                                       entry["is_hidden_by_character"], entry["group_badge"], window, entry.get("overlay")))
         return found
 
     def thumbnails(self) -> dict[str, Thumbnail]:
@@ -644,6 +793,18 @@ class Session:
         finally:
             for modifier in reversed(modifiers):
                 self.key_up(modifier)
+        self.park_cursor()
+
+    def drag(self, start: tuple[int, int], end: tuple[int, int], button: str = "left"):
+        """Presses at `start`, moves to `end` in steps, as Windows' move loop needs, and lets go."""
+        self.mouse_down(*start, button=button)
+        try:
+            for step in range(1, 9):
+                move_mouse(start[0] + (end[0] - start[0]) * step // 8, start[1] + (end[1] - start[1]) * step // 8)
+                time.sleep(0.04)
+            time.sleep(0.2)
+        finally:
+            self.mouse_up(button)
         self.park_cursor()
 
     def extra_thumbnail_windows(self) -> list[Window]:
