@@ -8,11 +8,24 @@ const log = @import("../log.zig");
 
 const slog = log.Scoped("alert_effects");
 
+/// What play has started since start-up, for diagnostics/state_file.zig.
+pub const PlayCounts = struct {
+    sounds: u32 = 0,
+    speeches: u32 = 0,
+};
+
 /// Main thread only; session-only, never saved to the profile.
 var g_is_muted = false;
+/// Set only while the state file is on; main thread only.
+var g_play_counts: ?*PlayCounts = null;
 
 pub fn isMuted() bool {
     return g_is_muted;
+}
+
+/// Null stops counting; `play_counts` must outlive the setting.
+pub fn setPlayCounts(play_counts: ?*PlayCounts) void {
+    g_play_counts = play_counts;
 }
 
 pub fn toggleMuted() void {
@@ -38,6 +51,7 @@ pub fn play(notification_config: *const config.NotificationConfig, type_config: 
 /// play, ignoring the mute, for the config dialog's Test Notification.
 pub fn playUnmuted(notification_config: *const config.NotificationConfig, type_config: config.NotificationTypeConfig, text: []const u8, spoken_name: ?[]const u8, is_minor: bool) void {
     if (type_config.tts_enabled) {
+        if (g_play_counts) |counts| counts.speeches +%= 1;
         tts.setVoiceSettings(notification_config.tts_volume, notification_config.tts_rate);
         if (spoken_name) |name| {
             var speak_buf: [256]u8 = undefined;
@@ -53,6 +67,7 @@ pub fn playUnmuted(notification_config: *const config.NotificationConfig, type_c
 
     if (type_config.sound_enabled) {
         if (type_config.sound_path) |path| {
+            if (g_play_counts) |counts| counts.sounds +%= 1;
             sound.playAlert(path, type_config.sound_volume, is_minor);
         }
     }

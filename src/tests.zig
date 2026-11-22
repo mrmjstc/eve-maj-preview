@@ -35,6 +35,7 @@ test {
     _ = @import("config/wire.zig");
     _ = @import("control/minimize_rules.zig");
     _ = @import("control/restart_plan.zig");
+    _ = @import("diagnostics/recorder.zig");
     _ = @import("diagnostics/state_file.zig");
     _ = @import("dialog/knots/color_convert.zig");
     _ = @import("dialog/knots/labels.zig");
@@ -85,6 +86,7 @@ test {
     _ = @import("notifications/stack.zig");
     _ = @import("notifications/template.zig");
     _ = @import("notifications/worker.zig");
+    _ = @import("panels/drawn_text.zig");
     _ = @import("panels/glyphs.zig");
     _ = @import("panels/history_look.zig");
     _ = @import("panels/intel_look.zig");

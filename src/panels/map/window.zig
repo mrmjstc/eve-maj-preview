@@ -777,6 +777,8 @@ pub const MapPanelWindow = struct {
             self.ensurePortals(scene);
         }
         self.ensureLabels(dc, areas, fonts, covered, paint.shownCampaigns(self.config, scene));
+        panel_chrome.startRecording(self.panel.hwnd);
+        defer panel_chrome.stopRecording();
         painter.draw(bitmap, scene, fonts, intel_entries, now_ms, .{ .popup = &self.state.popup, .search_stops = &self.state.search_stops });
 
         self.panel.present(map_settings.opacity, signature);

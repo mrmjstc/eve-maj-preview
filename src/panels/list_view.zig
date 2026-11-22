@@ -471,7 +471,7 @@ pub const ListWindow = struct {
         const content_bottom = if (shows_totals) lines_bottom + sizes.footer_height else lines_bottom + list_look.BOTTOM_PADDING;
         const panel_height = panel_header.panelHeight(is_collapsed, content_bottom);
         const frame = try panel_chrome.beginFrame(&self.panel, &self.header_fonts, &panel_header_state, panel_width, panel_height);
-        defer frame.restoreFont();
+        defer frame.end();
         const bitmap = frame.bitmap;
         const dc = frame.dc;
         const canvas = frame.canvas;

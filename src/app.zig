@@ -15,6 +15,7 @@ const focus_mod = @import("control/focus.zig");
 const restart_plan = @import("control/restart_plan.zig");
 const thumbnail_input = @import("control/thumbnail_input.zig");
 const set = @import("thumbnail/set.zig");
+const overlay = @import("thumbnail/overlay.zig");
 const hotkeys = @import("hotkeys/manager.zig");
 const commands_mod = @import("hotkeys/commands.zig");
 const cycling = @import("hotkeys/cycling.zig");
@@ -25,9 +26,11 @@ const profile_switch = @import("hotkeys/profile_switch.zig");
 const center = @import("notifications/center.zig");
 const alert_effects = @import("notifications/alert_effects.zig");
 const notifier_mod = @import("notifications/notifier.zig");
+const history = @import("notifications/history.zig");
 const intel_mod = @import("map/intel.zig");
 const list_view = @import("panels/list_view.zig");
 const map_panel_mod = @import("panels/map_panel.zig");
+const panel_chrome = @import("panels/panel_chrome.zig");
 const panel_host = @import("panels/panel_host.zig");
 const panel_look = @import("panels/panel_look.zig");
 const chatlog = @import("chatlog.zig");
@@ -66,6 +69,13 @@ const Restart = struct {
     global_draft: ?*config.GlobalConfig,
     /// Borrows Scout's windows, from rescan_windows on.
     eve_windows: []const scout_mod.EveWindow = &.{},
+};
+
+/// What the state file reads of the last renders and alert sounds; made only while it's on.
+const Recorders = struct {
+    overlays: overlay.DrawnRecorder,
+    panel_texts: panel_chrome.TextRecorder,
+    plays: alert_effects.PlayCounts = .{},
 };
 
 /// What main.zig loads from disk before building App.
@@ -126,6 +136,8 @@ pub const App = struct {
     last_travel_check: win32.Ticks = .{},
     /// Null unless the end-to-end tests asked for it.
     state_report: ?state_file.StateFile = null,
+    /// Owned; null unless state_report is set.
+    recorders: ?*Recorders = null,
 
     /// Takes ownership of `loaded`, which deinit frees.
     pub fn init(allocator: std.mem.Allocator, io: std.Io, instance: win32.HINSTANCE, loaded: Loaded) App {
@@ -152,6 +164,7 @@ pub const App = struct {
     pub fn start(self: *App, timer_hwnd: win32.HWND) !void {
         self.timer_hwnd = timer_hwnd;
         self.store.live.logSettings();
+        if (self.state_report != null) self.startRecorders();
         self.notifications.start(self.panelContext(), PANEL_HOST, &self.intel.history);
         self.map_panel.start(self.panelContext(), &self.intel, &self.global_settings);
         self.scout.listenForEvents();
@@ -197,6 +210,30 @@ pub const App = struct {
         self.character_ids.deinit();
         self.global_settings.deinit();
         if (self.state_report) |*report| report.deinit(self.allocator);
+        self.stopRecorders();
+    }
+
+    fn startRecorders(self: *App) void {
+        const recorders = self.allocator.create(Recorders) catch |err| {
+            slog.warn("Failed to start recording renders for the state file: {}", .{err});
+            return;
+        };
+        recorders.* = .{ .overlays = .init(self.allocator), .panel_texts = .init(self.allocator) };
+        self.recorders = recorders;
+        overlay.setRecorder(&recorders.overlays);
+        panel_chrome.setRecorder(&recorders.panel_texts);
+        alert_effects.setPlayCounts(&recorders.plays);
+    }
+
+    fn stopRecorders(self: *App) void {
+        const recorders = self.recorders orelse return;
+        overlay.setRecorder(null);
+        panel_chrome.setRecorder(null);
+        alert_effects.setPlayCounts(null);
+        recorders.overlays.deinit();
+        recorders.panel_texts.deinit();
+        self.allocator.destroy(recorders);
+        self.recorders = null;
     }
 
     /// Shows alerts on the roster's clients, with or without a thumbnail set.
@@ -395,34 +432,84 @@ pub const App = struct {
         const report = if (self.state_report) |*report| report else return;
         var arena_state: std.heap.ArenaAllocator = .init(self.allocator);
         defer arena_state.deinit();
-        const arena = arena_state.allocator();
-        const thumbnails: []const set.ThumbnailWindow = if (self.thumbnail_set) |thumbnail_set| thumbnail_set.thumbnails.items else &.{};
-        const entries = arena.alloc(state_file.Snapshot.Thumbnail, thumbnails.len) catch |err| {
+        const snapshot = self.stateSnapshot(arena_state.allocator()) catch |err| {
             slog.warn("Failed to gather the app state: {}", .{err});
             return;
         };
-        for (thumbnails, entries) |*thumbnail, *entry| entry.* = .{
+        report.publish(self.allocator, self.io, snapshot);
+    }
+
+    /// Borrows from App and `arena`, so publish it before either changes.
+    fn stateSnapshot(self: *const App, arena: std.mem.Allocator) !state_file.Snapshot {
+        const thumbnails: []const set.ThumbnailWindow = if (self.thumbnail_set) |thumbnail_set| thumbnail_set.thumbnails.items else &.{};
+        const thumbnail_entries = try arena.alloc(state_file.Snapshot.Thumbnail, thumbnails.len);
+        for (thumbnails, thumbnail_entries) |*thumbnail, *entry| entry.* = .{
             .character_name = thumbnail.character_name,
             .hwnd = @intFromPtr(thumbnail.hwnd),
             .source_hwnd = @intFromPtr(thumbnail.source_hwnd),
             .visibility = thumbnail.visibility_state,
             .is_hidden_by_character = thumbnail.cached_is_thumbnail_hidden,
             .group_badge = thumbnail.cached_group_badge_label,
+            .overlay = if (self.recorders) |recorders| try overlaySnapshot(arena, thumbnail, &recorders.overlays) else null,
         };
+
         const hotkey_groups = self.store.live.hotkeyGroups.items;
-        const groups = arena.alloc(state_file.Snapshot.Group, hotkey_groups.len) catch |err| {
-            slog.warn("Failed to gather the app state: {}", .{err});
-            return;
-        };
+        const groups = try arena.alloc(state_file.Snapshot.Group, hotkey_groups.len);
         for (hotkey_groups, groups) |*group, *entry| entry.* = .{ .name = group.name, .members = group.characters.items };
-        report.publish(self.allocator, self.io, .{
+
+        const clients = try arena.alloc(state_file.Snapshot.Client, self.roster.clients.items.len);
+        for (self.roster.clients.items, clients) |*client, *entry| {
+            const active = client.notifications.items();
+            const alerts = try arena.alloc(state_file.Snapshot.Alert, active.len);
+            for (active, alerts) |*alert, *alert_entry| alert_entry.* = .{
+                .notification_type = alert.notification_type,
+                .text = alert.text,
+                .shows_text = alert.shows_text,
+                .shows_border = alert.show_border,
+                .flashes_border = alert.flash_border,
+                .border_color = alert.border_color_override,
+                .text_color = alert.text_color_override,
+            };
+            entry.* = .{
+                .character_name = client.character_name,
+                .hwnd = @intFromPtr(client.hwnd),
+                .system_name = client.system_name,
+                .alerts = alerts,
+                .incoming_dps = client.stats.incoming_dps,
+                .outgoing_dps = client.stats.outgoing_dps,
+                .mining_rate = client.stats.mining_rate,
+                .mining_isk_rate = client.stats.mining_isk_rate,
+                .bounty_isk_rate = client.stats.bounty_isk_rate,
+            };
+        }
+
+        const play_counts: alert_effects.PlayCounts = if (self.recorders) |recorders| recorders.plays else .{};
+        return .{
             .profile = self.store.live.profile_name,
             .active_hwnd = if (self.roster.active_hwnd) |hwnd| @intFromPtr(hwnd) else null,
             .are_hotkeys_suspended = if (self.hotkey_manager) |manager| manager.are_hotkeys_suspended else false,
             .excluded_characters = self.exclusions.names.items,
             .groups = groups,
-            .thumbnails = entries,
-        });
+            .thumbnails = thumbnail_entries,
+            .clients = clients,
+            .are_alerts_muted = alert_effects.isMuted(),
+            .sounds_played = play_counts.sounds,
+            .speeches_started = play_counts.speeches,
+            .history = try historyEntries(arena, &self.notifications.history),
+            .intel_history = try historyEntries(arena, &self.intel.history),
+            .panels = try self.panelSnapshots(arena),
+        };
+    }
+
+    fn panelSnapshots(self: *const App, arena: std.mem.Allocator) ![]const state_file.Snapshot.Panel {
+        const recorders = self.recorders orelse return &.{};
+        const text_recorder = &recorders.panel_texts;
+        var panels: std.ArrayList(state_file.Snapshot.Panel) = .empty;
+        if (self.list_window) |*window| try panels.append(arena, try panelSnapshot(arena, .client_list, window.panel.hwnd, text_recorder));
+        if (self.notifications.panel.window) |*window| try panels.append(arena, try panelSnapshot(arena, .history, window.panel.hwnd, text_recorder));
+        if (self.notifications.intel_panel.window) |*window| try panels.append(arena, try panelSnapshot(arena, .intel, window.panel.hwnd, text_recorder));
+        if (self.map_panel.window) |*window| try panels.append(arena, try panelSnapshot(arena, .map, window.panel.hwnd, text_recorder));
+        return panels.items;
     }
 
     /// Writes what only teardown would, for an exit that skips it: Windows ending the session, or a background thread outlasting the wait at exit.
@@ -898,6 +985,61 @@ fn addChatlogCharacters(monitor: *chatlog.ChatlogMonitor, windows: []const scout
             slog.err("Failed to add '{s}' to the chatlog monitor: {}", .{ eve_window.character_name, err });
         };
     }
+}
+
+/// Borrows from the thumbnail's render cache and `drawn_recorder`; null before its first render.
+fn overlaySnapshot(arena: std.mem.Allocator, thumbnail: *const set.ThumbnailWindow, drawn_recorder: *const overlay.DrawnRecorder) !?state_file.Snapshot.Overlay {
+    const settings = thumbnail.render_cache.settings orelse return null;
+    const drawn = drawn_recorder.find(@intFromPtr(thumbnail.text_hwnd)) orelse return null;
+    const drawn_texts = drawn.drawnTexts();
+    const texts = try arena.alloc(state_file.Snapshot.Text, drawn_texts.len);
+    for (drawn_texts, texts) |*drawn_text, *entry| entry.* = .{
+        .element = @tagName(drawn_text.element),
+        .text = drawn_text.text(),
+        .box = snapshotBox(drawn_text.box),
+        .color = drawn_text.color,
+        .bg_color = drawn_text.bg_color,
+    };
+    return .{
+        .width = settings.overlay_width,
+        .height = settings.overlay_height,
+        .text_alpha = settings.overlay_alpha,
+        .shows_border = settings.show_border,
+        .border_width = settings.border_width,
+        .border_color = settings.border_color,
+        .border_style = settings.border_style,
+        .shows_exclusion = settings.show_exclusion_overlay,
+        .exclusion_style = settings.exclusion_overlay_style,
+        .exclusion_color = settings.exclusion_overlay_color,
+        .texts = texts,
+        .notifications = if (drawn.notifications) |box| snapshotBox(box) else null,
+        .notifications_bg_color = drawn.notifications_bg_color,
+        .notification_color = drawn.notification_color,
+        .connection_map = if (drawn.connection_map) |box| snapshotBox(box) else null,
+    };
+}
+
+fn snapshotBox(box: overlay.DrawnBox) state_file.Snapshot.Box {
+    return .{ .left = box.left, .top = box.top, .width = box.width, .height = box.height };
+}
+
+/// Newest first, at most state_file.HISTORY_LIMIT; borrows from copies in `arena`.
+fn historyEntries(arena: std.mem.Allocator, source: *const history.NotificationHistory) ![]state_file.Snapshot.HistoryEntry {
+    const copies = source.snapshot(try arena.alloc(history.Entry, state_file.HISTORY_LIMIT));
+    const entries = try arena.alloc(state_file.Snapshot.HistoryEntry, copies.len);
+    for (copies, entries) |*recorded, *entry| {
+        entry.* = .{ .notification_type = recorded.notification_type, .character_name = recorded.characterName(), .text = recorded.text() };
+    }
+    return entries;
+}
+
+/// Borrows from `text_recorder`; no texts before the panel's first recorded render.
+fn panelSnapshot(arena: std.mem.Allocator, kind: state_file.Snapshot.PanelKind, hwnd: win32.HWND, text_recorder: *const panel_chrome.TextRecorder) !state_file.Snapshot.Panel {
+    const record = text_recorder.find(@intFromPtr(hwnd)) orelse return .{ .kind = kind, .hwnd = @intFromPtr(hwnd), .texts = &.{} };
+    const recorded = record.items();
+    const texts = try arena.alloc(state_file.Snapshot.PanelText, recorded.len);
+    for (recorded, texts) |*text, *entry| entry.* = .{ .text = text.text(), .left = text.left, .top = text.top, .color = text.color };
+    return .{ .kind = kind, .hwnd = @intFromPtr(hwnd), .texts = texts };
 }
 
 fn startChatlogWorker(monitor: *chatlog.ChatlogMonitor) void {

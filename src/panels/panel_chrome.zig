@@ -4,17 +4,21 @@ const win32 = @import("../platform/win32.zig");
 const gdi_overlay = @import("../platform/gdi_overlay.zig");
 const panel_window = @import("../platform/panel_window.zig");
 const fonts_mod = @import("../platform/fonts.zig");
+const drawn_text = @import("drawn_text.zig");
 const glyphs = @import("glyphs.zig");
 const list_look = @import("list_look.zig");
 const palette = @import("../palette.zig");
 const panel_header = @import("panel_header.zig");
 const box = @import("../util/box.zig");
 const pixel_buffer = @import("../util/pixel_buffer.zig");
+const recorder = @import("../diagnostics/recorder.zig");
 
 const Box = box.Box;
 const Canvas = pixel_buffer.Canvas;
 const FontWeight = fonts_mod.FontWeight;
 const PanelWindow = panel_window.PanelWindow;
+
+pub const TextRecorder = recorder.Recorder(drawn_text.Record);
 
 pub const MAX_TEXT_LENGTH: usize = 160;
 const HEADER_BUTTON_RADIUS: usize = palette.RADIUS;
@@ -80,21 +84,44 @@ pub const Frame = struct {
     summary_left: i32,
     old_font: ?win32.HANDLE,
 
-    /// Deferred straight after beginFrame, so a failed draw doesn't leave the panel's font selected.
-    pub fn restoreFont(self: *const Frame) void {
+    /// Deferred straight after beginFrame, so a failed draw doesn't leave the panel's font selected or its text recording.
+    pub fn end(self: *const Frame) void {
         if (self.old_font) |font| _ = win32.SelectObject(self.dc, font);
+        stopRecording();
     }
 };
 
-/// With the panel's font selected, as Frame.restoreFont undoes.
+/// Set only while the state file is on; main thread only.
+var g_recorder: ?*TextRecorder = null;
+/// The rendering panel's record, while g_recorder is set; main thread only.
+var g_record: ?*drawn_text.Record = null;
+
+/// With the panel's font selected and its text recorded, as Frame.end undoes.
 pub fn beginFrame(panel: *PanelWindow, fonts: *const HeaderFonts, header: *const Header, width: i32, height: i32) !Frame {
     const bitmap = try panel.beginFrame(width, height);
+    startRecording(panel.hwnd);
     const dc = bitmap.mem_dc;
     const canvas = bitmap.canvas();
     fillBody(canvas);
     fillHeader(canvas, header);
     const old_font = selectFont(panel, dc);
     return .{ .bitmap = bitmap, .dc = dc, .canvas = canvas, .old_font = old_font, .summary_left = drawHeaderText(dc, fonts, header) };
+}
+
+/// Null stops recording; `text_recorder` must outlive the setting.
+pub fn setRecorder(text_recorder: ?*TextRecorder) void {
+    g_recorder = text_recorder;
+    g_record = null;
+}
+
+/// Until stopRecording, what the draw functions draw goes into `hwnd`'s record, while a recorder is set.
+pub fn startRecording(hwnd: win32.HWND) void {
+    const text_recorder = g_recorder orelse return;
+    g_record = text_recorder.begin(@intFromPtr(hwnd));
+}
+
+pub fn stopRecording() void {
+    g_record = null;
 }
 
 /// The panel's font and its small font, for the smaller text under a row.
@@ -166,11 +193,13 @@ pub fn finish(canvas: Canvas) void {
 /// Ignores `color`'s alpha byte.
 pub fn drawLine(dc: win32.HDC, text: []const u8, x: i32, y: i32, color: u32) void {
     gdi_overlay.drawText(MAX_TEXT_LENGTH, dc, x, y, text, color & 0x00FF_FFFF);
+    if (g_record) |record| record.add(text, x, y, color);
 }
 
 /// Like drawLine, for text that may not be ASCII.
 pub fn drawWideLine(dc: win32.HDC, text: []const u8, x: i32, y: i32, color: u32) void {
     gdi_overlay.drawTextUtf8(MAX_TEXT_LENGTH, dc, x, y, text, color & 0x00FF_FFFF);
+    if (g_record) |record| record.add(text, x, y, color);
 }
 
 /// Cut short with "..." to fit `max_width` pixels, as UTF-8, which chat can be; returns the width drawn.

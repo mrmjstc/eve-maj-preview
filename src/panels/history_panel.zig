@@ -337,7 +337,7 @@ pub const HistoryPanelWindow = struct {
         const panel_width: i32 = @max(1, history_settings.width);
         const panel_height = panel_header.panelHeight(is_collapsed, history_settings.height);
         const frame = try panel_chrome.beginFrame(&self.panel, &self.header_fonts, &panel_header_state, panel_width, panel_height);
-        defer frame.restoreFont();
+        defer frame.end();
         const dc = frame.dc;
         const canvas = frame.canvas;
         self.chip_layout = null;

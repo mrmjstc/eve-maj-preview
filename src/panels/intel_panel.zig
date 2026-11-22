@@ -359,7 +359,7 @@ pub const IntelPanelWindow = struct {
         const panel_width: i32 = @max(1, intel_settings.width);
         const panel_height = panel_header.panelHeight(is_collapsed, intel_settings.height);
         const frame = try panel_chrome.beginFrame(&self.panel, &self.header_fonts, &panel_header_state, panel_width, panel_height);
-        defer frame.restoreFont();
+        defer frame.end();
         const bitmap = frame.bitmap;
         const dc = frame.dc;
         const canvas = frame.canvas;
