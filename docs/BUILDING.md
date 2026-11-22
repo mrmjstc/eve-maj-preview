@@ -55,3 +55,14 @@ Not every Windows install has [Cascadia Code](https://github.com/microsoft/casca
 ```powershell
 iscc /DMyAppVersion=0.95.0 installer\eve-maj-preview.iss
 ```
+
+## Releasing
+
+`build-release.ps1` bumps the version, builds, packages and publishes a draft GitHub release, then announces it on Discord; `build-release-dev.ps1` does the same for a prerelease from the `dev` branch. `update-winget.ps1` submits the winget manifest once a release is published.
+
+The Discord webhook URLs aren't in the repo. Save each once per machine; it's stored encrypted to your Windows account under `%LOCALAPPDATA%`, and a release without one skips the announcement:
+
+```powershell
+.\tools\discord-webhook.ps1 -Channel release
+.\tools\discord-webhook.ps1 -Channel dev
+```
