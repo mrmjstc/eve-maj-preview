@@ -56,6 +56,35 @@ user32.GetForegroundWindow.restype = wintypes.HWND
 user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
 user32.keybd_event.argtypes = [wintypes.BYTE, wintypes.BYTE, wintypes.DWORD, ctypes.c_void_p]
 user32.SetCursorPos.argtypes = [ctypes.c_int, ctypes.c_int]
+user32.GetLayeredWindowAttributes.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD), ctypes.POINTER(wintypes.BYTE), ctypes.POINTER(wintypes.DWORD)]
+user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wintypes.UINT]
+user32.GetDC.argtypes = [wintypes.HWND]
+user32.GetDC.restype = wintypes.HDC
+user32.ReleaseDC.argtypes = [wintypes.HWND, wintypes.HDC]
+MONITORENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HMONITOR, wintypes.HDC, ctypes.POINTER(wintypes.RECT), wintypes.LPARAM)
+user32.EnumDisplayMonitors.argtypes = [wintypes.HDC, ctypes.c_void_p, MONITORENUMPROC, wintypes.LPARAM]
+gdi32 = ctypes.WinDLL("gdi32")
+gdi32.GetPixel.argtypes = [wintypes.HDC, ctypes.c_int, ctypes.c_int]
+gdi32.GetPixel.restype = wintypes.DWORD
+gdi32.CreateCompatibleDC.argtypes = [wintypes.HDC]
+gdi32.CreateCompatibleDC.restype = wintypes.HDC
+gdi32.CreateCompatibleBitmap.argtypes = [wintypes.HDC, ctypes.c_int, ctypes.c_int]
+gdi32.CreateCompatibleBitmap.restype = wintypes.HBITMAP
+gdi32.SelectObject.argtypes = [wintypes.HDC, wintypes.HGDIOBJ]
+gdi32.SelectObject.restype = wintypes.HGDIOBJ
+gdi32.BitBlt.argtypes = [wintypes.HDC, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wintypes.HDC, ctypes.c_int, ctypes.c_int, wintypes.DWORD]
+gdi32.DeleteObject.argtypes = [wintypes.HGDIOBJ]
+gdi32.DeleteDC.argtypes = [wintypes.HDC]
+SRCCOPY = 0x00CC0020
+CAPTUREBLT = 0x40000000
+shcore = ctypes.WinDLL("shcore")
+
+
+class MONITORINFO(ctypes.Structure):
+    _fields_ = [("cbSize", wintypes.DWORD), ("rcMonitor", wintypes.RECT), ("rcWork", wintypes.RECT), ("dwFlags", wintypes.DWORD)]
+
+
+user32.GetMonitorInfoW.argtypes = [wintypes.HMONITOR, ctypes.POINTER(MONITORINFO)]
 user32.SetProcessDpiAwarenessContext.argtypes = [ctypes.c_void_p]
 
 # Physical pixels, matching the app, which is per-monitor aware too.
@@ -91,6 +120,9 @@ class Window:
     @property
     def scale(self) -> float:
         return self.dpi / 96
+
+    def point(self, x_fraction: float, y_fraction: float) -> tuple[int, int]:
+        return self.left + round(self.width * x_fraction), self.top + round(self.height * y_fraction)
 
     def overlaps(self, other: "Window") -> bool:
         return self.left < other.right and other.left < self.right and self.top < other.bottom and other.top < self.bottom
@@ -134,6 +166,64 @@ def top_level_windows() -> list[Window]:
     handles: list[int] = []
     user32.EnumWindows(WNDENUMPROC(lambda hwnd, _lparam: handles.append(hwnd) or True), 0)
     return [w for w in map(describe, handles) if w]
+
+
+@dataclass(frozen=True)
+class Monitor:
+    bounds: tuple[int, int, int, int]
+    work_area: tuple[int, int, int, int]
+    dpi: int
+
+    @property
+    def scale(self) -> float:
+        return self.dpi / 96
+
+
+def monitors() -> list[Monitor]:
+    """In EnumDisplayMonitors order, which is what DisplayConfig.monitorIndex counts."""
+    found: list[Monitor] = []
+
+    def visit(hmonitor, _hdc, _rect, _lparam):
+        info = MONITORINFO(cbSize=ctypes.sizeof(MONITORINFO))
+        user32.GetMonitorInfoW(hmonitor, ctypes.byref(info))
+        dpi_x, dpi_y = wintypes.UINT(), wintypes.UINT()
+        shcore.GetDpiForMonitor(hmonitor, 0, ctypes.byref(dpi_x), ctypes.byref(dpi_y))
+        as_tuple = lambda r: (r.left, r.top, r.right, r.bottom)
+        found.append(Monitor(as_tuple(info.rcMonitor), as_tuple(info.rcWork), dpi_x.value or 96))
+        return True
+
+    user32.EnumDisplayMonitors(None, None, MONITORENUMPROC(visit), 0)
+    return found
+
+
+def layered_alpha(hwnd: int) -> int | None:
+    """The alpha SetLayeredWindowAttributes gave the window, or None when it has none."""
+    alpha, flags = wintypes.BYTE(), wintypes.DWORD()
+    if not user32.GetLayeredWindowAttributes(hwnd, None, ctypes.byref(alpha), ctypes.byref(flags)):
+        return None
+    return alpha.value & 0xFF if flags.value & 0x2 else None
+
+
+def pixel(x: int, y: int) -> tuple[int, int, int]:
+    """The composited screen colour at a point, as (r, g, b), layered windows included."""
+    screen = user32.GetDC(None)
+    memory = gdi32.CreateCompatibleDC(screen)
+    bitmap = gdi32.CreateCompatibleBitmap(screen, 1, 1)
+    old = gdi32.SelectObject(memory, bitmap)
+    try:
+        # Without CAPTUREBLT the copy leaves out layered windows, which the overlays are.
+        gdi32.BitBlt(memory, 0, 0, 1, 1, screen, x, y, SRCCOPY | CAPTUREBLT)
+        color = gdi32.GetPixel(memory, 0, 0)
+    finally:
+        gdi32.SelectObject(memory, old)
+        gdi32.DeleteObject(bitmap)
+        gdi32.DeleteDC(memory)
+        user32.ReleaseDC(None, screen)
+    return color & 0xFF, (color >> 8) & 0xFF, (color >> 16) & 0xFF
+
+
+def close_to(color: tuple[int, int, int], expected: tuple[int, int, int], tolerance: int = 24) -> bool:
+    return all(abs(c - e) <= tolerance for c, e in zip(color, expected))
 
 
 def foreground_hwnd() -> int:
@@ -211,6 +301,10 @@ class Client:
 
     def minimize(self):
         user32.ShowWindow(self.hwnd, SW_MINIMIZE)
+
+    def move(self, x: int, y: int):
+        # SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE
+        user32.SetWindowPos(self.hwnd, None, x, y, 0, 0, 0x0001 | 0x0004 | 0x0010)
 
     def close(self):
         if self.process.poll() is not None:
@@ -373,6 +467,11 @@ class Session:
                            lambda: (lambda shown: [shown] if set(shown) == names else None)(self.thumbnails()),
                            timeout_s, details=self.shown_names)
         return matched[0]
+
+    def app_windows(self, class_name: str) -> list[Window]:
+        """The app's visible top-level windows of one class, e.g. a panel's."""
+        return [w for w in top_level_windows()
+                if self.app and w.pid == self.app.pid and w.class_name == class_name and w.is_visible]
 
     def assert_thumbnails_stay(self, names: set[str], for_s: float = 2.0):
         stays(f"shown thumbnails to stay exactly {sorted(names)}", lambda: set(self.thumbnails()) == names,

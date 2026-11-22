@@ -35,6 +35,11 @@ NOT_TESTED = {
     "GlobalConfig.evestarsToken": "network",
     "GlobalConfig.alwaysOnTop": "the config dialog's own window",
     "GlobalConfig.advancedMode": "the config dialog only",
+    "TimerConfig.scanIntervalMs": "tick timing only; new windows are found by a once-a-second scan regardless",
+    "CharacterConfig.name": "the key every other character setting is found by",
+    "CharacterConfig.windowSize": "only for the config dialog's preview",
+    "ThumbnailSpace.name": "a label in the dialog only",
+    "DisplayConfig.hideThumbnailsDuringRegionSelect": "the config dialog's region tool",
 }
 
 
