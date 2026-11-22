@@ -14,6 +14,7 @@ const look = @import("look.zig");
 const metric_segments = @import("metric_segments.zig");
 const menu_mod = @import("menu.zig");
 const paint = @import("paint.zig");
+const scene_mod = @import("scene.zig");
 const state_mod = @import("state.zig");
 const text_mod = @import("text.zig");
 const panel_chrome = @import("../panel_chrome.zig");
@@ -42,7 +43,7 @@ const MapState = state_mod.MapState;
 const PanelWindow = panel_window.PanelWindow;
 const Regions = layout.Regions;
 const RegionIndex = universe.RegionIndex;
-const Scene = paint.Scene;
+const Scene = scene_mod.Scene;
 const SystemIndex = universe.SystemIndex;
 const slog = log.Scoped("map_panel");
 
@@ -296,7 +297,7 @@ pub const MapPanelWindow = struct {
     fn placeWormholeCard(self: *MapPanelWindow, dc: win32.HDC, areas: look.Areas, fonts: MapFonts, scene: Scene) ?look.ListCard {
         if (!self.showsWormholeCard()) return null;
         const hub = self.state.wormhole_hub;
-        self.state.wormhole_entry_count = if (paint.shownWormholes(self.config, scene)) |connections| wormhole_list.build(connections, hub, &self.state.wormhole_entries).len else 0;
+        self.state.wormhole_entry_count = if (scene.shownWormholes(self.config)) |connections| wormhole_list.build(connections, hub, &self.state.wormhole_entries).len else 0;
         const top = if (self.state.intel_card) |*intel| intel.box.bottom + look.CARD_GAP else self.columnTop(areas);
         const row_height = look.listRowHeight(fonts.chrome.name_height);
         const bottom = self.timerColumnBottom(areas, fonts);
@@ -339,7 +340,7 @@ pub const MapPanelWindow = struct {
 
     /// The shown regions' sov timers into timer_entries, none over New Eden; before the areas are measured, as the card shows only with one.
     fn listTimers(self: *MapPanelWindow, scene: Scene) void {
-        const campaigns = if (self.state.is_picking_region) null else paint.shownCampaigns(self.config, scene);
+        const campaigns = if (self.state.is_picking_region) null else scene.shownCampaigns(self.config);
         const shown = campaigns orelse {
             self.state.timer_entry_count = 0;
             return;
@@ -407,7 +408,7 @@ pub const MapPanelWindow = struct {
     }
 
     /// A new pin's or kill's ripple is playing in a shown region, or a ping's, which wants frames faster than the tick.
-    pub fn hasRipple(self: *const MapPanelWindow, scene: paint.Scene, now_ms: u64) bool {
+    pub fn hasRipple(self: *const MapPanelWindow, scene: Scene, now_ms: u64) bool {
         if (self.state.ping) |ping| {
             if (look.rippleAt(now_ms -| ping.started_ms) != null) return true;
         }
@@ -513,7 +514,7 @@ pub const MapPanelWindow = struct {
         hasher.update(std.mem.asBytes(&scene.logo_revision));
         hasher.update(std.mem.asBytes(&scene.pins.revision));
         // Each minute while timers or kills show, for their countdowns, ages and fading.
-        if (paint.shownCampaigns(self.config, scene) != null or scene.kills != null) hasher.update(std.mem.asBytes(&@divFloor(scene.now_seconds, std.time.s_per_min)));
+        if (scene.shownCampaigns(self.config) != null or scene.kills != null) hasher.update(std.mem.asBytes(&@divFloor(scene.now_seconds, std.time.s_per_min)));
         const lifetime_ms = self.config.intel.shrinkMs();
         const halo_scale = look.markerScale(self.state.layout.view.zoom);
         // By whole pixels, so a shrinking halo redraws only when it can show.
@@ -612,7 +613,7 @@ pub const MapPanelWindow = struct {
         const map_layout = &self.state.layout;
         var ends: [layout.MAX_PORTALS]layout.PortalEnd = undefined;
         var end_count: usize = 0;
-        if (paint.shownWormholes(self.config, scene)) |connections| {
+        if (scene.shownWormholes(self.config)) |connections| {
             for (connections.slice()) |connection| {
                 if (end_count == ends.len) break;
                 if (map_layout.nodeOf(connection.system) == null) continue;
@@ -620,7 +621,7 @@ pub const MapPanelWindow = struct {
                 end_count += 1;
             }
         }
-        if (paint.shownBridges(self.config, self.hasEveStars(), scene)) |bridges| {
+        if (scene.shownBridges(self.config, self.hasEveStars())) |bridges| {
             for (bridges.slice()) |bridge| {
                 if (end_count == ends.len) break;
                 // One with both ends shown is drawn across the map instead.
@@ -800,7 +801,6 @@ pub const MapPanelWindow = struct {
             .areas = areas,
             .has_eve_stars = self.hasEveStars(),
             .menu = if (self.state.menu) |*menu| .{ .menu = menu, .context = self.menuContext(scene.destinations, menu.system) } else null,
-            .allocator = self.panel.allocator,
         };
         const title = paint.titleText(&self.state);
         if (fonts) |loaded| self.state.chrome = measureChrome(dc, loaded, areas, .{
@@ -820,10 +820,10 @@ pub const MapPanelWindow = struct {
             self.ensureLayout(areas);
             self.ensurePortals(scene);
         }
-        self.ensureLabels(dc, areas, fonts, covered, paint.shownCampaigns(self.config, scene));
+        self.ensureLabels(dc, areas, fonts, covered, scene.shownCampaigns(self.config));
         panel_chrome.startRecording(self.panel.hwnd);
         defer panel_chrome.stopRecording();
-        painter.draw(bitmap, scene, fonts, intel_entries, now_ms, .{ .popup = &self.state.popup, .search_stops = &self.state.search_stops });
+        painter.draw(self.panel.allocator, bitmap, scene, fonts, intel_entries, now_ms, .{ .popup = &self.state.popup, .search_stops = &self.state.search_stops });
 
         self.panel.present(map_settings.opacity, signature);
     }
@@ -941,6 +941,6 @@ fn frameIntervalOf(hwnd: win32.HWND) u64 {
     defer _ = win32.ReleaseDC(hwnd, dc);
     const rate = win32.GetDeviceCaps(dc, win32.VREFRESH);
     // 0 and 1 stand for the hardware's default rate.
-    const hz: u64 = if (rate > 1) @intCast(rate) else FALLBACK_REFRESH_HZ;
-    return std.time.us_per_s / hz;
+    const refresh_hz: u64 = if (rate > 1) @intCast(rate) else FALLBACK_REFRESH_HZ;
+    return std.time.us_per_s / refresh_hz;
 }

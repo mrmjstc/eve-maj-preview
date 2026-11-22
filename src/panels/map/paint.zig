@@ -8,7 +8,7 @@ const history = @import("../../notifications/history.zig");
 const history_rows = @import("../history_rows.zig");
 const list_look = @import("../list_look.zig");
 const destinations_mod = @import("destinations.zig");
-const traffic_mod = @import("traffic.zig");
+const scene_mod = @import("scene.zig");
 const look = @import("look.zig");
 const metric_segments = @import("metric_segments.zig");
 const ownership = @import("ownership.zig");
@@ -26,10 +26,8 @@ const universe = @import("../../map/universe.zig");
 const layout_mod = @import("../../map/layout.zig");
 const stats_mod = @import("../../map/stats.zig");
 const activity_mod = @import("../../map/activity.zig");
-const holder_colors = @import("../../map/holder_colors.zig");
 const storms_mod = @import("../../map/storms.zig");
 const incursions_mod = @import("../../map/incursions.zig");
-const campaigns_mod = @import("../../map/campaigns.zig");
 const wormholes = @import("../../map/wormholes.zig");
 const faction_warfare = @import("../../map/faction_warfare.zig");
 const evestars = @import("../../map/evestars.zig");
@@ -37,35 +35,27 @@ const zkill = @import("../../map/zkill.zig");
 const intel_pins = @import("../../map/intel_pins.zig");
 const security = @import("../../map/security.zig");
 const markers = @import("../../map/markers.zig");
-const roster = @import("../../clients/roster.zig");
 const fixed_text = @import("../../util/fixed_text.zig");
 const pixel_buffer = @import("../../util/pixel_buffer.zig");
 const log = @import("../../log.zig");
 
 const Activity = activity_mod.Activity;
 const Box = layout_mod.Box;
-const Campaigns = campaigns_mod.Campaigns;
 const AvoidList = evestars.AvoidList;
-const Bridges = evestars.Bridges;
-const KillNames = zkill.Names;
 const Kills = zkill.Kills;
-const Connections = wormholes.Connections;
 const Destinations = destinations_mod.Destinations;
 const FixedText = fixed_text.FixedText;
 const Incursions = incursions_mod.Incursions;
 const Layout = layout_mod.Layout;
-const LogoColors = holder_colors.LogoColors;
 const MapMetric = types.MapMetric;
 const MapState = state_mod.MapState;
 const MetricSegment = metric_segments.MetricSegment;
 const PopupRow = popup_look.PopupRow;
 const RegionIndex = universe.RegionIndex;
-const Snapshot = stats_mod.Snapshot;
+const Scene = scene_mod.Scene;
 const Storms = storms_mod.Storms;
 const SystemIndex = universe.SystemIndex;
 const SystemStats = stats_mod.SystemStats;
-const Client = roster.Client;
-const Traffic = traffic_mod.Traffic;
 const TrafficSpan = types.TrafficSpan;
 const slog = log.Scoped("map_panel");
 
@@ -75,31 +65,6 @@ const MAX_LEGENDS = 3;
 const DETAIL_TEXT_MAX = 16;
 /// Fits a route row's jumps and kills, each a u32.
 const ROUTE_DETAIL_MAX = 40;
-
-/// What the panel shows besides its own settings.
-pub const Scene = struct {
-    /// Borrowed for one render.
-    clients: []const Client = &.{},
-    active_source_hwnd: ?win32.HWND = null,
-    /// Borrowed for one render.
-    stats: ?*const Snapshot,
-    /// Borrowed for one render; null until the first arrive.
-    logo_colors: ?*const LogoColors = null,
-    /// Changes with each new logo_colors, for the redraw check.
-    logo_revision: u64 = 0,
-    /// Borrowed for one render.
-    pins: *const intel_pins.IntelPins,
-    /// Borrowed for one render.
-    destinations: *const Destinations,
-    /// Borrowed for one render.
-    traffic: *const Traffic,
-    /// Seconds since 1970, UTC, for the sov timers' countdowns and the kills' ages.
-    now_seconds: i64 = 0,
-    /// Borrowed for one render; null while kills are hidden.
-    kills: ?*const Kills = null,
-    /// Borrowed for one render; null while kills are hidden.
-    kill_names: ?*const KillNames = null,
-};
 
 /// The configuration window's fonts for the cards and controls, and the map's own for the names on it.
 pub const MapFonts = struct {
@@ -188,11 +153,9 @@ pub const Painter = struct {
     has_eve_stars: bool,
     /// Null while the menu's closed.
     menu: ?OpenMenu,
-    /// For the areas' and routes' masks, each freed before draw returns.
-    allocator: std.mem.Allocator,
 
-    /// With `bitmap` begun and the panel's font selected.
-    pub fn draw(self: *const Painter, bitmap: *const gdi_overlay.OverlayBitmap, scene: Scene, fonts: ?MapFonts, intel_entries: []const history.Entry, now_ms: u64, measured: Measured) void {
+    /// With `bitmap` begun and the panel's font selected; `allocator` is for the areas' and routes' masks, each freed before this returns.
+    pub fn draw(self: *const Painter, allocator: std.mem.Allocator, bitmap: *const gdi_overlay.OverlayBitmap, scene: Scene, fonts: ?MapFonts, intel_entries: []const history.Entry, now_ms: u64, measured: Measured) void {
         const dc = bitmap.mem_dc;
         const canvas = bitmap.canvas();
         const areas = self.areas;
@@ -202,7 +165,7 @@ pub const Painter = struct {
         if (self.state.is_picking_region) {
             self.drawOverview(canvas, scene);
         } else {
-            self.drawMap(canvas, scene, &paint, now_ms);
+            self.drawMap(allocator, canvas, scene, &paint, now_ms);
         }
 
         const loaded = fonts orelse return;
@@ -268,25 +231,13 @@ pub const Painter = struct {
         };
     }
 
-    /// Null while they're hidden, or the last fetch didn't get them.
-    fn shownStorms(self: *const Painter, scene: Scene) ?*const Storms {
-        const stats = scene.stats orelse return null;
-        return if (self.config.mapPanel.showStorms and stats.has_storms) &stats.storms else null;
-    }
-
     fn stormLegend(self: *const Painter, scene: Scene) ?text_mod.Legend {
-        const storms = self.shownStorms(scene) orelse return null;
+        const storms = scene.shownStorms(self.config) orelse return null;
         return text_mod.stormLegend(storms, self.state.layout.nodes[0..self.state.layout.node_count]);
     }
 
-    /// Null while they're hidden, or the last fetch didn't get them.
-    fn shownIncursions(self: *const Painter, scene: Scene) ?*const Incursions {
-        const stats = scene.stats orelse return null;
-        return if (self.config.mapPanel.showIncursions and stats.has_incursions) &stats.incursions else null;
-    }
-
     fn incursionLegend(self: *const Painter, scene: Scene) ?text_mod.Legend {
-        const incursions = self.shownIncursions(scene) orelse return null;
+        const incursions = scene.shownIncursions(self.config) orelse return null;
         return text_mod.incursionLegend(incursions, self.state.layout.nodes[0..self.state.layout.node_count]);
     }
 
@@ -383,7 +334,7 @@ pub const Painter = struct {
             const tab_color = if (is_picked or self.isHovered(.wormhole_tab, @backingInt(hub))) list_look.NAME else list_look.MUTED;
             panel_chrome.drawLine(dc, text_mod.hubName(hub), box.left, header_top, tab_color);
         }
-        const connections = shownWormholes(self.config, scene);
+        const connections = scene.shownWormholes(self.config);
         _ = win32.SelectObject(dc, text.name_font);
         if (card.is_collapsed) return;
         const listed = connections orelse {
@@ -422,7 +373,7 @@ pub const Painter = struct {
         panel_chrome.drawLine(dc, "Sov timers", left, centredTop(card.header, text.name_height), list_look.NAME);
         _ = win32.SelectObject(dc, text.name_font);
         if (card.is_collapsed) return;
-        const campaigns = shownCampaigns(self.config, scene) orelse return;
+        const campaigns = scene.shownCampaigns(self.config) orelse return;
         for (card.rows[0..card.row_count], 0..) |box, row_index| {
             const entry = self.state.timerEntryAt(row_index) orelse break;
             const campaign = &campaigns.slice()[entry.index];
@@ -570,10 +521,10 @@ pub const Painter = struct {
         }
         // Outside those rings, stepping out as a region can hold more than one storm or incursion.
         var ring_gaps: [universe.REGION_COUNT]f32 = @splat(3);
-        if (self.shownStorms(scene)) |storms| {
+        if (scene.shownStorms(self.config)) |storms| {
             for (storms.slice()) |*storm| self.drawRegionRing(canvas, storm.center, look.stormColor(storm.kind), &ring_gaps);
         }
-        if (self.shownIncursions(scene)) |incursions| {
+        if (scene.shownIncursions(self.config)) |incursions| {
             for (incursions.slice()) |*incursion| self.drawRegionRing(canvas, incursion.staging, look.INCURSION, &ring_gaps);
         }
     }
@@ -761,7 +712,7 @@ pub const Painter = struct {
         return intelHaloRadius(&self.config.intel, pin, look.markerScale(self.state.layout.view.zoom), now_ms);
     }
 
-    fn drawMap(self: *const Painter, canvas: pixel_buffer.Canvas, scene: Scene, paint: *const MapPaint, now_ms: u64) void {
+    fn drawMap(self: *const Painter, allocator: std.mem.Allocator, canvas: pixel_buffer.Canvas, scene: Scene, paint: *const MapPaint, now_ms: u64) void {
         const layout = &self.state.layout;
         const scale = look.markerScale(layout.view.zoom);
         const hovered_node: ?u16 = if (self.state.hover.kind == .node) self.state.hover.index else null;
@@ -778,10 +729,10 @@ pub const Painter = struct {
                 if (look.rippleAt(now_ms -| ping.started_ms)) |ripple| look.drawRipple(canvas, node.x, node.y, ripple, scale, look.PING);
             }
         }
-        const storms = self.shownStorms(scene);
-        const incursions = self.shownIncursions(scene);
-        self.drawAreas(canvas, scene, scale);
-        self.drawRoutes(canvas, scene, scale);
+        const storms = scene.shownStorms(self.config);
+        const incursions = scene.shownIncursions(self.config);
+        self.drawAreas(allocator, canvas, scene, scale);
+        self.drawRoutes(allocator, canvas, scene, scale);
         const focus_node_index: ?u16 = if (self.state.focus_system) |system| layout.nodeOf(system) else null;
         for (layout.edges[0..layout.edge_count]) |edge| {
             const first = layout.nodes[edge.first_index];
@@ -797,7 +748,7 @@ pub const Painter = struct {
             const is_hovered = self.state.hover.kind == .exit and self.state.hover.index == index;
             markers.drawExit(canvas, layout.nodes[exit.from_index], exit, if (is_hovered) look.EDGE_HOVER else markers.EXIT);
         }
-        if (shownBridges(self.config, self.has_eve_stars, scene)) |bridges| {
+        if (scene.shownBridges(self.config, self.has_eve_stars)) |bridges| {
             for (bridges.slice()) |bridge| {
                 const from_index = layout.nodeOf(bridge.from) orelse continue;
                 const to_index = layout.nodeOf(bridge.to) orelse continue;
@@ -840,12 +791,12 @@ pub const Painter = struct {
             if (layout.nodeOf(reach.origin)) |index| pixel_buffer.drawRing(canvas, layout.nodes[index].x, layout.nodes[index].y, resting_radius + 3 * markers.RING_GAP, markers.RING_THICKNESS, look.RANGE);
         }
         // Outside a client's ring and the jump range's origin, as Turnur is the hub itself.
-        if (shownWormholes(self.config, scene) != null) {
+        if (scene.shownWormholes(self.config) != null) {
             if (universe.findSystemById(wormholes.TURNUR_ID)) |turnur| {
                 if (layout.nodeOf(turnur)) |index| pixel_buffer.drawRing(canvas, layout.nodes[index].x, layout.nodes[index].y, resting_radius + 4 * markers.RING_GAP, markers.RING_THICKNESS, look.WORMHOLE);
             }
         }
-        if (shownCampaigns(self.config, scene)) |campaigns| {
+        if (scene.shownCampaigns(self.config)) |campaigns| {
             for (campaigns.slice()) |*campaign| {
                 const index = layout.nodeOf(campaign.system) orelse continue;
                 look.drawTimerMark(canvas, layout.nodes[index].x, layout.nodes[index].y, scale, campaign.hasStarted(scene.now_seconds));
@@ -873,16 +824,16 @@ pub const Painter = struct {
     }
 
     /// Each storm and incursion as one shape following its systems and gates here, so an area that leaves the regions shown stops at their edge.
-    fn drawAreas(self: *const Painter, canvas: pixel_buffer.Canvas, scene: Scene, scale: f32) void {
+    fn drawAreas(self: *const Painter, allocator: std.mem.Allocator, canvas: pixel_buffer.Canvas, scene: Scene, scale: f32) void {
         // The legends list what reaches the map, and most regions have nothing to mask.
         if (self.stormLegend(scene) == null and self.incursionLegend(scene) == null) return;
-        var mask = pixel_buffer.Mask.init(self.allocator, canvas.width, canvas.height) catch |err| {
+        var mask = pixel_buffer.Mask.init(allocator, canvas.width, canvas.height) catch |err| {
             slog.warn("Failed to draw storm and incursion areas: {}", .{err});
             return;
         };
         defer mask.deinit();
         const radius = look.areaRadius(scale);
-        if (self.shownStorms(scene)) |storms| {
+        if (scene.shownStorms(self.config)) |storms| {
             for (storms.slice()) |*storm| {
                 const shade = look.stormColor(storm.kind);
                 self.fillMaskWith(&mask, &storm.covered, radius);
@@ -891,7 +842,7 @@ pub const Painter = struct {
                 look.drawAreaCore(canvas, &mask, shade);
             }
         }
-        if (self.shownIncursions(scene)) |incursions| {
+        if (scene.shownIncursions(self.config)) |incursions| {
             for (incursions.slice()) |*incursion| {
                 self.fillMaskWith(&mask, &incursion.infested, radius);
                 look.drawArea(canvas, &mask, look.INCURSION);
@@ -904,9 +855,9 @@ pub const Painter = struct {
     }
 
     /// Each planned route as a band along its gates here, the others faint under the one hovered in the card, or else the fastest.
-    fn drawRoutes(self: *const Painter, canvas: pixel_buffer.Canvas, scene: Scene, scale: f32) void {
+    fn drawRoutes(self: *const Painter, allocator: std.mem.Allocator, canvas: pixel_buffer.Canvas, scene: Scene, scale: f32) void {
         const routes = if (scene.destinations.routes) |*shown| shown else return;
-        var mask = pixel_buffer.Mask.init(self.allocator, canvas.width, canvas.height) catch |err| {
+        var mask = pixel_buffer.Mask.init(allocator, canvas.width, canvas.height) catch |err| {
             slog.warn("Failed to draw the planned routes: {}", .{err});
             return;
         };
@@ -1001,9 +952,9 @@ pub const Painter = struct {
 
     fn drawLabels(self: *const Painter, dc: win32.HDC, scene: Scene, label_font: win32.HFONT, now_ms: u64) void {
         const layout = &self.state.layout;
-        const storms = self.shownStorms(scene);
-        const incursions = self.shownIncursions(scene);
-        const campaigns = shownCampaigns(self.config, scene);
+        const storms = scene.shownStorms(self.config);
+        const incursions = scene.shownIncursions(self.config);
+        const campaigns = scene.shownCampaigns(self.config);
         _ = win32.SelectObject(dc, label_font);
         const outline: Outline = if (self.state.isPanning()) .shadow else .full;
         for (layout.nodes[0..layout.node_count], 0..) |node, index| {
@@ -1049,9 +1000,9 @@ pub const Painter = struct {
                     .system_count = self.state.overview.bubbles[region].system_count,
                     .client_count = self.state.marks.countIn(region),
                     .reach = if (self.state.reach) |*reach| reach else null,
-                    .storms = self.shownStorms(scene),
-                    .incursions = self.shownIncursions(scene),
-                    .campaigns = shownCampaigns(self.config, scene),
+                    .storms = scene.shownStorms(self.config),
+                    .incursions = scene.shownIncursions(self.config),
+                    .campaigns = scene.shownCampaigns(self.config),
                 });
             },
             .exit => {
@@ -1062,8 +1013,8 @@ pub const Painter = struct {
                 const portal = self.state.layout.portals[self.state.hover.index];
                 const from = self.state.layout.nodes[portal.from_index].system;
                 switch (portal.target) {
-                    .hub => |hub| return text_mod.portalTooltip(shownWormholes(self.config, scene) orelse return null, from, hub),
-                    .system => |to| return text_mod.bridgeTooltip(shownBridges(self.config, self.has_eve_stars, scene) orelse return null, from, to),
+                    .hub => |hub| return text_mod.portalTooltip(scene.shownWormholes(self.config) orelse return null, from, hub),
+                    .system => |to| return text_mod.bridgeTooltip(scene.shownBridges(self.config, self.has_eve_stars) orelse return null, from, to),
                 }
             },
             .node => self.state.layout.nodes[self.state.hover.index].system,
@@ -1074,11 +1025,11 @@ pub const Painter = struct {
             .activity = self.spannedActivity(scene, self.config.mapPanel.metric),
             .avoided_area = if (self.has_eve_stars) avoidedArea(&scene.destinations.avoid, system) else null,
             .reach = if (self.state.reach) |*reach| reach else null,
-            .storms = self.shownStorms(scene),
-            .incursions = self.shownIncursions(scene),
-            .campaigns = shownCampaigns(self.config, scene),
-            .wormholes = shownWormholes(self.config, scene),
-            .bridges = shownBridges(self.config, self.has_eve_stars, scene),
+            .storms = scene.shownStorms(self.config),
+            .incursions = scene.shownIncursions(self.config),
+            .campaigns = scene.shownCampaigns(self.config),
+            .wormholes = scene.shownWormholes(self.config),
+            .bridges = scene.shownBridges(self.config, self.has_eve_stars),
             .now_seconds = scene.now_seconds,
         };
         var names: [marks.MAX_MARKS][]const u8 = undefined;
@@ -1176,25 +1127,6 @@ pub const Painter = struct {
         };
     }
 };
-
-/// Null while they're hidden, or the last fetch didn't get them.
-pub fn shownCampaigns(config: *const config_mod.Config, scene: Scene) ?*const Campaigns {
-    const stats = scene.stats orelse return null;
-    return if (config.mapPanel.showSovTimers and stats.has_campaigns) &stats.campaigns else null;
-}
-
-/// Null while they're hidden, or the last fetch didn't get them.
-pub fn shownWormholes(config: *const config_mod.Config, scene: Scene) ?*const Connections {
-    const stats = scene.stats orelse return null;
-    return if (config.mapPanel.showWormholes and stats.has_wormholes) &stats.wormholes else null;
-}
-
-/// Null while they're hidden, without Eve Stars, or before any arrive.
-pub fn shownBridges(config: *const config_mod.Config, has_eve_stars: bool, scene: Scene) ?*const Bridges {
-    if (!config.mapPanel.showAnsiblex or !has_eve_stars) return null;
-    const bridges = &scene.destinations.bridges;
-    return if (bridges.count > 0) bridges else null;
-}
 
 pub fn cardTabName(tab: look.CardTab) []const u8 {
     return switch (tab) {
@@ -1352,7 +1284,7 @@ fn headingText(buffer: *[panel_chrome.MAX_TEXT_LENGTH]u8, legend: *const text_mo
     return std.ascii.upperString(buffer[0..length], title[0..length]);
 }
 
-/// Centred above the toggle bar, `toggle_bar`.
+/// Centred above `toggle_bar`.
 fn drawNotice(bitmap: *const gdi_overlay.OverlayBitmap, destinations: *const Destinations, areas: look.Areas, toggle_bar: Box, fonts: MapFonts) void {
     const notice = if (destinations.notice) |*shown| shown else return;
     const tooltip = text_mod.noticeTooltip(notice);
