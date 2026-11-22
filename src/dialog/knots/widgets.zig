@@ -5,6 +5,7 @@ const style = @import("style.zig");
 const glyphs = @import("glyphs.zig");
 const search = @import("search.zig");
 const color_convert = @import("color_convert.zig");
+const reorder_math = @import("reorder_math.zig");
 const lang = @import("../../lang/lang.zig");
 const log = @import("../../log.zig");
 
@@ -940,19 +941,15 @@ pub fn reorderFinish(context: *ui.Frame, base: ui.Key, count: usize) ?Move {
         if (@abs(mouse_y - drag.start_y) > DRAG_THRESHOLD) drag.has_moved = true;
         if (drag.has_moved) {
             ui_state.requestCursor(.move);
-            // Rows above the gap swap at the lifted row's top and rows below at its bottom, so each swap falls halfway, wherever the row was grabbed.
-            const top = @as(f32, @floatCast(mouse_y)) - drag.grab_y;
-            var slot_index: usize = 0;
-            var other_index: usize = 0;
-            for (0..count) |index| {
-                if (index == drag.from) continue;
-                const is_above_gap = other_index < drag.measured_slot;
-                other_index += 1;
-                const measured = ui_state.state.get(.measured, base.indexed(index).hash()) orelse continue;
-                const edge = if (is_above_gap) top else top + drag.row_height;
-                if (edge > measured.box.y() + measured.box.h() / 2) slot_index += 1;
-            }
-            drag.insert = if (slot_index >= drag.from) slot_index + 1 else slot_index;
+            const place: reorder_math.Drag = .{
+                .from = drag.from,
+                .measured_slot = drag.measured_slot,
+                .top = @as(f32, @floatCast(mouse_y)) - drag.grab_y,
+                .row_height = drag.row_height,
+            };
+            if (rowMiddles(context, base, count)) |middles| {
+                drag.insert = reorder_math.insertIndex(middles, place);
+            } else |err| slog.err("Failed to follow a dragged row: {}", .{err});
             context.requestRedraw();
         }
         drag.measured_slot = drag.drawn_slot;
@@ -961,7 +958,7 @@ pub fn reorderFinish(context: *ui.Frame, base: ui.Key, count: usize) ?Move {
     const finished = drag.*;
     g_pending.reorder = null;
     context.requestRedraw();
-    if (!finished.has_moved or finished.insert == finished.from or finished.insert == finished.from + 1) return null;
+    if (!finished.has_moved or !reorder_math.isMove(finished.from, finished.insert)) return null;
     return .{ .from = finished.from, .before = finished.insert };
 }
 
@@ -1285,7 +1282,21 @@ fn reorderLifted(context: *ui.Frame, base: ui.Key) ?Lifted {
     const drag = g_pending.reorder orelse return null;
     if (drag.list != base.hash() or !drag.has_moved) return null;
     const mouse_y: f32 = @floatCast(context.ui().input.mouse_pos[1]);
-    return .{ .from = drag.from, .slot = if (drag.insert > drag.from) drag.insert - 1 else drag.insert, .top = mouse_y - drag.grab_y, .row_height = drag.row_height };
+    return .{ .from = drag.from, .slot = reorder_math.landingIndex(drag.from, drag.insert), .top = mouse_y - drag.grab_y, .row_height = drag.row_height };
+}
+
+/// Each row's measured middle in window pixels, null for one not measured yet; lives as long as the frame.
+fn rowMiddles(context: *ui.Frame, base: ui.Key, count: usize) ![]const ?f32 {
+    const middles = try context.arena().alloc(?f32, count);
+    const ui_state = context.ui();
+    for (middles, 0..) |*middle, index| {
+        const measured = ui_state.state.get(.measured, base.indexed(index).hash()) orelse {
+            middle.* = null;
+            continue;
+        };
+        middle.* = measured.box.y() + measured.box.h() / 2;
+    }
+    return middles;
 }
 
 fn openAnyFieldGroup(context: *ui.Frame, key: ui.Key, label: []const u8, row_style: *const ui.Style, column_style: *const ui.Style) !FieldGroup {

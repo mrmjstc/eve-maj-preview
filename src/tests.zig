@@ -38,6 +38,7 @@ test {
     _ = @import("dialog/knots/field_strings.zig");
     _ = @import("dialog/knots/labels.zig");
     _ = @import("dialog/knots/release_notes.zig");
+    _ = @import("dialog/knots/reorder_math.zig");
     _ = @import("dialog/knots/screen_math.zig");
     _ = @import("dialog/knots/selection.zig");
     _ = @import("dialog/tools/region_math.zig");

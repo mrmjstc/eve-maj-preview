@@ -7,6 +7,7 @@ const set = @import("../../thumbnail/set.zig");
 const dialog_host = @import("../dialog_host.zig");
 const notifier_mod = @import("../../notifications/notifier.zig");
 const field_strings = @import("field_strings.zig");
+const reorder_math = @import("reorder_math.zig");
 const log = @import("../../log.zig");
 
 const Config = config.Config;
@@ -141,10 +142,9 @@ pub fn Ref(comptime T: type) type {
         /// Moves item `from` of the list field `field` to sit before what was item `before` (the length for the end).
         pub fn move(self: Self, comptime field: []const u8, from: usize, before: usize) void {
             const list = &@field(self.ptr, field);
-            if (from >= list.items.len or before > list.items.len or before == from or before == from + 1) return;
+            if (from >= list.items.len or before > list.items.len or !reorder_math.isMove(from, before)) return;
             const item_value = list.orderedRemove(from);
-            const at = if (before > from) before - 1 else before;
-            list.insertAssumeCapacity(at, item_value);
+            list.insertAssumeCapacity(reorder_math.landingIndex(from, before), item_value);
             edited(self.doc, comptime layoutFor(T, field, .none), self.layout);
         }
 

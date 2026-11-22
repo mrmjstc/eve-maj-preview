@@ -1,5 +1,6 @@
 //! Which item of a dialog list shows its details, kept on that item as the list shrinks or reorders; no I/O.
 const std = @import("std");
+const reorder_math = @import("reorder_math.zig");
 
 /// An index into a list its tab owns.
 pub const Selection = struct {
@@ -17,7 +18,7 @@ pub const Selection = struct {
 
     /// Follows the selected item, not its slot, after the item at `from` moved to just before `before`.
     pub fn afterMove(self: *Selection, from: usize, before: usize) void {
-        const to = if (before > from) before - 1 else before;
+        const to = reorder_math.landingIndex(from, before);
         if (self.index == from) {
             self.index = to;
         } else if (from < self.index and to >= self.index) {
