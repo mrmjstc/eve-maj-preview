@@ -407,9 +407,22 @@ pub const App = struct {
             .source_hwnd = @intFromPtr(thumbnail.source_hwnd),
             .visibility = thumbnail.visibility_state,
             .is_hidden_by_character = thumbnail.cached_is_thumbnail_hidden,
+            .group_badge = thumbnail.cached_group_badge_label,
         };
-        const active_hwnd: ?usize = if (self.roster.active_hwnd) |hwnd| @intFromPtr(hwnd) else null;
-        report.publish(self.allocator, self.io, .{ .profile = self.store.live.profile_name, .active_hwnd = active_hwnd, .thumbnails = entries });
+        const hotkey_groups = self.store.live.hotkeyGroups.items;
+        const groups = arena.alloc(state_file.Snapshot.Group, hotkey_groups.len) catch |err| {
+            slog.warn("Failed to gather the app state: {}", .{err});
+            return;
+        };
+        for (hotkey_groups, groups) |*group, *entry| entry.* = .{ .name = group.name, .members = group.characters.items };
+        report.publish(self.allocator, self.io, .{
+            .profile = self.store.live.profile_name,
+            .active_hwnd = if (self.roster.active_hwnd) |hwnd| @intFromPtr(hwnd) else null,
+            .are_hotkeys_suspended = if (self.hotkey_manager) |manager| manager.are_hotkeys_suspended else false,
+            .excluded_characters = self.exclusions.names.items,
+            .groups = groups,
+            .thumbnails = entries,
+        });
     }
 
     /// Writes what only teardown would, for an exit that skips it: Windows ending the session, or a background thread outlasting the wait at exit.

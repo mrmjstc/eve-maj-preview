@@ -15,7 +15,18 @@ pub const Snapshot = struct {
     /// Borrows from the profile store.
     profile: []const u8,
     active_hwnd: ?usize,
+    are_hotkeys_suspended: bool,
+    /// Borrows from the cycle exclusions.
+    excluded_characters: []const []const u8,
+    groups: []const Group,
     thumbnails: []const Thumbnail,
+
+    pub const Group = struct {
+        /// Borrows from the live profile.
+        name: []const u8,
+        /// Borrows from the live profile, so it includes temporary members.
+        members: []const []const u8,
+    };
 
     pub const Thumbnail = struct {
         /// Borrows from the thumbnail.
@@ -24,6 +35,8 @@ pub const Snapshot = struct {
         source_hwnd: usize,
         visibility: VisibilityState,
         is_hidden_by_character: bool,
+        /// Borrows from the thumbnail; empty when it shows no badge.
+        group_badge: []const u8,
     };
 };
 
@@ -74,11 +87,21 @@ pub fn format(allocator: std.mem.Allocator, snapshot: Snapshot) ![]u8 {
 const testing = std.testing;
 
 test "format writes window handles as numbers and a missing active window as null" {
-    const thumbnails = [_]Snapshot.Thumbnail{.{ .character_name = "Alpha Pilot", .hwnd = 10, .source_hwnd = 20, .visibility = .visible, .is_hidden_by_character = false }};
-    const json = try format(testing.allocator, .{ .profile = "default.json", .active_hwnd = null, .thumbnails = &thumbnails });
+    const thumbnails = [_]Snapshot.Thumbnail{.{ .character_name = "Alpha Pilot", .hwnd = 10, .source_hwnd = 20, .visibility = .visible, .is_hidden_by_character = false, .group_badge = "" }};
+    const json = try format(testing.allocator, .{ .profile = "default.json", .active_hwnd = null, .are_hotkeys_suspended = false, .excluded_characters = &.{}, .groups = &.{}, .thumbnails = &thumbnails });
     defer testing.allocator.free(json);
     try testing.expectEqualStrings(
-        \\{"profile":"default.json","active_hwnd":null,"thumbnails":[{"character_name":"Alpha Pilot","hwnd":10,"source_hwnd":20,"visibility":"visible","is_hidden_by_character":false}]}
+        \\{"profile":"default.json","active_hwnd":null,"are_hotkeys_suspended":false,"excluded_characters":[],"groups":[],"thumbnails":[{"character_name":"Alpha Pilot","hwnd":10,"source_hwnd":20,"visibility":"visible","is_hidden_by_character":false,"group_badge":""}]}
+    , json);
+}
+
+test "format lists each group's members under its name" {
+    const members = [_][]const u8{ "Alpha Pilot", "Bravo Pilot" };
+    const groups = [_]Snapshot.Group{.{ .name = "Fleet", .members = &members }};
+    const json = try format(testing.allocator, .{ .profile = "default.json", .active_hwnd = 5, .are_hotkeys_suspended = true, .excluded_characters = &.{"Bravo Pilot"}, .groups = &groups, .thumbnails = &.{} });
+    defer testing.allocator.free(json);
+    try testing.expectEqualStrings(
+        \\{"profile":"default.json","active_hwnd":5,"are_hotkeys_suspended":true,"excluded_characters":["Bravo Pilot"],"groups":[{"name":"Fleet","members":["Alpha Pilot","Bravo Pilot"]}],"thumbnails":[]}
     , json);
 }
 
