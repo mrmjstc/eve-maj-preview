@@ -589,6 +589,8 @@ pub const ThumbnailSet = struct {
         if (is_shown) window.showText(handles, position, size);
 
         try self.addThumbnail(thumbnail);
+        // Shown before it was listed, so its first erase couldn't find it to paint the blank fill.
+        _ = win32.InvalidateRect(handles.hwnd, null, win32.TRUE);
 
         slog.info("Created thumbnail for {s}", .{name});
     }
