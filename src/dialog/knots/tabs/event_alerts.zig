@@ -86,9 +86,9 @@ pub fn alertSettings(context: *ui.Frame, ref: TypeRef, notification_type: Notifi
 
     const behavior = try widgets.openFieldGroup(context, .str("knots.events.behavior"), "Behavior");
     try bind.toggle(context, ref, "suppress_when_focused", "Suppress While Focused");
-    try widgets.hintText(context, .src(@src()), "Skips the alert while you're on that character.");
+    try widgets.hintText(context, .src(@src()), "No alert while you're on that character; Alert History still lists it.");
     try bind.toggle(context, ref, "suppress_when_clicked", "Suppress After Click");
-    try widgets.hintText(context, .src(@src()), "Skips the alert briefly after you click that character.");
+    try widgets.hintText(context, .src(@src()), "No alert briefly after you click that character; Alert History still lists it.");
     try bind.toggle(context, ref, "show_hidden_thumbnail", "Show Thumbnail Even If Hidden");
     try widgets.hintText(context, .src(@src()), "Only for as long as the alert lasts.");
     try bind.toggle(context, ref, "tts_enabled", "Speak Aloud (TTS)");
@@ -171,7 +171,7 @@ fn typeDetail(context: *ui.Frame, notification_type: NotificationType) !void {
     try bind.number(context, ref, "duration_ms", "Duration", .{ .shows_seconds = true, .unit = "s" });
     try widgets.hintText(context, .src(@src()), "How long the alert shows; 0 keeps it until dismissed.");
     try bind.number(context, ref, "throttle_ms", "Cooldown", .{ .shows_seconds = true, .unit = "s" });
-    try widgets.hintText(context, .src(@src()), "Ignores repeats within this time.");
+    try widgets.hintText(context, .src(@src()), "Repeats within this time don't alert; Alert History still lists them.");
     try timing.close(context);
     try widgets.separator(context, .str("knots.events.separator.timing"));
     try trigger(context, notification_type);
