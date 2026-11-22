@@ -305,6 +305,8 @@ Alerts, from game and chat logs (needs [chatlog](#chatlog)) and from your own ac
 
 **`type_configs.<Type>`**
 
+A key left out takes that type's own default.
+
 | Key | Type | Default | Range | Notes |
 |---|---|---|---|---|
 | `enabled` | bool | `true` | | |
