@@ -165,6 +165,18 @@ pub const Part = struct {
     }
 };
 
+/// What openInspectorTitle returns; closing it ends the row and puts back the control name it replaced.
+pub const InspectorTitle = struct {
+    row: Rect,
+    /// Borrowed for the frame.
+    previous_name: ?[]const u8,
+
+    pub fn close(self: InspectorTitle, context: *ui.Frame) !void {
+        _ = widgets.useControlName(self.previous_name);
+        try self.row.close(context);
+    }
+};
+
 /// Which of a preview's parts is selected, and the part bar that picks one; `Kind` is the tab's enum of parts.
 pub fn Picker(comptime Kind: type) type {
     return struct {
@@ -295,12 +307,13 @@ pub fn Picker(comptime Kind: type) type {
     };
 }
 
-/// The inspector's heading row with the part's `title`; the caller may add the part's on switch, then closes it.
-pub fn openInspectorTitle(context: *ui.Frame, key: ui.Key, title: []const u8) !Rect {
+/// The inspector's heading row with the part's `title`, which names the part's on switch the caller may add; the caller closes it.
+pub fn openInspectorTitle(context: *ui.Frame, key: ui.Key, title: []const u8) !InspectorTitle {
     const row = Rect{ .key = key, .style = &style.inspector_title };
     _ = try row.open(context);
-    try context.e(Text{ .selectable = false, .key = key.indexed(1), .content = lang.text(title), .style = &style.inspector_title_text });
-    return row;
+    const shown = lang.text(title);
+    try context.e(Text{ .selectable = false, .key = key.indexed(1), .content = shown, .style = &style.inspector_title_text });
+    return .{ .row = row, .previous_name = widgets.useControlName(shown) };
 }
 
 /// `pixels` real pixels at `scale`.

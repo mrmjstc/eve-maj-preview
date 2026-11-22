@@ -729,6 +729,13 @@ pub fn isRowLit() bool {
     return g_open.is_row_lit;
 }
 
+/// Names the controls drawn next as nameControl does in a row, e.g. a switch beside a heading; returns the previous name, for putting back.
+pub fn useControlName(name: ?[]const u8) ?[]const u8 {
+    const previous = g_open.row_label;
+    g_open.row_label = name;
+    return previous;
+}
+
 /// Gives the control keyed `key`, once drawn, the settings row's label as its name, for screen readers and UI tests.
 pub fn nameControl(context: *ui.Frame, key: ui.Key) !void {
     const name = g_open.row_label orelse return;
