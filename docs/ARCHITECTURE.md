@@ -406,8 +406,9 @@ A second exe, `eve-maj-sim` (`zig build sim`), that stands in for EVE clients so
 Python (stdlib and ctypes only) that drives the built app against simulated clients. Run `python tools/ui_tests/run.py [name-substring ...]` with the app closed, since it's single-instance.
 
 - `harness.py`: copies the app into a temp folder with its own profile and global settings (protocol registration and update checks off), starts `eve-maj-sim --client` copies named `exefile.exe`, sends protocol links through a second launch, and presses keys only while a test client has focus.
-- `diagnostics/state_file.zig`: with `EVE_MAJ_STATE_FILE` set, the app writes each thumbnail's current name, window handles and visibility plus the active client as JSON, because a thumbnail window's title keeps the name it was created with. The harness joins it with what Win32 reports for positions and visibility.
-- `run.py`: the tests, each in a fresh sandbox.
+- `diagnostics/state_file.zig`: with `EVE_MAJ_STATE_FILE` set, the app writes each thumbnail's current name, window handles, visibility and group badge, plus the active client, cycle exclusions, suspended hotkeys and each group's live members, as JSON, because a thumbnail window's title keeps the name it was created with. The harness joins it with what Win32 reports for positions and visibility.
+- `run.py`: runs `tests/test_<area>.py`. Each module shares one sandboxed app, and each test switches it to a profile of its own; a failed test, or exclusions or suspended hotkeys left behind, restart it. `@fresh` tests get an app of their own, for global settings.
+- `coverage.py`: lists every setting as `Struct.field`, read from `src/config/`, and the tests that claim it with `@covers`.
 
 ## Other modules
 

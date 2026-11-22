@@ -34,6 +34,9 @@ WM_SIM_LOGIN = WM_APP + 1
 WM_SIM_LOGOUT = WM_APP + 2
 KEYEVENTF_KEYUP = 0x0002
 SW_MINIMIZE = 6
+VK_SHIFT = 0x10
+VK_F13 = 0x7C
+BYSTANDER_NAME = "Bystander"
 
 user32 = ctypes.WinDLL("user32", use_last_error=True)
 WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
@@ -52,6 +55,7 @@ user32.FindWindowW.restype = wintypes.HWND
 user32.GetForegroundWindow.restype = wintypes.HWND
 user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
 user32.keybd_event.argtypes = [wintypes.BYTE, wintypes.BYTE, wintypes.DWORD, ctypes.c_void_p]
+user32.SetCursorPos.argtypes = [ctypes.c_int, ctypes.c_int]
 user32.SetProcessDpiAwarenessContext.argtypes = [ctypes.c_void_p]
 
 # Physical pixels, matching the app, which is per-monitor aware too.
@@ -99,6 +103,7 @@ class Thumbnail:
     source_hwnd: int
     visibility: str
     is_hidden_by_character: bool
+    group_badge: str
     window: Window
 
     @property
@@ -148,6 +153,16 @@ def wait_for(description: str, check, timeout_s: float = 5.0, interval_s: float 
         time.sleep(interval_s)
     seen = f"; saw {details()}" if details else ""
     raise TestFailure(f"Timed out after {timeout_s}s waiting for {description}{seen}")
+
+
+def stays(description: str, check, for_s: float = 2.0, interval_s: float = 0.1, details=None):
+    """Fails as soon as `check` turns falsy within for_s; for things that must not happen."""
+    deadline = time.monotonic() + for_s
+    while time.monotonic() < deadline:
+        if not check():
+            seen = f"; saw {details()}" if details else ""
+            raise TestFailure(f"Expected {description} for {for_s}s, but it stopped{seen}")
+        time.sleep(interval_s)
 
 
 def default_profile() -> dict:
@@ -208,9 +223,10 @@ class Client:
 
 
 class Session:
-    """A sandboxed copy of the app with its own profile, plus the clients started for one test.
+    """A sandboxed copy of the app, kept running across a module's tests, plus the current test's clients.
 
     `profile` is laid over default_profile(); `global_settings` over the sandbox's safe defaults.
+    Each test calls use() to get a clean slate on a profile of its own.
     """
 
     def __init__(self, profile: dict | None = None, global_settings: dict | None = None):
@@ -221,28 +237,79 @@ class Session:
         self.state_path = self.dir / "state.json"
         self.app: subprocess.Popen | None = None
         self.clients: dict[str, Client] = {}
+        self.profile_count = 0
 
     def __enter__(self) -> "Session":
         self._prepare()
-        environment = {**os.environ, STATE_FILE_VARIABLE: str(self.state_path)}
-        self.app = subprocess.Popen([str(self.exe)], cwd=self.dir, env=environment)
-        wait_for("the app's state file", self.state)
+        self.start()
         return self
 
     def __exit__(self, *_exc):
-        for client in self.clients.values():
-            client.close()
+        self.close_clients()
+        self.stop()
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def start(self):
+        self.state_path.unlink(missing_ok=True)
+        environment = {**os.environ, STATE_FILE_VARIABLE: str(self.state_path)}
+        self.app = subprocess.Popen([str(self.exe)], cwd=self.dir, env=environment)
+        wait_for("the app's state file", self.state)
+
+    def stop(self):
         if self.app and self.app.poll() is None:
             self.app.kill()
             self.app.wait(timeout=5)
-        shutil.rmtree(self.dir, ignore_errors=True)
+        self.app = None
+
+    def restart(self):
+        self.close_clients()
+        self.stop()
+        self.start()
+
+    def close_clients(self):
+        for client in self.clients.values():
+            client.close()
+        self.clients.clear()
+
+    def use(self, profile: dict | None = None):
+        """Closes the last test's clients and switches to a new profile laid over default_profile()."""
+        self.close_clients()
+        if self.app is None or self.app.poll() is not None or self._has_leaked_state():
+            self.stop()
+            self.start()
+        wait_for("the last test's thumbnails to go", lambda: not self.thumbnail_list(),
+                 details=lambda: [t.character_name for t in self.thumbnail_list()])
+        self.profile_count += 1
+        name = f"t{self.profile_count:03d}.json"
+        write_json(self.dir / "profiles" / name, merged(default_profile(), profile or {}))
+        self.protocol(f"evemajpreview://profile/{name}")
+        wait_for(f"profile '{name}' to load", lambda: (self.state() or {}).get("profile") == name,
+                 details=lambda: (self.state() or {}).get("profile"))
+
+    def write_profile(self, file_name: str, profile: dict | None = None):
+        """An extra profile beside the test's own, laid over default_profile()."""
+        write_json(self.dir / "profiles" / file_name, merged(default_profile(), profile or {}))
+
+    def read_profile(self) -> dict:
+        """The current profile as the app last saved it."""
+        name = (self.state() or {}).get("profile", "")
+        return json.loads((self.dir / "profiles" / name).read_text(encoding="utf-8"))
+
+    def profile_name(self) -> str:
+        return (self.state() or {}).get("profile", "")
+
+    def _has_leaked_state(self) -> bool:
+        """What a profile switch keeps, which would carry one test's changes into the next."""
+        state = self.state() or {}
+        return bool(state.get("excluded_characters")) or bool(state.get("are_hotkeys_suspended"))
 
     def _prepare(self):
         shutil.copy2(APP_EXE, self.dir)
         clients_dir = self.dir / "clients"
         clients_dir.mkdir()
-        # scout.zig only counts windows owned by an exe named exefile.exe.
+        # scout.zig only counts windows owned by an exe named exefile.exe, so the bystander's copy isn't a client.
         shutil.copy2(SIM_EXE, clients_dir / "exefile.exe")
+        shutil.copy2(SIM_EXE, clients_dir / "bystander.exe")
         profiles = self.dir / "profiles"
         profiles.mkdir()
         settings = {
@@ -266,6 +333,16 @@ class Session:
     def start_clients(self, *names: str) -> list[Client]:
         return [self.start_client(name) for name in names]
 
+    def start_bystander(self) -> Client:
+        """A window that looks like a client but isn't one to the app; it takes focus when it opens."""
+        bystander = Client(self.dir / "clients" / "bystander.exe", BYSTANDER_NAME)
+        self.clients[BYSTANDER_NAME] = bystander
+        bystander.wait_ready()
+        return bystander
+
+    def running_names(self) -> set[str]:
+        return {name for name, c in self.clients.items() if c.process.poll() is None and name != BYSTANDER_NAME}
+
     def state(self) -> dict | None:
         """The app's latest state file, or None while it's missing or mid-replace."""
         try:
@@ -280,7 +357,7 @@ class Session:
             window = describe(entry["hwnd"])
             if window:
                 found.append(Thumbnail(entry["character_name"], entry["source_hwnd"], entry["visibility"],
-                                       entry["is_hidden_by_character"], window))
+                                       entry["is_hidden_by_character"], entry["group_badge"], window))
         return found
 
     def thumbnails(self) -> dict[str, Thumbnail]:
@@ -296,6 +373,17 @@ class Session:
                            lambda: (lambda shown: [shown] if set(shown) == names else None)(self.thumbnails()),
                            timeout_s, details=self.shown_names)
         return matched[0]
+
+    def assert_thumbnails_stay(self, names: set[str], for_s: float = 2.0):
+        stays(f"shown thumbnails to stay exactly {sorted(names)}", lambda: set(self.thumbnails()) == names,
+              for_s, details=self.shown_names)
+
+    def group_members(self, group_name: str) -> list[str]:
+        groups = (self.state() or {}).get("groups", [])
+        return next((g["members"] for g in groups if g["name"] == group_name), [])
+
+    def excluded(self) -> list[str]:
+        return (self.state() or {}).get("excluded_characters", [])
 
     def active_hwnd(self) -> int | None:
         return (self.state() or {}).get("active_hwnd")
@@ -318,16 +406,61 @@ class Session:
                  details=lambda: self.foreground_client() or describe(foreground_hwnd()))
         return client
 
-    def press(self, virtual_key: int):
-        """Presses a key system-wide, only while one of this session's clients has focus."""
+    def press(self, virtual_key: int, modifiers: tuple[int, ...] = ()):
+        """Presses a key system-wide, only while one of this session's windows has focus."""
+        for modifier in modifiers:
+            self.key_down(modifier)
+        self.key_down(virtual_key)
+        self.key_up(virtual_key)
+        for modifier in reversed(modifiers):
+            self.key_up(modifier)
+
+    def key_down(self, virtual_key: int):
+        """A second key_down before key_up is what auto-repeat sends."""
         if self.foreground_client() is None:
-            raise TestFailure(f"Refused to press a key outside the test clients; focus is on {describe(foreground_hwnd())}")
+            raise TestFailure(f"Refused to press a key outside the test windows; focus is on {describe(foreground_hwnd())}")
         user32.keybd_event(virtual_key, 0, 0, None)
+
+    def key_up(self, virtual_key: int):
         user32.keybd_event(virtual_key, 0, KEYEVENTF_KEYUP, None)
+
+    def hover(self, character_name: str):
+        window = self.thumbnails()[character_name].window
+        user32.SetCursorPos((window.left + window.right) // 2, (window.top + window.bottom) // 2)
+        # The app reads the hovered thumbnail from mouse messages, so give it a moment to see the move.
+        time.sleep(0.2)
 
     def log_text(self) -> str:
         path = self.dir / "logs" / "eve-maj.log"
         return path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
+
+
+ALPHA, BRAVO, CHARLIE = "Alpha Pilot", "Bravo Pilot", "Charlie Pilot"
+
+
+def check(condition: bool, message: str):
+    if not condition:
+        raise TestFailure(message)
+
+
+def scaled(value: int, scale: float) -> int:
+    return round(value * scale)
+
+
+def covers(*keys: str):
+    """Marks the settings a test proves, as `Struct.field` from src/config/ (or `NotificationType.X`), for coverage.py."""
+    def mark(test):
+        test.covers = keys
+        return test
+    return mark
+
+
+def fresh(global_settings: dict | None = None):
+    """Runs a test in an app of its own, for global settings or startup behaviour a profile switch can't give."""
+    def mark(test):
+        test.fresh_global_settings = global_settings or {}
+        return test
+    return mark
 
 
 def write_json(path: Path, value: dict):
