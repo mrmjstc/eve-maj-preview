@@ -536,6 +536,18 @@ test "a tracker runs for the shown client list's rate without the thumbnails' ov
     try testing.expect(config.tracksMining());
 }
 
+test "an alert type given in part keeps its own defaults for the fields left out" {
+    var config = try testConfig(
+        \\{"notifications": {"type_configs": {"CycleExclusion": {"custom_text": "Out"}}}}
+    );
+    defer config.deinit();
+
+    const type_config = config.notifications.getTypeConfig(.CycleExclusion);
+    try testing.expectEqualStrings("Out", type_config.custom_text orelse "");
+    try testing.expectEqual(@as(u32, 0), type_config.throttle_ms);
+    try testing.expectEqual(@as(u32, 3000), type_config.duration_ms);
+}
+
 test "getOrCreateCharacter returns an existing character rather than adding another" {
     var config = try Config.getDefaultsWithProfile(testing.allocator, "Test");
     defer config.deinit();

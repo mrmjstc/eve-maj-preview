@@ -130,6 +130,11 @@ pub const NotificationTypeConfigs = struct {
                 if (wire_value.sound_path) |sound_path| wire_value.sound_path = try allocator.dupe(u8, sound_path);
                 if (wire_value.custom_text) |custom_text| wire_value.custom_text = try allocator.dupe(u8, custom_text);
                 if (wire_value.custom_text_alt) |custom_text_alt| wire_value.custom_text_alt = try allocator.dupe(u8, custom_text_alt);
+                // A field left out takes this type's default, not NotificationTypeConfig's: they differ for throttle_ms and duration_ms.
+                const type_defaults = DEFAULT_WIRE_MAP.get(notification_type);
+                inline for (@typeInfo(NotificationTypeConfig.Wire).@"struct".field_names) |name| {
+                    if (!entry.value_ptr.object.contains(name)) @field(wire_value, name) = @field(type_defaults, name);
+                }
                 result.map.set(notification_type, wire_value);
             }
             return result;
