@@ -530,7 +530,8 @@ pub const App = struct {
 
     fn tickIntervalFor(self: *const App, window_count: usize) win32.UINT {
         const is_dialog_open = if (self.dialog) |dialog| dialog.is_open() else false;
-        if (window_count == 0 and !is_dialog_open) return IDLE_TICK_INTERVAL_MS;
+        // Never idle under the end-to-end tests, which wait on the state file only a tick writes.
+        if (window_count == 0 and !is_dialog_open and self.state_report == null) return IDLE_TICK_INTERVAL_MS;
         return self.store.saved.timer.scanIntervalMs;
     }
 

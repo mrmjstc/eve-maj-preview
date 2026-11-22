@@ -134,7 +134,7 @@ Driven by `WM_TIMER` at `timer.scanIntervalMs`, or every 1 s while no EVE window
 13. MapPanel.update                 take new feed snapshots, render the map
 14. Trackers.tick                   throttled push of rates and resources onto the roster; alerts via Notifier
 15. travel_left_behind.check        every ~2 s
-16. adjust tick interval            active scan rate or 1 s idle rate
+16. adjust tick interval            active scan rate, or 1 s idle rate unless the state file is on
 17. publishState                    rewrite the state file when it changed; only when EVE_MAJ_STATE_FILE is set
 ```
 
