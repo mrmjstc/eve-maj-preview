@@ -465,8 +465,8 @@ pub const App = struct {
                 .notification_type = alert.notification_type,
                 .text = alert.text,
                 .shows_text = alert.shows_text,
-                .shows_border = alert.show_border,
-                .flashes_border = alert.flash_border,
+                .shows_border = alert.shows_border,
+                .flashes_border = alert.flashes_border,
                 .border_color = alert.border_color_override,
                 .text_color = alert.text_color_override,
             };

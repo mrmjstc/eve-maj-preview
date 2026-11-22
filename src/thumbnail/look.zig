@@ -357,11 +357,11 @@ fn resolveBorder(config: *const config_mod.Config, subject: *const Subject, stat
     const newest = if (state == .alert) subject.notifications.newest() else null;
 
     // Not for the focused character, so it can't fight its active border.
-    const notification_hides = if (newest) |notification| !is_focused and (!notification.show_border or notification.isFlashOff(subject.now)) else false;
+    const notification_hides = if (newest) |notification| !is_focused and (!notification.shows_border or notification.isFlashOff(subject.now)) else false;
     const is_shown = !hides_all and !notification_hides and (state_config.showBorder orelse (if (uses_focused_look) thumbnail_config.showBorderWhenFocused else thumbnail_config.showBorderWhenInactive));
 
     // With suppress_when_focused, a focused character's alert borders as Active.
-    const is_suppressed = if (newest) |notification| notification.suppress_when_focused and is_focused else false;
+    const is_suppressed = if (newest) |notification| notification.suppresses_when_focused and is_focused else false;
     var color = state_config.borderColor orelse (if (uses_focused_look) config.focusedBorderColor() else thumbnail_config.inactiveBorderColor);
     if (newest) |notification| {
         if (!is_suppressed) {
@@ -390,7 +390,7 @@ fn resolveBorder(config: *const config_mod.Config, subject: *const Subject, stat
 fn notificationLines(out: *[MAX_NOTIFICATION_LINES]NotificationLine, notifications: *const stack.NotificationStack, is_focused: bool, base_color: u32) usize {
     var count: usize = 0;
     for (notifications.items()) |entry| {
-        if (!entry.shows_text or (entry.suppress_when_focused and is_focused)) continue;
+        if (!entry.shows_text or (entry.suppresses_when_focused and is_focused)) continue;
         const color = entry.text_color_override orelse base_color;
         var lines = std.mem.splitScalar(u8, entry.text, '\n');
         var line_index: usize = 0;
@@ -446,7 +446,7 @@ fn testSubject(state: config_mod.ThumbnailState) Subject {
 }
 
 fn testEntry(text: []const u8) stack.ActiveNotification {
-    return .{ .text = text, .notification_type = .FleetInvite, .start_time = TEST_START, .duration_ms = 5000, .suppress_when_focused = false, .suppress_when_clicked = false };
+    return .{ .text = text, .notification_type = .FleetInvite, .start_time = TEST_START, .duration_ms = 5000, .suppresses_when_focused = false, .suppresses_when_clicked = false };
 }
 
 // Borrows `entry.text`, so the stack is never deinited.
@@ -502,7 +502,7 @@ test "a focused character's suppressed alert keeps its active border colour" {
     defer config.deinit();
     var entry = testEntry("Fleet invite");
     entry.border_color_override = 0xFFFF0000;
-    entry.suppress_when_focused = true;
+    entry.suppresses_when_focused = true;
     const notifications = testStack(entry);
     var subject = testSubject(.alert);
     subject.is_focused = true;
@@ -527,7 +527,7 @@ test "a flashing alert hides the border in its off phase, except on the focused 
     var config = try testConfig();
     defer config.deinit();
     var entry = testEntry("Fleet invite");
-    entry.flash_border = true;
+    entry.flashes_border = true;
     const notifications = testStack(entry);
     var subject = testSubject(.alert);
     subject.notifications = &notifications;
@@ -662,7 +662,7 @@ test "a focused character's suppressed notification adds no lines" {
     var config = try testConfig();
     defer config.deinit();
     var entry = testEntry("Fleet invite");
-    entry.suppress_when_focused = true;
+    entry.suppresses_when_focused = true;
     const notifications = testStack(entry);
     var subject = testSubject(.alert);
     subject.is_focused = true;

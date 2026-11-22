@@ -49,9 +49,9 @@ pub const LogFinder = struct {
     chatlog_watcher: ?win32.HANDLE,
     gamelog_watcher: ?win32.HANDLE,
     /// A watch started late; rearm skips it once, so a log made during its catch-up rescan stays signalled.
-    chatlog_watch_is_new: bool = false,
-    /// See chatlog_watch_is_new.
-    gamelog_watch_is_new: bool = false,
+    is_chatlog_watch_new: bool = false,
+    /// See is_chatlog_watch_new.
+    is_gamelog_watch_new: bool = false,
 
     pub fn init(allocator: std.mem.Allocator, io: std.Io, chatlog_dir: []const u8, gamelog_dir: []const u8, character_ids: ?*CharacterIds) !LogFinder {
         if (!std.unicode.utf8ValidateSlice(chatlog_dir) or !std.unicode.utf8ValidateSlice(gamelog_dir)) {
@@ -85,8 +85,8 @@ pub const LogFinder = struct {
     /// Without waiting; a folder whose watch only just started counts as changed, for logs made while it wasn't watched.
     pub fn changes(self: *LogFinder) Changes {
         return .{
-            .chatlog_changed = self.folderChanged(&self.chatlog_watcher, &self.chatlog_watch_is_new, self.chatlog_dir),
-            .gamelog_changed = self.folderChanged(&self.gamelog_watcher, &self.gamelog_watch_is_new, self.gamelog_dir),
+            .chatlog_changed = self.folderChanged(&self.chatlog_watcher, &self.is_chatlog_watch_new, self.chatlog_dir),
+            .gamelog_changed = self.folderChanged(&self.gamelog_watcher, &self.is_gamelog_watch_new, self.gamelog_dir),
         };
     }
 
@@ -102,8 +102,8 @@ pub const LogFinder = struct {
 
     /// Resumes watching the folders in `done`, once their changes have been rescanned.
     pub fn rearm(self: *LogFinder, done: Changes) void {
-        if (done.chatlog_changed) rewatch(&self.chatlog_watcher, &self.chatlog_watch_is_new, self.chatlog_dir);
-        if (done.gamelog_changed) rewatch(&self.gamelog_watcher, &self.gamelog_watch_is_new, self.gamelog_dir);
+        if (done.chatlog_changed) rewatch(&self.chatlog_watcher, &self.is_chatlog_watch_new, self.chatlog_dir);
+        if (done.gamelog_changed) rewatch(&self.gamelog_watcher, &self.is_gamelog_watch_new, self.gamelog_dir);
     }
 
     /// Owned by the caller.

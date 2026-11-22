@@ -17,15 +17,15 @@ pub const ActiveNotification = struct {
     notification_type: notification.NotificationType,
     start_time: win32.Ticks,
     duration_ms: u32,
-    suppress_when_focused: bool,
-    suppress_when_clicked: bool,
+    suppresses_when_focused: bool,
+    suppresses_when_clicked: bool,
     reveals_thumbnail: bool = false,
     shows_text: bool = true,
     border_color_override: ?u32 = null,
     text_color_override: ?u32 = null,
     lead: ?notification.Lead = null,
-    show_border: bool = true,
-    flash_border: bool = false,
+    shows_border: bool = true,
+    flashes_border: bool = false,
 
     /// `owned_text` must come from the allocator later passed to the stack, which frees it on removal.
     pub fn fromConfig(owned_text: []const u8, notification_type: notification.NotificationType, type_config: config.NotificationTypeConfig, now: win32.Ticks, duration_ms: u32) ActiveNotification {
@@ -34,19 +34,19 @@ pub const ActiveNotification = struct {
             .notification_type = notification_type,
             .start_time = now,
             .duration_ms = duration_ms,
-            .suppress_when_focused = type_config.suppress_when_focused,
-            .suppress_when_clicked = type_config.suppress_when_clicked,
+            .suppresses_when_focused = type_config.suppress_when_focused,
+            .suppresses_when_clicked = type_config.suppress_when_clicked,
             .reveals_thumbnail = type_config.show_hidden_thumbnail,
             .shows_text = type_config.show_text,
             .border_color_override = type_config.border_color,
             .text_color_override = type_config.text_color,
-            .show_border = type_config.show_border,
-            .flash_border = type_config.flash_border,
+            .shows_border = type_config.show_border,
+            .flashes_border = type_config.flash_border,
         };
     }
 
     pub fn isFlashing(self: ActiveNotification, now: win32.Ticks) bool {
-        return self.show_border and self.flash_border and now.elapsedSince(self.start_time) < FLASH_TOTAL_MS;
+        return self.shows_border and self.flashes_border and now.elapsedSince(self.start_time) < FLASH_TOTAL_MS;
     }
 
     /// Whether the border is in an off phase; false once flashing ends and the border settles steady-on.
@@ -123,7 +123,7 @@ pub const NotificationStack = struct {
     pub fn dismissClickSuppressed(self: *NotificationStack, allocator: std.mem.Allocator) bool {
         const Context = struct {
             fn shouldRemove(_: @This(), entry: ActiveNotification) bool {
-                return entry.suppress_when_clicked;
+                return entry.suppresses_when_clicked;
             }
         };
         return self.removeIf(allocator, Context{});
@@ -197,8 +197,8 @@ fn testEntry(notification_type: notification.NotificationType, reveals_thumbnail
         .notification_type = notification_type,
         .start_time = .{ .ms = 1000 },
         .duration_ms = duration_ms,
-        .suppress_when_focused = false,
-        .suppress_when_clicked = false,
+        .suppresses_when_focused = false,
+        .suppresses_when_clicked = false,
         .reveals_thumbnail = reveals_thumbnail,
     };
 }

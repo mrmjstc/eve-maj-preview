@@ -61,7 +61,7 @@ pub const RowInput = struct {
 /// What the list follows of the thumbnails; with no thumbnail set, as if shown.
 pub const View = struct {
     /// False once the visibility toggle or auto-hide has hidden the thumbnails.
-    thumbnails_shown: bool = true,
+    are_thumbnails_shown: bool = true,
     /// The client whose thumbnail is being dragged.
     dragged_hwnd: ?win32.HWND = null,
 };
@@ -442,7 +442,7 @@ pub const ListWindow = struct {
             if (look.is_hidden) continue;
             try self.rows.append(self.panel.allocator, i);
             // As a thumbnail stays up while hidden: a revealing alert or a drag.
-            if (view.thumbnails_shown or client.notifications.revealsThumbnail() or client.hwnd == view.dragged_hwnd) has_visible_row = true;
+            if (view.are_thumbnails_shown or client.notifications.revealsThumbnail() or client.hwnd == view.dragged_hwnd) has_visible_row = true;
         }
         // Also hidden once the visibility toggle or auto-hide has hidden every client.
         if (!has_visible_row) {
@@ -672,7 +672,7 @@ const Lead = struct { length: usize, color: u32 };
 /// The thumbnails' visibility and drag, from App's current set.
 pub fn viewOf(thumbnail_set: ?*const ThumbnailSet) View {
     const active_set = thumbnail_set orelse return .{};
-    return .{ .thumbnails_shown = active_set.thumbnailsShown(), .dragged_hwnd = active_set.draggedSourceHwnd() };
+    return .{ .are_thumbnails_shown = active_set.thumbnailsShown(), .dragged_hwnd = active_set.draggedSourceHwnd() };
 }
 
 fn alertText(buffer: *[ALERT_TEXT_MAX]u8, count: usize) []const u8 {

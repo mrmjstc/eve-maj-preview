@@ -352,8 +352,8 @@ fn testAlert(notification_type: @FieldType(stack.ActiveNotification, "notificati
         .notification_type = notification_type,
         .start_time = .{ .ms = 1000 },
         .duration_ms = duration_ms,
-        .suppress_when_focused = false,
-        .suppress_when_clicked = true,
+        .suppresses_when_focused = false,
+        .suppresses_when_clicked = true,
     };
 }
 

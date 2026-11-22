@@ -349,16 +349,14 @@ pub const ThumbnailSet = struct {
 
     /// Logins, logouts and renames; returns whether the layout needs a reflow.
     fn applyNameChanges(self: *ThumbnailSet, name_changes: []const scout.NameChange) bool {
-        var any_login = false;
-        var any_logout = false;
+        var has_login_change = false;
         for (name_changes) |change| {
             const thumbnail = self.getThumbnailBySourceHwnd(change.hwnd) orelse continue;
 
             const was_generic = scout.isGenericCharacterName(change.old_name);
             const is_now_generic = scout.isGenericCharacterName(change.new_name);
             // Either direction can move a thumbnail to another space, or change its rank in one.
-            if (was_generic and !is_now_generic) any_login = true;
-            if (is_now_generic and !was_generic) any_logout = true;
+            if (was_generic != is_now_generic) has_login_change = true;
 
             self.rename(thumbnail, change.new_name) catch |err| {
                 slog.err("Failed to rename the thumbnail for '{s}': {}", .{ change.new_name, err });
@@ -372,7 +370,7 @@ pub const ThumbnailSet = struct {
         }
 
         if (!spaces.anyActive(self.config)) return false;
-        return any_login or any_logout;
+        return has_login_change;
     }
 
     /// The client whose thumbnail is being dragged; only one is at a time.
