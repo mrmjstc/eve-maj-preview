@@ -68,18 +68,43 @@ test "a thumbnail hidden by hand stays hidden whatever the focus or auto-hide" {
 }
 
 test "a dragged thumbnail draws as dragging even with an alert and focus" {
-    try testing.expectEqual(ThumbnailState.dragging, renderState(.{ .is_dragged = true, .has_alert = true, .is_focused = true, .is_minimized = true }));
+    try testing.expectEqual(ThumbnailState.dragging, renderState(.{
+        .is_dragged = true,
+        .has_alert = true,
+        .is_focused = true,
+        .is_minimized = true,
+    }));
 }
 
 test "an alert outranks focus" {
-    try testing.expectEqual(ThumbnailState.alert, renderState(.{ .is_dragged = false, .has_alert = true, .is_focused = true, .is_minimized = false }));
+    try testing.expectEqual(ThumbnailState.alert, renderState(.{
+        .is_dragged = false,
+        .has_alert = true,
+        .is_focused = true,
+        .is_minimized = false,
+    }));
 }
 
 test "a focused client draws as active even if minimized" {
-    try testing.expectEqual(ThumbnailState.active, renderState(.{ .is_dragged = false, .has_alert = false, .is_focused = true, .is_minimized = true }));
+    try testing.expectEqual(ThumbnailState.active, renderState(.{
+        .is_dragged = false,
+        .has_alert = false,
+        .is_focused = true,
+        .is_minimized = true,
+    }));
 }
 
 test "an unfocused client draws as minimized or inactive" {
-    try testing.expectEqual(ThumbnailState.minimized, renderState(.{ .is_dragged = false, .has_alert = false, .is_focused = false, .is_minimized = true }));
-    try testing.expectEqual(ThumbnailState.inactive, renderState(.{ .is_dragged = false, .has_alert = false, .is_focused = false, .is_minimized = false }));
+    try testing.expectEqual(ThumbnailState.minimized, renderState(.{
+        .is_dragged = false,
+        .has_alert = false,
+        .is_focused = false,
+        .is_minimized = true,
+    }));
+    try testing.expectEqual(ThumbnailState.inactive, renderState(.{
+        .is_dragged = false,
+        .has_alert = false,
+        .is_focused = false,
+        .is_minimized = false,
+    }));
 }

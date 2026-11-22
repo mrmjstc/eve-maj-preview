@@ -166,7 +166,9 @@ pub fn planGroupCycle(cycle: GroupCycle, clients: anytype) GroupStep {
 
     var it: CycleOrder = .init(found_index, total_count, .{ .is_forward = cycle.is_forward, .wraps = !cycle.chain.stops_at_ends });
     while (it.next()) |position| {
-        if (position >= member_count) return .{ .not_logged_in = .{ .hwnd = cycle.not_logged_in_hwnds[position - member_count], .position = position, .total_count = total_count } };
+        if (position >= member_count) return .{
+            .not_logged_in = .{ .hwnd = cycle.not_logged_in_hwnds[position - member_count], .position = position, .total_count = total_count },
+        };
         const member = chainMember(cycle.groups, cycle.group_indices, position);
         const hwnd = memberHwnd(cycle, member, clients) orelse continue;
         return .{ .member = .{ .member = member, .hwnd = hwnd, .position = position, .total_count = total_count } };

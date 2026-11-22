@@ -94,7 +94,13 @@ pub const PopupGrid = struct {
     pub fn init(area: Box, x: i32, y: i32, row_count: usize, column_width: i32, row_height: i32) PopupGrid {
         const shape = popupShape(area, row_count, column_width, row_height);
         const box = tooltipBox(area, x, y, shape.width, shape.height);
-        return .{ .box = box, .row_count = row_count, .row_height = row_height, .column_width = column_width, .rows_per_column = shape.rows_per_column };
+        return .{
+            .box = box,
+            .row_count = row_count,
+            .row_height = row_height,
+            .column_width = column_width,
+            .rows_per_column = shape.rows_per_column,
+        };
     }
 
     /// Against `parent`'s right side while there's room, else its left, with its first row at `row_top`; `row_height` must be above zero.
@@ -104,7 +110,13 @@ pub const PopupGrid = struct {
         const left = std.math.clamp(wanted_left, area.left, @max(area.left, area.right - shape.width));
         const top = std.math.clamp(row_top - POPUP_PADDING, area.top, @max(area.top, area.bottom - shape.height));
         const box: Box = .{ .left = left, .top = top, .right = left + shape.width, .bottom = top + shape.height };
-        return .{ .box = box, .row_count = row_count, .row_height = row_height, .column_width = column_width, .rows_per_column = shape.rows_per_column };
+        return .{
+            .box = box,
+            .row_count = row_count,
+            .row_height = row_height,
+            .column_width = column_width,
+            .rows_per_column = shape.rows_per_column,
+        };
     }
 
     pub fn cell(self: PopupGrid, index: usize) Box {

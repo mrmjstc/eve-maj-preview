@@ -366,7 +366,10 @@ pub const Config = struct {
     pub fn shownAutoHide(self: *const Config) AutoHide {
         return switch (self.display.viewMode) {
             .ClientList => .{ .is_enabled = self.listView.hideWhenNoEveFocus, .delay_ms = self.listView.hideDebounceMs },
-            .Thumbnails, .ThumbnailsAndList, .Nothing => .{ .is_enabled = self.thumbnail.hideWhenNoEveFocus, .delay_ms = self.thumbnail.hideDebounceMs },
+            .Thumbnails, .ThumbnailsAndList, .Nothing => .{
+                .is_enabled = self.thumbnail.hideWhenNoEveFocus,
+                .delay_ms = self.thumbnail.hideDebounceMs,
+            },
         };
     }
 

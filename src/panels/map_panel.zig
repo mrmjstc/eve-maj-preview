@@ -237,7 +237,15 @@ pub const MapPanel = struct {
     fn redraw(self: *MapPanel) void {
         const window = if (self.window) |*w| w else return;
         setPumping(window, window.state.isPopupOpen() or self.destinations.isWaiting() or self.traffic.isWaiting() or window.state.is_choosing_regions);
-        var scene: Scene = .{ .stats = self.stats, .logo_colors = self.logo_colors, .logo_revision = self.logo_revision, .pins = if (window.config.mapPanel.showIntel) self.shownPins() else &NO_PINS, .destinations = &self.destinations, .traffic = &self.traffic, .now_seconds = win32.unixSecondsNow() };
+        var scene: Scene = .{
+            .stats = self.stats,
+            .logo_colors = self.logo_colors,
+            .logo_revision = self.logo_revision,
+            .pins = if (window.config.mapPanel.showIntel) self.shownPins() else &NO_PINS,
+            .destinations = &self.destinations,
+            .traffic = &self.traffic,
+            .now_seconds = win32.unixSecondsNow(),
+        };
         if (window.config.mapPanel.showKills) {
             scene.kills = &self.kills;
             scene.kill_names = &self.kill_names;

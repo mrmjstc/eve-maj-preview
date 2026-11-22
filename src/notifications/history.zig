@@ -74,7 +74,15 @@ pub const NotificationHistory = struct {
     revision: u32 = 0,
 
     pub fn push(self: *NotificationHistory, new_entry: NewEntry) void {
-        var entry: Entry = .{ .source_hwnd = new_entry.source_hwnd, .notification_type = new_entry.notification_type, .timestamp = win32.Ticks.now(), .character_color = new_entry.character_color, .text_color = new_entry.text_color, .system = new_entry.system, .intel = new_entry.intel };
+        var entry: Entry = .{
+            .source_hwnd = new_entry.source_hwnd,
+            .notification_type = new_entry.notification_type,
+            .timestamp = win32.Ticks.now(),
+            .character_color = new_entry.character_color,
+            .text_color = new_entry.text_color,
+            .system = new_entry.system,
+            .intel = new_entry.intel,
+        };
 
         const name_length = @min(new_entry.character_name.len, entry.character_name_buf.len);
         @memcpy(entry.character_name_buf[0..name_length], new_entry.character_name[0..name_length]);

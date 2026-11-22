@@ -164,7 +164,14 @@ pub const IntelPanelWindow = struct {
         const intel_settings = &context.store.live.intelPanel;
         try Class.register(context.instance);
         const panel = try PanelWindow.init(context.allocator, context.instance, INTEL_PANEL_WINDOW_CLASS, "EVE Intel", panel_lifecycle.windowRect(intel_settings), intel_settings.alwaysOnTop);
-        return .{ .panel = panel, .store = context.store, .config = &context.store.live, .host = links.host, .instance = context.instance, .intel_history = links.intel_history };
+        return .{
+            .panel = panel,
+            .store = context.store,
+            .config = &context.store.live,
+            .host = links.host,
+            .instance = context.instance,
+            .intel_history = links.intel_history,
+        };
     }
 
     pub fn deinit(self: *IntelPanelWindow) void {
@@ -238,7 +245,14 @@ pub const IntelPanelWindow = struct {
 
     fn header(self: *const IntelPanelWindow) panel_chrome.Header {
         const intel_settings = &self.config.intelPanel;
-        return .{ .layout = self.headerLayout(), .title = intel_look.HEADER_TEXT, .is_collapsed = intel_settings.collapsed, .hovered = self.header_input.hovered, .lit = .init(.{ .pin = intel_settings.alwaysOnTop, .mute = intel_settings.muteSounds }), .accent = self.config.accentColor };
+        return .{
+            .layout = self.headerLayout(),
+            .title = intel_look.HEADER_TEXT,
+            .is_collapsed = intel_settings.collapsed,
+            .hovered = self.header_input.hovered,
+            .lit = .init(.{ .pin = intel_settings.alwaysOnTop, .mute = intel_settings.muteSounds }),
+            .accent = self.config.accentColor,
+        };
     }
 
     pub fn saveWindowPosition(self: *const IntelPanelWindow) void {
@@ -449,7 +463,12 @@ pub const IntelPanelWindow = struct {
         const message_font = self.panel.font.handle orelse return;
         const small_font = self.panel.small_font.handle orelse return;
         _ = win32.SelectObject(dc, message_font);
-        const text: RowText = .{ .system_font = self.bold_font.handle orelse message_font, .message_font = message_font, .small_font = small_font, .name_height = panel_chrome.lineHeight(dc) };
+        const text: RowText = .{
+            .system_font = self.bold_font.handle orelse message_font,
+            .message_font = message_font,
+            .small_font = small_font,
+            .name_height = panel_chrome.lineHeight(dc),
+        };
         const row_height = intel_look.rowHeight(self.config.intelPanel.fontSize);
         const bottom = panel_height - list_look.BOTTOM_PADDING;
         var y = top + intel_look.ROWS_PADDING_TOP;
@@ -492,7 +511,12 @@ pub const IntelPanelWindow = struct {
         const pill_left = row_box.left + intel_look.PADDING_X;
         const swatch = intel_look.pillSwatch(jumps);
         const pill_top = center_y - @divTrunc(intel_look.PILL_HEIGHT, 2);
-        pixel_buffer.fillRoundedBox(canvas, .{ .left = pill_left, .top = pill_top, .right = pill_left + pill_width, .bottom = pill_top + intel_look.PILL_HEIGHT }, intel_look.PILL_RADIUS, intel_look.faded(swatch.fill, is_old));
+        pixel_buffer.fillRoundedBox(canvas, .{
+            .left = pill_left,
+            .top = pill_top,
+            .right = pill_left + pill_width,
+            .bottom = pill_top + intel_look.PILL_HEIGHT,
+        }, intel_look.PILL_RADIUS, intel_look.faded(swatch.fill, is_old));
         panel_chrome.drawLine(dc, pill_text, pill_left + @divTrunc(pill_width - pill_text_width, 2), small_y, intel_look.faded(swatch.text, is_old));
 
         var content_right = row_box.right - intel_look.PADDING_X;
@@ -521,7 +545,12 @@ pub const IntelPanelWindow = struct {
             _ = win32.SelectObject(dc, text.small_font);
             const clear = intel_look.clearSwatch();
             const tag_width = @min(panel_chrome.textWidth(dc, intel_look.CLEAR_TEXT) + 2 * intel_look.TAG_PADDING_X, content_right - x);
-            pixel_buffer.fillRoundedBox(canvas, .{ .left = x, .top = small_y - 1, .right = x + tag_width, .bottom = small_y + small_height + 1 }, intel_look.TAG_RADIUS, intel_look.faded(clear.fill, is_old));
+            pixel_buffer.fillRoundedBox(canvas, .{
+                .left = x,
+                .top = small_y - 1,
+                .right = x + tag_width,
+                .bottom = small_y + small_height + 1,
+            }, intel_look.TAG_RADIUS, intel_look.faded(clear.fill, is_old));
             _ = panel_chrome.drawFitted(dc, intel_look.CLEAR_TEXT, x + intel_look.TAG_PADDING_X, small_y, intel_look.faded(clear.text, is_old), tag_width - 2 * intel_look.TAG_PADDING_X);
             x += tag_width + history_look.TEXT_GAP;
         }
@@ -538,7 +567,12 @@ pub const IntelPanelWindow = struct {
             action_index -= 1;
             const action = ROW_ACTIONS[action_index];
             left -= intel_look.ACTION_SIZE;
-            const action_box: Box = .{ .left = left, .top = center_y - @divTrunc(intel_look.ACTION_SIZE, 2), .right = left + intel_look.ACTION_SIZE, .bottom = center_y - @divTrunc(intel_look.ACTION_SIZE, 2) + intel_look.ACTION_SIZE };
+            const action_box: Box = .{
+                .left = left,
+                .top = center_y - @divTrunc(intel_look.ACTION_SIZE, 2),
+                .right = left + intel_look.ACTION_SIZE,
+                .bottom = center_y - @divTrunc(intel_look.ACTION_SIZE, 2) + intel_look.ACTION_SIZE,
+            };
             self.action_boxes[action_index] = action_box;
             const is_lit = self.hovered_action == action;
             if (is_lit) pixel_buffer.fillRoundedBox(canvas, action_box, intel_look.ACTION_RADIUS, palette.SURFACE);
@@ -556,7 +590,12 @@ pub const IntelPanelWindow = struct {
         const is_clear = if (entry.intel) |facts| facts.is_clear else false;
         if (entry.lead) |lead| {
             const system_color = if (self.config.intelPanel.colorSystemNames) lead.color else palette.TEXT;
-            return .{ .system = message[0..lead.length], .system_color = system_color, .message = history_look.splitAfterSystem(message[lead.length..]).message, .is_clear = is_clear };
+            return .{
+                .system = message[0..lead.length],
+                .system_color = system_color,
+                .message = history_look.splitAfterSystem(message[lead.length..]).message,
+                .is_clear = is_clear,
+            };
         }
         const system = if (entry.system) |index| universe.systemName(index) else "";
         return .{ .system = system, .system_color = palette.TEXT, .message = message, .is_clear = is_clear };

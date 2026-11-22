@@ -193,7 +193,13 @@ const testing = std.testing;
 const LOGIN_SCREEN = "EVE";
 
 fn testConfig(groups: []config_mod.HotkeyGroupConfig, spaces: []ThumbnailSpace) Config {
-    return .{ .allocator = testing.allocator, .profile_name = "", .display = .{ .placementMode = .ThumbnailSpaces }, .hotkeyGroups = .fromOwnedSlice(groups), .thumbnailSpaces = .fromOwnedSlice(spaces) };
+    return .{
+        .allocator = testing.allocator,
+        .profile_name = "",
+        .display = .{ .placementMode = .ThumbnailSpaces },
+        .hotkeyGroups = .fromOwnedSlice(groups),
+        .thumbnailSpaces = .fromOwnedSlice(spaces),
+    };
 }
 
 fn testSpace(name: []const u8, groups: []const []const u8) ThumbnailSpace {

@@ -612,7 +612,11 @@ fn refuseConflictingHotkeys() !void {
     if (conflicts.len == 1) {
         status.show(.failure, "Not saved: {key} is used by {holders}", .{ .key = first.written(), .holders = holders.written() });
     } else {
-        status.show(.failure, "Not saved: {key} is used by {holders} (+{count} more)", .{ .key = first.written(), .holders = holders.written(), .count = conflicts.len - 1 });
+        status.show(.failure, "Not saved: {key} is used by {holders} (+{count} more)", .{
+            .key = first.written(),
+            .holders = holders.written(),
+            .count = conflicts.len - 1,
+        });
     }
     return error.ConflictingHotkeys;
 }

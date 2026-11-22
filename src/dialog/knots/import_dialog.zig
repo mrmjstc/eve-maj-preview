@@ -327,7 +327,10 @@ fn isAnyChosen(sections: []const Section) bool {
 
 fn summaryView(context: *ui.Frame, summary: Summary) !void {
     const arena_allocator = context.arena();
-    const saved = try lang.format(arena_allocator, "{n} section(s) imported into '{name}' and saved.", .{ .n = summary.section_count, .name = profiles.displayName(session.profile().ptr.profile_name) });
+    const saved = try lang.format(arena_allocator, "{n} section(s) imported into '{name}' and saved.", .{
+        .n = summary.section_count,
+        .name = profiles.displayName(session.profile().ptr.profile_name),
+    });
     const message = if (summary.has_backup)
         try std.fmt.allocPrint(arena_allocator, "{s} {s}", .{ saved, lang.text("Your previous settings were backed up; restore them from the Backups tab if needed.") })
     else

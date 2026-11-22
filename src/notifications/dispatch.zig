@@ -96,7 +96,12 @@ pub fn listIntel(context: Context, intel_history: *history_mod.NotificationHisto
     var jumps_buf: [3]u8 = undefined;
     // A u8 is at most three digits.
     const jumps = std.mem.print(&jumps_buf, "{d}", .{nearest.jumps}) catch unreachable;
-    const notification: notification_mod.Notification = .{ .notification_type = .ChatIntel, .target = universe.systemName(system), .message = message, .jumps = jumps };
+    const notification: notification_mod.Notification = .{
+        .notification_type = .ChatIntel,
+        .target = universe.systemName(system),
+        .message = message,
+        .jumps = jumps,
+    };
     var text_buf: [notification_mod.TEXT_MAX]u8 = undefined;
     const text = notification_mod.defaultText(notification, &text_buf);
     intel_history.push(.{
@@ -210,7 +215,15 @@ fn record(context: Context, client: *const Client, notification: notification_mo
     context.records.recorded_alert_group.* = notification.alert_group;
     // Null uses the type's own colour; only a chat rule sets its own.
     const text_color = if (notification.chat_rule_index != null) type_config.text_color else null;
-    context.records.history.push(.{ .source_hwnd = client.hwnd, .character_name = client.character_name, .text = text, .notification_type = notification.notification_type, .character_color = client.character_color, .text_color = text_color, .lead = lead });
+    context.records.history.push(.{
+        .source_hwnd = client.hwnd,
+        .character_name = client.character_name,
+        .text = text,
+        .notification_type = notification.notification_type,
+        .character_color = client.character_color,
+        .text_color = text_color,
+        .lead = lead,
+    });
 }
 
 fn show(context: Context, client: *Client, text: []const u8, notification_type: notification_mod.NotificationType, type_config: config_mod.NotificationTypeConfig, lead: ?notification_mod.Lead, now: win32.Ticks) !void {

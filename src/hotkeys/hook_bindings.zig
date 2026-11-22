@@ -95,7 +95,10 @@ pub const HookBindings = struct {
 
     /// Installs the hook on first registration, logging if that fails; error.AlreadyBound, unlogged, when another ID holds the combo, which keeps it.
     pub fn register(self: *HookBindings, target_hwnd: win32.HWND, combined_vk: u32, id: c_int) !void {
-        var pending: ChangeRequest = .{ .bindings = self, .change = .{ .register = .{ .target_hwnd = target_hwnd, .combined_vk = combined_vk, .id = id } } };
+        var pending: ChangeRequest = .{
+            .bindings = self,
+            .change = .{ .register = .{ .target_hwnd = target_hwnd, .combined_vk = combined_vk, .id = id } },
+        };
         _ = hook_thread.call(&pending, ChangeRequest.run);
         self.logHookChange(&pending);
         return pending.result;

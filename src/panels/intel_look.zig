@@ -89,7 +89,12 @@ pub fn layOutRange(label_widths: [RANGE_COUNT]i32, left: i32, top: i32) RangeLay
     var widths: [RANGE_COUNT]i32 = undefined;
     for (label_widths, &widths) |label_width, *width| width.* = segmented.buttonWidth(label_width);
     const bar_top = top + BAR_PADDING_Y;
-    layout.bar = .{ .left = left, .top = bar_top, .right = left + segmented.barWidth(&widths, segmented.GAP, 0), .bottom = bar_top + palette.CONTROL_HEIGHT };
+    layout.bar = .{
+        .left = left,
+        .top = bar_top,
+        .right = left + segmented.barWidth(&widths, segmented.GAP, 0),
+        .bottom = bar_top + palette.CONTROL_HEIGHT,
+    };
     segmented.placeButtons(layout.bar, &widths, segmented.GAP, null, 0, &layout.segments);
     layout.bottom = layout.bar.bottom + BAR_PADDING_Y + 1;
     return layout;

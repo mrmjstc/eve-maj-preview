@@ -353,7 +353,10 @@ pub const CardShape = struct {
             row.* = .{ .left = left, .top = row_top, .right = right, .bottom = row_top + self.row_height };
         }
         const shown_rows: i32 = if (self.is_collapsed) 0 else @intCast(@max(1, rows.len));
-        return .{ .header = header, .box = .{ .left = left, .top = self.top, .right = right, .bottom = header.bottom + shown_rows * self.row_height } };
+        return .{
+            .header = header,
+            .box = .{ .left = left, .top = self.top, .right = right, .bottom = header.bottom + shown_rows * self.row_height },
+        };
     }
 };
 
@@ -494,7 +497,12 @@ pub const Chrome = struct {
         const top = body.top + CARD_MARGIN;
         const title_content = text.title_width + CHEVRON_OFFSET + CHEVRON_SIZE;
         const title_right = @min(left + title_content + 2 * TITLE_PADDING_X, areas.search_box.left - CARD_GAP);
-        chrome.title = .{ .left = left, .top = top, .right = @max(left, title_right), .bottom = top + TITLE_PADDING_TOP + text.title_height + TITLE_PADDING_BOTTOM };
+        chrome.title = .{
+            .left = left,
+            .top = top,
+            .right = @max(left, title_right),
+            .bottom = top + TITLE_PADDING_TOP + text.title_height + TITLE_PADDING_BOTTOM,
+        };
 
         var metric_widths: [metric_segments.SEGMENT_ORDER.len]i32 = undefined;
         for (&metric_widths, text.metric_widths) |*width, text_width| width.* = segmented.buttonWidth(text_width);
@@ -519,15 +527,30 @@ pub const Chrome = struct {
         const toggle_left = if (is_centred) toggle_centred else left;
 
         const metric_bottom = body.bottom - CARD_MARGIN;
-        chrome.metric_bar = .{ .left = metric_left, .top = metric_bottom - areas.card_height, .right = metric_left + metric_width, .bottom = metric_bottom };
+        chrome.metric_bar = .{
+            .left = metric_left,
+            .top = metric_bottom - areas.card_height,
+            .right = metric_left + metric_width,
+            .bottom = metric_bottom,
+        };
         segmented.placeButtons(chrome.metric_bar, &metric_widths, segmented.GAP, null, 0, &chrome.metrics);
         if (span_room > 0 and text.shows_spans) {
             const span_left = chrome.metric_bar.right + CARD_GAP;
-            chrome.span_bar = .{ .left = span_left, .top = chrome.metric_bar.top, .right = chrome.metric_bar.right + span_room, .bottom = metric_bottom };
+            chrome.span_bar = .{
+                .left = span_left,
+                .top = chrome.metric_bar.top,
+                .right = chrome.metric_bar.right + span_room,
+                .bottom = metric_bottom,
+            };
             segmented.placeButtons(chrome.span_bar, &span_widths, segmented.GAP, null, 0, &chrome.spans);
         }
         const toggle_bottom = chrome.metric_bar.top - CARD_GAP;
-        chrome.toggle_bar = .{ .left = toggle_left, .top = toggle_bottom - areas.card_height, .right = toggle_left + toggle_width, .bottom = toggle_bottom };
+        chrome.toggle_bar = .{
+            .left = toggle_left,
+            .top = toggle_bottom - areas.card_height,
+            .right = toggle_left + toggle_width,
+            .bottom = toggle_bottom,
+        };
         segmented.placeButtons(chrome.toggle_bar, &toggle_widths, TOGGLE_GAP, @backingInt(Toggle.follow), TOGGLE_DIVIDER_ROOM, &chrome.toggles);
         return chrome;
     }
@@ -910,7 +933,12 @@ pub fn drawBridge(canvas: pixel_buffer.Canvas, map_layout: *const layout.Layout,
     const high = @max(first_index, second_index);
     const delta_x: f32 = @floatFromInt(map_layout.nodes[high].x - map_layout.nodes[low].x);
     const delta_y: f32 = @floatFromInt(map_layout.nodes[high].y - map_layout.nodes[low].y);
-    const edge: layout.Edge = .{ .first_index = low, .second_index = high, .kind = .between_regions, .bend = @sqrt(delta_x * delta_x + delta_y * delta_y) * BRIDGE_BEND_SHARE };
+    const edge: layout.Edge = .{
+        .first_index = low,
+        .second_index = high,
+        .kind = .between_regions,
+        .bend = @sqrt(delta_x * delta_x + delta_y * delta_y) * BRIDGE_BEND_SHARE,
+    };
     var points: [BRIDGE_SAMPLES + 1][2]f32 = undefined;
     for (&points, 0..) |*point, step| point.* = map_layout.edgePlace(edge, @as(f32, @floatFromInt(step)) / BRIDGE_SAMPLES);
     drawDashed(canvas, &points, bridge_color);
@@ -1085,7 +1113,12 @@ test "at the smallest window the cards keep clear of each other and the controls
     try testing.expect(chrome.toggle_bar.right <= zoom.left - CARD_GAP);
     try testing.expect(chrome.metric_bar.right <= zoom.left - CARD_GAP);
     try testing.expectEqual(chrome.metric_bar.top - CARD_GAP, chrome.toggle_bar.bottom);
-    const card: IntelCard = .init(areas, .{ .top = areas.intelTop(), .header_height = intelHeaderHeight(areas.card_height), .row_height = intelRowHeight(17), .row_count = MIN_INTEL_ROWS });
+    const card: IntelCard = .init(areas, .{
+        .top = areas.intelTop(),
+        .header_height = intelHeaderHeight(areas.card_height),
+        .row_height = intelRowHeight(17),
+        .row_count = MIN_INTEL_ROWS,
+    });
     try testing.expect(card.box.bottom <= areas.mapControlBox(.always_on_top).top - CARD_GAP);
     try testing.expect(chrome.title.right <= areas.search_box.left - CARD_GAP);
 }
@@ -1106,7 +1139,12 @@ test "the map stays centred across the panel while the Intel card shows" {
 test "the Intel card spans the search box" {
     for ([_]i32{ 300, 800, 1200 }) |width| {
         const areas: Areas = .init(width, 600, 22, true);
-        const card: IntelCard = .init(areas, .{ .top = areas.intelTop(), .header_height = intelHeaderHeight(areas.card_height), .row_height = intelRowHeight(14), .row_count = 3 });
+        const card: IntelCard = .init(areas, .{
+            .top = areas.intelTop(),
+            .header_height = intelHeaderHeight(areas.card_height),
+            .row_height = intelRowHeight(14),
+            .row_count = 3,
+        });
         try testing.expectEqual(areas.search_box.left, card.box.left);
         try testing.expectEqual(areas.search_box.right, card.box.right);
     }
@@ -1120,7 +1158,12 @@ test "the Intel card fits what it can above the map controls, between two and si
     try testing.expectEqual(@as(usize, MIN_INTEL_ROWS), IntelCard.capacity(short.intelTop(), short.sideBottom(), intelHeaderHeight(short.card_height), row_height));
     const fitting: Areas = .init(800, 600, 22, true);
     const capacity = IntelCard.capacity(fitting.intelTop(), fitting.sideBottom(), intelHeaderHeight(fitting.card_height), row_height);
-    const card: IntelCard = .init(fitting, .{ .top = fitting.intelTop(), .header_height = intelHeaderHeight(fitting.card_height), .row_height = row_height, .row_count = capacity });
+    const card: IntelCard = .init(fitting, .{
+        .top = fitting.intelTop(),
+        .header_height = intelHeaderHeight(fitting.card_height),
+        .row_height = row_height,
+        .row_count = capacity,
+    });
     try testing.expect(card.box.bottom <= fitting.mapControlBox(.always_on_top).top - CARD_GAP);
 }
 
@@ -1138,7 +1181,13 @@ test "a list card fits rows down to its bottom, and an empty one keeps a row to 
 test "a collapsed Intel card is its header alone, and an empty one keeps a row to say so" {
     const areas: Areas = .init(800, 600, 22, true);
     const header_height = intelHeaderHeight(areas.card_height);
-    const collapsed: IntelCard = .init(areas, .{ .top = areas.intelTop(), .header_height = header_height, .row_height = 40, .row_count = 4, .is_collapsed = true });
+    const collapsed: IntelCard = .init(areas, .{
+        .top = areas.intelTop(),
+        .header_height = header_height,
+        .row_height = 40,
+        .row_count = 4,
+        .is_collapsed = true,
+    });
     try testing.expectEqual(collapsed.header, collapsed.box);
     try testing.expectEqual(@as(usize, 0), collapsed.row_count);
     const empty: IntelCard = .init(areas, .{ .top = areas.intelTop(), .header_height = header_height, .row_height = 40 });

@@ -311,13 +311,24 @@ pub fn layOutLines(allocator: std.mem.Allocator, lines: *std.ArrayList(Line), ro
             const system_name = names[rows[first_index]].system_name;
             group_end = first_index + 1;
             while (group_end < rows.len and std.mem.eql(u8, names[rows[group_end]].system_name, system_name)) group_end += 1;
-            try lines.append(allocator, .{ .top = top, .bottom = top + GROUP_HEADING_HEIGHT, .first_row_index = first_index, .row_count = group_end - first_index, .is_heading = true });
+            try lines.append(allocator, .{
+                .top = top,
+                .bottom = top + GROUP_HEADING_HEIGHT,
+                .first_row_index = first_index,
+                .row_count = group_end - first_index,
+                .is_heading = true,
+            });
             top += GROUP_HEADING_HEIGHT;
         }
         var line_first_index = first_index;
         while (line_first_index < group_end) {
             const line_end = @min(line_first_index + settings.columns, group_end);
-            try lines.append(allocator, .{ .top = top, .bottom = top + settings.row_height, .first_row_index = line_first_index, .row_count = line_end - line_first_index });
+            try lines.append(allocator, .{
+                .top = top,
+                .bottom = top + settings.row_height,
+                .first_row_index = line_first_index,
+                .row_count = line_end - line_first_index,
+            });
             top += settings.row_height;
             line_first_index = line_end;
         }
@@ -493,7 +504,10 @@ test "writeStat writes each of the list's stats as the thumbnails do" {
 
 test "totalReadings sums the rows showing each stat, in the overlay's period" {
     var totals: Totals = @splat(.{});
-    addReadings(&totals, &.{ .{ .stat = .incoming_dps, .value = 100, .has_prefix = true }, .{ .stat = .mining_rate, .value = 40, .has_prefix = true } });
+    addReadings(&totals, &.{
+        .{ .stat = .incoming_dps, .value = 100, .has_prefix = true },
+        .{ .stat = .mining_rate, .value = 40, .has_prefix = true },
+    });
     addReadings(&totals, &.{.{ .stat = .incoming_dps, .value = 25, .has_prefix = true }});
     var out: [STAT_COUNT]StatReading = undefined;
     const readings = totalReadings(TEST_STAT_SETTINGS, &totals, &out);

@@ -84,7 +84,12 @@ pub fn relativeTime(buffer: *[TIME_TEXT_MAX]u8, elapsed_ms: u64) []const u8 {
 
 const testing = std.testing;
 
-const FOCUS_HIDE: Visibility.Conditions = .{ .hides_without_characters = false, .any_character_logged_in = true, .hides_without_focus = true, .hide_delay_ms = 500 };
+const FOCUS_HIDE: Visibility.Conditions = .{
+    .hides_without_characters = false,
+    .any_character_logged_in = true,
+    .hides_without_focus = true,
+    .hide_delay_ms = 500,
+};
 
 fn focusHideAt(now_ms: u64) Visibility.Conditions {
     var conditions = FOCUS_HIDE;

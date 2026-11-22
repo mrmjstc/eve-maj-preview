@@ -74,7 +74,12 @@ pub const HotkeyManager = struct {
     }
 
     fn planSettings(self: *const HotkeyManager) plan_mod.Settings {
-        return .{ .characters = self.config.characters.items, .groups = self.config.hotkeyGroups.items, .hotkeys = &self.config.hotkeys, .global = self.global_settings };
+        return .{
+            .characters = self.config.characters.items,
+            .groups = self.config.hotkeyGroups.items,
+            .hotkeys = &self.config.hotkeys,
+            .global = self.global_settings,
+        };
     }
 
     /// For profiles the configuration window never refused, e.g. imports and hand edits.

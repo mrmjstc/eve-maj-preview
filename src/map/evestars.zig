@@ -611,7 +611,11 @@ test "sendUrl pins an alternative through its via" {
 }
 
 test "routeUrl plans from a start with the others, and sends nothing" {
-    const url = try routeUrl(testing.allocator, 30000142, 30002187, &.{ .preference = .Shorter, .uses_ansiblex = true, .avoids_zone = .{ true, false, false, false, false } });
+    const url = try routeUrl(testing.allocator, 30000142, 30002187, &.{
+        .preference = .Shorter,
+        .uses_ansiblex = true,
+        .avoids_zone = .{ true, false, false, false, false },
+    });
     defer testing.allocator.free(url);
     try testing.expectEqualStrings(BASE_URL ++ "/route?from=30000142&to=30002187&others=2&security=shortest&bridges=true&avoid=saved&avoidZones=1", url);
 }

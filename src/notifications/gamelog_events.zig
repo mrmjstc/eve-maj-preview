@@ -102,7 +102,11 @@ fn parseNotifyEvent(message: []const u8) ?Notification {
 
     // "Successfully compressed [ore] into [count] [compressed]"
     if (std.mem.find(u8, trimmed, "Successfully compressed") != null) {
-        return .{ .notification_type = .MiningCompression, .source = textBetween(trimmed, "compressed ", " into "), .target = textAfter(trimmed, " into ") };
+        return .{
+            .notification_type = .MiningCompression,
+            .source = textBetween(trimmed, "compressed ", " into "),
+            .target = textAfter(trimmed, " into "),
+        };
     }
 
     // "[miner] deactivates as it finds the resource it was harvesting a pale shadow of its former glory."
@@ -134,7 +138,11 @@ fn parseNotifyEvent(message: []const u8) ?Notification {
 
     // "[module] deactivates due to the destruction of the [crystal]"
     if (std.mem.find(u8, trimmed, "deactivates due to the destruction") != null) {
-        return .{ .notification_type = .CrystalBroke, .source = withoutYour(textBefore(trimmed, " deactivates due to the destruction")), .target = textAfter(trimmed, "destruction of the ") };
+        return .{
+            .notification_type = .CrystalBroke,
+            .source = withoutYour(textBefore(trimmed, " deactivates due to the destruction")),
+            .target = textAfter(trimmed, "destruction of the "),
+        };
     }
 
     // "Bomb Launcher II has run out of charges"

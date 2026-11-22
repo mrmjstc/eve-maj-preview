@@ -83,7 +83,13 @@ fn updatePanelDragRect(thumbnail_set: ?*const ThumbnailSet, hwnd: win32.HWND, re
     const visible_width = width - inset.left - inset.right;
     const visible_height = height - inset.top - inset.bottom;
 
-    const snapped: snapping.SnapPosition = if (thumbnail_set) |active_set| snapping.applyPanelSnapping(active_set, .{ .x = intended_x, .y = intended_y, .width = visible_width, .height = visible_height, .hwnd = hwnd }) else .{ .x = intended_x, .y = intended_y };
+    const snapped: snapping.SnapPosition = if (thumbnail_set) |active_set| snapping.applyPanelSnapping(active_set, .{
+        .x = intended_x,
+        .y = intended_y,
+        .width = visible_width,
+        .height = visible_height,
+        .hwnd = hwnd,
+    }) else .{ .x = intended_x, .y = intended_y };
 
     rect.left = snapped.x - inset.left;
     rect.top = snapped.y - inset.top;

@@ -57,9 +57,20 @@ const IDLE_TICK_INTERVAL_MS: win32.UINT = FORCED_SCAN_INTERVAL_MS;
 const TRAVEL_CHECK_INTERVAL_MS: u64 = 2000;
 const PROFILE_NAME_BUFFER_SIZE = 256;
 /// What the panels ask of App, which they can't import.
-pub const PANEL_HOST: panel_host.Host = .{ .thumbnail_set = currentThumbnailSet, .roster = currentRoster, .exclusions = currentExclusions, .run = runPanelRequest };
+pub const PANEL_HOST: panel_host.Host = .{
+    .thumbnail_set = currentThumbnailSet,
+    .roster = currentRoster,
+    .exclusions = currentExclusions,
+    .run = runPanelRequest,
+};
 /// What the configuration window asks of App, which it can't import.
-pub const DIALOG_HOST: dialog_host.Host = .{ .thumbnail_set = currentThumbnailSet, .notifier = currentNotifier, .timer_window = currentTimerWindow, .save = saveDialogSettings, .run = runDialogRequest };
+pub const DIALOG_HOST: dialog_host.Host = .{
+    .thumbnail_set = currentThumbnailSet,
+    .notifier = currentNotifier,
+    .timer_window = currentTimerWindow,
+    .save = saveDialogSettings,
+    .run = runDialogRequest,
+};
 
 /// What restartSubsystems' earlier steps hand to its later ones.
 const Restart = struct {
@@ -238,7 +249,14 @@ pub const App = struct {
 
     /// Shows alerts on the roster's clients, with or without a thumbnail set.
     pub fn notifier(self: *App) notifier_mod.Notifier {
-        return .{ .allocator = self.allocator, .config = &self.store.live, .auto_colors = &self.auto_colors, .records = self.notifications.records(), .roster = &self.roster, .intel = &self.intel };
+        return .{
+            .allocator = self.allocator,
+            .config = &self.store.live,
+            .auto_colors = &self.auto_colors,
+            .records = self.notifications.records(),
+            .roster = &self.roster,
+            .intel = &self.intel,
+        };
     }
 
     /// What every user command, from a hotkey, the tray or a protocol link, runs through; needs no hotkey manager.
@@ -588,7 +606,10 @@ pub const App = struct {
         for (findings.intel_sightings.items) |sighting| {
             if (sighting.is_pinned) {
                 const intel_settings = &self.store.live.intel;
-                self.intel.pin(sighting.system, sighting.message, sighting.is_clear, .{ .shows_clear = intel_settings.showClear, .lifetime_ms = intel_settings.shrinkMs() }, now_ms);
+                self.intel.pin(sighting.system, sighting.message, sighting.is_clear, .{
+                    .shows_clear = intel_settings.showClear,
+                    .lifetime_ms = intel_settings.shrinkMs(),
+                }, now_ms);
             }
             if (sighting.is_message_first) {
                 self.notifier().listIntel(sighting.system, sighting.message, sighting.is_clear);

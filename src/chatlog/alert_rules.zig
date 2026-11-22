@@ -292,7 +292,12 @@ fn intelHit(rule: *const Rule, mentions: []const SystemIndex, clients: []const C
             continue;
         }
         hit_jumps = found.jumps;
-        hit = .{ .notification_type = rule.kind.notificationType(), .term = universe.systemName(system), .jumps = found.jumps, .nearest_clients = found.tied };
+        hit = .{
+            .notification_type = rule.kind.notificationType(),
+            .term = universe.systemName(system),
+            .jumps = found.jumps,
+            .nearest_clients = found.tied,
+        };
     }
     return hit;
 }

@@ -927,7 +927,16 @@ pub fn reorderRowByHandle(context: *ui.Frame, base: ui.Key, index: usize, handle
     if (ui_state.leftPressed(handle.hash(), .within)) {
         const box = measuredBox(ui_state, base.indexed(index));
         const mouse_y = ui_state.input.mouse_pos[1];
-        g_pending.reorder = .{ .list = base.hash(), .from = index, .start_y = mouse_y, .grab_y = @as(f32, @floatCast(mouse_y)) - box.y(), .row_height = box.h(), .insert = index, .drawn_slot = index, .measured_slot = index };
+        g_pending.reorder = .{
+            .list = base.hash(),
+            .from = index,
+            .start_y = mouse_y,
+            .grab_y = @as(f32, @floatCast(mouse_y)) - box.y(),
+            .row_height = box.h(),
+            .insert = index,
+            .drawn_slot = index,
+            .measured_slot = index,
+        };
     }
 }
 
@@ -1282,7 +1291,12 @@ fn reorderLifted(context: *ui.Frame, base: ui.Key) ?Lifted {
     const drag = g_pending.reorder orelse return null;
     if (drag.list != base.hash() or !drag.has_moved) return null;
     const mouse_y: f32 = @floatCast(context.ui().input.mouse_pos[1]);
-    return .{ .from = drag.from, .slot = reorder_math.landingIndex(drag.from, drag.insert), .top = mouse_y - drag.grab_y, .row_height = drag.row_height };
+    return .{
+        .from = drag.from,
+        .slot = reorder_math.landingIndex(drag.from, drag.insert),
+        .top = mouse_y - drag.grab_y,
+        .row_height = drag.row_height,
+    };
 }
 
 /// Each row's measured middle in window pixels, null for one not measured yet; lives as long as the frame.
@@ -1441,7 +1455,11 @@ fn openSettingsRow(context: *ui.Frame, key: ui.Key, row_style: *const ui.Style, 
     g_open.is_row_lit = is_lit;
     const lit_style = try context.arena().create(ui.Style);
     lit_style.* = switch (look) {
-        .settings => row_style.with(.{ .padding = .xy(style.ROW_INSET, 0), .radius = .sm, .background = if (is_lit) .{ .color = style.ROW_HOVER } else .transparent }),
+        .settings => row_style.with(.{
+            .padding = .xy(style.ROW_INSET, 0),
+            .radius = .sm,
+            .background = if (is_lit) .{ .color = style.ROW_HOVER } else .transparent,
+        }),
         .modal => row_style.*,
     };
     // Interactive, so the cursor moving onto another row redraws, and a click on the label lands on the row.

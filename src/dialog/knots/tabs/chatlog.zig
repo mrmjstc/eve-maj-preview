@@ -58,7 +58,11 @@ fn directory(context: *ui.Frame, chatlog: ChatlogRef, comptime row_settings: Dir
     const row = try widgets.openBinding(context, .str("knots.chatlog.dir:" ++ field), row_settings.label);
     // Copied, since the box can replace the path before the tooltip draws it.
     const path = try context.arena().dupe(u8, chatlog.get(field));
-    const tip: ?Tooltip = if (path.len > 0) .{ .key = .str("knots.chatlog.path:" ++ field), .content = path, .parts = .{ .popup = &style.path_tooltip } } else null;
+    const tip: ?Tooltip = if (path.len > 0) .{
+        .key = .str("knots.chatlog.path:" ++ field),
+        .content = path,
+        .parts = .{ .popup = &style.path_tooltip },
+    } else null;
     if (tip) |t| _ = try t.open(context);
     try bind.styledTextBox(context, chatlog, field, row_settings.placeholder, &style.path_input);
     if (tip) |t| try t.close(context);

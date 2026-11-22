@@ -55,7 +55,12 @@ const MeasuredText = struct {
             if (look.stringsEqualFast(self.font_name, text_style.font_name) and self.font_size == text_style.font_size and self.font_weight == text_style.font_weight) return cached;
         }
         const measured = layout.measure(font, text);
-        self.* = .{ .dimensions = measured, .font_name = text_style.font_name, .font_size = text_style.font_size, .font_weight = text_style.font_weight };
+        self.* = .{
+            .dimensions = measured,
+            .font_name = text_style.font_name,
+            .font_size = text_style.font_size,
+            .font_weight = text_style.font_weight,
+        };
         return measured;
     }
 };
@@ -212,7 +217,16 @@ const Layout = struct {
 
     fn addAt(self: *Layout, font: win32.HFONT, text: []const u8, dimensions: TextDimensions, placement: Placement) void {
         const origin = self.position(placement.anchor, dimensions, placement.offset_x, placement.offset_y);
-        self.add(.{ .element = placement.element, .font = font, .text = text, .render_origin = origin, .background_origin = origin, .background_dimensions = dimensions, .color = placement.color, .bg_color = placement.bg_color });
+        self.add(.{
+            .element = placement.element,
+            .font = font,
+            .text = text,
+            .render_origin = origin,
+            .background_origin = origin,
+            .background_dimensions = dimensions,
+            .color = placement.color,
+            .bg_color = placement.bg_color,
+        });
     }
 
     /// One block anchored at `placement.anchor`, so Bottom and Center positions count every line.
@@ -405,7 +419,12 @@ fn recordDrawn(lines: []const DrawLine, notifications: ?NotificationBlock, setti
         entry.* = .{
             .element = line.element,
             .text_length = @intCast(length),
-            .box = .{ .left = line.background_origin.x, .top = line.background_origin.y, .width = line.background_dimensions.width, .height = line.background_dimensions.height },
+            .box = .{
+                .left = line.background_origin.x,
+                .top = line.background_origin.y,
+                .width = line.background_dimensions.width,
+                .height = line.background_dimensions.height,
+            },
             .color = line.color,
             .bg_color = line.bg_color,
         };
@@ -416,7 +435,12 @@ fn recordDrawn(lines: []const DrawLine, notifications: ?NotificationBlock, setti
         drawn.notifications_bg_color = settings.notifications_bg_color;
         drawn.notification_color = settings.notification_lines[0].color;
     }
-    if (connection_area) |area| drawn.connection_map = .{ .left = area.left, .top = area.top, .width = @intCast(area.right - area.left), .height = @intCast(area.bottom - area.top) };
+    if (connection_area) |area| drawn.connection_map = .{
+        .left = area.left,
+        .top = area.top,
+        .width = @intCast(area.right - area.left),
+        .height = @intCast(area.bottom - area.top),
+    };
     return drawn;
 }
 
@@ -444,7 +468,14 @@ fn addSessionTimer(layout: *Layout, fonts: Fonts, settings: RenderSettings) !voi
 fn addStyledText(layout: *Layout, fonts: Fonts, slot: font_cache_mod.FontSlot, element: Element, text: []const u8, text_style: TextStyle, cache: ?*MeasuredText) !void {
     const font = try fonts.get(slot, text_style.font_name, text_style.font_size, text_style.font_weight);
     const dimensions = if (cache) |measured| measured.measure(layout, font, text, text_style) else layout.measure(font, text);
-    layout.addAt(font, text, dimensions, .{ .element = element, .anchor = text_style.position, .offset_x = text_style.offset_x, .offset_y = text_style.offset_y, .color = text_style.color, .bg_color = text_style.bg_color });
+    layout.addAt(font, text, dimensions, .{
+        .element = element,
+        .anchor = text_style.position,
+        .offset_x = text_style.offset_x,
+        .offset_y = text_style.offset_y,
+        .color = text_style.color,
+        .bg_color = text_style.bg_color,
+    });
 }
 
 fn addCombat(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, stats: *const ActivityStats, settings: RenderSettings) !void {
@@ -454,13 +485,27 @@ fn addCombat(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, st
     if (incoming) |rate| {
         const font = try fonts.getScaled(.combat, combat.incoming_font_name, combat.incoming_font_size, combat.incoming_font_weight);
         const text = statText(layout, .{ .kind = .incoming_dps, .value = rate, .has_prefix = combat.incoming_show_prefix });
-        layout.addAt(font, text, layout.measure(font, text), .{ .element = .incoming_dps, .anchor = combat.incoming_position, .offset_x = combat.incoming_offset_x, .offset_y = combat.incoming_offset_y, .color = combat.incoming_color, .bg_color = settings.combat_incoming_bg_color });
+        layout.addAt(font, text, layout.measure(font, text), .{
+            .element = .incoming_dps,
+            .anchor = combat.incoming_position,
+            .offset_x = combat.incoming_offset_x,
+            .offset_y = combat.incoming_offset_y,
+            .color = combat.incoming_color,
+            .bg_color = settings.combat_incoming_bg_color,
+        });
     }
     const outgoing = if (combat.show_outgoing) stats.shownOutgoing() else null;
     if (outgoing) |rate| {
         const font = try fonts.getScaled(.combat_outgoing, combat.outgoing_font_name, combat.outgoing_font_size, combat.outgoing_font_weight);
         const text = statText(layout, .{ .kind = .outgoing_dps, .value = rate, .has_prefix = combat.outgoing_show_prefix });
-        layout.addAt(font, text, layout.measure(font, text), .{ .element = .outgoing_dps, .anchor = combat.outgoing_position, .offset_x = combat.outgoing_offset_x, .offset_y = combat.outgoing_offset_y, .color = combat.outgoing_color, .bg_color = settings.combat_outgoing_bg_color });
+        layout.addAt(font, text, layout.measure(font, text), .{
+            .element = .outgoing_dps,
+            .anchor = combat.outgoing_position,
+            .offset_x = combat.outgoing_offset_x,
+            .offset_y = combat.outgoing_offset_y,
+            .color = combat.outgoing_color,
+            .bg_color = settings.combat_outgoing_bg_color,
+        });
     }
 }
 
@@ -481,7 +526,14 @@ fn addMining(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, st
         texts[1] = statText(layout, .{ .kind = .mining_isk, .value = isk_per_second * isk_unit.seconds(), .has_prefix = false, .unit = isk_unit });
         text_count = 2;
     }
-    layout.addStack(font, texts[0..text_count], .{ .element = .mining, .anchor = mining.position, .offset_x = mining.offset_x, .offset_y = mining.offset_y, .color = mining.color, .bg_color = settings.mining_bg_color });
+    layout.addStack(font, texts[0..text_count], .{
+        .element = .mining,
+        .anchor = mining.position,
+        .offset_x = mining.offset_x,
+        .offset_y = mining.offset_y,
+        .color = mining.color,
+        .bg_color = settings.mining_bg_color,
+    });
 }
 
 fn addBounty(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, stats: *const ActivityStats, settings: RenderSettings) !void {
@@ -491,7 +543,14 @@ fn addBounty(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, st
     const font = try fonts.getScaled(.bounty, bounty.font_name, bounty.font_size, bounty.font_weight);
     const unit = config.bounty.isk_rate_unit;
     const text = statText(layout, .{ .kind = .bounty_isk, .value = isk_per_second * unit.seconds(), .has_prefix = bounty.show_prefix, .unit = unit });
-    layout.addAt(font, text, layout.measure(font, text), .{ .element = .bounty, .anchor = bounty.position, .offset_x = bounty.offset_x, .offset_y = bounty.offset_y, .color = bounty.color, .bg_color = settings.bounty_bg_color });
+    layout.addAt(font, text, layout.measure(font, text), .{
+        .element = .bounty,
+        .anchor = bounty.position,
+        .offset_x = bounty.offset_x,
+        .offset_y = bounty.offset_y,
+        .color = bounty.color,
+        .bg_color = settings.bounty_bg_color,
+    });
 }
 
 fn statText(layout: *Layout, reading: stat_text.Reading) []const u8 {
@@ -519,7 +578,14 @@ fn addResources(layout: *Layout, fonts: Fonts, config: *const config_mod.Config,
         texts[text_count] = layout.print("VRAM: {d:.0}MB", .{stats.vram_mb});
         text_count += 1;
     }
-    if (text_count > 0) layout.addStack(font, texts[0..text_count], .{ .element = .resources, .anchor = resources.position, .offset_x = resources.offset_x, .offset_y = resources.offset_y, .color = resources.color, .bg_color = settings.resources_bg_color });
+    if (text_count > 0) layout.addStack(font, texts[0..text_count], .{
+        .element = .resources,
+        .anchor = resources.position,
+        .offset_x = resources.offset_x,
+        .offset_y = resources.offset_y,
+        .color = resources.color,
+        .bg_color = settings.resources_bg_color,
+    });
 }
 
 fn addPing(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, stats: *const ActivityStats, settings: RenderSettings) !void {
@@ -527,7 +593,14 @@ fn addPing(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, stat
     if (!ping.shown or !stats.has_ping) return;
     const font = try fonts.getScaled(.ping, ping.font_name, ping.font_size, ping.font_weight);
     const text = if (stats.ping_ms) |ms| layout.print("{d} ms", .{ms}) else layout.print("?? ms", .{});
-    layout.addAt(font, text, layout.measure(font, text), .{ .element = .ping, .anchor = ping.position, .offset_x = ping.offset_x, .offset_y = ping.offset_y, .color = ping.color, .bg_color = settings.ping_bg_color });
+    layout.addAt(font, text, layout.measure(font, text), .{
+        .element = .ping,
+        .anchor = ping.position,
+        .offset_x = ping.offset_x,
+        .offset_y = ping.offset_y,
+        .color = ping.color,
+        .bg_color = settings.ping_bg_color,
+    });
 }
 
 /// Fills `map` and returns its labels' font; null while the plain system name shows instead.
@@ -544,7 +617,12 @@ fn layoutConnectionMap(map: *layout_mod.Layout, layout: *Layout, fonts: Fonts, s
         .height = @min(@as(usize, @intCast(settings.connection_map_height)), layout.height),
     };
     const origin = layout.position(text_style.position, dimensions, text_style.offset_x, text_style.offset_y);
-    const area: layout_mod.Box = .{ .left = origin.x, .top = origin.y, .right = origin.x + @as(i32, @intCast(dimensions.width)), .bottom = origin.y + @as(i32, @intCast(dimensions.height)) };
+    const area: layout_mod.Box = .{
+        .left = origin.x,
+        .top = origin.y,
+        .right = origin.x + @as(i32, @intCast(dimensions.width)),
+        .bottom = origin.y + @as(i32, @intCast(dimensions.height)),
+    };
     map.buildAround(systems[0..connections.len], area);
 
     var node_widths: [connections_mod.CAPACITY]i32 = undefined;

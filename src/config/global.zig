@@ -229,7 +229,12 @@ pub const GlobalConfig = struct {
 
     /// Moved aside rather than deleted, since running on defaults saves over it; one that won't move stays, and saves refuse to replace it.
     fn keepUnreadable(io: std.Io, outcome: LoadOutcome, err: anyerror) LoadReport {
-        var report: LoadReport = .{ .outcome = outcome, .err = err, .backup_seconds = std.Io.Clock.real.now(io).toSeconds(), .needs_profile_chatlog = true };
+        var report: LoadReport = .{
+            .outcome = outcome,
+            .err = err,
+            .backup_seconds = std.Io.Clock.real.now(io).toSeconds(),
+            .needs_profile_chatlog = true,
+        };
         var path_buffer: [BACKUP_PATH_SIZE]u8 = undefined;
         const cwd = std.Io.Dir.cwd();
         cwd.rename(files.GLOBAL_SETTINGS_FILE, cwd, backupPath(&path_buffer, report.backup_seconds), io) catch |move_err| {

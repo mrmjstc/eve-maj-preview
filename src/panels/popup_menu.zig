@@ -101,7 +101,11 @@ pub const PopupMenu = struct {
         self.submenu = null;
         self.nested = null;
         const main_lit_color = options.flat_lit_color orelse popup_look.MENU_LIT;
-        drawBox(bitmap, fonts, &grid, options.rows, .{ .lit_row = options.lit_row, .lit_color = main_lit_color, .check_color = options.check_color }, main_kind);
+        drawBox(bitmap, fonts, &grid, options.rows, .{
+            .lit_row = options.lit_row,
+            .lit_color = main_lit_color,
+            .check_color = options.check_color,
+        }, main_kind);
 
         const submenu = options.submenu orelse return;
         const submenu_grid = drawBeside(bitmap, fonts, area, &grid, &submenu, options.check_color);
@@ -174,7 +178,12 @@ fn drawBox(bitmap: *const gdi_overlay.OverlayBitmap, fonts: Fonts, grid: *const 
     for (rows, 0..) |*row, index| {
         const cell = grid.cell(index);
         const middle = cell.top + @divTrunc(cell.bottom - cell.top, 2);
-        if (row.has_rule_below) pixel_buffer.fillBox(canvas, .{ .left = cell.left, .top = cell.bottom - 1, .right = cell.right, .bottom = cell.bottom }, popup_look.MENU_RULE);
+        if (row.has_rule_below) pixel_buffer.fillBox(canvas, .{
+            .left = cell.left,
+            .top = cell.bottom - 1,
+            .right = cell.right,
+            .bottom = cell.bottom,
+        }, popup_look.MENU_RULE);
         if (row.has_submenu) popup_look.drawSubmenuArrow(canvas, cell.right - popup_look.MENU_RIGHT_INSET, middle, popup_look.MENU_MUTED);
         if (row.is_checked) popup_look.drawCheck(canvas, cell.left + popup_look.MENU_CHECK_LEFT, middle, colors.check_color);
         if (row.glyph) |glyph| glyphs.draw(canvas, glyph, cell.left + popup_look.MENU_CHECK_LEFT, middle - @divTrunc(glyphs.SIZE, 2), row.color);

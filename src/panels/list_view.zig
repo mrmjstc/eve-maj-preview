@@ -147,9 +147,22 @@ pub const ListWindow = struct {
         const x = config.listView.x;
         const y = config.listView.y;
         const sizes = list_look.metrics(&config.listView);
-        const panel = try PanelWindow.init(context.allocator, context.instance, LIST_WINDOW_CLASS, "EVE Client List", .{ .left = x, .top = y, .right = x + sizes.column_width, .bottom = y + sizes.header_height }, config.listView.alwaysOnTop);
+        const panel = try PanelWindow.init(context.allocator, context.instance, LIST_WINDOW_CLASS, "EVE Client List", .{
+            .left = x,
+            .top = y,
+            .right = x + sizes.column_width,
+            .bottom = y + sizes.header_height,
+        }, config.listView.alwaysOnTop);
         win32.setClickThroughStyle(panel.hwnd, config.interaction.clickThrough);
-        return .{ .panel = panel, .store = context.store, .config = config, .host = host, .auto_colors = context.auto_colors, .instance = context.instance, .row_input = row_input };
+        return .{
+            .panel = panel,
+            .store = context.store,
+            .config = config,
+            .host = host,
+            .auto_colors = context.auto_colors,
+            .instance = context.instance,
+            .row_input = row_input,
+        };
     }
 
     pub fn deinit(self: *ListWindow) void {
@@ -256,7 +269,15 @@ pub const ListWindow = struct {
 
     fn header(self: *const ListWindow, panel_width: i32, count_text: []const u8) panel_chrome.Header {
         const list_settings = &self.config.listView;
-        return .{ .layout = .init(panel_width, &HEADER_ACTIONS), .title = list_look.HEADER_TEXT, .count = count_text, .is_collapsed = list_settings.collapsed, .hovered = self.header_input.hovered, .lit = .init(.{ .pin = list_settings.alwaysOnTop }), .accent = self.config.accentColor };
+        return .{
+            .layout = .init(panel_width, &HEADER_ACTIONS),
+            .title = list_look.HEADER_TEXT,
+            .count = count_text,
+            .is_collapsed = list_settings.collapsed,
+            .hovered = self.header_input.hovered,
+            .lit = .init(.{ .pin = list_settings.alwaysOnTop }),
+            .accent = self.config.accentColor,
+        };
     }
 
     pub fn saveWindowPosition(self: *const ListWindow) void {
@@ -317,7 +338,11 @@ pub const ListWindow = struct {
     /// Puts `rows` in the configured order and records each row's client.
     fn sortRows(self: *ListWindow, clients: []const Client) !void {
         const list_settings = &self.config.listView;
-        try list_look.orderRows(self.panel.allocator, self.rows.items, self.names.items, .{ .order = list_settings.order, .configured = self.config.characters.items, .groups_by_system = list_settings.groupBySystem });
+        try list_look.orderRows(self.panel.allocator, self.rows.items, self.names.items, .{
+            .order = list_settings.order,
+            .configured = self.config.characters.items,
+            .groups_by_system = list_settings.groupBySystem,
+        });
         try self.row_source_hwnds.resize(self.panel.allocator, self.rows.items.len);
         for (self.rows.items, self.row_source_hwnds.items) |client_index, *hwnd| hwnd.* = clients[client_index].hwnd;
     }
@@ -415,7 +440,12 @@ pub const ListWindow = struct {
                 .mining_rate => stats.shownMining(),
                 .bounty_rate => stats.shownBounty(),
             } orelse continue;
-            out[reading_count] = .{ .stat = stat, .value = per_second * period_seconds, .has_prefix = list_look.hasPrefix(&config.listView, stat), .unit = unit };
+            out[reading_count] = .{
+                .stat = stat,
+                .value = per_second * period_seconds,
+                .has_prefix = list_look.hasPrefix(&config.listView, stat),
+                .unit = unit,
+            };
             reading_count += 1;
         }
         return out[0..reading_count];
@@ -462,7 +492,12 @@ pub const ListWindow = struct {
         try self.sortRows(clients);
         // Room for stats whether or not there are any yet, so the list doesn't grow when combat starts.
         const row_height = if (list_look.showsAnyStat(self.statSettings())) sizes.stats_row_height else sizes.row_height;
-        const lines_bottom = try list_look.layOutLines(self.panel.allocator, &self.lines, self.rows.items, self.names.items, .{ .columns = @intCast(columns), .groups_by_system = list_settings.groupBySystem, .top = sizes.header_height, .row_height = row_height });
+        const lines_bottom = try list_look.layOutLines(self.panel.allocator, &self.lines, self.rows.items, self.names.items, .{
+            .columns = @intCast(columns),
+            .groups_by_system = list_settings.groupBySystem,
+            .top = sizes.header_height,
+            .row_height = row_height,
+        });
         try self.header_fonts.ensure(self.panel.allocator);
 
         const is_collapsed = list_settings.collapsed;
@@ -485,7 +520,13 @@ pub const ListWindow = struct {
                     _ = win32.SelectObject(dc, small_font);
                     const small_height = panel_chrome.lineHeight(dc);
                     _ = win32.SelectObject(dc, name_font);
-                    row_text = .{ .name_font = name_font, .small_font = small_font, .slot_font = self.small_bold_font.handle orelse small_font, .name_height = panel_chrome.lineHeight(dc), .small_height = small_height };
+                    row_text = .{
+                        .name_font = name_font,
+                        .small_font = small_font,
+                        .slot_font = self.small_bold_font.handle orelse small_font,
+                        .name_height = panel_chrome.lineHeight(dc),
+                        .small_height = small_height,
+                    };
                 }
             }
             for (self.lines.items) |line| {
@@ -598,7 +639,12 @@ pub const ListWindow = struct {
             list_look.ROW_HOVER
         else
             list_look.PANEL;
-        if (background != list_look.PANEL) pixel_buffer.fillBox(canvas, .{ .left = column_left, .top = row_top, .right = column_left + column_width, .bottom = row_top + row_height }, background);
+        if (background != list_look.PANEL) pixel_buffer.fillBox(canvas, .{
+            .left = column_left,
+            .top = row_top,
+            .right = column_left + column_width,
+            .bottom = row_top + row_height,
+        }, background);
 
         const badge_color: u32 = if (is_excluded)
             list_look.BADGE_EXCLUDED
@@ -622,7 +668,12 @@ pub const ListWindow = struct {
         const readings = self.statReadings(client, &readings_buffer);
 
         _ = win32.SelectObject(dc, text.slot_font);
-        const slot_left = self.drawRightSlot(canvas, dc, client, look, .{ .y = center_y - @divTrunc(text.small_height, 2), .text_height = text.small_height, .min_left = text_left + list_look.MIN_NAME_WIDTH, .right = right_x });
+        const slot_left = self.drawRightSlot(canvas, dc, client, look, .{
+            .y = center_y - @divTrunc(text.small_height, 2),
+            .text_height = text.small_height,
+            .min_left = text_left + list_look.MIN_NAME_WIDTH,
+            .right = right_x,
+        });
         const name_right = if (slot_left < right_x) slot_left - list_look.SLOT_GAP else right_x;
 
         const text_height = if (readings.len > 0) text.name_height + list_look.LINE_GAP + text.small_height else text.name_height;
@@ -693,7 +744,12 @@ fn drawIndicator(canvas: pixel_buffer.Canvas, style: types.ListIndicatorStyle, c
             if (glow_background) |background| pixel_buffer.fillCircle(canvas, center_x, center_y, @floatFromInt(radius + list_look.GLOW_WIDTH), list_look.glowColor(argb, background));
             pixel_buffer.fillCircle(canvas, center_x, center_y, @floatFromInt(radius), argb);
         },
-        .Square => pixel_buffer.fillBox(canvas, .{ .left = center_x - radius, .top = center_y - radius, .right = center_x + radius, .bottom = center_y + radius }, argb),
+        .Square => pixel_buffer.fillBox(canvas, .{
+            .left = center_x - radius,
+            .top = center_y - radius,
+            .right = center_x + radius,
+            .bottom = center_y + radius,
+        }, argb),
         .None => {},
     }
 }

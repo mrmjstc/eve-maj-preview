@@ -42,7 +42,12 @@ const CLIENTS_COLUMN: ui.Style = .{ .width = .fixed(290), .height = .grow(), .di
 const CLIENT_LIST: ui.Style = style.roster.with(.{ .width = .grow() });
 const CLIENT_TEXT: ui.Style = .{ .width = .grow(), .direction = .column, .gap = 2 };
 const CLIENT_DETAIL: ui.Style = .{ .width = .grow(), .wrap = true, .font_size = .xs, .foreground = .{ .color = style.MUTED } };
-const DOT_RUNNING: ui.Style = .{ .width = .fixed(DOT_SIZE), .height = .fixed(DOT_SIZE), .radius = .{ .fixed = DOT_SIZE / 2 }, .background = .{ .color = style.SUCCESS } };
+const DOT_RUNNING: ui.Style = .{
+    .width = .fixed(DOT_SIZE),
+    .height = .fixed(DOT_SIZE),
+    .radius = .{ .fixed = DOT_SIZE / 2 },
+    .background = .{ .color = style.SUCCESS },
+};
 const DOT_IDLE: ui.Style = DOT_RUNNING.with(.{ .background = .{ .color = style.MUTED } });
 const DOT_DEAD: ui.Style = DOT_RUNNING.with(.{ .background = .{ .color = style.ERROR } });
 const ROW: ui.Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 8 };
@@ -59,7 +64,13 @@ const JOURNAL_PANE: ui.Style = .{
 };
 const JOURNAL_LIST: style.ScrollPane = .{
     .pane = &.{ .width = .grow(), .height = .grow(), .direction = .column, .overflow = .scroll_y },
-    .scrolling = &.{ .width = .grow(), .height = .grow(), .direction = .column, .overflow = .scroll_y, .padding = .init(0, style.ROW_SCROLLBAR_GUTTER, 0, 0) },
+    .scrolling = &.{
+        .width = .grow(),
+        .height = .grow(),
+        .direction = .column,
+        .overflow = .scroll_y,
+        .padding = .init(0, style.ROW_SCROLLBAR_GUTTER, 0, 0),
+    },
     .content = &.{ .width = .grow(), .direction = .column, .gap = 1 },
 };
 const JOURNAL_ROW: ui.Style = .{ .width = .grow(), .direction = .row, .gap = 10 };
@@ -237,7 +248,9 @@ fn sidebar(context: *ui.Frame, controls: *Controls) !void {
             const index = @backingInt(tab.category());
             try context.e(.{
                 Rect{ .key = ui.Key.str("sim.tab.category").indexed(index), .style = &style.tab_category },
-                .{Text{ .selectable = false, .key = ui.Key.str("sim.tab.category.label").indexed(index), .content = tab.category().label(), .style = &style.tab_category_text }},
+                .{
+                    Text{ .selectable = false, .key = ui.Key.str("sim.tab.category.label").indexed(index), .content = tab.category().label(), .style = &style.tab_category_text },
+                },
             });
         }
         try tabItem(context, controls, tab);

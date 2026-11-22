@@ -116,7 +116,10 @@ pub fn sections(draft: *Draft, root: Value, profile_name: []const u8) ![]const S
 }
 
 pub fn colorsHint(draft: *Draft, color_count: usize, hotkey_count: usize) !draft_mod.Text {
-    return draft.text("{colors} custom color(s), {hotkeys} character hotkey(s)", &.{ .{ .name = "colors", .value = try draft.format(color_count) }, .{ .name = "hotkeys", .value = try draft.format(hotkey_count) } });
+    return draft.text("{colors} custom color(s), {hotkeys} character hotkey(s)", &.{
+        .{ .name = "colors", .value = try draft.format(color_count) },
+        .{ .name = "hotkeys", .value = try draft.format(hotkey_count) },
+    });
 }
 
 pub fn hasText(text: ?[]const u8) bool {

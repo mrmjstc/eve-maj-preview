@@ -42,7 +42,14 @@ pub fn calculateRegionFitGrid(region: win32.RECT, count: usize, spacing_x: i32, 
     else
         false;
 
-    const fit: GridFit = .{ .region_width = region_width, .region_height = region_height, .spacing_x = spacing_x, .spacing_y = spacing_y, .aspect_ratio = aspect_ratio, .max_cell = max_cell };
+    const fit: GridFit = .{
+        .region_width = region_width,
+        .region_height = region_height,
+        .spacing_x = spacing_x,
+        .spacing_y = spacing_y,
+        .aspect_ratio = aspect_ratio,
+        .max_cell = max_cell,
+    };
     var columns: u32 = 1;
     var rows: u32 = 1;
     var grid = fit.gridFor(columns, rows);
@@ -102,11 +109,17 @@ fn regionFitColumnRow(direction: types.RegionFitDirection, index: usize, columns
     return switch (direction) {
         .RowFirst_RTL_TTB => .{ .column = @as(i32, @intCast(columns - 1)) - @as(i32, @intCast(index % columns)), .row = @intCast(index / columns) },
         .RowFirst_LTR_BTT => .{ .column = @intCast(index % columns), .row = @as(i32, @intCast(rows - 1)) - @as(i32, @intCast(index / columns)) },
-        .RowFirst_RTL_BTT => .{ .column = @as(i32, @intCast(columns - 1)) - @as(i32, @intCast(index % columns)), .row = @as(i32, @intCast(rows - 1)) - @as(i32, @intCast(index / columns)) },
+        .RowFirst_RTL_BTT => .{
+            .column = @as(i32, @intCast(columns - 1)) - @as(i32, @intCast(index % columns)),
+            .row = @as(i32, @intCast(rows - 1)) - @as(i32, @intCast(index / columns)),
+        },
         .ColumnFirst_TTB_LTR => .{ .column = @intCast(index / rows), .row = @intCast(index % rows) },
         .ColumnFirst_BTT_LTR => .{ .column = @intCast(index / rows), .row = @as(i32, @intCast(rows - 1)) - @as(i32, @intCast(index % rows)) },
         .ColumnFirst_TTB_RTL => .{ .column = @as(i32, @intCast(columns - 1)) - @as(i32, @intCast(index / rows)), .row = @intCast(index % rows) },
-        .ColumnFirst_BTT_RTL => .{ .column = @as(i32, @intCast(columns - 1)) - @as(i32, @intCast(index / rows)), .row = @as(i32, @intCast(rows - 1)) - @as(i32, @intCast(index % rows)) },
+        .ColumnFirst_BTT_RTL => .{
+            .column = @as(i32, @intCast(columns - 1)) - @as(i32, @intCast(index / rows)),
+            .row = @as(i32, @intCast(rows - 1)) - @as(i32, @intCast(index % rows)),
+        },
         .RowFirst_LTR_TTB => .{ .column = @intCast(index % columns), .row = @intCast(index / columns) },
     };
 }

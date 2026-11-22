@@ -198,8 +198,21 @@ pub fn sample(notification_type: NotificationType) Notification {
         .ProfileSwitch => .{ .notification_type = notification_type, .target = "Default" },
         .SystemChange, .ConduitJump => .{ .notification_type = notification_type, .target = "Jita" },
         .TravelLeftBehind => .{ .notification_type = notification_type, .source = "Perimeter", .target = "Jita" },
-        .ChatIntel => .{ .notification_type = notification_type, .source = "Some Pilot", .target = "Perimeter", .channel = "Intel", .message = "Perimeter spike 10", .jumps = "2" },
-        .ChatKeyword => .{ .notification_type = notification_type, .source = "Some Pilot", .target = "bubble", .channel = "Fleet", .message = "bubble on the gate" },
+        .ChatIntel => .{
+            .notification_type = notification_type,
+            .source = "Some Pilot",
+            .target = "Perimeter",
+            .channel = "Intel",
+            .message = "Perimeter spike 10",
+            .jumps = "2",
+        },
+        .ChatKeyword => .{
+            .notification_type = notification_type,
+            .source = "Some Pilot",
+            .target = "bubble",
+            .channel = "Fleet",
+            .message = "bubble on the gate",
+        },
         .Generic => .{ .notification_type = notification_type, .source = "Generic notification" },
         .FleetInvite, .ConversationInvite => .{ .notification_type = notification_type, .source = "Some Pilot" },
         .FleetFollow, .FleetRegroup => .{ .notification_type = notification_type, .source = "Fleet Commander" },
@@ -359,7 +372,11 @@ test "defaultText inserts the target, or falls back without one" {
     try testing.expectEqualStrings("Taking Conduit to Ahbazon", defaultText(.{ .notification_type = .ConduitJump, .target = "Ahbazon" }, &buf));
     try testing.expectEqualStrings("Conduit Jump", defaultText(.{ .notification_type = .ConduitJump }, &buf));
     try testing.expectEqualStrings("Jumped to Jita", defaultText(.{ .notification_type = .SystemChange, .target = "Jita" }, &buf));
-    try testing.expectEqualStrings("Left behind in Perimeter", defaultText(.{ .notification_type = .TravelLeftBehind, .source = "Perimeter", .target = "Jita" }, &buf));
+    try testing.expectEqualStrings("Left behind in Perimeter", defaultText(.{
+        .notification_type = .TravelLeftBehind,
+        .source = "Perimeter",
+        .target = "Jita",
+    }, &buf));
     try testing.expectEqualStrings("Profile switched", defaultText(.{ .notification_type = .ProfileSwitch }, &buf));
 }
 
@@ -373,7 +390,11 @@ test "defaultText words each state" {
     try testing.expectEqualStrings("Self-Destruct", defaultText(.{ .notification_type = .SelfDestruct, .state = .started }, &buf));
     try testing.expectEqualStrings("Self-Destruct Aborted", defaultText(.{ .notification_type = .SelfDestruct, .state = .aborted }, &buf));
     try testing.expectEqualStrings("Added to Wing A", defaultText(.{ .notification_type = .GroupMembership, .state = .added, .target = "Wing A" }, &buf));
-    try testing.expectEqualStrings("Removed from Wing A", defaultText(.{ .notification_type = .GroupMembership, .state = .removed, .target = "Wing A" }, &buf));
+    try testing.expectEqualStrings("Removed from Wing A", defaultText(.{
+        .notification_type = .GroupMembership,
+        .state = .removed,
+        .target = "Wing A",
+    }, &buf));
     try testing.expectEqualStrings("Hotkeys suspended", defaultText(.{ .notification_type = .HotkeySuspend, .state = .suspended }, &buf));
     try testing.expectEqualStrings("Hotkeys resumed", defaultText(.{ .notification_type = .HotkeySuspend, .state = .resumed }, &buf));
     try testing.expectEqualStrings("Auto-minimize off", defaultText(.{ .notification_type = .AutoMinimizeToggle, .state = .off }, &buf));

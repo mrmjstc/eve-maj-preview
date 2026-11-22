@@ -312,7 +312,12 @@ fn applyPotato(paths: []const []const u8) void {
         } else if (result.changed) changed_count += 1 else already_set_count += 1;
     }
     if (first_failure) |failure| {
-        status.show(.failure, "Applied to {done}/{total}. Failed: {path} ({err})", .{ .done = changed_count + already_set_count, .total = results.len, .path = failure.path, .err = lang.text(failure.error_message orelse "unknown error") });
+        status.show(.failure, "Applied to {done}/{total}. Failed: {path} ({err})", .{
+            .done = changed_count + already_set_count,
+            .total = results.len,
+            .path = failure.path,
+            .err = lang.text(failure.error_message orelse "unknown error"),
+        });
     } else if (changed_count > 0 and already_set_count > 0) {
         status.show(.success, "Applied to {changed}, already set on {already} profile(s).", .{ .changed = changed_count, .already = already_set_count });
     } else if (changed_count > 0) {

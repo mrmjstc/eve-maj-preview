@@ -57,7 +57,12 @@ pub const GLOBAL_BINDINGS = [_]GlobalBinding{
 };
 
 /// Also re-registered on its own while hotkeys are suspended, so it can resume them.
-pub const SUSPEND_BINDING: GlobalBinding = .{ .action = .suspend_hotkeys, .protocol = .suspend_hotkeys, .field = "hotkeySuspend", .description = "suspend/resume all hotkeys" };
+pub const SUSPEND_BINDING: GlobalBinding = .{
+    .action = .suspend_hotkeys,
+    .protocol = .suspend_hotkeys,
+    .field = "hotkeySuspend",
+    .description = "suspend/resume all hotkeys",
+};
 
 /// Characters sharing one per-character hotkey.
 pub const CharacterGroup = struct {

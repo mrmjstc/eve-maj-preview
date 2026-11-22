@@ -224,14 +224,28 @@ fn layOutSegments(layout: *Layout, segment_widths: [ORDER_COUNT]i32, right: i32,
     var widths: [ORDER_COUNT]i32 = undefined;
     for (segment_widths, &widths) |label_width, *width| width.* = segmented.buttonWidth(label_width);
     const bar_top = middle - @divTrunc(ORDER_BAR_HEIGHT, 2);
-    layout.order_bar = .{ .left = right - segmented.barWidth(&widths, segmented.GAP, 0), .top = bar_top, .right = right, .bottom = bar_top + ORDER_BAR_HEIGHT };
+    layout.order_bar = .{
+        .left = right - segmented.barWidth(&widths, segmented.GAP, 0),
+        .top = bar_top,
+        .right = right,
+        .bottom = bar_top + ORDER_BAR_HEIGHT,
+    };
     segmented.placeButtons(layout.order_bar, &widths, segmented.GAP, null, 0, &layout.segments);
 }
 
 const testing = std.testing;
 
 fn sampleContents() Contents {
-    return .{ .is_on_top = true, .groups_by_system = false, .is_locked = false, .order = .Alphabetical, .opacity = 255, .settings_label = "Settings", .can_hide = true, .accent = 0xFFD9A441 };
+    return .{
+        .is_on_top = true,
+        .groups_by_system = false,
+        .is_locked = false,
+        .order = .Alphabetical,
+        .opacity = 255,
+        .settings_label = "Settings",
+        .can_hide = true,
+        .accent = 0xFFD9A441,
+    };
 }
 
 test "a panel without grouping or order leaves those rows out" {

@@ -323,7 +323,10 @@ fn colorsAndHotkeys(draft: *Draft, root: Value) !void {
             };
             if (entry.value_ptr.* != .string or std.mem.trim(u8, entry.value_ptr.string, " \t").len == 0) continue;
             const combined = hotkey(entry.value_ptr.string) orelse {
-                try draft.note(eve_x.SKIPPED_HOTKEY_NOTE, &.{ .{ .name = "name", .value = name }, .{ .name = "raw", .value = entry.value_ptr.string } });
+                try draft.note(eve_x.SKIPPED_HOTKEY_NOTE, &.{
+                    .{ .name = "name", .value = name },
+                    .{ .name = "raw", .value = entry.value_ptr.string },
+                });
                 continue;
             };
             try draft.put(try draft.character(name), "hotkey", try values.keyValue(draft.arena, combined));

@@ -96,7 +96,13 @@ fn partChips() [chips.CHIPS.len]panel_preview.Picker(chips.Part).Chip {
     inline for (chips.CHIPS, 0..) |chip, index| {
         const part: chips.Part = @fromBackingInt(index);
         const look = chips.look(chip);
-        part_chips[index] = .{ .part = part, .label = chip.label, .is_shown = look.off_switch == null, .color = look.color, .starts_group = part.startsGroup() };
+        part_chips[index] = .{
+            .part = part,
+            .label = chip.label,
+            .is_shown = look.off_switch == null,
+            .color = look.color,
+            .starts_group = part.startsGroup(),
+        };
     }
     return part_chips;
 }

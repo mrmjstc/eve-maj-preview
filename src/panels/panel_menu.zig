@@ -117,7 +117,12 @@ pub const PanelMenu = struct {
         self.button = button;
         const left = button.right - panel_menu_look.WIDTH;
         const top = button.bottom + BUTTON_GAP;
-        self.window = try PanelWindow.init(allocator, instance, MENU_WINDOW_CLASS, "EVE Panel Menu", .{ .left = left, .top = top, .right = left + panel_menu_look.WIDTH, .bottom = top + 1 }, true);
+        self.window = try PanelWindow.init(allocator, instance, MENU_WINDOW_CLASS, "EVE Panel Menu", .{
+            .left = left,
+            .top = top,
+            .right = left + panel_menu_look.WIDTH,
+            .bottom = top + 1,
+        }, true);
         try self.window.?.attachOwner(self);
         if (win32.SetTimer(self.window.?.hwnd, POLL_TIMER_ID, POLL_INTERVAL_MS, null) == 0) slog.warn("Failed to watch for presses outside a panel menu, so only its rows and button close it", .{});
         try self.render();
@@ -176,7 +181,12 @@ pub const PanelMenu = struct {
         const text_right = row_box.right - popup_look.MENU_RIGHT_INSET;
         const is_lit = if (self.hovered) |hit| std.meta.eql(hit, Hit{ .row = index }) else false;
         switch (row) {
-            .rule => pixel_buffer.fillBox(canvas, .{ .left = row_box.left + panel_menu_look.RULE_INSET, .top = middle, .right = row_box.right - panel_menu_look.RULE_INSET, .bottom = middle + 1 }, popup_look.MENU_RULE),
+            .rule => pixel_buffer.fillBox(canvas, .{
+                .left = row_box.left + panel_menu_look.RULE_INSET,
+                .top = middle,
+                .right = row_box.right - panel_menu_look.RULE_INSET,
+                .bottom = middle + 1,
+            }, popup_look.MENU_RULE),
             .toggle => |setting| {
                 if (is_lit) fillLit(canvas, row_box);
                 if (contents.isOn(setting)) popup_look.drawCheck(canvas, row_box.left + popup_look.MENU_CHECK_LEFT, middle, contents.accent);
@@ -336,7 +346,12 @@ pub fn ownerFor(comptime Window: type, window: *Window) Owner {
 /// `button` is in the panel's own pixels; its screen box, or null if the panel's position can't be read.
 pub fn screenBox(panel: *const PanelWindow, button: Box) ?Box {
     const top_left = panel.topLeft() orelse return null;
-    return .{ .left = top_left.x + button.left, .top = top_left.y + button.top, .right = top_left.x + button.right, .bottom = top_left.y + button.bottom };
+    return .{
+        .left = top_left.x + button.left,
+        .top = top_left.y + button.top,
+        .right = top_left.x + button.right,
+        .bottom = top_left.y + button.bottom,
+    };
 }
 
 fn windowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {

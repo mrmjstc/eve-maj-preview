@@ -446,7 +446,14 @@ fn testSubject(state: config_mod.ThumbnailState) Subject {
 }
 
 fn testEntry(text: []const u8) stack.ActiveNotification {
-    return .{ .text = text, .notification_type = .FleetInvite, .start_time = TEST_START, .duration_ms = 5000, .suppresses_when_focused = false, .suppresses_when_clicked = false };
+    return .{
+        .text = text,
+        .notification_type = .FleetInvite,
+        .start_time = TEST_START,
+        .duration_ms = 5000,
+        .suppresses_when_focused = false,
+        .suppresses_when_clicked = false,
+    };
 }
 
 // Borrows `entry.text`, so the stack is never deinited.

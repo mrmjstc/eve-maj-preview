@@ -149,7 +149,15 @@ pub const HistoryPanelWindow = struct {
         const history_settings = &context.store.live.historyPanel;
         try Class.register(context.instance);
         const panel = try PanelWindow.init(context.allocator, context.instance, HISTORY_PANEL_WINDOW_CLASS, "EVE Alert History", panel_lifecycle.windowRect(history_settings), history_settings.alwaysOnTop);
-        return .{ .panel = panel, .store = context.store, .config = &context.store.live, .host = links.host, .instance = context.instance, .history = links.history, .seen_ms = win32.Ticks.now().ms };
+        return .{
+            .panel = panel,
+            .store = context.store,
+            .config = &context.store.live,
+            .host = links.host,
+            .instance = context.instance,
+            .history = links.history,
+            .seen_ms = win32.Ticks.now().ms,
+        };
     }
 
     pub fn deinit(self: *HistoryPanelWindow) void {
@@ -287,7 +295,14 @@ pub const HistoryPanelWindow = struct {
 
     fn header(self: *const HistoryPanelWindow) panel_chrome.Header {
         const history_settings = &self.config.historyPanel;
-        return .{ .layout = self.headerLayout(), .title = history_look.HEADER_TEXT, .is_collapsed = history_settings.collapsed, .hovered = self.header_input.hovered, .lit = .init(.{ .pin = history_settings.alwaysOnTop }), .accent = self.config.accentColor };
+        return .{
+            .layout = self.headerLayout(),
+            .title = history_look.HEADER_TEXT,
+            .is_collapsed = history_settings.collapsed,
+            .hovered = self.header_input.hovered,
+            .lit = .init(.{ .pin = history_settings.alwaysOnTop }),
+            .accent = self.config.accentColor,
+        };
     }
 
     fn computeRenderSignature(self: *const HistoryPanelWindow, entries: []const history_mod.Entry, revision: u32, panel_header_state: *const panel_chrome.Header) u64 {
@@ -435,7 +450,13 @@ pub const HistoryPanelWindow = struct {
             follows_new = is_new;
 
             var names: history_look.Names = undefined;
-            var place: history_rows.HistoryPlace = .{ .box = undefined, .line_height = line_height, .is_new = is_new, .is_hovered = self.hovered_row == index, .shows_timestamp = history_settings.showTimestamp };
+            var place: history_rows.HistoryPlace = .{
+                .box = undefined,
+                .line_height = line_height,
+                .is_new = is_new,
+                .is_hovered = self.hovered_row == index,
+                .shows_timestamp = history_settings.showTimestamp,
+            };
             if (row.count > 1) {
                 names = history_look.mergedNames(entries, row);
                 place.names = &names;
@@ -463,7 +484,13 @@ pub const HistoryPanelWindow = struct {
         _ = win32.SelectObject(dc, small_font);
         const small_height = panel_chrome.lineHeight(dc);
         _ = win32.SelectObject(dc, name_font);
-        return .{ .name_font = name_font, .message_font = message_font, .small_font = small_font, .name_height = panel_chrome.lineHeight(dc), .small_height = small_height };
+        return .{
+            .name_font = name_font,
+            .message_font = message_font,
+            .small_font = small_font,
+            .name_height = panel_chrome.lineHeight(dc),
+            .small_height = small_height,
+        };
     }
 };
 

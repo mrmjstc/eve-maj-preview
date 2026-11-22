@@ -28,7 +28,10 @@ pub fn newPlace(thumbnail_set: *const ThumbnailSet, character_name: []const u8, 
         }
     }
     const size = handPlacedSize(thumbnail_set, character_name, scale);
-    return .{ .position = layout.calculateThumbnailPosition(character_name, size.width, size.height, names.len, monitor_bounds, scale), .size = size };
+    return .{
+        .position = layout.calculateThumbnailPosition(character_name, size.width, size.height, names.len, monitor_bounds, scale),
+        .size = size,
+    };
 }
 
 /// Spaces size every cell from how many thumbnails they hold, so any arrival or departure reflows them all.

@@ -247,7 +247,11 @@ fn keyedListOps(arena: std.mem.Allocator, ops: *std.ArrayList(patch.Op), list_na
         const key = keyOf(item, key_field) orelse continue;
         const match = findByKey(existing, key_field, key, removed.items);
         const target = match orelse {
-            try ops.append(arena, .{ .op = "insert", .path = try arena.dupe(Value, &.{.{ .string = list_name }}), .value = try withoutId(arena, item) });
+            try ops.append(arena, .{
+                .op = "insert",
+                .path = try arena.dupe(Value, &.{.{ .string = list_name }}),
+                .value = try withoutId(arena, item),
+            });
             continue;
         };
         const id = target.object.get("id") orelse continue;

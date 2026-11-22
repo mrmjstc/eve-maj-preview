@@ -145,21 +145,36 @@ pub fn build(allocator: std.mem.Allocator, settings: Settings) !Plan {
         if (profile_hotkey.hotkey.isEmpty()) continue;
         plan.counts.profile_switches += 1;
         const description = try std.fmt.allocPrint(arena, "switch to profile [{s}]", .{profile_hotkey.targetProfile});
-        try plan.add(.{ .id = bindings.bandId(bindings.HOTKEY_ID_PROFILE_SWITCH_BASE, index), .keys = profile_hotkey.hotkey, .action = .{ .switch_to_profile = .{ .profile_index = index } }, .description = description });
+        try plan.add(.{
+            .id = bindings.bandId(bindings.HOTKEY_ID_PROFILE_SWITCH_BASE, index),
+            .keys = profile_hotkey.hotkey,
+            .action = .{ .switch_to_profile = .{ .profile_index = index } },
+            .description = description,
+        });
     }
 
     for (settings.global.appHotkeys.items, 0..) |app_hotkey, index| {
         if (app_hotkey.hotkey.isEmpty()) continue;
         plan.counts.apps += 1;
         const description = try std.fmt.allocPrint(arena, "activate app [{s}]", .{app_hotkey.executableName});
-        try plan.add(.{ .id = bindings.bandId(bindings.HOTKEY_ID_APP_HOTKEY_BASE, index), .keys = app_hotkey.hotkey, .action = .{ .activate_app = .{ .app_index = index } }, .description = description });
+        try plan.add(.{
+            .id = bindings.bandId(bindings.HOTKEY_ID_APP_HOTKEY_BASE, index),
+            .keys = app_hotkey.hotkey,
+            .action = .{ .activate_app = .{ .app_index = index } },
+            .description = description,
+        });
     }
 
     for (settings.global.urlHotkeys.items, 0..) |url_hotkey, index| {
         if (url_hotkey.hotkey.isEmpty()) continue;
         plan.counts.urls += 1;
         const description = try std.fmt.allocPrint(arena, "open url [{s}]", .{url_hotkey.url});
-        try plan.add(.{ .id = bindings.bandId(bindings.HOTKEY_ID_URL_HOTKEY_BASE, index), .keys = url_hotkey.hotkey, .action = .{ .open_url = .{ .url_index = index } }, .description = description });
+        try plan.add(.{
+            .id = bindings.bandId(bindings.HOTKEY_ID_URL_HOTKEY_BASE, index),
+            .keys = url_hotkey.hotkey,
+            .action = .{ .open_url = .{ .url_index = index } },
+            .description = description,
+        });
     }
 
     return plan;
@@ -169,7 +184,12 @@ pub fn build(allocator: std.mem.Allocator, settings: Settings) !Plan {
 pub fn globalEntry(settings: Settings, comptime binding: bindings.GlobalBinding) ?Entry {
     const keys: KeyList = if (binding.is_global_setting) @field(settings.global, binding.field) else @field(settings.hotkeys, binding.field);
     if (keys.isEmpty()) return null;
-    return .{ .id = bindings.globalId(binding.action), .keys = keys, .action = bindings.actionFor(binding.action), .description = binding.description };
+    return .{
+        .id = bindings.globalId(binding.action),
+        .keys = keys,
+        .action = bindings.actionFor(binding.action),
+        .description = binding.description,
+    };
 }
 
 /// Combos bound more than once outside one SharerKind's cycle, which only the first to register gets; allocated in `arena`.

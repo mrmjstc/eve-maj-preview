@@ -216,8 +216,16 @@ pub const RegionMenu = struct {
 
     /// `buffer` holds what's returned.
     pub fn fill(self: *const RegionMenu, buffer: *[MAX_ROWS]PopupRow) []const PopupRow {
-        buffer[0] = .{ .text = .print("{s}", .{universe.regionName(self.region)}), .color = list_look.MUTED, .role = .heading, .has_rule_below = true };
-        for (buffer[1..ROW_COUNT], system_links.SITES) |*row, site| row.* = .{ .text = .print("Open in {s}", .{system_links.siteName(site)}), .glyph = siteGlyph(site) };
+        buffer[0] = .{
+            .text = .print("{s}", .{universe.regionName(self.region)}),
+            .color = list_look.MUTED,
+            .role = .heading,
+            .has_rule_below = true,
+        };
+        for (buffer[1..ROW_COUNT], system_links.SITES) |*row, site| row.* = .{
+            .text = .print("Open in {s}", .{system_links.siteName(site)}),
+            .glyph = siteGlyph(site),
+        };
         return buffer[0..ROW_COUNT];
     }
 
@@ -341,7 +349,11 @@ fn branchRow(context: Context, branch: Branch, index: usize) PopupRow {
         ROUTE_HEADING_ROW => return sectionRow("ROUTE"),
         PREFERENCE_ROW => return preferenceRow(context.preference),
         ANSIBLEX_ROW => return .{ .text = .print("Use Ansiblex Gates", .{}), .is_checked = context.uses_ansiblex },
-        WAYPOINTS_ROW => return .{ .text = .print("Every System as Waypoint", .{}), .is_checked = context.sets_every_waypoint, .has_rule_below = true },
+        WAYPOINTS_ROW => return .{
+            .text = .print("Every System as Waypoint", .{}),
+            .is_checked = context.sets_every_waypoint,
+            .has_rule_below = true,
+        },
         SEND_HEADING_ROW => return sectionRow("SEND TO"),
         else => {},
     }
@@ -349,7 +361,12 @@ fn branchRow(context: Context, branch: Branch, index: usize) PopupRow {
     if (targets.len == 0) return .{ .text = .print("{s}", .{if (context.is_loading) "Loading..." else "No characters"}), .color = list_look.MUTED };
     if (index == ALL_ROW) {
         const character_count = context.targets.sendableCharacterCount();
-        return .{ .text = .print("All", .{}), .value = .print("{d}", .{character_count}), .color = if (character_count > 0) list_look.NAME else list_look.MUTED, .glyph = .group };
+        return .{
+            .text = .print("All", .{}),
+            .value = .print("{d}", .{character_count}),
+            .color = if (character_count > 0) list_look.NAME else list_look.MUTED,
+            .glyph = .group,
+        };
     }
     if (index == individualRow(context.targets)) return .{ .text = .print("Individual", .{}), .glyph = .person, .has_submenu = true };
     return targetRow(&targets[index - ALL_ROW - 1]);
@@ -363,7 +380,11 @@ fn rangeRow(index: usize) PopupRow {
 
 /// A ship's row, with its range as the value.
 fn shipRow(ship: jump_range.Ship) PopupRow {
-    return .{ .text = .print("{s}", .{jump_range.shipName(ship)}), .value = .print("{d:.1} ly", .{jump_range.rangeLightYears(ship)}), .glyph = shipGlyph(ship) };
+    return .{
+        .text = .print("{s}", .{jump_range.shipName(ship)}),
+        .value = .print("{d:.1} ly", .{jump_range.rangeLightYears(ship)}),
+        .glyph = shipGlyph(ship),
+    };
 }
 
 /// The overview bracket the game gives its hull; the game has none of their own for command carriers, lancers or black ops.
@@ -402,14 +423,23 @@ fn targetRow(target: *const evestars.Target) PopupRow {
     const color = if (target.can_send) list_look.NAME else list_look.MUTED;
     return switch (target.kind) {
         .group => .{ .text = .print("{s}", .{name}), .value = .print("{d}", .{target.character_count}), .color = color, .glyph = .group },
-        .character => .{ .text = .print("{s}", .{name}), .value = if (target.can_send) .{} else .print("can't send", .{}), .color = color, .glyph = .person },
+        .character => .{
+            .text = .print("{s}", .{name}),
+            .value = if (target.can_send) .{} else .print("can't send", .{}),
+            .color = color,
+            .glyph = .person,
+        },
     };
 }
 
 /// The preference, with the others as the value in the order clicks reach them.
 fn preferenceRow(preference: RoutePreference) PopupRow {
     const next = nextPreference(preference);
-    return .{ .text = .print("{s}", .{preferenceName(preference)}), .value = .print("{s}, {s}", .{ preferenceName(next), preferenceName(nextPreference(next)) }), .glyph = .route };
+    return .{
+        .text = .print("{s}", .{preferenceName(preference)}),
+        .value = .print("{s}, {s}", .{ preferenceName(next), preferenceName(nextPreference(next)) }),
+        .glyph = .route,
+    };
 }
 
 fn siteRow(site: system_links.Site) PopupRow {

@@ -158,7 +158,12 @@ pub fn drawSummary(canvas: Canvas, dc: win32.HDC, fonts: *const HeaderFonts, lef
         const inset: i32 = if (run.fill != null) PILL_PADDING_X else 0;
         if (run.fill) |fill| {
             const pill_width = @min(wideTextWidth(dc, run.text) + 2 * inset, right - x);
-            pixel_buffer.fillRoundedBox(canvas, .{ .left = x, .top = y - 1, .right = x + pill_width, .bottom = y + text_height + 1 }, PILL_RADIUS, fill);
+            pixel_buffer.fillRoundedBox(canvas, .{
+                .left = x,
+                .top = y - 1,
+                .right = x + pill_width,
+                .bottom = y + text_height + 1,
+            }, PILL_RADIUS, fill);
         }
         x += drawFitted(dc, run.text, x + inset, y, run.color, right - x - 2 * inset) + 2 * inset + HEADER_TEXT_GAP;
     }

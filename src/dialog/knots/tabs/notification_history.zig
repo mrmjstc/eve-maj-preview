@@ -139,7 +139,13 @@ fn partChips(history_settings: *const config.HistoryPanelConfig) [PART_COUNT]pan
             .timestamp => history_settings.showTimestamp,
             .merged => history_settings.mergeEnabled,
         };
-        part_chip.* = .{ .part = part, .label = part.label(), .is_shown = is_shown, .color = palette.TEXT_SECONDARY, .starts_group = part == .filters };
+        part_chip.* = .{
+            .part = part,
+            .label = part.label(),
+            .is_shown = is_shown,
+            .color = palette.TEXT_SECONDARY,
+            .starts_group = part == .filters,
+        };
     }
     return part_chips;
 }
@@ -286,7 +292,11 @@ fn chips(context: *ui.Frame, history_settings: *const config.HistoryPanelConfig,
     const bar = Rect{ .key = .src(@src()), .style = bar_style };
     _ = try bar.open(context);
     const is_shown = history_settings.showCategoryFilters;
-    const part = try g_picker.openPart(context, .{ .width = .grow(), .padding = .all(padding), .background = color_convert.solid(list_look.PANEL) }, .{ padding, padding }, .filters, is_shown);
+    const part = try g_picker.openPart(context, .{
+        .width = .grow(),
+        .padding = .all(padding),
+        .background = color_convert.solid(list_look.PANEL),
+    }, .{ padding, padding }, .filters, is_shown);
     const opacity = g_picker.contentOpacity(.filters, is_shown);
     const lines_style = try arena.create(ui.Style);
     lines_style.* = .{ .width = .grow(), .direction = .column, .gap = look.scaled(history_look.CHIP_GAP) };
@@ -332,7 +342,13 @@ fn chip(context: *ui.Frame, category: notification.NotificationCategory, index: 
     _ = try chip_rect.open(context);
     const diameter = look.scaled(2 * history_look.CHIP_DOT_RADIUS);
     const dot_style = try arena.create(ui.Style);
-    dot_style.* = .{ .width = .fixed(diameter), .height = .fixed(diameter), .radius = .{ .fixed = diameter / 2 }, .background = color_convert.solid(if (is_on) history_look.categoryColor(category) else palette.BORDER), .opacity = opacity };
+    dot_style.* = .{
+        .width = .fixed(diameter),
+        .height = .fixed(diameter),
+        .radius = .{ .fixed = diameter / 2 },
+        .background = color_convert.solid(if (is_on) history_look.categoryColor(category) else palette.BORDER),
+        .opacity = opacity,
+    };
     try context.e(Rect{ .key = key.indexed(1), .style = dot_style });
     try context.e(Text{ .selectable = false, .key = key.indexed(2), .content = history_look.categoryLabel(category), .style = try widgets.textStyle(arena, label_color, look.chip_size, .{ .opacity = opacity }) });
     const count = try std.fmt.allocPrint(arena, "{d}", .{sampleCount(category)});
@@ -352,7 +368,12 @@ fn sampleCount(category: notification.NotificationCategory) usize {
 fn rows(context: *ui.Frame, profile: *const config.Config, shown: []const usize, look: Look) !void {
     const arena = context.arena();
     const body_style = try arena.create(ui.Style);
-    body_style.* = .{ .width = .grow(), .height = .grow(), .direction = .column, .padding = .init(look.scaled(history_look.ROWS_PADDING_TOP), 0, 0, 0) };
+    body_style.* = .{
+        .width = .grow(),
+        .height = .grow(),
+        .direction = .column,
+        .padding = .init(look.scaled(history_look.ROWS_PADDING_TOP), 0, 0, 0),
+    };
     const body = Rect{ .key = .src(@src()), .style = body_style };
     _ = try body.open(context);
 
@@ -393,7 +414,9 @@ fn sampleRow(context: *ui.Frame, profile: *const config.Config, sample: Sample, 
     if (is_first) {
         // The timestamp part pads its text, so the row's right padding gives that back.
         const edge_style = try arena.create(ui.Style);
-        edge_style.* = row_style.with(.{ .padding = .init(0, look.scaled(history_look.PADDING_X) - padding, 0, look.scaled(history_look.PADDING_X)) });
+        edge_style.* = row_style.with(.{
+            .padding = .init(0, look.scaled(history_look.PADDING_X) - padding, 0, look.scaled(history_look.PADDING_X)),
+        });
         part_row_style = edge_style;
     }
     const row = Rect{ .key = key, .style = part_row_style };
@@ -430,7 +453,11 @@ fn sampleRow(context: *ui.Frame, profile: *const config.Config, sample: Sample, 
     try context.e(Text{ .selectable = false, .key = key.indexed(4), .content = try widgets.fittedText(context, sample.text, message_style, try messageRoom(context, key, sample, look)), .style = message_style });
     if (sample.merged_count > 1) {
         const merges = history_settings.mergeEnabled;
-        const part = try g_picker.openPart(context, .{ .@"align" = .center, .padding = .xy(padding, 0), .background = color_convert.solid(list_look.PANEL) }, .{ padding, 0 }, .merged, merges);
+        const part = try g_picker.openPart(context, .{
+            .@"align" = .center,
+            .padding = .xy(padding, 0),
+            .background = color_convert.solid(list_look.PANEL),
+        }, .{ padding, 0 }, .merged, merges);
         const pill_style = try arena.create(ui.Style);
         pill_style.* = .{
             .background = color_convert.solid(palette.SURFACE),
@@ -452,7 +479,10 @@ fn sampleRow(context: *ui.Frame, profile: *const config.Config, sample: Sample, 
         const opacity: f32 = if (is_first) g_picker.contentOpacity(.timestamp, shows_timestamp) else 1;
         const time = Text{ .selectable = false, .key = key.indexed(8), .content = time_text, .style = try widgets.textStyle(arena, list_look.MUTED, look.small_size, .{ .opacity = opacity }) };
         if (is_first) {
-            const part = try g_picker.openPart(context, .{ .padding = .xy(padding, 0), .background = color_convert.solid(list_look.PANEL) }, .{ padding, 0 }, .timestamp, shows_timestamp);
+            const part = try g_picker.openPart(context, .{
+                .padding = .xy(padding, 0),
+                .background = color_convert.solid(list_look.PANEL),
+            }, .{ padding, 0 }, .timestamp, shows_timestamp);
             try context.e(time);
             try part.close(context);
         } else {

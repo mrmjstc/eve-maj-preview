@@ -400,7 +400,12 @@ pub const Painter = struct {
             const connection = &listed.connections[item.index];
             var detail_buffer: [DETAIL_TEXT_MAX]u8 = undefined;
             const detail = std.fmt.bufPrint(&detail_buffer, "{s}  {d}h", .{ text_mod.shipSizeShort(connection.ship_size), connection.remaining_hours }) catch unreachable;
-            self.drawPlaceRow(dc, left, right, top, .{ .system = item.system, .place = universe.regionName(universe.systemInfo(item.system).region), .detail = detail, .detail_color = list_look.MUTED });
+            self.drawPlaceRow(dc, left, right, top, .{
+                .system = item.system,
+                .place = universe.regionName(universe.systemInfo(item.system).region),
+                .detail = detail,
+                .detail_color = list_look.MUTED,
+            });
         }
     }
 
@@ -423,7 +428,12 @@ pub const Painter = struct {
             const campaign = &campaigns.slice()[entry.index];
             const top = centredTop(box, text.name_height);
             const timer = text_mod.timerText(campaign, scene.now_seconds);
-            self.drawPlaceRow(dc, left, right, top, .{ .system = campaign.system, .place = universe.constellationName(universe.systemInfo(campaign.system).constellation), .detail = timer.slice(), .detail_color = look.SOV_TIMER });
+            self.drawPlaceRow(dc, left, right, top, .{
+                .system = campaign.system,
+                .place = universe.constellationName(universe.systemInfo(campaign.system).constellation),
+                .detail = timer.slice(),
+                .detail_color = look.SOV_TIMER,
+            });
         }
     }
 
@@ -1058,7 +1068,19 @@ pub const Painter = struct {
             },
             .node => self.state.layout.nodes[self.state.hover.index].system,
         };
-        var facts: text_mod.SystemFacts = .{ .system = system, .stats = scene.stats, .activity = self.spannedActivity(scene, self.config.mapPanel.metric), .avoided_area = if (self.has_eve_stars) avoidedArea(&scene.destinations.avoid, system) else null, .reach = if (self.state.reach) |*reach| reach else null, .storms = self.shownStorms(scene), .incursions = self.shownIncursions(scene), .campaigns = shownCampaigns(self.config, scene), .wormholes = shownWormholes(self.config, scene), .bridges = shownBridges(self.config, self.has_eve_stars, scene), .now_seconds = scene.now_seconds };
+        var facts: text_mod.SystemFacts = .{
+            .system = system,
+            .stats = scene.stats,
+            .activity = self.spannedActivity(scene, self.config.mapPanel.metric),
+            .avoided_area = if (self.has_eve_stars) avoidedArea(&scene.destinations.avoid, system) else null,
+            .reach = if (self.state.reach) |*reach| reach else null,
+            .storms = self.shownStorms(scene),
+            .incursions = self.shownIncursions(scene),
+            .campaigns = shownCampaigns(self.config, scene),
+            .wormholes = shownWormholes(self.config, scene),
+            .bridges = shownBridges(self.config, self.has_eve_stars, scene),
+            .now_seconds = scene.now_seconds,
+        };
         var names: [marks.MAX_MARKS][]const u8 = undefined;
         facts.characters = self.state.marks.namesAt(system, &names);
         if (scene.pins.find(system, self.config.intel.shrinkMs(), now_ms)) |pin| {
@@ -1348,7 +1370,10 @@ fn drawNotice(bitmap: *const gdi_overlay.OverlayBitmap, destinations: *const Des
 fn tooltipShape(dc: win32.HDC, tooltip: *const text_mod.Tooltip, fonts: MapFonts) TooltipShape {
     const text = fonts.chrome;
     const is_detailed = tooltip.isDetailed();
-    const padding: win32.POINT = if (is_detailed) .{ .x = popup_look.TITLE_INSET_X, .y = popup_look.titleInsetY(text.name_height) } else .{ .x = popup_look.TOOLTIP_PADDING, .y = popup_look.TOOLTIP_PADDING };
+    const padding: win32.POINT = if (is_detailed) .{
+        .x = popup_look.TITLE_INSET_X,
+        .y = popup_look.titleInsetY(text.name_height),
+    } else .{ .x = popup_look.TOOLTIP_PADDING, .y = popup_look.TOOLTIP_PADDING };
     _ = win32.SelectObject(dc, tooltipTitleFont(tooltip, fonts));
     var header_width = panel_chrome.wideTextWidth(dc, tooltip.line(0));
     if (tooltip.accent.length > 0) header_width += look.TOOLTIP_PART_GAP + panel_chrome.wideTextWidth(dc, tooltip.accent.slice());

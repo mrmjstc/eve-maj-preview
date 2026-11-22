@@ -54,7 +54,12 @@ pub const LogFile = struct {
         errdefer allocator.free(owned_path);
         const owned_character = try allocator.dupe(u8, character_name);
         errdefer allocator.free(owned_character);
-        return .{ .path = owned_path, .character_name = owned_character, .channel_name = try allocator.dupe(u8, channel_name), .is_chatlog = is_chatlog };
+        return .{
+            .path = owned_path,
+            .character_name = owned_character,
+            .channel_name = try allocator.dupe(u8, channel_name),
+            .is_chatlog = is_chatlog,
+        };
     }
 
     pub fn deinit(self: *LogFile, allocator: std.mem.Allocator, io: std.Io) void {

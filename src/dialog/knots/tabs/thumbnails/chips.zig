@@ -33,7 +33,14 @@ pub const CHIPS = [_]Chip{
         .rows = &([_]Row{
             .{ .heading = "Style" },
             .sync,
-            .{ .toggle = .{ .field = "useUniqueCharacterNameColors", .label = "Unique Colors", .disables_color = true, .hint = "Each character's name gets its own color." } },
+            .{
+                .toggle = .{
+                    .field = "useUniqueCharacterNameColors",
+                    .label = "Unique Colors",
+                    .disables_color = true,
+                    .hint = "Each character's name gets its own color.",
+                },
+            },
             .font,
             .background,
         }),
@@ -51,7 +58,14 @@ pub const CHIPS = [_]Chip{
         .rows = &([_]Row{
             .{ .heading = "Style" },
             .sync,
-            .{ .toggle = .{ .field = "useUniqueSystemColors", .label = "Unique Colors", .disables_color = true, .hint = "Each system gets its own color; System Colors overrides it." } },
+            .{
+                .toggle = .{
+                    .field = "useUniqueSystemColors",
+                    .label = "Unique Colors",
+                    .disables_color = true,
+                    .hint = "Each system gets its own color; System Colors overrides it.",
+                },
+            },
             .font,
             .background,
             .{ .heading = "Connections" },
@@ -177,7 +191,15 @@ pub const CHIPS = [_]Chip{
             .{ .heading = "Data" },
             RATE_WINDOW,
             UPDATE_INTERVAL,
-            .{ .segmented = .{ .field = "isk_rate_unit", .label = "ISK Per", .options = &.{ "Minute", "Hour" }, .hint = "Shows ISK earned per minute or per hour.", .tracks = true } },
+            .{
+                .segmented = .{
+                    .field = "isk_rate_unit",
+                    .label = "ISK Per",
+                    .options = &.{ "Minute", "Hour" },
+                    .hint = "Shows ISK earned per minute or per hour.",
+                    .tracks = true,
+                },
+            },
         }),
     },
     .{
@@ -387,7 +409,11 @@ pub fn showSettings(context: *ui.Frame, comptime chip: Chip, comptime index: usi
                 if (comptime isSubGate(chip, toggle.field)) gate = try widgets.openGroup(context, .str("knots.chip.gate:" ++ chip.label), ref.get(toggle.field));
             },
             .number => |number| {
-                try bind.number(context, if (comptime number.tracks) tracking_ref else ref, number.field, number.label, .{ .unit = number.unit, .singular_unit = number.singular_unit, .shows_seconds = number.shows_seconds });
+                try bind.number(context, if (comptime number.tracks) tracking_ref else ref, number.field, number.label, .{
+                    .unit = number.unit,
+                    .singular_unit = number.singular_unit,
+                    .shows_seconds = number.shows_seconds,
+                });
                 if (number.hint) |hint| try widgets.hintText(context, .str("knots.chip.hint:" ++ chip.label ++ ":" ++ number.field), hint);
             },
             .segmented => |segmented| {

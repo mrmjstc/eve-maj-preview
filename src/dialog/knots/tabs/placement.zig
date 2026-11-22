@@ -266,7 +266,10 @@ fn spaceRow(context: *ui.Frame, space: *const config.ThumbnailSpace, index: usiz
     const row = try roster_mod.Row.open(context, SPACE_ROW_KEY.indexed(index), space.id == g_selected_id, lifted_style);
     if (row.is_picked) g_selected_id = space.id;
     const dot_style = try arena.create(ui.Style);
-    dot_style.* = style.space_dot.with(.{ .background = .{ .color = dotColor(context, space.id) }, .opacity = if (space.enabled) @as(f32, 1) else DISABLED_SPACE_ALPHA });
+    dot_style.* = style.space_dot.with(.{
+        .background = .{ .color = dotColor(context, space.id) },
+        .opacity = if (space.enabled) @as(f32, 1) else DISABLED_SPACE_ALPHA,
+    });
     try context.e(Rect{ .key = ui.Key.str("knots.space.dot").indexed(index), .style = dot_style });
     const name = try spaceName(context, space, index);
     search.captureText(name);
@@ -410,7 +413,11 @@ fn holds(context: *ui.Frame, profile: ProfileRef, space: SpaceRef) !void {
     var chips: std.ArrayList(Chip) = .empty;
     for (groups, 0..) |group, group_index| {
         if (group.name.len == 0) {
-            try chips.append(arena, .{ .label = try lang.format(arena, hotkey_groups.UNNAMED_GROUP_FORMAT, .{ .n = group_index + 1 }), .name = null, .group_index = group_index });
+            try chips.append(arena, .{
+                .label = try lang.format(arena, hotkey_groups.UNNAMED_GROUP_FORMAT, .{ .n = group_index + 1 }),
+                .name = null,
+                .group_index = group_index,
+            });
             continue;
         }
         try chips.append(arena, .{ .label = group.name, .name = group.name });
@@ -435,7 +442,9 @@ fn holds(context: *ui.Frame, profile: ProfileRef, space: SpaceRef) !void {
         const is_held = if (chip.name) |held| space.ptr.groupIndex(held) != null else false;
         const chip_style = try arena.create(ui.Style);
         const look = if (is_held) &style.group_chip_held else &style.group_chip;
-        chip_style.* = look.with(.{ .grid_cell = .{ .row = @intCast(chip_index / CHIP_COLUMNS.len), .col = @intCast(chip_index % CHIP_COLUMNS.len) } });
+        chip_style.* = look.with(.{
+            .grid_cell = .{ .row = @intCast(chip_index / CHIP_COLUMNS.len), .col = @intCast(chip_index % CHIP_COLUMNS.len) },
+        });
         if ((try context.interact(Button{
             .key = base.indexed(chip_index),
             .label = chip.label,

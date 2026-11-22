@@ -65,7 +65,12 @@ pub fn sections(draft: *Draft, root: Value) ![]const Section {
         const words = comptime sectionWords(f.name);
         if (comptime isList(f.type)) {
             const item_count = if (raw) |value| (if (value == .array) value.array.items.len else 0) else 0;
-            try out.append(draft.arena, .{ .id = f.name, .title = words.title, .hint = try draft.countText(words.hint, item_count), .available = item_count > 0 });
+            try out.append(draft.arena, .{
+                .id = f.name,
+                .title = words.title,
+                .hint = try draft.countText(words.hint, item_count),
+                .available = item_count > 0,
+            });
         } else {
             const is_in_file = if (raw) |value| value != .null else false;
             try out.append(draft.arena, .{ .id = f.name, .title = words.title, .hint = .{ .key = words.hint }, .available = is_in_file });

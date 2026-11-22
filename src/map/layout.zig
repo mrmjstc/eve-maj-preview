@@ -544,7 +544,12 @@ pub const Layout = struct {
             const second = self.nodes[edge.second_index];
             // A curve strays at most half its bend off the line, and a pixel more in rounding.
             const stray: i32 = @as(i32, @intFromFloat(@ceil(@abs(edge.bend) / 2))) + 1;
-            const reach: Box = .{ .left = @min(first.x, second.x) - stray, .top = @min(first.y, second.y) - stray, .right = @max(first.x, second.x) + stray, .bottom = @max(first.y, second.y) + stray };
+            const reach: Box = .{
+                .left = @min(first.x, second.x) - stray,
+                .top = @min(first.y, second.y) - stray,
+                .right = @max(first.x, second.x) + stray,
+                .bottom = @max(first.y, second.y) + stray,
+            };
             if (!box.overlaps(reach)) continue;
             var point_buffer: [CURVE_SEGMENTS + 1]PixelPoint = undefined;
             const points = self.edgePoints(edge, &point_buffer);
@@ -880,13 +885,23 @@ const Fit = struct {
     }
 
     fn boxOf(self: Fit, bounds: Bounds) Box {
-        return .{ .left = self.pixelX(bounds.min_x), .top = self.pixelY(bounds.min_y), .right = self.pixelX(bounds.max_x), .bottom = self.pixelY(bounds.max_y) };
+        return .{
+            .left = self.pixelX(bounds.min_x),
+            .top = self.pixelY(bounds.min_y),
+            .right = self.pixelX(bounds.max_x),
+            .bottom = self.pixelY(bounds.max_y),
+        };
     }
 };
 
 /// A name's padded box: a client tag's chip, or the room a system's or exit's name keeps.
 pub fn chipBox(label: Box) Box {
-    return .{ .left = label.left - CHIP_PADDING_X, .top = label.top - CHIP_PADDING_Y, .right = label.right + CHIP_PADDING_X, .bottom = label.bottom + CHIP_PADDING_Y };
+    return .{
+        .left = label.left - CHIP_PADDING_X,
+        .top = label.top - CHIP_PADDING_Y,
+        .right = label.right + CHIP_PADDING_X,
+        .bottom = label.bottom + CHIP_PADDING_Y,
+    };
 }
 
 /// Each region's move, by place in `regions`, to sit REGION_GAP apart the ways they lie in New Eden; CCP's own places are far apart.
@@ -1467,7 +1482,14 @@ test "a system zoomed off the area loses its label" {
 test "exitLabelAt finds an exit by its padded name, and not past it" {
     var layout: Layout = .{};
     layout.exits[0] = .{ .from_index = 0, .destination = 1, .region = 0, .x = 0, .y = 0 };
-    layout.exits[1] = .{ .from_index = 0, .destination = 2, .region = 0, .x = 0, .y = 0, .label = .{ .left = 10, .top = 10, .right = 50, .bottom = 20 } };
+    layout.exits[1] = .{
+        .from_index = 0,
+        .destination = 2,
+        .region = 0,
+        .x = 0,
+        .y = 0,
+        .label = .{ .left = 10, .top = 10, .right = 50, .bottom = 20 },
+    };
     layout.exit_count = 2;
     try testing.expectEqual(@as(?u16, 1), layout.exitLabelAt(10 - CHIP_PADDING_X, 20 + CHIP_PADDING_Y - 1));
     try testing.expectEqual(@as(?u16, 1), layout.exitLabelAt(50 + CHIP_PADDING_X - 1, 10 - CHIP_PADDING_Y));
@@ -1488,7 +1510,11 @@ test "a portal points between its system's gates, once a hub, and only for a sys
     var layout: Layout = .{};
     layout.build(.one(try regionNamed("The Forge")), TEST_AREA);
     const obe = universe.findSystem("Obe").?;
-    layout.setPortals(&.{ .{ .system = obe, .target = .{ .hub = .thera } }, .{ .system = obe, .target = .{ .hub = .thera } }, .{ .system = universe.findSystem("Amarr").?, .target = .{ .hub = .thera } } });
+    layout.setPortals(&.{
+        .{ .system = obe, .target = .{ .hub = .thera } },
+        .{ .system = obe, .target = .{ .hub = .thera } },
+        .{ .system = universe.findSystem("Amarr").?, .target = .{ .hub = .thera } },
+    });
     try testing.expectEqual(@as(usize, 1), layout.portal_count);
     const step = layout.portal_steps[0];
     const info = universe.systemInfo(obe);

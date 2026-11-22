@@ -240,7 +240,12 @@ pub fn drawBorder(canvas: Canvas, border_width: usize, color: u32, style: Border
         },
         .DashDot => {
             const dot_length: usize = if (border_width == 0) 0 else @max(1, border_width);
-            drawLengthwisePattern(canvas, border_width, color, .{ .mark = DASH_LENGTH, .gap = DASH_GAP, .second_mark = dot_length, .second_gap = DASH_GAP });
+            drawLengthwisePattern(canvas, border_width, color, .{
+                .mark = DASH_LENGTH,
+                .gap = DASH_GAP,
+                .second_mark = dot_length,
+                .second_gap = DASH_GAP,
+            });
         },
         .CornerBrackets => {
             // Capped at a third of the shorter side so adjacent corners' brackets never meet.

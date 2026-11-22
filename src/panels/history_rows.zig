@@ -182,7 +182,12 @@ pub fn drawHistoryRow(canvas: Canvas, dc: win32.HDC, text: HistoryText, entries:
     const left = row_box.left + history_look.PADDING_X;
     const right = row_box.right - history_look.PADDING_X;
     const tile_top = row_box.top + @divTrunc(place.line_height - history_look.TILE_SIZE, 2);
-    pixel_buffer.fillRoundedBox(canvas, .{ .left = left, .top = tile_top, .right = left + history_look.TILE_SIZE, .bottom = tile_top + history_look.TILE_SIZE }, history_look.TILE_RADIUS, history_look.tileColor(category));
+    pixel_buffer.fillRoundedBox(canvas, .{
+        .left = left,
+        .top = tile_top,
+        .right = left + history_look.TILE_SIZE,
+        .bottom = tile_top + history_look.TILE_SIZE,
+    }, history_look.TILE_RADIUS, history_look.tileColor(category));
     const glyph_inset = @divTrunc(history_look.TILE_SIZE - history_look.TILE_GLYPH_SIZE, 2);
     glyphs.drawSized(canvas, history_look.categoryGlyph(category), history_look.TILE_GLYPH_SIZE, left + glyph_inset, tile_top + glyph_inset, history_look.categoryColor(category));
 
@@ -221,7 +226,12 @@ pub fn drawHistoryRow(canvas: Canvas, dc: win32.HDC, text: HistoryText, entries:
         _ = win32.SelectObject(dc, text.small_font);
         const pill_left = @min(x, message_end) + history_look.TEXT_GAP;
         const pill_width = merged_width - history_look.TEXT_GAP;
-        pixel_buffer.fillRoundedBox(canvas, .{ .left = pill_left, .top = small_y - 1, .right = pill_left + pill_width, .bottom = small_y + text.small_height + 1 }, history_look.MERGED_RADIUS, palette.SURFACE);
+        pixel_buffer.fillRoundedBox(canvas, .{
+            .left = pill_left,
+            .top = small_y - 1,
+            .right = pill_left + pill_width,
+            .bottom = small_y + text.small_height + 1,
+        }, history_look.MERGED_RADIUS, palette.SURFACE);
         panel_chrome.drawWideLine(dc, merged, pill_left + history_look.MERGED_PADDING_X, small_y, palette.TEXT_SECONDARY);
     }
 

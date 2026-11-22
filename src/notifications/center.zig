@@ -36,7 +36,12 @@ pub const NotificationCenter = struct {
 
     /// For the thumbnail set to record what it shows; valid as long as the center.
     pub fn records(self: *NotificationCenter) dispatch.Records {
-        return .{ .history = &self.history, .notified_queue = &self.notified_queue, .shown_alert_group = &self.shown_alert_group, .recorded_alert_group = &self.recorded_alert_group };
+        return .{
+            .history = &self.history,
+            .notified_queue = &self.notified_queue,
+            .shown_alert_group = &self.shown_alert_group,
+            .recorded_alert_group = &self.recorded_alert_group,
+        };
     }
 
     /// Matches the panels to the profile, after a change made in the config dialog or by a new profile.

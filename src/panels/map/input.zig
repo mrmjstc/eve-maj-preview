@@ -241,7 +241,9 @@ fn handleClick(window: *MapPanelWindow, context: Context, x: i32, y: i32) void {
         } else {
             openNewEden(window);
         },
-        .metric => window.store.update(.{ .mapPanel = .{ .metric = metric_segments.metricAfterClick(window.config.mapPanel.metric, @fromBackingInt(@intCast(hit.index))) } }),
+        .metric => window.store.update(.{
+            .mapPanel = .{ .metric = metric_segments.metricAfterClick(window.config.mapPanel.metric, @fromBackingInt(@intCast(hit.index))) },
+        }),
         .span => window.store.update(.{ .mapPanel = .{ .trafficSpan = look.SPAN_ORDER[hit.index] } }),
         .toggle => pressToggle(window, @fromBackingInt(@intCast(hit.index))),
         .bar => {},

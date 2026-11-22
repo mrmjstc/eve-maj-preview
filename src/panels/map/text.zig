@@ -359,12 +359,20 @@ pub fn sovereigntyLegend(ranks: *const ownership.HolderRanks, snapshot: ?*const 
     const named_count = @min(ranks.count, LEGEND_MAX_ROWS - 2);
     for (ranks.holders[0..named_count], 0..) |ranked, index| {
         const name = stats.holder_names.items[ranked.holder];
-        legend.add(.{ .swatch = ranks.colors[index], .text = .print("{s}", .{if (name.len > 0) name else "Unknown"}), .value = .print("{d}", .{ranked.system_count}) });
+        legend.add(.{
+            .swatch = ranks.colors[index],
+            .text = .print("{s}", .{if (name.len > 0) name else "Unknown"}),
+            .value = .print("{d}", .{ranked.system_count}),
+        });
     }
     var other_count = ranks.other_count;
     for (ranks.holders[named_count..ranks.count]) |ranked| other_count += ranked.system_count;
     if (other_count > 0) legend.add(.{ .swatch = list_look.MUTED, .text = .print(OTHERS_TEXT, .{}), .value = .print("{d}", .{other_count}) });
-    if (ranks.unclaimed_count > 0) legend.add(.{ .swatch = look.HEAT_NONE, .text = .print("Unclaimed", .{}), .value = .print("{d}", .{ranks.unclaimed_count}) });
+    if (ranks.unclaimed_count > 0) legend.add(.{
+        .swatch = look.HEAT_NONE,
+        .text = .print("Unclaimed", .{}),
+        .value = .print("{d}", .{ranks.unclaimed_count}),
+    });
     return legend;
 }
 
@@ -389,7 +397,11 @@ pub fn warfareLegend(snapshot: ?*const Snapshot, nodes: []const layout.Node) Leg
     std.mem.sort(u8, &places, &counts, occupiesMore);
     for (places) |place| {
         if (counts[place] == 0) break;
-        legend.add(.{ .swatch = look.factionColorOf(place), .text = .print("{s}", .{faction_warfare.faction(place).name}), .value = .print("{d}", .{counts[place]}) });
+        legend.add(.{
+            .swatch = look.factionColorOf(place),
+            .text = .print("{s}", .{faction_warfare.faction(place).name}),
+            .value = .print("{d}", .{counts[place]}),
+        });
     }
     return legend;
 }
@@ -414,7 +426,11 @@ pub fn rangeLegend(reach: *const jump_range.Reach) Legend {
         legend.add(.{ .swatch = look.RANGE, .text = .print("{s}", .{universe.regionName(region)}), .value = .print("{d}", .{count}) });
         named_count += count;
     }
-    if (named_count < reach.count) legend.add(.{ .swatch = list_look.MUTED, .text = .print(OTHERS_TEXT, .{}), .value = .print("{d}", .{reach.count - named_count}) });
+    if (named_count < reach.count) legend.add(.{
+        .swatch = list_look.MUTED,
+        .text = .print(OTHERS_TEXT, .{}),
+        .value = .print("{d}", .{reach.count - named_count}),
+    });
     return legend;
 }
 
@@ -424,7 +440,12 @@ pub fn stormLegend(storms: *const Storms, nodes: []const layout.Node) ?Legend {
     for (storms.slice()) |*storm| {
         for (nodes) |node| {
             if (storm.zoneOf(node.system) == null) continue;
-            legend.add(.{ .swatch = look.stormColor(storm.kind), .text = .print("{s}", .{stormName(storm.kind)}), .value = .print("{s}, {d}h", .{ universe.systemName(storm.center), storm.hours_in_system }), .is_area = true });
+            legend.add(.{
+                .swatch = look.stormColor(storm.kind),
+                .text = .print("{s}", .{stormName(storm.kind)}),
+                .value = .print("{s}, {d}h", .{ universe.systemName(storm.center), storm.hours_in_system }),
+                .is_area = true,
+            });
             break;
         }
     }
@@ -437,7 +458,12 @@ pub fn incursionLegend(incursions: *const Incursions, nodes: []const layout.Node
     for (incursions.slice()) |*incursion| {
         for (nodes) |node| {
             if (!incursion.infested.isSet(node.system)) continue;
-            legend.add(.{ .swatch = look.INCURSION, .text = .print("{s}", .{universe.systemName(incursion.staging)}), .value = .print("{s}, {d}%", .{ incursionStateName(incursion.state), incursion.influence_percent }), .is_area = true });
+            legend.add(.{
+                .swatch = look.INCURSION,
+                .text = .print("{s}", .{universe.systemName(incursion.staging)}),
+                .value = .print("{s}, {d}%", .{ incursionStateName(incursion.state), incursion.influence_percent }),
+                .is_area = true,
+            });
             break;
         }
     }
@@ -812,7 +838,13 @@ test "a system's tooltip reports what's known about it" {
     const jita = universe.findSystem("Jita").?;
     try snapshot.applyKills("[{\"npc_kills\":40,\"pod_kills\":2,\"ship_kills\":7,\"system_id\":30000142}]");
 
-    const tooltip = systemTooltip(.{ .system = jita, .stats = &snapshot, .characters = &.{"Bravo"}, .intel_message = "hostile", .intel_age_ms = 300_000 });
+    const tooltip = systemTooltip(.{
+        .system = jita,
+        .stats = &snapshot,
+        .characters = &.{"Bravo"},
+        .intel_message = "hostile",
+        .intel_age_ms = 300_000,
+    });
     try testing.expectEqualStrings("Jita", tooltip.line(0));
     try testing.expectEqualStrings("0.9", tooltip.accent.slice());
     try testing.expectEqualStrings("The Forge", tooltip.aside.slice());

@@ -112,7 +112,11 @@ pub const ChatlogMonitor = struct {
             .character_ids = character_ids,
             .interpreter = .{
                 .allocator = allocator,
-                .outbox = .{ .system_updates = &monitor.system_updates, .notifications = &monitor.notifications, .intel_sightings = &monitor.intel_sightings },
+                .outbox = .{
+                    .system_updates = &monitor.system_updates,
+                    .notifications = &monitor.notifications,
+                    .intel_sightings = &monitor.intel_sightings,
+                },
                 .own_characters = &monitor.wanted,
                 .global_settings = global_settings,
             },

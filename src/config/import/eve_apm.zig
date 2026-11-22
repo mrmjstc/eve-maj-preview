@@ -224,7 +224,13 @@ fn parseTuple(raw: ?[]const u8) ?Tuple {
         if (field_count < fields.len) fields[field_count] = values.parseIntLoose(part);
     }
     if (field_count < 2) return null;
-    return .{ .is_enabled = isNonZero(fields[0]), .vk_code = fields[1], .has_ctrl = isNonZero(fields[2]), .has_alt = isNonZero(fields[3]), .has_shift = isNonZero(fields[4]) };
+    return .{
+        .is_enabled = isNonZero(fields[0]),
+        .vk_code = fields[1],
+        .has_ctrl = isNonZero(fields[2]),
+        .has_alt = isNonZero(fields[3]),
+        .has_shift = isNonZero(fields[4]),
+    };
 }
 
 fn isNonZero(field: ?i64) bool {
@@ -317,7 +323,10 @@ fn borderStyle(draft: *Draft, path: []const u8, raw: ?[]const u8, label: []const
     const style_index = values.parseIntLoose(raw orelse return) orelse return;
     const name = if (style_index >= 0 and style_index < BORDER_STYLES.len) BORDER_STYLES[@intCast(style_index)] else try draft.arena.print("#{d}", .{style_index});
     if (style_index >= 0 and style_index < SUPPORTED_BORDER_STYLE_COUNT) return draft.setString(path, name);
-    try draft.note("{label} border style \"{name}\" has no equivalent in EVE-Maj Preview and was not imported.", &.{ .{ .name = "label", .value = label, .should_translate = true }, .{ .name = "name", .value = name } });
+    try draft.note("{label} border style \"{name}\" has no equivalent in EVE-Maj Preview and was not imported.", &.{
+        .{ .name = "label", .value = label, .should_translate = true },
+        .{ .name = "name", .value = name },
+    });
 }
 
 fn appearance(draft: *Draft, ini: *const Ini) !void {

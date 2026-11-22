@@ -280,7 +280,13 @@ pub const MapPanelWindow = struct {
             },
             .kills => self.listKills(scene, capacity),
         };
-        var card: look.IntelCard = .init(areas, .{ .top = top, .header_height = header_height, .row_height = row_height, .row_count = row_count, .is_collapsed = self.state.is_intel_collapsed });
+        var card: look.IntelCard = .init(areas, .{
+            .top = top,
+            .header_height = header_height,
+            .row_height = row_height,
+            .row_count = row_count,
+            .is_collapsed = self.state.is_intel_collapsed,
+        });
         card.tab = tab;
         if (self.isIntelInside() and self.config.mapPanel.showKills) layOutTabs(look.CardTab, paint.cardTabName, dc, fonts, card.header, tab, &card.tabs);
         return card;
@@ -294,10 +300,21 @@ pub const MapPanelWindow = struct {
         const top = if (self.state.intel_card) |*intel| intel.box.bottom + look.CARD_GAP else self.columnTop(areas);
         const row_height = look.listRowHeight(fonts.chrome.name_height);
         const bottom = self.timerColumnBottom(areas, fonts);
-        const probe: look.ListCard = .init(areas, .{ .top = top, .header_height = look.intelHeaderHeight(areas.card_height), .row_height = row_height, .is_collapsed = true }, bottom);
+        const probe: look.ListCard = .init(areas, .{
+            .top = top,
+            .header_height = look.intelHeaderHeight(areas.card_height),
+            .row_height = row_height,
+            .is_collapsed = true,
+        }, bottom);
         self.state.wormhole_scroll = @min(self.state.wormhole_scroll, wormhole_list.maxScroll(self.state.wormhole_entry_count, probe.visible_count));
         const shown_count = self.state.wormhole_entry_count - self.state.wormhole_scroll;
-        var card: look.ListCard = .init(areas, .{ .top = top, .header_height = look.intelHeaderHeight(areas.card_height), .row_height = row_height, .row_count = shown_count, .is_collapsed = self.state.is_wormholes_collapsed }, bottom);
+        var card: look.ListCard = .init(areas, .{
+            .top = top,
+            .header_height = look.intelHeaderHeight(areas.card_height),
+            .row_height = row_height,
+            .row_count = shown_count,
+            .is_collapsed = self.state.is_wormholes_collapsed,
+        }, bottom);
         layOutTabs(wormholes.Hub, text_mod.hubName, dc, fonts, card.header, hub, &card.tabs);
         return card;
     }
@@ -343,7 +360,12 @@ pub const MapPanelWindow = struct {
     /// At the head of the right column, as what was asked for last; it stays until its header closes it.
     fn placeRouteCard(self: *const MapPanelWindow, areas: look.Areas, fonts: MapFonts) ?look.ListCard {
         if (self.state.route_count == 0) return null;
-        return .init(areas, .{ .top = areas.intelTop(), .header_height = look.intelHeaderHeight(areas.card_height), .row_height = look.listRowHeight(fonts.chrome.name_height), .row_count = self.state.route_count }, areas.sideBottom());
+        return .init(areas, .{
+            .top = areas.intelTop(),
+            .header_height = look.intelHeaderHeight(areas.card_height),
+            .row_height = look.listRowHeight(fonts.chrome.name_height),
+            .row_count = self.state.route_count,
+        }, areas.sideBottom());
     }
 
     /// Where the right column's other cards start: under the route card, or at its top.
@@ -357,7 +379,13 @@ pub const MapPanelWindow = struct {
         if (!self.showsTimerCard()) return null;
         const above = if (self.state.wormhole_card) |*card| card.box else if (self.state.intel_card) |*card| card.box else null;
         const top = if (above) |box| box.bottom + look.CARD_GAP else self.columnTop(areas);
-        return .init(areas, .{ .top = top, .header_height = look.intelHeaderHeight(areas.card_height), .row_height = look.listRowHeight(fonts.chrome.name_height), .row_count = self.state.timer_entry_count, .is_collapsed = self.state.is_timers_collapsed }, areas.sideBottom());
+        return .init(areas, .{
+            .top = top,
+            .header_height = look.intelHeaderHeight(areas.card_height),
+            .row_height = look.listRowHeight(fonts.chrome.name_height),
+            .row_count = self.state.timer_entry_count,
+            .is_collapsed = self.state.is_timers_collapsed,
+        }, areas.sideBottom());
     }
 
     /// The newest kills in the regions shown, up to `capacity`, into kill_rows; returns how many.
@@ -644,7 +672,12 @@ pub const MapPanelWindow = struct {
         }
         var portal_widths: [layout.MAX_PORTALS]i32 = undefined;
         for (self.state.layout.portals[0..self.state.layout.portal_count], portal_widths[0..self.state.layout.portal_count]) |portal, *width| width.* = panel_chrome.textWidth(dc, text_mod.portalLabel(portal.target));
-        const sizes: layout.LabelSizes = .{ .nodes = &node_widths, .node_shapes = node_shapes[0..node_count], .exits = &self.state.label_widths.exits, .portals = &portal_widths };
+        const sizes: layout.LabelSizes = .{
+            .nodes = &node_widths,
+            .node_shapes = node_shapes[0..node_count],
+            .exits = &self.state.label_widths.exits,
+            .portals = &portal_widths,
+        };
         self.state.layout.placeLabels(areas.body, covered, sizes, loaded.label_height, look.labelClearance(self.state.layout.view.zoom));
 
         _ = win32.SelectObject(dc, loaded.title_font);
@@ -702,7 +735,12 @@ pub const MapPanelWindow = struct {
         _ = win32.SelectObject(dc, title_font);
         const title_height = panel_chrome.lineHeight(dc);
         _ = win32.SelectObject(dc, name_font);
-        const chrome: panel_chrome.Text = .{ .name_font = name_font, .small_font = small_font, .name_height = panel_chrome.lineHeight(dc), .small_height = small_height };
+        const chrome: panel_chrome.Text = .{
+            .name_font = name_font,
+            .small_font = small_font,
+            .name_height = panel_chrome.lineHeight(dc),
+            .small_height = small_height,
+        };
         _ = win32.SelectObject(dc, label_font);
         return .{
             .chrome = chrome,
@@ -765,7 +803,13 @@ pub const MapPanelWindow = struct {
             .allocator = self.panel.allocator,
         };
         const title = paint.titleText(&self.state);
-        if (fonts) |loaded| self.state.chrome = measureChrome(dc, loaded, areas, .{ .title = title.slice(), .metric = map_settings.metric, .has_span_room = self.hasEveStars() and map_settings.liveStats, .shows_spans = self.showsSpans(), .legend_width = painter.legendCardWidth(dc, scene, loaded.chrome) });
+        if (fonts) |loaded| self.state.chrome = measureChrome(dc, loaded, areas, .{
+            .title = title.slice(),
+            .metric = map_settings.metric,
+            .has_span_room = self.hasEveStars() and map_settings.liveStats,
+            .shows_spans = self.showsSpans(),
+            .legend_width = painter.legendCardWidth(dc, scene, loaded.chrome),
+        });
         self.state.route_card = if (fonts) |loaded| self.placeRouteCard(areas, loaded) else null;
         self.state.intel_card = if (fonts) |loaded| self.placeIntelCard(dc, areas, loaded, intel_entries, scene) else null;
         self.state.wormhole_card = if (fonts) |loaded| self.placeWormholeCard(dc, areas, loaded, scene) else null;

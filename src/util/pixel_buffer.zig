@@ -68,7 +68,12 @@ pub const Mask = struct {
 
     /// Everything within `radius` of the line, measured to it so a straight side stays straight.
     pub fn addBand(self: *Mask, from_x: i32, from_y: i32, to_x: i32, to_y: i32, radius: f32) void {
-        const line: BandLine = .{ .start_x = @floatFromInt(from_x), .start_y = @floatFromInt(from_y), .delta_x = @floatFromInt(to_x - from_x), .delta_y = @floatFromInt(to_y - from_y) };
+        const line: BandLine = .{
+            .start_x = @floatFromInt(from_x),
+            .start_y = @floatFromInt(from_y),
+            .delta_x = @floatFromInt(to_x - from_x),
+            .delta_y = @floatFromInt(to_y - from_y),
+        };
         const length_squared = line.delta_x * line.delta_x + line.delta_y * line.delta_y;
         const reach: i32 = @intFromFloat(@ceil(radius + 1));
         // From here out a pixel's depth is 0, so it needn't be measured.

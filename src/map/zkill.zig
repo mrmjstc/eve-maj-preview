@@ -194,7 +194,14 @@ test "parseSequence reads the newest file's number" {
 
 test "the ring keeps the newest kills, and prune drops those past their lifetime" {
     var kills: Kills = .{};
-    for (0..MAX_KILLS + 2) |index| kills.add(.{ .id = index, .system = 0, .time_seconds = @intCast(index), .ship_type_id = 0, .victim_id = 0, .value_isk = 0 });
+    for (0..MAX_KILLS + 2) |index| kills.add(.{
+        .id = index,
+        .system = 0,
+        .time_seconds = @intCast(index),
+        .ship_type_id = 0,
+        .victim_id = 0,
+        .value_isk = 0,
+    });
     try testing.expectEqual(@as(usize, MAX_KILLS), kills.count);
     try testing.expectEqual(@as(u64, MAX_KILLS + 1), kills.fromNewest(0).id);
     try testing.expectEqual(@as(u64, 2), kills.fromNewest(MAX_KILLS - 1).id);

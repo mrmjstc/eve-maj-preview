@@ -196,7 +196,13 @@ fn partChips(look: *const Look) [PART_COUNT]panel_preview.Picker(Part).Chip {
             .bounty_rate => statChip(look, .bounty_rate),
             .totals => .{ look.shows_totals, list_look.MUTED },
         };
-        part_chip.* = .{ .part = part, .label = part.label(), .is_shown = is_shown, .color = color, .starts_group = part == .active or part == .incoming_dps };
+        part_chip.* = .{
+            .part = part,
+            .label = part.label(),
+            .is_shown = is_shown,
+            .color = color,
+            .starts_group = part == .active or part == .incoming_dps,
+        };
     }
     return part_chips;
 }
@@ -278,7 +284,12 @@ fn totalsFooter(context: *ui.Frame, look: *const Look) !void {
     };
     const footer = Rect{ .key = TOTALS_KEY, .style = footer_style };
     _ = try footer.open(context);
-    const part = try openPart(context, look, .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = look.scaled(list_look.STAT_GAP) }, list_look.PANEL, .totals, look.shows_totals);
+    const part = try openPart(context, look, .{
+        .width = .grow(),
+        .direction = .row,
+        .@"align" = .center,
+        .gap = look.scaled(list_look.STAT_GAP),
+    }, list_look.PANEL, .totals, look.shows_totals);
     const opacity = g_picker.contentOpacity(.totals, look.shows_totals);
     try context.e(Text{ .selectable = false, .key = TOTALS_KEY.indexed(1), .content = list_look.TOTALS_TEXT, .style = try widgets.textStyle(arena, list_look.MUTED, look.small_size, .{ .opacity = opacity, .is_bold = true }) });
     for (look.stat_labels, 2..) |label, index| {
@@ -437,7 +448,11 @@ fn lookOf(arena: std.mem.Allocator, profile: *const config.Config, bench: *const
         const value = if (stat == .mining_rate) sample * profile.mining.m3_rate_unit.seconds() / std.time.s_per_min else sample;
         var writer: std.Io.Writer = .fixed(try arena.alloc(u8, list_look.STAT_TEXT_MAX));
         list_look.writeStat(&writer, .{ .stat = stat, .value = value, .has_prefix = list_look.hasPrefix(list_settings, stat), .unit = unit });
-        label.* = .{ .text = writer.buffered(), .color = list_look.statColor(list_settings, stat), .is_shown = list_look.showsStat(stat_settings, stat) };
+        label.* = .{
+            .text = writer.buffered(),
+            .color = list_look.statColor(list_settings, stat),
+            .is_shown = list_look.showsStat(stat_settings, stat),
+        };
     }
 
     return .{

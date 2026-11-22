@@ -66,12 +66,28 @@ pub const PackedImage = struct {
 
 var g_allocator: std.mem.Allocator = undefined;
 
-pub var g_wordmark: PackedImage = .{ .name = "wordmark", .packed_rgba = @embedFile("../../assets/wordmark_539x192.rgba.zlib"), .width = 539, .height = 192 };
+pub var g_wordmark: PackedImage = .{
+    .name = "wordmark",
+    .packed_rgba = @embedFile("../../assets/wordmark_539x192.rgba.zlib"),
+    .width = 539,
+    .height = 192,
+};
 /// The thumbnail preview's backdrop, from assets/layout_preview.jpg.
-pub var g_layout_preview: PackedImage = .{ .name = "layout preview", .packed_rgba = @embedFile("../../assets/layout_preview_540x304.rgba.zlib"), .width = 540, .height = 304 };
+pub var g_layout_preview: PackedImage = .{
+    .name = "layout preview",
+    .packed_rgba = @embedFile("../../assets/layout_preview_540x304.rgba.zlib"),
+    .width = 540,
+    .height = 304,
+};
 pub var g_app_mark: PackedImage = .{ .name = "app mark", .packed_rgba = @embedFile("../../assets/icon_36x36.rgba.zlib"), .width = 36, .height = 36 };
 /// Stands in for a character's portrait until it loads, from assets/default_portrait.jpg.
-pub var g_default_portrait: PackedImage = .{ .name = "default portrait", .packed_rgba = @embedFile("../../assets/default_portrait_32x32.rgba.zlib"), .width = 32, .height = 32, .corner_radius = portraits.CORNER_RADIUS };
+pub var g_default_portrait: PackedImage = .{
+    .name = "default portrait",
+    .packed_rgba = @embedFile("../../assets/default_portrait_32x32.rgba.zlib"),
+    .width = 32,
+    .height = 32,
+    .corner_radius = portraits.CORNER_RADIUS,
+};
 
 pub fn init(allocator: std.mem.Allocator) void {
     g_allocator = allocator;

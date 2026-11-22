@@ -162,12 +162,25 @@ pub const Interpreter = struct {
     fn copySystemUpdate(self: *const Interpreter, character_name: []const u8, system_name: []const u8, event_timestamp: u64, is_jump: bool) !queue.SystemUpdate {
         const owned_name = try self.allocator.dupe(u8, character_name);
         errdefer self.allocator.free(owned_name);
-        return .{ .character_name = owned_name, .system_name = try self.allocator.dupe(u8, system_name), .event_timestamp = event_timestamp, .is_jump = is_jump };
+        return .{
+            .character_name = owned_name,
+            .system_name = try self.allocator.dupe(u8, system_name),
+            .event_timestamp = event_timestamp,
+            .is_jump = is_jump,
+        };
     }
 
     /// Gated by the type's settings in Notifier.notify, once the main thread delivers it.
     fn queueNotification(self: *Interpreter, character_name: []const u8, notification: notification_mod.Notification) void {
-        var event: queue.NotificationEvent = .{ .character_name = "", .notification = .{ .notification_type = notification.notification_type, .state = notification.state, .chat_rule_index = notification.chat_rule_index, .alert_group = notification.alert_group } };
+        var event: queue.NotificationEvent = .{
+            .character_name = "",
+            .notification = .{
+                .notification_type = notification.notification_type,
+                .state = notification.state,
+                .chat_rule_index = notification.chat_rule_index,
+                .alert_group = notification.alert_group,
+            },
+        };
         self.copyNotificationEvent(&event, character_name, notification) catch |err| {
             event.deinit(self.allocator);
             slog.err("Failed to copy {s} notification for '{s}': {}", .{ @tagName(notification.notification_type), character_name, err });
@@ -199,7 +212,12 @@ pub const Interpreter = struct {
         var client_buf: [alert_rules_mod.MAX_CLIENTS]alert_rules_mod.Client = undefined;
         const clients = self.client_systems.alertable(alert_rules, &client_buf);
         var recipient_buf: [alert_rules_mod.MAX_CLIENTS][]const u8 = undefined;
-        const heard: routing.Heard = .{ .channel = file.channel_name, .listener = file.character_name, .message = message, .is_own_character = self.own_characters.contains(message.speaker) };
+        const heard: routing.Heard = .{
+            .channel = file.channel_name,
+            .listener = file.character_name,
+            .message = message,
+            .is_own_character = self.own_characters.contains(message.speaker),
+        };
         const alert = routing.route(alert_rules, &self.recent_hits, heard, clients, win32.Ticks.now().ms, &recipient_buf) orelse return;
         const hit = alert.hit;
 
@@ -232,7 +250,13 @@ pub const Interpreter = struct {
                 slog.warn("Failed to copy intel for the map: {}", .{err});
                 return;
             };
-            self.outbox.intel_sightings.push(.{ .system = system, .message = owned, .is_clear = report.is_clear and index == 0, .is_pinned = index < report.pin_count, .is_message_first = index == 0 }) catch |err| {
+            self.outbox.intel_sightings.push(.{
+                .system = system,
+                .message = owned,
+                .is_clear = report.is_clear and index == 0,
+                .is_pinned = index < report.pin_count,
+                .is_message_first = index == 0,
+            }) catch |err| {
                 slog.warn("Failed to queue intel for the map: {}", .{err});
             };
         }
@@ -256,7 +280,12 @@ pub const Interpreter = struct {
             if (activity_lines.parseCombatLine(stripped_text)) |parsed| {
                 // Filtered weapons still count toward DPS but mustn't retrigger Taking Damage.
                 const counts_for_alert = !activity_lines.isWeaponExcluded(parsed.weapon, self.damage_alert_excluded_weapons);
-                const hit: tracker_mod.CombatWindow.Hit = .{ .amount = parsed.amount, .timestamp = win32.Ticks.now(), .is_incoming = parsed.is_incoming, .counts_for_alert = counts_for_alert };
+                const hit: tracker_mod.CombatWindow.Hit = .{
+                    .amount = parsed.amount,
+                    .timestamp = win32.Ticks.now(),
+                    .is_incoming = parsed.is_incoming,
+                    .counts_for_alert = counts_for_alert,
+                };
                 tracker.addEntry(file.character_name, .{hit}) catch |err| {
                     slog.warn("Failed to record combat entry for '{s}': {}", .{ file.character_name, err });
                 };

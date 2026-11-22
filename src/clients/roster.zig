@@ -359,7 +359,13 @@ fn testAlert(notification_type: @FieldType(stack.ActiveNotification, "notificati
 
 fn testWindow(hwnd_value: usize, character_name: []const u8, logged_in_ms: u64) EveWindow {
     // Never passed to Win32; only compared.
-    return .{ .hwnd = @ptrFromInt(hwnd_value), .character_name = character_name, .process_id = 0, .is_eve_client = true, .logged_in_at = .{ .ms = logged_in_ms } };
+    return .{
+        .hwnd = @ptrFromInt(hwnd_value),
+        .character_name = character_name,
+        .process_id = 0,
+        .is_eve_client = true,
+        .logged_in_at = .{ .ms = logged_in_ms },
+    };
 }
 
 test "a new window joins the roster with its name and login time" {

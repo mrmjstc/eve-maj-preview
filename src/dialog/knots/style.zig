@@ -711,14 +711,23 @@ pub const accent_custom: Style = color_picker.with(.{
     .border_width = .all(0),
     .radius = .{ .fixed = SMALL_RADIUS },
 });
-pub const accent_custom_fill: Style = .{ .width = .fixed(ACCENT_SWATCH_SIZE), .height = .fixed(ACCENT_SWATCH_SIZE), .radius = .{ .fixed = SMALL_RADIUS } };
+pub const accent_custom_fill: Style = .{
+    .width = .fixed(ACCENT_SWATCH_SIZE),
+    .height = .fixed(ACCENT_SWATCH_SIZE),
+    .radius = .{ .fixed = SMALL_RADIUS },
+};
 
 /// A square plain button holding a drawn icon.
 pub const icon_button: Style = plain_button.with(.{ .width = .fixed(CONTROL_HEIGHT), .padding = .all(0), .justify = .center });
 pub const icon_button_disabled: Style = disabled_button.with(.{ .width = .fixed(CONTROL_HEIGHT), .padding = .all(0), .justify = .center });
 
 pub const danger_button: Style = plain_button.with(.{
-    .hover = &.{ .background = .{ .color = SURFACE }, .border_color = .{ .color = DESTRUCTIVE }, .foreground = .{ .color = DESTRUCTIVE }, .state_layer = 0 },
+    .hover = &.{
+        .background = .{ .color = SURFACE },
+        .border_color = .{ .color = DESTRUCTIVE },
+        .foreground = .{ .color = DESTRUCTIVE },
+        .state_layer = 0,
+    },
 });
 
 pub const modal_actions: Style = .{ .width = .grow(), .direction = .row, .gap = 8, .justify = .end };
@@ -799,7 +808,12 @@ pub const primary_button: Style = .{
 pub const danger_primary_button: Style = primary_button.with(.{
     .border_color = .{ .color = DESTRUCTIVE },
     .foreground = .{ .color = DESTRUCTIVE },
-    .hover = &.{ .background = .{ .color = DESTRUCTIVE_FILL_HOVER }, .border_color = .{ .color = DESTRUCTIVE_FILL_HOVER }, .foreground = .{ .color = WHITE }, .state_layer = 0 },
+    .hover = &.{
+        .background = .{ .color = DESTRUCTIVE_FILL_HOVER },
+        .border_color = .{ .color = DESTRUCTIVE_FILL_HOVER },
+        .foreground = .{ .color = WHITE },
+        .state_layer = 0,
+    },
 });
 
 pub const muted_text: Style = .{ .foreground = .{ .color = MUTED } };
@@ -923,7 +937,11 @@ pub const bench_eye: Style = .{
     .hover = &.{ .border_color = .{ .color = BORDER }, .foreground = .{ .color = TEXT_SECONDARY }, .state_layer = 0 },
     .active = &.{ .state_layer = 0 },
 };
-pub const bench_eye_on: Style = bench_eye.with(.{ .background = .{ .color = PANEL }, .border_color = .{ .color = BORDER }, .foreground = .{ .color = TEXT } });
+pub const bench_eye_on: Style = bench_eye.with(.{
+    .background = .{ .color = PANEL },
+    .border_color = .{ .color = BORDER },
+    .foreground = .{ .color = TEXT },
+});
 pub const bench_eye_glyph: Style = .{ .width = .fixed(glyphs.TAB_SIZE), .height = .fixed(glyphs.TAB_SIZE) };
 /// The part bar's lines of chips.
 pub const part_bar: Style = .{ .width = .grow(), .direction = .column, .gap = 6, .padding = .xy(10, 10) };
@@ -984,7 +1002,12 @@ pub const space_dot: Style = .{ .width = .fixed(SPACE_DOT_SIZE), .height = .fixe
 pub const space_fixed_name: Style = .{ .width = .grow(), .height = .fixed(CONTROL_HEIGHT), .direction = .row, .@"align" = .center, .padding = .xy(8, 0) };
 pub const space_fixed_name_text: Style = .{ .foreground = .{ .color = TEXT } };
 /// Marks a built-in space, or a section shared by every profile; a radius of half its height makes it a pill.
-pub const outline_tag: Style = .{ .padding = .xy(8, 2), .border_width = .all(1), .border_color = .{ .color = BORDER_STRONG }, .radius = .{ .fixed = 9 } };
+pub const outline_tag: Style = .{
+    .padding = .xy(8, 2),
+    .border_width = .all(1),
+    .border_color = .{ .color = BORDER_STRONG },
+    .radius = .{ .fixed = 9 },
+};
 /// A space's Holds grid of hotkey group pills; the dialog sets its rows.
 pub const group_chip_grid: Style = .{ .width = .grow(), .direction = .grid, .gap = 6 };
 pub const GROUP_CHIP_HEIGHT = 26;
@@ -1019,7 +1042,12 @@ pub const overlay_text: Style = .{
 pub const icon_button_danger_text: Style = icon_button.with(.{
     .foreground = .{ .color = MUTED },
     .font_size = .{ .px = 15 },
-    .hover = &.{ .background = .{ .color = SURFACE }, .border_color = .{ .color = DESTRUCTIVE }, .foreground = .{ .color = DESTRUCTIVE }, .state_layer = 0 },
+    .hover = &.{
+        .background = .{ .color = SURFACE },
+        .border_color = .{ .color = DESTRUCTIVE },
+        .foreground = .{ .color = DESTRUCTIVE },
+        .state_layer = 0,
+    },
 });
 pub const icon_button_disabled_text: Style = icon_button_disabled.with(.{ .font_size = .{ .px = 15 } });
 pub const icon_button_confirm: Style = confirm_button.with(.{ .width = .fixed(CONTROL_HEIGHT), .padding = .all(0), .justify = .center });
@@ -1039,8 +1067,17 @@ pub const roster_badge_warning: Style = roster_badge.with(.{ .foreground = .{ .c
 /// A heading over a run of roster rows, its text lined up with theirs.
 pub const roster_category: Style = .{ .width = .grow(), .padding = .init(8, 6, 2, 6) };
 /// Before a Game Events row: filled while the event is enabled, a hollow ring while it's off.
-pub const event_dot_on: Style = .{ .width = .fixed(EVENT_DOT_SIZE), .height = .fixed(EVENT_DOT_SIZE), .radius = .{ .fixed = EVENT_DOT_SIZE / 2 }, .background = .accent };
-pub const event_dot_off: Style = event_dot_on.with(.{ .background = .transparent, .border_width = .all(1), .border_color = .{ .color = BORDER_STRONG } });
+pub const event_dot_on: Style = .{
+    .width = .fixed(EVENT_DOT_SIZE),
+    .height = .fixed(EVENT_DOT_SIZE),
+    .radius = .{ .fixed = EVENT_DOT_SIZE / 2 },
+    .background = .accent,
+};
+pub const event_dot_off: Style = event_dot_on.with(.{
+    .background = .transparent,
+    .border_width = .all(1),
+    .border_color = .{ .color = BORDER_STRONG },
+});
 pub const EVENT_DOT_SIZE = 6;
 /// A roster row's glyph after its name, e.g. an event's speech marker: the size of its square.
 pub const ROSTER_MARKER_SIZE = 10;
@@ -1125,7 +1162,12 @@ pub const hotkey_remove: Style = .{
     .border_width = .all(1),
     .border_color = .{ .color = BORDER_STRONG },
     .radius = .{ .fixed = HOTKEY_REMOVE_SIZE / 2 },
-    .hover = &.{ .foreground = .{ .color = WHITE }, .background = .{ .color = DESTRUCTIVE_FILL }, .border_color = .{ .color = DESTRUCTIVE_FILL }, .state_layer = 0 },
+    .hover = &.{
+        .foreground = .{ .color = WHITE },
+        .background = .{ .color = DESTRUCTIVE_FILL },
+        .border_color = .{ .color = DESTRUCTIVE_FILL },
+        .state_layer = 0,
+    },
     .active = &.{ .state_layer = 0 },
 };
 /// A hotkey's combos and buttons at the row's right edge; a control tall, so the row keeps its height when a full hotkey loses its +.
@@ -1137,9 +1179,23 @@ pub const hotkey_row_typing: Style = hotkey_row.with(.{ .justify = .start });
 /// Around the + after a hotkey's combos: set further off than the row's gap, so it reads as an action rather than another combo.
 pub const hotkey_add_gap: Style = .{ .padding = .init(0, 0, 0, 8) };
 pub const hotkey_edit_on: Style = icon_button.with(.{ .background = .{ .color = SUCCESS }, .border_color = .{ .color = SUCCESS } });
-pub const keycaps: Keycaps = keycapsSized(.{ .font_size = .xs, .gap = 3, .cap_padding_x = 5, .cap_padding_y = 3, .combo_padding_x = 6, .combo_gap = hotkey_row.gap.? });
+pub const keycaps: Keycaps = keycapsSized(.{
+    .font_size = .xs,
+    .gap = 3,
+    .cap_padding_x = 5,
+    .cap_padding_y = 3,
+    .combo_padding_x = 6,
+    .combo_gap = hotkey_row.gap.?,
+});
 /// For a hotkey whose combos would overrun its row at full size.
-pub const keycaps_compact: Keycaps = keycapsSized(.{ .font_size = .{ .px = 9 }, .gap = 2, .cap_padding_x = 4, .cap_padding_y = 2, .combo_padding_x = 3, .combo_gap = 4 });
+pub const keycaps_compact: Keycaps = keycapsSized(.{
+    .font_size = .{ .px = 9 },
+    .gap = 2,
+    .cap_padding_x = 4,
+    .cap_padding_y = 2,
+    .combo_padding_x = 3,
+    .combo_gap = 4,
+});
 
 /// A plain button with widgets.glyphButton's glyph before its label, e.g. Add or Pick Running Window, at its natural width.
 pub const add_button: Style = plain_button.with(.{ .gap = 6 });
@@ -1155,7 +1211,15 @@ pub const members_scroll: ScrollPane = .{
 };
 const members_scroll_pane: Style = .{ .width = .grow(), .height = .grow(), .direction = .column, .overflow = .scroll_y };
 /// Inset like a settings row, so its controls end where the rows' above do.
-pub const member_row: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 6, .padding = .xy(ROW_INSET, 0), .border_width = .edges(2, 0, 2, 0), .border_color = .transparent };
+pub const member_row: Style = .{
+    .width = .grow(),
+    .direction = .row,
+    .@"align" = .center,
+    .gap = 6,
+    .padding = .xy(ROW_INSET, 0),
+    .border_width = .edges(2, 0, 2, 0),
+    .border_color = .transparent,
+};
 /// The box and buttons under a group's members, inset like them.
 pub const member_add_row: Style = inline_row.with(.{ .padding = .xy(ROW_INSET, 0) });
 /// A member row lifted by a drag: padded so its contents clear the lifted outline.

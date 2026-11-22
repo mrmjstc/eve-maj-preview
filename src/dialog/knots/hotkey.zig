@@ -243,7 +243,12 @@ pub fn beginFrame(context: *ui.Frame) !void {
 /// plan.conflicts in the edited documents; allocated in `arena`.
 pub fn findConflicts(arena: std.mem.Allocator) ![]const u32 {
     const profile = session.profile().ptr;
-    return plan.conflicts(arena, .{ .characters = profile.characters.items, .groups = profile.hotkeyGroups.items, .hotkeys = &profile.hotkeys, .global = session.global().ptr });
+    return plan.conflicts(arena, .{
+        .characters = profile.characters.items,
+        .groups = profile.hotkeyGroups.items,
+        .hotkeys = &profile.hotkeys,
+        .global = session.global().ptr,
+    });
 }
 
 /// Every binding in the edited documents holding `combo`, named as the window shows it and joined with ", "; names are made in `arena`.
@@ -343,7 +348,9 @@ fn comboControl(context: *ui.Frame, key: ui.Key, combo: u32, keycaps: *const sty
     if ((is_lit or shows_remove) and box.w() > 0) {
         const badge = try context.arena().create(ui.Style);
         // knots places an absolute child from inside its parent's padding, which a combo has only at its sides.
-        badge.* = style.hotkey_remove.with(.{ .offset = .{ box.w() - keycaps.size.combo_padding_x - style.HOTKEY_REMOVE_SIZE + style.HOTKEY_REMOVE_OVERHANG, -style.HOTKEY_REMOVE_OVERHANG } });
+        badge.* = style.hotkey_remove.with(.{
+            .offset = .{ box.w() - keycaps.size.combo_padding_x - style.HOTKEY_REMOVE_SIZE + style.HOTKEY_REMOVE_OVERHANG, -style.HOTKEY_REMOVE_OVERHANG },
+        });
         if ((try context.interact(Button{ .key = remove_key, .label = "\u{00D7}", .style = badge })).clicked) action = .remove;
     }
     try holder.close(context);

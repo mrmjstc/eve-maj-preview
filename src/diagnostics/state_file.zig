@@ -199,7 +199,21 @@ pub fn format(allocator: std.mem.Allocator, snapshot: Snapshot) ![]u8 {
 const testing = std.testing;
 
 fn emptySnapshot() Snapshot {
-    return .{ .profile = "default.json", .active_hwnd = null, .are_hotkeys_suspended = false, .excluded_characters = &.{}, .groups = &.{}, .thumbnails = &.{}, .clients = &.{}, .are_alerts_muted = false, .sounds_played = 0, .speeches_started = 0, .history = &.{}, .intel_history = &.{}, .panels = &.{} };
+    return .{
+        .profile = "default.json",
+        .active_hwnd = null,
+        .are_hotkeys_suspended = false,
+        .excluded_characters = &.{},
+        .groups = &.{},
+        .thumbnails = &.{},
+        .clients = &.{},
+        .are_alerts_muted = false,
+        .sounds_played = 0,
+        .speeches_started = 0,
+        .history = &.{},
+        .intel_history = &.{},
+        .panels = &.{},
+    };
 }
 
 test "format writes window handles as numbers and a missing active window as null" {

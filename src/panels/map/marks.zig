@@ -96,7 +96,13 @@ pub const Marks = struct {
 const testing = std.testing;
 
 fn testMark(system_name: []const u8, character_name: []const u8, is_active: bool) Mark {
-    return .{ .system = universe.findSystem(system_name).?, .source_hwnd = @ptrFromInt(0x1000), .character_name = character_name, .color = 0, .is_active = is_active };
+    return .{
+        .system = universe.findSystem(system_name).?,
+        .source_hwnd = @ptrFromInt(0x1000),
+        .character_name = character_name,
+        .color = 0,
+        .is_active = is_active,
+    };
 }
 
 test "a full list drops the marks past it" {

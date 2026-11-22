@@ -51,6 +51,12 @@ pub const Notifier = struct {
     }
 
     fn context(self: *const Notifier) dispatch.Context {
-        return .{ .allocator = self.allocator, .config = self.config, .auto_colors = self.auto_colors, .records = self.records, .active_source_hwnd = self.roster.active_hwnd };
+        return .{
+            .allocator = self.allocator,
+            .config = self.config,
+            .auto_colors = self.auto_colors,
+            .records = self.records,
+            .active_source_hwnd = self.roster.active_hwnd,
+        };
     }
 };

@@ -10,7 +10,14 @@ const ProfileStore = config_mod.ProfileStore;
 /// The ⋯ menu for the panel whose settings `section` names; a panel with grouping or an order fills those in itself.
 pub fn menuContents(config: *const Config, comptime section: []const u8, settings_label: []const u8, can_hide: bool) panel_menu_look.Contents {
     const settings = &@field(config, section);
-    return .{ .is_on_top = settings.alwaysOnTop, .is_locked = settings.lockPosition, .opacity = settings.opacity, .settings_label = settings_label, .can_hide = can_hide, .accent = config.accentColor };
+    return .{
+        .is_on_top = settings.alwaysOnTop,
+        .is_locked = settings.lockPosition,
+        .opacity = settings.opacity,
+        .settings_label = settings_label,
+        .can_hide = can_hide,
+        .accent = config.accentColor,
+    };
 }
 
 /// Runs keep on top, lock and opacity; false for an action left to the panel.

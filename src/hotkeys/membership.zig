@@ -85,5 +85,9 @@ pub fn assignHoveredToGroup(commands: *const Commands, thumbnail_set: *Thumbnail
 
     var group_label_buf: [config.HotkeyGroupConfig.DISPLAY_NAME_SIZE]u8 = undefined;
     const group_label = group.displayName(&group_label_buf, group_index);
-    commands.notifier.notify(thumbnail.source_hwnd, .{ .notification_type = .GroupMembership, .state = if (added) .added else .removed, .target = group_label });
+    commands.notifier.notify(thumbnail.source_hwnd, .{
+        .notification_type = .GroupMembership,
+        .state = if (added) .added else .removed,
+        .target = group_label,
+    });
 }
