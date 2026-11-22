@@ -276,12 +276,14 @@ pub fn Picker(comptime Kind: type) type {
             const is_selected = self.selected == chip.part;
             const button = Button{ .key = key, .style = if (is_selected) &style.part_chip_selected else &style.part_chip };
             const response = try button.openResponse(context);
+            const shown = lang.text(chip.label);
+            try context.ui().setAccessibilityName(response.id, shown);
             if (response.hovered) context.ui().requestCursor(.pointer);
             const dot = try arena.create(ui.Style);
             dot.* = if (chip.is_shown) style.part_dot.with(.{ .background = color_convert.solid(chip.color) }) else style.part_dot_off;
             try context.e(Rect{ .key = key.indexed(1), .style = dot });
             const label_style = if (is_selected) &style.part_chip_label_selected else if (chip.is_shown) &style.part_chip_label else &style.part_chip_label_off;
-            try context.e(Text{ .selectable = false, .key = key.indexed(2), .content = lang.text(chip.label), .style = label_style });
+            try context.e(Text{ .selectable = false, .key = key.indexed(2), .content = shown, .style = label_style });
             try button.close(context);
             if (response.clicked) self.select(context, chip.part);
             return response.hovered;
@@ -368,13 +370,15 @@ fn stageTools(context: *ui.Frame, key: ui.Key, scale: f32, shows_off: *bool) !vo
     try context.e(Text{ .selectable = false, .key = key.indexed(1), .content = caption, .style = &style.bench_tools_text });
     const button = Button{ .key = key.indexed(2), .style = if (shows_off.*) &style.bench_eye_on else &style.bench_eye };
     const response = try button.openResponse(context);
+    const label = lang.text("Show Off");
+    try context.ui().setAccessibility(response.id, .{ .role = .checkbox, .name = label, .state = .{ .checked = shows_off.* } });
     const glyph_key = key.indexed(3);
     try context.e(Canvas{
         .key = glyph_key,
         .commands = try glyphs.commands(arena, .eye, glyphs.TAB_SIZE, try glyphs.snapOffset(context, glyph_key), (if (shows_off.*) style.TEXT else style.MUTED).value),
         .style = &style.bench_eye_glyph,
     });
-    try context.e(Text{ .selectable = false, .key = key.indexed(4), .content = lang.text("Show Off") });
+    try context.e(Text{ .selectable = false, .key = key.indexed(4), .content = label });
     try button.close(context);
     try row.close(context);
     if (!response.clicked) return;

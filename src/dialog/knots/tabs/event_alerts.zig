@@ -134,19 +134,21 @@ fn typeShortLabel(notification_type: NotificationType) []const u8 {
 fn typeRow(context: *ui.Frame, notification_type: NotificationType, is_selected: bool) !bool {
     const index = @backingInt(notification_type);
     const row = Button{ .key = ui.Key.str("knots.events.row").indexed(index), .style = if (is_selected) &style.roster_row_selected else &style.roster_row };
-    const is_clicked = (try widgets.openRosterRow(context, row)).clicked;
+    const response = try widgets.openRosterRow(context, row);
+    const shown = typeShortLabel(notification_type);
+    try context.ui().setAccessibilityName(response.id, shown);
     const ref = typeRef(index);
     try context.e(Rect{ .key = ui.Key.str("knots.events.dot").indexed(index), .style = if (ref.get("enabled")) &style.event_dot_on else &style.event_dot_off });
     try context.e(Text{
         .selectable = false,
         .key = ui.Key.str("knots.events.name").indexed(index),
-        .content = typeShortLabel(notification_type),
+        .content = shown,
         .style = if (is_selected) &style.roster_name_selected else &style.roster_name,
     });
     if (ref.get("tts_enabled")) try marker(context, ui.Key.str("knots.events.marker.tts").indexed(index), .speech, "Speaks aloud");
     if (ref.get("sound_enabled")) try marker(context, ui.Key.str("knots.events.marker.sound").indexed(index), .speaker, "Plays a custom sound");
     try row.close(context);
-    return is_clicked;
+    return response.clicked;
 }
 
 fn typeDetail(context: *ui.Frame, notification_type: NotificationType) !void {

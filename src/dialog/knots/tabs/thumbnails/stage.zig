@@ -11,6 +11,7 @@ const color_convert = @import("../../color_convert.zig");
 const chips = @import("chips.zig");
 const images = @import("../../images.zig");
 const panel_preview = @import("../panel_preview.zig");
+const lang = @import("../../../../lang/lang.zig");
 
 const Rect = ui.component.Rect;
 const Text = ui.component.Text;
@@ -166,7 +167,9 @@ fn showChip(context: *ui.Frame, comptime chip: chips.Chip, comptime index: usize
         .border_color = if (is_outlined) .accent else .{ .color = .transparent },
     });
     const button = Button{ .key = key, .style = chip_style };
-    const is_hovered = (try button.openResponse(context)).hovered;
+    const response = try button.openResponse(context);
+    try ui_state.setAccessibilityName(response.id, lang.text(chip.label));
+    const is_hovered = response.hovered;
     if (is_hovered) ui_state.requestCursor(.move);
     const text_style = try arena.create(ui.Style);
     text_style.* = .{

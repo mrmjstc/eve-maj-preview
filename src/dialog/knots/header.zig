@@ -163,8 +163,10 @@ fn profileButton(context: *ui.Frame) !void {
     const button = Button{ .key = PROFILE_BUTTON_KEY, .style = if (g_is_menu_open) &style.profile_button_open else &style.profile_button };
     const response = try button.openResponse(context);
     const running = session.profile().ptr;
+    const running_name = profiles.displayName(running.profile_name);
+    try ui_state.setAccessibilityName(response.id, running_name);
     try swatch(context, PROFILE_BUTTON_KEY.indexed(1), running.accentColor);
-    try context.e(Text{ .selectable = false, .key = PROFILE_BUTTON_KEY.indexed(2), .content = profiles.displayName(running.profile_name), .style = &style.profile_name });
+    try context.e(Text{ .selectable = false, .key = PROFILE_BUTTON_KEY.indexed(2), .content = running_name, .style = &style.profile_name });
     try context.e(Canvas{ .key = PROFILE_BUTTON_KEY.indexed(3), .commands = try selectChevron(context.arena(), g_is_menu_open), .style = &style.select_chevron });
     try button.close(context);
     if (response.clicked) {
@@ -218,13 +220,15 @@ fn profileItem(context: *ui.Frame, index: usize, name: []const u8, accent: u32, 
     const key = ui.Key.str("knots.header.menu.profile").indexed(index);
     const button = Button{ .key = key, .style = if (is_running) &style.menu_item_current else &style.menu_item };
     const response = try button.openResponse(context);
+    const shown_name = profiles.displayName(name);
+    try context.ui().setAccessibilityName(response.id, shown_name);
     if (is_running) {
         try glyph(context, key.indexed(1), .check, context.ui().theme.primary);
     } else {
         try context.e(Rect{ .key = key.indexed(1), .style = &style.menu_glyph });
     }
     try swatch(context, key.indexed(2), accent);
-    try context.e(Text{ .selectable = false, .key = key.indexed(3), .content = profiles.displayName(name), .style = if (is_running or response.hovered) &style.menu_label_lit else &style.menu_label });
+    try context.e(Text{ .selectable = false, .key = key.indexed(3), .content = shown_name, .style = if (is_running or response.hovered) &style.menu_label_lit else &style.menu_label });
     try button.close(context);
     return closesMenu(context, response.clicked);
 }
@@ -234,6 +238,7 @@ fn menuItem(context: *ui.Frame, item: MenuItem, label: []const u8, is_disabled: 
     const key = ui.Key.str("knots.header.menu.item").indexed(@backingInt(item));
     const button = Button{ .key = key, .disabled = is_disabled, .style = if (is_disabled) &style.menu_item_disabled else &style.menu_item };
     const response = try button.openResponse(context);
+    try context.ui().setAccessibilityName(response.id, label);
     const is_danger = item == .delete;
     const tint = if (is_disabled) style.BORDER_STRONG else if (is_danger) style.DESTRUCTIVE else if (response.hovered) style.TEXT else style.MUTED;
     try glyph(context, key.indexed(1), item.glyph(), tint);

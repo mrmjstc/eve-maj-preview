@@ -36,6 +36,7 @@ pub const Row = struct {
     /// Draws `name` and `badge`, then closes the row; `lead_width` is what the caller drew before them, 0 for nothing.
     pub fn close(self: Row, context: *ui.Frame, name: []const u8, lead_width: f32, badge: Badge) !void {
         const key = self.button.key;
+        try context.ui().setAccessibilityName(key.hash(), name);
         try context.e(Text{
             .selectable = false,
             .key = key.indexed(NAME_INDEX),

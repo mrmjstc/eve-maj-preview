@@ -597,6 +597,20 @@ pub fn setAccessibility(self: *UI, id: Element.Id, meta: Accessibility.Metadata)
     self.accessibility_node_indices.putAssumeCapacity(id, index);
 }
 
+// EVE-Maj patch: names a node its widget left unnamed, keeping the role and state the widget set.
+pub fn setAccessibilityName(self: *UI, id: Element.Id, name: []const u8) !void {
+    const index = self.accessibility_node_indices.get(id) orelse return;
+    const node = self.accessibility_nodes.items[index];
+    // setAccessibility copies the name and state before freeing the node's own.
+    try self.setAccessibility(id, .{
+        .role = node.role,
+        .parent = if (node.parent == Element.INVALID_ID) null else node.parent,
+        .text_run_id = node.text_run_id,
+        .name = name,
+        .state = node.state,
+    });
+}
+
 pub fn consumeAccessibilityAction(self: *UI, id: Element.Id, action: Accessibility.Action) ?Accessibility.ActionRequest {
     std.debug.assert(self.accessibility_actions.len <= Accessibility.actions_max);
     for (self.accessibility_actions, 0..) |request, index| {

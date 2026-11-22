@@ -324,6 +324,8 @@ fn tabItem(context: *ui.Frame, tab: Tab) !void {
         .style = if (is_active) &style.tab_item_active else &style.tab_item,
     };
     const response = try item.openResponse(context);
+    const shown = lang.text(tab.label());
+    try context.ui().setAccessibilityName(response.id, shown);
     const tint: ui.Color = if (is_active) context.ui().theme.primary else if (response.hovered) style.TEXT else style.MUTED;
     const glyph_key = ui.Key.str("knots.tab.glyph").indexed(index);
     try context.e(Canvas{
@@ -334,7 +336,7 @@ fn tabItem(context: *ui.Frame, tab: Tab) !void {
     try context.e(Text{
         .selectable = false,
         .key = ui.Key.str("knots.tab.label").indexed(index),
-        .content = lang.text(tab.label()),
+        .content = shown,
         .style = if (is_active or response.hovered) &style.tab_label_lit else &style.tab_label,
     });
     try item.close(context);

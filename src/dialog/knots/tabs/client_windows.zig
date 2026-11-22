@@ -178,7 +178,9 @@ fn sourceSelect(context: *ui.Frame) !?[]const u8 {
         .parts = .{ .popup = &style.select_popup },
     });
     if (response.selected) |selected| sources.selected_index = selected.value;
-    return sources.names[@min(sources.selected_index, sources.names.len - 1)];
+    const source = sources.names[@min(sources.selected_index, sources.names.len - 1)];
+    try widgets.nameSelect(context, key, source);
+    return source;
 }
 
 /// Keeps the picked client selected when it's still open.
@@ -265,6 +267,7 @@ fn potatoSelect(context: *ui.Frame) !?[]const []const u8 {
     for (values, 0..) |*value, index| value.* = @intCast(index);
     const response = try context.interact(SelectInput(u32){ .key = key, .labels = labels, .values = values, .initial_selected = found.selected_index, .style = try widgets.fittedSelect(context, labels), .parts = .{ .popup = &style.select_popup } });
     if (response.selected) |selected| found.selected_index = selected.value;
+    try widgets.nameSelect(context, key, labels[@min(found.selected_index, labels.len - 1)]);
 
     const all_paths = try arena.alloc([]const u8, found.profiles.len);
     for (found.profiles, all_paths) |profile, *path| path.* = profile.path;

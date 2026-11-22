@@ -31,6 +31,7 @@ Vendored from [knots-ui/knots](https://github.com/knots-ui/knots) at commit `9cd
 ## `src/ui/UI.zig`
 
 - `inert_depth` (default 0): while above 0, `openWith` makes every element it opens non-interactive and non-focusable, so a disabled group of controls takes no clicks and drops out of Tab order.
+- `setAccessibilityName(id, name)`: renames a node drawn this frame and keeps its role and state, so a caller that draws a control's label itself (e.g. beside a text input) can still give the control that name. Does nothing for a node that isn't there, such as while accessibility is off.
 
 ## `src/ui/component/Tooltip.zig`
 

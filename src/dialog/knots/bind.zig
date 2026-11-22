@@ -75,6 +75,7 @@ const Edit = struct {
     fn draw(self: *const Edit, context: *ui.Frame, box_style: *const ui.Style, placeholder: []const u8) !void {
         try claimRowClick(context, self.key, self.state.text.items.len);
         try context.e(TextInput{ .key = self.key, .buf = &self.state.text, .style = box_style, .placeholder = placeholder });
+        try widgets.nameControl(context, self.key);
     }
 };
 
@@ -435,6 +436,7 @@ fn fontBox(context: *ui.Frame, ref: anytype, comptime field: []const u8) !void {
         .style = try widgets.fittedSelect(context, names),
         .parts = .{ .popup = &style.select_popup },
     });
+    try widgets.nameSelect(context, box_key, names[selected_index]);
     if (response.selected) |selected| {
         if (selected.value != selected_index) ref.set(field, names[selected.value]);
     }
@@ -520,8 +522,9 @@ fn pickColor(context: *ui.Frame, ref: anytype, comptime field: []const u8, shown
     const default = defaultOf(@TypeOf(ref), field);
     var value = color_convert.fromArgb(shown);
     var is_reset = false;
+    const picker_key = fieldKey(ref, field).indexed(2);
     const is_changed = (try context.interact(ColorPicker{
-        .key = fieldKey(ref, field).indexed(2),
+        .key = picker_key,
         .value = &value,
         .style = if (is_aligned) &style.color_picker_swatch else &style.color_picker,
         .parts = widgets.colorParts(is_aligned),
@@ -529,6 +532,7 @@ fn pickColor(context: *ui.Frame, ref: anytype, comptime field: []const u8, shown
         .show_alpha = shows_alpha,
         .reset = if (default != null) &is_reset else null,
     })).changed;
+    try widgets.nameColor(context, picker_key, shown);
     if (is_reset) if (default) |reset_argb| return .{ .argb = reset_argb, .is_reset = true };
     if (is_changed) return .{ .argb = color_convert.toArgb(value), .is_reset = false };
     return null;
@@ -586,6 +590,7 @@ fn dropdown(context: *ui.Frame, ref: anytype, comptime field: []const u8, is_row
         .style = if (is_row_only) try widgets.rowSelect(context, option_labels) else try widgets.fittedSelect(context, option_labels),
         .parts = .{ .popup = &style.select_popup },
     });
+    try widgets.nameSelect(context, box_key, option_labels[current]);
     if (response.selected) |selected| ref.set(field, selected.value);
 }
 

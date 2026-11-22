@@ -135,6 +135,7 @@ pub const Row = struct {
         g_open.is_row_lit = false;
         g_open.is_row_click_pending = false;
         g_open.binding_row = null;
+        g_open.row_label = null;
         if (self.controls) |controls| try controls.close(context);
         try self.rect.close(context);
         if (self.divider) |divider| try divider.close(context);
@@ -345,6 +346,8 @@ const Open = struct {
     is_row_click_pending: bool = false,
     /// The open binding row, for controlsRoom; null outside one.
     binding_row: ?BindingRow = null,
+    /// The settings row's shown label, which nameControl gives its controls; borrowed for the frame, null outside a labelled row.
+    row_label: ?[]const u8 = null,
 };
 
 /// Measured by one frame for the next, which beginFrame hands over.
@@ -679,6 +682,7 @@ pub fn addOpenClientsButton(context: *ui.Frame, key: ui.Key, button_style: *cons
     const tip = Tooltip{ .key = key, .content = label };
     _ = try tip.open(context);
     const is_clicked = try glyphButton(context, key.indexed(3), .refresh, "", button_style, false);
+    try context.ui().setAccessibilityName(key.indexed(3).hash(), label);
     try tip.close(context);
     return is_clicked;
 }
@@ -723,6 +727,26 @@ pub fn useUndividedRows(is_undivided: bool) bool {
 /// Whether the settings row being drawn is under the mouse, for controls that show more of themselves while it is.
 pub fn isRowLit() bool {
     return g_open.is_row_lit;
+}
+
+/// Gives the control keyed `key`, once drawn, the settings row's label as its name, for screen readers and UI tests.
+pub fn nameControl(context: *ui.Frame, key: ui.Key) !void {
+    const name = g_open.row_label orelse return;
+    try context.ui().setAccessibilityName(key.hash(), name);
+}
+
+/// nameControl for a colour swatch, which knots leaves out of the accessibility tree: a button with its colour as the value.
+pub fn nameColor(context: *ui.Frame, key: ui.Key, argb: u32) !void {
+    const name = g_open.row_label orelse return;
+    try describeColor(context, key, name, argb, null);
+}
+
+/// nameControl for a dropdown, which knots names by its choice: `choice` moves to its value.
+pub fn nameSelect(context: *ui.Frame, key: ui.Key, choice: []const u8) !void {
+    const name = g_open.row_label orelse return;
+    const ui_state = context.ui();
+    const is_open = if (ui_state.state.get(.select_input, key.hash())) |state| state.open else false;
+    try ui_state.setAccessibility(key.hash(), .{ .role = .select, .name = name, .state = .{ .expanded = is_open, .value_text = choice } });
 }
 
 /// True once per label click on the settings row being drawn, for the first control in it that acts on one, e.g. by taking focus.
@@ -841,7 +865,9 @@ pub fn accentChoices(context: *ui.Frame, key: ui.Key, color: *ui.Color, is_custo
         _ = try ring.open(context);
         const swatch_style = try context.arena().create(ui.Style);
         swatch_style.* = style.accent_preset.with(.{ .background = color_convert.solid(accent) });
-        if ((try context.interact(Button{ .key = preset_key.indexed(1), .style = swatch_style })).clicked) {
+        const is_clicked = (try context.interact(Button{ .key = preset_key.indexed(1), .style = swatch_style })).clicked;
+        try describeColor(context, preset_key.indexed(1), lang.text("Accent Color"), accent, is_chosen);
+        if (is_clicked) {
             color.* = color_convert.fromArgb(accent);
             is_custom.* = false;
             context.requestRedraw();
@@ -862,6 +888,7 @@ pub fn accentChoices(context: *ui.Frame, key: ui.Key, color: *ui.Color, is_custo
         .show_alpha = false,
         .show_rainbow = true,
     });
+    try describeColor(context, picker_key, lang.text("Any other color"), color_convert.toArgb(color.*), chosen_preset == null);
     try tip.close(context);
     try custom_ring.close(context);
     try row.close(context);
@@ -910,6 +937,7 @@ pub fn optionalColorBox(context: *ui.Frame, key: ui.Key, current: ?u32, fallback
         .is_unset = current == null,
         .reset = &is_reset,
     })).changed) change = .{ .set = color_convert.toArgb(value) };
+    try nameColor(context, key.indexed(3), current orelse fallback);
     if (is_reset) change = .cleared;
     return change;
 }
@@ -1021,7 +1049,9 @@ pub fn removeButton(context: *ui.Frame, key: ui.Key) !bool {
 /// A grip that a row is dragged by, for reorderRowByHandle.
 pub fn dragHandle(context: *ui.Frame, key: ui.Key) !void {
     const handle = Button{ .key = key, .style = &style.drag_handle };
-    if ((try handle.openResponse(context)).hovered) context.ui().requestCursor(.move);
+    const response = try handle.openResponse(context);
+    try context.ui().setAccessibilityName(response.id, lang.text("Move"));
+    if (response.hovered) context.ui().requestCursor(.move);
     const glyph_key = key.indexed(1);
     try context.e(Canvas{
         .key = glyph_key,
@@ -1035,6 +1065,8 @@ pub fn dragHandle(context: *ui.Frame, key: ui.Key) !void {
 pub fn glyphButton(context: *ui.Frame, key: ui.Key, glyph: glyphs.Glyph, label: []const u8, button_style: *const ui.Style, is_disabled: bool) !bool {
     const button = Button{ .key = key, .disabled = is_disabled, .style = if (is_disabled) try disabledLook(context, button_style) else button_style };
     const response = try button.openResponse(context);
+    const shown = lang.text(label);
+    if (shown.len > 0) try context.ui().setAccessibilityName(response.id, shown);
     const color = if (is_disabled) style.MUTED else style.TEXT;
     const glyph_key = key.indexed(1);
     try context.e(Canvas{
@@ -1042,7 +1074,7 @@ pub fn glyphButton(context: *ui.Frame, key: ui.Key, glyph: glyphs.Glyph, label: 
         .commands = try glyphs.commands(context.arena(), glyph, glyphs.TAB_SIZE, try glyphs.snapOffset(context, glyph_key), color.value),
         .style = &style.tab_glyph,
     });
-    if (label.len > 0) try context.e(Text{ .selectable = false, .key = key.indexed(2), .content = lang.text(label), .style = if (is_disabled) &style.muted_text else &style.button_text });
+    if (shown.len > 0) try context.e(Text{ .selectable = false, .key = key.indexed(2), .content = shown, .style = if (is_disabled) &style.muted_text else &style.button_text });
     try button.close(context);
     return response.clicked and !is_disabled;
 }
@@ -1122,6 +1154,7 @@ pub fn sizedSlider(context: *ui.Frame, key: ui.Key, value: *f32, range: SliderRa
         .steps = range.step,
         .parts = .{ .track = &style.slider_track, .fill = &style.slider_fill, .thumb = &style.slider_thumb },
     });
+    try nameControl(context, key.indexed(1));
     try track.close(context);
     return response.changed;
 }
@@ -1233,6 +1266,7 @@ fn toggleSwitch(context: *ui.Frame, key: ui.Key, is_checked: *bool) !bool {
     spacer.* = .{ .width = .fixed(position * style.SWITCH_TRAVEL) };
     const button = Button{ .key = key, .style = if (is_checked.*) &style.switch_on else &style.switch_off };
     const response = try button.openResponse(context);
+    try context.ui().setAccessibility(response.id, .{ .role = .checkbox, .name = g_open.row_label orelse "", .state = .{ .checked = is_checked.* } });
     try context.e(Rect{ .key = key.indexed(2), .style = spacer });
     try context.e(Rect{ .key = key.indexed(1), .style = if (is_checked.*) &style.switch_knob_on else &style.switch_knob_off });
     try button.close(context);
@@ -1263,6 +1297,17 @@ fn presetIndex(argb: u32) ?usize {
         if (accent & 0x00FFFFFF == argb & 0x00FFFFFF) return index;
     }
     return null;
+}
+
+/// A swatch named `name` with its colour's hex as the value; `is_chosen` makes it one of a set of radio buttons.
+fn describeColor(context: *ui.Frame, key: ui.Key, name: []const u8, argb: u32, is_chosen: ?bool) !void {
+    var hex_buffer: [7]u8 = undefined;
+    const hex = std.fmt.bufPrint(&hex_buffer, "#{X:0>6}", .{argb & 0x00FFFFFF}) catch unreachable;
+    try context.ui().setAccessibility(key.hash(), .{
+        .role = if (is_chosen == null) .button else .radio,
+        .name = name,
+        .state = .{ .checked = is_chosen, .value_text = hex },
+    });
 }
 
 fn selectStyle(context: *ui.Frame, labels: []const []const u8, min_width: f32) !*const ui.Style {
@@ -1349,6 +1394,7 @@ fn openAnyGroup(context: *ui.Frame, key: ui.Key, group_style: *const ui.Style, i
 /// Inside a tooltip when last frame gave the row a hint.
 fn rowLabel(context: *ui.Frame, row_key: ui.Key, label_key: ui.Key, shown: []const u8, label_style: *const ui.Style) !void {
     g_open.last_labelled_row = row_key;
+    g_open.row_label = shown;
     const label = Text{ .selectable = false, .key = label_key, .content = shown, .style = label_style };
     const hint = g_carried.row_hints_before.find(row_key.hash()) orelse return context.e(label);
     // Sized like the label, so a label that grows still pushes the row's controls to its end.

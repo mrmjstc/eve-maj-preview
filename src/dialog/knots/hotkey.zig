@@ -341,6 +341,7 @@ fn comboControl(context: *ui.Frame, key: ui.Key, combo: u32, keycaps: *const sty
     _ = try holder.open(context);
     const caps = Button{ .key = caps_key, .style = &keycaps.caps };
     const response = try caps.openResponse(context);
+    try widgets.nameControl(context, caps_key);
     try comboCaps(context, caps_key, combo, keycaps, std.mem.findScalar(u32, g_conflicts, combo) != null);
     try caps.close(context);
     var action: ComboAction = if (response.clicked) .replace else .none;
@@ -479,9 +480,13 @@ fn recordingLabel(context: *ui.Frame, key: ui.Key, keycaps: *const style.Keycaps
 
 /// Records a hotkey's first combo or another one; `tip_text` names which, since the + alone doesn't.
 fn addKeyButton(context: *ui.Frame, key: ui.Key, tip_text: []const u8) !bool {
-    const tip = Tooltip{ .key = key, .content = lang.text(tip_text), .style = &style.hotkey_add_gap };
+    const shown = lang.text(tip_text);
+    const tip = Tooltip{ .key = key, .content = shown, .style = &style.hotkey_add_gap };
     _ = try tip.open(context);
     const is_clicked = try widgets.glyphButton(context, key.indexed(3), .add, "", &style.icon_button, false);
+    try context.ui().setAccessibilityName(key.indexed(3).hash(), shown);
+    // The row's label wins where there is one, since every hotkey's + has the same tooltip.
+    try widgets.nameControl(context, key.indexed(3));
     try tip.close(context);
     return is_clicked;
 }
@@ -515,6 +520,7 @@ fn manualBox(context: *ui.Frame, edit: *ManualEdit, ref: anytype, comptime field
     }
     edit.was_focused = is_focused;
     try context.e(TextInput{ .key = box_key, .buf = &edit.text, .style = try sized(context, &style.text_input, width) });
+    try widgets.nameControl(context, box_key);
 }
 
 fn isRecordingField(id: u64) bool {
