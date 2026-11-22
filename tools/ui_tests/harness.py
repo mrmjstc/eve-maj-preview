@@ -227,7 +227,8 @@ def monitors() -> list[Monitor]:
     return found
 
 
-MOUSEEVENTF_MOVE, MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_VIRTUALDESK = 0x0001, 0x8000, 0x4000
+MOUSEEVENTF_MOVE, MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_VIRTUALDESK, MOUSEEVENTF_WHEEL = 0x0001, 0x8000, 0x4000, 0x0800
+WHEEL_DELTA = 120
 SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN = 76, 77, 78, 79
 # A borderless window of one colour, from a second Python so this one needn't pump messages; per-monitor DPI aware so its pixels are the screen's.
 BACKDROP_SCRIPT = """
@@ -249,6 +250,14 @@ def move_mouse(x: int, y: int):
     normal_x = round((x - left) * 65535 / max(1, width - 1))
     normal_y = round((y - top) * 65535 / max(1, height - 1))
     user32.mouse_event(MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK, normal_x, normal_y, 0, None)
+
+
+
+def wheel(x: int, y: int, notches: int):
+    """Turns the wheel over a point: positive away from the user, which zooms in."""
+    move_mouse(x, y)
+    time.sleep(0.1)
+    user32.mouse_event(MOUSEEVENTF_WHEEL, 0, 0, (notches * WHEEL_DELTA) & 0xFFFFFFFF, None)
 
 
 @contextmanager

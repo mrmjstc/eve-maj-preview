@@ -111,6 +111,47 @@ def test_bounty_payouts_give_a_bounty_rate(session):
     wait_for_rate(session, "bounty_isk_rate")
 
 
+@covers("MiningConfig.window_seconds", "BountyConfig.window_seconds")
+def test_mining_and_bounty_rates_fall_to_zero_once_their_window_passes_quietly(session):
+    # Their shortest windows are 30 s and 60 s, so each phase lets one run out while the other's long window holds.
+    for mining_window, bounty_window, quiet_s in ((30, 600, 33), (600, 60, 63)):
+        session.use(profile(mining={"window_seconds": mining_window}, bounty={"window_seconds": bounty_window}))
+        logs = session.start_logged_client(ALPHA)
+        for i in range(6):
+            logs.game(mined(110))
+            logs.game(bounty(100000 + i))
+            pace(RATED_SPACING_S)
+        wait_for_rate(session, "mining_rate")
+        wait_for_rate(session, "bounty_isk_rate")
+        time.sleep(quiet_s)
+        for field, window in (("mining_rate", mining_window), ("bounty_isk_rate", bounty_window)):
+            current = rate(session, ALPHA, field) or 0
+            drops = window < quiet_s
+            check((current == 0) == drops, f"{field} with a {window}s window is {current} after {quiet_s}s quiet")
+
+
+def make_interval_test(section: str, field: str, line_for):
+    @covers(f"{section.title()}Config.update_interval_ms")
+    def test(session):
+        session.use(profile(**{section: {"update_interval_ms": 10000}}))
+        logs = session.start_logged_client(ALPHA)
+        hits(logs, lambda i: line_for(i, 1), 6, RATED_SPACING_S)
+        first = wait_for_rate(session, field, timeout_s=12.0)
+        # Quickly, so the next update can't land before the check ends.
+        hits(logs, lambda i: line_for(i, 20), 4)
+        stays(f"the {section} rate to hold until the next update", lambda: rate(session, ALPHA, field) == first, 3.0,
+              details=lambda: rate(session, ALPHA, field))
+
+    test.__name__ = f"test_the_{section}_rate_updates_no_more_often_than_the_interval"
+    return test
+
+
+test_the_mining_rate_updates_no_more_often_than_the_interval = make_interval_test(
+    "mining", "mining_rate", lambda _, scale: mined(110 * scale))
+test_the_bounty_rate_updates_no_more_often_than_the_interval = make_interval_test(
+    "bounty", "bounty_isk_rate", lambda i, scale: bounty((100000 + i) * scale))
+
+
 # The mining alerts' windows are 30s at the least, so these are slow.
 
 @covers("NotificationType.MiningStopped", "MiningConfig.stopped_alert_window_seconds")

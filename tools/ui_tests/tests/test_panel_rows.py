@@ -3,7 +3,7 @@
 import time
 
 from eve_logs import bounty, combat_in, combat_out, mined, pace
-from harness import ALPHA, BRAVO, check, client_to_screen, covers, monitors, stays, wait_for
+from harness import ALPHA, BRAVO, check, client_to_screen, covers, monitors, pixel, stays, wait_for, wheel
 
 GLOBAL_SETTINGS = {"chatlog": {"enabled": True}}
 QUIET_MAP = {"liveStats": False, "showKills": False, "showAnsiblex": False}
@@ -150,6 +150,74 @@ def test_unique_name_colours_tell_characters_apart(session):
     check(not same_color(bravo, plain), "Bravo kept the plain name colour")
 
 
+# src/panels/list_look.zig: a row's indicator is centred INDICATOR_GAP + LIT_BADGE_RADIUS left of its name, LIT_BADGE_RADIUS across while lit.
+LIT_BADGE_RADIUS = 4
+INDICATOR_GAP = 8
+BADGE_OFFSET = INDICATOR_GAP + LIT_BADGE_RADIUS
+ACTIVE = 0xFF2090D0
+ACTIVE_SETTING = f"0x{ACTIVE:08X}"
+
+
+def rgb(color: int) -> tuple[int, int, int]:
+    return (color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF
+
+
+def badge(session, name: str) -> dict | None:
+    """The indicator left of a row's name: its colour and whether its corner is filled, or None without one.
+
+    Found down the column through its centre as the pixels unlike the row's own background, read clear of its glow; the middle one is its centre.
+    """
+    window = session.wait_for_panel_window(LIST_CLASS)
+    text = session.wait_for_panel_text(LIST, name)
+    x = text["left"] - BADGE_OFFSET
+    at = lambda px, py: pixel(*client_to_screen(window.hwnd, px, py))
+    # A one-line row is centred on its name, so this spans its indicator and glow but not the next row's.
+    marked = [y for y in range(text["top"] - 4, text["top"] + 20) if at(x, y) != at(x - BADGE_OFFSET + 2, y)]
+    if not marked:
+        return None
+    center_y = (marked[0] + marked[-1]) // 2
+    color = at(x, center_y)
+    corner = at(x - LIT_BADGE_RADIUS + 1, center_y - LIT_BADGE_RADIUS + 1)
+    return {"color": color, "is_corner_filled": corner == color}
+
+
+def badge_color(session, name: str):
+    return (badge(session, name) or {}).get("color")
+
+
+@covers("ListViewConfig.indicatorStyle")
+def test_each_indicator_style_draws_its_own_shape(session):
+    for style, is_corner_filled in (("Dot", False), ("Square", True)):
+        list_two(session, indicatorStyle=style, activeColor=ACTIVE_SETTING)
+        drawn = wait_for(f"{style}: Alpha's indicator in the active colour",
+                         lambda: (lambda found: found if found and found["color"] == rgb(ACTIVE) else None)(badge(session, ALPHA)),
+                         details=lambda: badge(session, ALPHA))
+        check(drawn["is_corner_filled"] == is_corner_filled, f"{style}: corner filled is {drawn['is_corner_filled']}")
+    with_indicator = session.wait_for_panel_text(LIST, ALPHA)["left"]
+    list_two(session, indicatorStyle="None", activeColor=ACTIVE_SETTING)
+    # Without one the name takes its place: list_look.textLeft drops the indicator's width and gap.
+    without = session.wait_for_panel_text(LIST, ALPHA)["left"]
+    check(without == with_indicator - (2 * LIT_BADGE_RADIUS + INDICATOR_GAP), f"the name at {without} without an indicator, {with_indicator} with one")
+
+
+@covers("ListViewConfig.activeColor")
+def test_the_active_row_indicator_takes_the_active_colour(session):
+    list_two(session, activeColor=ACTIVE_SETTING)
+    wait_for("Alpha's indicator in the active colour", lambda: badge_color(session, ALPHA) == rgb(ACTIVE),
+             details=lambda: badge_color(session, ALPHA))
+    check(badge_color(session, BRAVO) != rgb(ACTIVE), "Bravo's inactive indicator took the active colour")
+
+
+@covers("ListViewConfig.useUniqueActiveColors")
+def test_unique_active_colours_give_each_character_its_own_indicator(session):
+    list_two(session, activeColor=ACTIVE_SETTING, useUniqueActiveColors=True)
+    alpha = wait_for("Alpha's indicator in a colour of its own", lambda: (lambda c: c if c and c != rgb(ACTIVE) else None)(badge_color(session, ALPHA)),
+                     details=lambda: badge_color(session, ALPHA))
+    session.switch_to(BRAVO)
+    wait_for("Bravo's indicator in another colour", lambda: (lambda c: c and c not in (rgb(ACTIVE), alpha))(badge_color(session, BRAVO)),
+             details=lambda: badge_color(session, BRAVO))
+
+
 @covers("ListViewConfig.showNotifications", "ListViewConfig.notificationColor")
 def test_a_row_shows_its_newest_alert_in_the_alert_colour(session):
     alpha = list_two(session, notificationColor="0xFF13579B")
@@ -250,6 +318,12 @@ def rows_drawn(session, texts: list[str]) -> int:
     return sum(drawn_as_row(session, HISTORY, text) for text in set(texts))
 
 
+def row_gap(session, kind: str, text: str) -> int | None:
+    """How far apart the first two rows drawing `text` sit, or None until two do."""
+    tops = sorted(t["top"] for t in session.panel_texts(kind) if t["text"] == text)
+    return tops[1] - tops[0] if len(tops) >= 2 else None
+
+
 FIVE_TYPES = ("FleetInvite", "CargoFull", "WarpScrambled", "Docking", "ConversationInvite")
 
 
@@ -263,6 +337,19 @@ def test_the_history_panel_lists_alerts_up_to_its_row_limit(session):
         texts = [entry_text(session, t) for t in FIVE_TYPES]
         wait_for(f"maxRows={max_rows}: {expected} rows", lambda: rows_drawn(session, texts) == expected,
                  details=lambda: strings(session, HISTORY))
+
+
+@covers("HistoryPanelConfig.fontSize")
+def test_a_bigger_history_font_spaces_rows_further_apart(session):
+    gaps = []
+    for size in (9, 18):
+        logs = show_history(session, fontSize=size)
+        for notification_type in FIVE_TYPES[:2]:
+            logs.alert(notification_type)
+            pace(0.2)
+        gaps.append(wait_for(f"two history rows at size {size}", lambda: row_gap(session, HISTORY, ALPHA),
+                             details=lambda: session.panel_texts(HISTORY)))
+    check(gaps[1] > gaps[0], f"history rows {gaps[1]} apart at size 18, {gaps[0]} at 9")
 
 
 @covers("HistoryPanelConfig.showTimestamp")
@@ -409,6 +496,18 @@ def test_intel_rows_show_their_age_and_merge_repeats(session):
           details=lambda: strings(session, INTEL))
 
 
+@covers("IntelPanelConfig.fontSize")
+def test_a_bigger_intel_font_spaces_rows_further_apart(session):
+    gaps = []
+    for size in (9, 18):
+        logs = show_intel(session, fontSize=size)
+        report(logs, "Perimeter +1 neut")
+        report(logs, "Perimeter +2 neut")
+        gaps.append(wait_for(f"two intel rows at size {size}", lambda: row_gap(session, INTEL, "Perimeter"),
+                             details=lambda: session.panel_texts(INTEL)))
+    check(gaps[1] > gaps[0], f"intel rows {gaps[1]} apart at size 18, {gaps[0]} at 9")
+
+
 @covers("IntelPanelConfig.colorSystemNames")
 def test_intel_rows_can_draw_systems_in_their_name_colour(session):
     colors = []
@@ -417,6 +516,23 @@ def test_intel_rows_can_draw_systems_in_their_name_colour(session):
         report(logs, "Perimeter +1 neut")
         colors.append(session.wait_for_panel_text(INTEL, "Perimeter")["color"])
     check(not same_color(*colors), f"Perimeter drawn in {colors[0]:08X} either way")
+
+
+@covers("NotificationTypeConfig.color_system_name")
+def test_an_intel_alert_can_lead_with_the_system_in_its_colour(session):
+    # Intel stays out of the History Panel, so this reads the alert the client list shows on Alpha's row.
+    for colored in (True, False):
+        session.use({"display": {"viewMode": LIST_ALONE}, "listView": {"x": 700, "y": 300, "columnWidth": 420}, "mapPanel": QUIET_MAP,
+                     "chatAlerts": [{**INTEL_RULE, "alert": {"color_system_name": colored}}]})
+        logs = session.start_logged_client(ALPHA, system="Jita", channels=(INTEL_CHANNEL,))
+        session.wait_for_panel_window(LIST_CLASS)
+        report(logs, "Perimeter +1 neut")
+        text = session.wait_for_alert(ALPHA, "ChatIntel")["text"]
+        wait_for("the intel alert on Alpha's row", lambda: drawn_as_row(session, LIST, text), details=lambda: strings(session, LIST))
+        lead = text_named(session, LIST, "Perimeter")
+        check((lead is not None) == colored, f"color_system_name {colored}: Perimeter drawn on its own is {lead}")
+        if lead:
+            check(not same_color(lead["color"], LIST_NAME_COLOR), f"Perimeter led in the plain text colour {lead['color']:08X}")
 
 
 @covers("IntelPanelConfig.muteSounds")
@@ -485,3 +601,33 @@ def test_the_map_names_characters_beside_their_systems_as_set(session):
             session.wait_for_panel_text(MAP, ALPHA)
         else:
             stays("no character names on the map", lambda: ALPHA not in strings(session, MAP), 1.5, details=lambda: strings(session, MAP))
+
+
+@covers("MapPanelConfig.wheelOpensNewEden")
+def test_wheeling_out_of_a_fitted_map_opens_new_eden_as_set(session):
+    # Off first, as the map stays in New Eden across a profile switch.
+    for opens in (False, True):
+        show_map(session, regionId=REGIONS["Domain"], followActive=False, wheelOpensNewEden=opens)
+        wait_for("the map to show Domain", lambda: map_names(session, REGIONS) == {"Domain"}, details=lambda: strings(session, MAP))
+        center = session.panel_window("EVE_MAP_PANEL_CLASS").point(0.5, 0.5)
+        wheel(*center, -1)
+        if opens:
+            session.wait_for_panel_text(MAP, "New Eden")
+            # Back into a region, as a profile switch would leave the next test in New Eden.
+            wheel(*center, 1)
+            wait_for("the map to leave New Eden", lambda: "New Eden" not in strings(session, MAP), details=lambda: strings(session, MAP))
+        else:
+            stays("the map to stay on Domain", lambda: "New Eden" not in strings(session, MAP), 1.5, details=lambda: strings(session, MAP))
+
+
+@covers("MapPanelConfig.metric")
+def test_the_metric_bar_picks_the_set_metric(session):
+    show_map(session, metric="Security")
+    security_picked = session.wait_for_panel_text(MAP, "Security")["color"]
+    check(text_named(session, MAP, "Kills") is not None, f"no Kills segment: {strings(session, MAP)}")
+    # A segment with two metrics names the one picked.
+    show_map(session, metric="PodKills")
+    session.wait_for_panel_text(MAP, "Pods")
+    check(text_named(session, MAP, "Kills") is None, "the kills segment still says Kills with Pods picked")
+    security_idle = session.wait_for_panel_text(MAP, "Security")["color"]
+    check(not same_color(security_picked, security_idle), f"Security drawn in {security_idle:08X} picked or not")
