@@ -15,7 +15,7 @@ pub const Presence = struct {
 
 /// When a panel shows, given its auto-hide settings and the tray toggle's override.
 pub const Visibility = struct {
-    /// Set by force(): shows the panel with no character logged in, until the last one logs out.
+    /// Set by force() or a detached Intel Panel: shows the panel with no character logged in, until the last one logs out.
     is_forced_visible: bool = false,
     /// Set by force(): shows the panel while EVE is unfocused, until EVE next has focus.
     is_focus_forced: bool = false,

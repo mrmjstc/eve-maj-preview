@@ -84,8 +84,8 @@ pub const IntelPanel = struct {
         const has_left_map = self.was_attached and !intel_settings.attached;
         self.was_attached = intel_settings.attached;
         panel_lifecycle.sync(self, context);
-        // Its auto-hide never applied inside the map, so detaching mustn't make it vanish.
-        if (has_left_map and self.window != null) self.visibility.force();
+        // Detaching with no character logged in mustn't make it vanish; focus needs no override, as the dialog counts as EVE.
+        if (has_left_map and self.window != null) self.visibility.is_forced_visible = true;
         if (self.window) |*window| window.panel.followPosition(intel_settings.x, intel_settings.y);
     }
 
