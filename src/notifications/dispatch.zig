@@ -59,7 +59,7 @@ pub fn notify(context: Context, client: *Client, notification: notification_mod.
     const now = win32.Ticks.now();
     const hold = holdFor(context, client, notification.notification_type, type_config, now);
 
-    if (rules.isRecordedInHistory(hold)) record(context, client, notification, text, type_config, lead);
+    if (rules.isRecordedInHistory(hold)) record(context, client, notification, text, type_config, lead, now);
     if (hold != null) return;
     show(context, client, text, notification.notification_type, type_config, lead, now) catch |err| {
         slog.err("Failed to show {s} notification for '{s}': {}", .{ @tagName(notification.notification_type), client.character_name, err });
@@ -109,6 +109,7 @@ pub fn listIntel(context: Context, intel_history: *history_mod.NotificationHisto
         .character_name = client.character_name,
         .text = text,
         .notification_type = .ChatIntel,
+        .timestamp = win32.Ticks.now(),
         .character_color = client.character_color,
         .lead = systemLead(context, notification, text, .known_only),
         .system = system,
@@ -208,7 +209,7 @@ fn holdFor(context: Context, client: *const Client, notification_type: notificat
 }
 
 /// Once per alert group, so other clients' copies aren't listed again.
-fn record(context: Context, client: *const Client, notification: notification_mod.Notification, text: []const u8, type_config: config_mod.NotificationTypeConfig, lead: ?notification_mod.Lead) void {
+fn record(context: Context, client: *const Client, notification: notification_mod.Notification, text: []const u8, type_config: config_mod.NotificationTypeConfig, lead: ?notification_mod.Lead, now: win32.Ticks) void {
     // Intel belongs to the Intel Panel and the map, which list every report through listIntel.
     if (notification.notification_type == .ChatIntel) return;
     if (isAlertRepeat(context.records.recorded_alert_group.*, notification.alert_group)) return;
@@ -220,6 +221,7 @@ fn record(context: Context, client: *const Client, notification: notification_mo
         .character_name = client.character_name,
         .text = text,
         .notification_type = notification.notification_type,
+        .timestamp = now,
         .character_color = client.character_color,
         .text_color = text_color,
         .lead = lead,
@@ -234,7 +236,7 @@ fn show(context: Context, client: *Client, text: []const u8, notification_type: 
     push(context.allocator, client, entry);
 
     // Game events feed the "cycle to recently notified" queue; feedback on the user's own action must not.
-    if (!notification_mod.isUserAction(notification_type)) context.records.notified_queue.track(context.allocator, client.character_name);
+    if (!notification_mod.isUserAction(notification_type)) context.records.notified_queue.track(context.allocator, client.character_name, now);
 
     slog.debug("Queued notification for {s}: [{s}] {s} (border_color_override: {?})", .{ client.character_name, @tagName(notification_type), text, type_config.border_color });
 }

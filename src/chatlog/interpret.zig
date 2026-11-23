@@ -121,7 +121,7 @@ pub const Interpreter = struct {
         }
     }
 
-    pub fn interpret(self: *Interpreter, file: *LogFile, line: []const u8) void {
+    pub fn interpret(self: *Interpreter, file: *LogFile, line: []const u8, now: win32.Ticks) void {
         if (line.len < MIN_LINE_LENGTH) return;
         if (line.len > lines.MAX_LINE_LENGTH) {
             warnLongLine(file, line.len);
@@ -132,16 +132,16 @@ pub const Interpreter = struct {
             if (!file.isChannelLog()) {
                 if (lines.parseChatLine(line)) |system| self.handleSystemChange(file, system, .chatlog, lines.leadingTimestamp(line));
             }
-            self.handleChatMessage(file, line);
+            self.handleChatMessage(file, line, now);
             return;
         }
 
         const parsed = lines.parseGameLine(line);
         if (parsed.system) |change| self.handleSystemChange(file, change.system, change.source, lines.leadingTimestamp(line));
         if (parsed.activity) |activity| switch (activity) {
-            .event => self.handleGamelogEvent(file, line),
-            .mining => self.handleMiningEvent(file, line),
-            .bounty => self.handleBountyEvent(file, line),
+            .event => self.handleGamelogEvent(file, line, now),
+            .mining => self.handleMiningEvent(file, line, now),
+            .bounty => self.handleBountyEvent(file, line, now),
         };
     }
 
@@ -201,13 +201,13 @@ pub const Interpreter = struct {
         if (notification.jumps) |jumps| event.notification.jumps = try self.allocator.dupe(u8, jumps);
     }
 
-    fn handleChatMessage(self: *Interpreter, file: *const LogFile, line: []const u8) void {
+    fn handleChatMessage(self: *Interpreter, file: *const LogFile, line: []const u8, now: win32.Ticks) void {
         const alert_rules = if (self.alert_rules) |*alert_rules| alert_rules else return;
         if (!alert_rules.followsChannel(file.channel_name)) return;
         var message = lines.parseChatMessage(line) orelse return;
         var body_buf: [lines.MAX_LINE_LENGTH]u8 = undefined;
         message.body = lines.collapseSpaces(message.body, &body_buf);
-        self.queueIntelSightings(alert_rules, file.channel_name, message);
+        self.queueIntelSightings(alert_rules, file.channel_name, message, now);
 
         var client_buf: [alert_rules_mod.MAX_CLIENTS]alert_rules_mod.Client = undefined;
         const clients = self.client_systems.alertable(alert_rules, &client_buf);
@@ -218,7 +218,7 @@ pub const Interpreter = struct {
             .message = message,
             .is_own_character = self.own_characters.contains(message.speaker),
         };
-        const alert = routing.route(alert_rules, &self.recent_hits, heard, clients, win32.Ticks.now().ms, &recipient_buf) orelse return;
+        const alert = routing.route(alert_rules, &self.recent_hits, heard, clients, now.ms, &recipient_buf) orelse return;
         const hit = alert.hit;
 
         var jumps_buf: [3]u8 = undefined;
@@ -240,11 +240,11 @@ pub const Interpreter = struct {
     }
 
     /// One per system named, however far off: the map and Intel Panel show intel a client's alert range doesn't reach.
-    fn queueIntelSightings(self: *Interpreter, alert_rules: *const RuleSet, channel: []const u8, message: lines.ChatMessage) void {
+    fn queueIntelSightings(self: *Interpreter, alert_rules: *const RuleSet, channel: []const u8, message: lines.ChatMessage, now: win32.Ticks) void {
         var mention_buf: [alert_rules_mod.MAX_MENTIONS]universe.SystemIndex = undefined;
         const report = alert_rules.intelReport(channel, message, &mention_buf);
         if (report.systems.len == 0) return;
-        if (self.recent_sightings.isRepeat(alert_rules_mod.messageKey(message), win32.Ticks.now().ms, alert_rules_mod.DUPLICATE_WINDOW_MS)) return;
+        if (self.recent_sightings.isRepeat(alert_rules_mod.messageKey(message), now.ms, alert_rules_mod.DUPLICATE_WINDOW_MS)) return;
         for (report.systems, 0..) |system, index| {
             const owned = self.allocator.dupe(u8, message.body) catch |err| {
                 slog.warn("Failed to copy intel for the map: {}", .{err});
@@ -271,7 +271,7 @@ pub const Interpreter = struct {
         slog.info("System change ({s}): {s} -> {s}", .{ @tagName(source), file.character_name, system });
     }
 
-    fn handleGamelogEvent(self: *Interpreter, file: *LogFile, event_text: []const u8) void {
+    fn handleGamelogEvent(self: *Interpreter, file: *LogFile, event_text: []const u8, now: win32.Ticks) void {
         // Stripped once for both uses; this is the highest-volume line type.
         var stripped_buf: [activity_lines.MAX_STRIPPED_LENGTH]u8 = undefined;
         const stripped_text = activity_lines.stripHtml(event_text, &stripped_buf);
@@ -282,7 +282,7 @@ pub const Interpreter = struct {
                 const counts_for_alert = !activity_lines.isWeaponExcluded(parsed.weapon, self.damage_alert_excluded_weapons);
                 const hit: tracker_mod.CombatWindow.Hit = .{
                     .amount = parsed.amount,
-                    .timestamp = win32.Ticks.now(),
+                    .timestamp = now,
                     .is_incoming = parsed.is_incoming,
                     .counts_for_alert = counts_for_alert,
                 };
@@ -298,7 +298,7 @@ pub const Interpreter = struct {
     }
 
     /// A missing price counts as 0 ISK; only a missing volume drops the yield, since m3 can't be computed without it.
-    fn handleMiningEvent(self: *const Interpreter, file: *LogFile, event_text: []const u8) void {
+    fn handleMiningEvent(self: *const Interpreter, file: *LogFile, event_text: []const u8, now: win32.Ticks) void {
         const tracker = self.mining_tracker orelse return;
         const parsed = activity_lines.parseMiningLine(event_text) orelse return;
         const global_settings = self.global_settings orelse return;
@@ -310,16 +310,271 @@ pub const Interpreter = struct {
         const amount: f32 = @floatFromInt(parsed.amount);
         const m3 = amount * @as(f32, @floatCast(volume_per_unit));
         const isk = amount * @as(f32, @floatCast(price_per_unit));
-        tracker.addEntry(file.character_name, .{ m3, isk, win32.Ticks.now() }) catch |err| {
+        tracker.addEntry(file.character_name, .{ m3, isk, now }) catch |err| {
             slog.warn("Failed to record mining entry for '{s}': {}", .{ file.character_name, err });
         };
     }
 
-    fn handleBountyEvent(self: *const Interpreter, file: *LogFile, event_text: []const u8) void {
+    fn handleBountyEvent(self: *const Interpreter, file: *LogFile, event_text: []const u8, now: win32.Ticks) void {
         const tracker = self.bounty_tracker orelse return;
         const isk = activity_lines.parseBountyLine(event_text) orelse return;
-        tracker.addEntry(file.character_name, .{ isk, win32.Ticks.now() }) catch |err| {
+        tracker.addEntry(file.character_name, .{ isk, now }) catch |err| {
             slog.warn("Failed to record bounty entry for '{s}': {}", .{ file.character_name, err });
         };
     }
 };
+
+const testing = std.testing;
+const NOW: win32.Ticks = .{ .ms = 1_000_000 };
+const FLEET_INTEL_LINE = "[ 2026.10.29 21:27:12 ] Some Pilot > Maurasi hostile gang";
+
+/// An Interpreter and the queues and set it borrows.
+const Fixture = struct {
+    system_updates: queue.Queue(queue.SystemUpdate),
+    notifications: queue.Queue(queue.NotificationEvent),
+    intel_sightings: queue.Queue(queue.IntelSighting),
+    own_characters: std.StringHashMap(void),
+    interpreter: Interpreter,
+
+    /// Mustn't move afterwards, since the interpreter points into it.
+    fn init(self: *Fixture) void {
+        self.system_updates = .init(testing.allocator, testing.io);
+        self.notifications = .init(testing.allocator, testing.io);
+        self.intel_sightings = .init(testing.allocator, testing.io);
+        self.own_characters = .init(testing.allocator);
+        self.interpreter = .{
+            .allocator = testing.allocator,
+            .outbox = .{ .system_updates = &self.system_updates, .notifications = &self.notifications, .intel_sightings = &self.intel_sightings },
+            .own_characters = &self.own_characters,
+            .global_settings = null,
+        };
+    }
+
+    fn deinit(self: *Fixture) void {
+        self.interpreter.deinit();
+        self.own_characters.deinit();
+        self.intel_sightings.deinit();
+        self.notifications.deinit();
+        self.system_updates.deinit();
+    }
+
+    fn systemUpdates(self: *const Fixture) []const queue.SystemUpdate {
+        return self.system_updates.items.items;
+    }
+
+    fn queuedNotifications(self: *const Fixture) []const queue.NotificationEvent {
+        return self.notifications.items.items;
+    }
+
+    fn intelSightings(self: *const Fixture) []const queue.IntelSighting {
+        return self.intel_sightings.items.items;
+    }
+};
+
+fn gamelog(character_name: []const u8) LogFile {
+    return .{ .path = "", .character_name = character_name, .is_chatlog = false, .channel_name = "" };
+}
+
+fn chatlog(character_name: []const u8, channel_name: []const u8) LogFile {
+    return .{ .path = "", .character_name = character_name, .is_chatlog = true, .channel_name = channel_name };
+}
+
+/// A rule alerting on intel within five jumps in Fleet, heard by clients standing in Perimeter, next to Maurasi.
+fn listenToFleetIntel(fixture: *Fixture, client_names: []const []const u8) !void {
+    try testing.expect(fixture.interpreter.setChatAlerts(&.{.{ .channels = "Fleet", .max_jumps = 5 }}, &.{}));
+    for (client_names) |name| fixture.interpreter.queueSystemUpdate(name, "Perimeter", 0, false);
+}
+
+test "a gamelog jump queues a jump system update and a system change alert" {
+    var fixture: Fixture = undefined;
+    fixture.init();
+    defer fixture.deinit();
+    var file = gamelog("Alpha");
+
+    fixture.interpreter.interpret(&file, "[ 2026.09.05 01:16:08 ] (None) Jumping from C-J6MT to 8-WYQZ", NOW);
+
+    try testing.expectEqual(@as(usize, 1), fixture.systemUpdates().len);
+    const update = fixture.systemUpdates()[0];
+    try testing.expectEqualStrings("Alpha", update.character_name);
+    try testing.expectEqualStrings("8-WYQZ", update.system_name);
+    try testing.expect(update.is_jump);
+    try testing.expectEqual(@as(u64, 20260905011608), update.event_timestamp);
+
+    try testing.expectEqual(@as(usize, 1), fixture.queuedNotifications().len);
+    const alert = fixture.queuedNotifications()[0];
+    try testing.expectEqual(notification_mod.NotificationType.SystemChange, alert.notification.notification_type);
+    try testing.expectEqualStrings("8-WYQZ", alert.notification.target.?);
+}
+
+test "a Local change queues one system update per system, without a jump or an alert" {
+    var fixture: Fixture = undefined;
+    fixture.init();
+    defer fixture.deinit();
+    var file = chatlog("Alpha", lines.LOCAL_CHANNEL);
+    const line = "[ 2026.09.21 21:10:31 ] EVE System > Channel changed to Local : Jita";
+
+    fixture.interpreter.interpret(&file, line, NOW);
+    fixture.interpreter.interpret(&file, line, NOW);
+
+    try testing.expectEqual(@as(usize, 1), fixture.systemUpdates().len);
+    try testing.expectEqualStrings("Jita", fixture.systemUpdates()[0].system_name);
+    try testing.expect(!fixture.systemUpdates()[0].is_jump);
+    try testing.expectEqual(@as(usize, 0), fixture.queuedNotifications().len);
+}
+
+test "a line too short to hold a timestamp and a message is ignored" {
+    var fixture: Fixture = undefined;
+    fixture.init();
+    defer fixture.deinit();
+    var file = gamelog("Alpha");
+
+    fixture.interpreter.interpret(&file, "[ 2026.09.05 ] Jumping", NOW);
+
+    try testing.expectEqual(@as(usize, 0), fixture.systemUpdates().len);
+    try testing.expectEqual(@as(usize, 0), fixture.queuedNotifications().len);
+}
+
+test "a line over the cap is dropped and counted" {
+    var fixture: Fixture = undefined;
+    fixture.init();
+    defer fixture.deinit();
+    var file = gamelog("Alpha");
+    const long_line = "[ 2026.09.05 01:16:08 ] (None) Jumping from C-J6MT to " ++ @as([lines.MAX_LINE_LENGTH]u8, @splat('X'));
+
+    fixture.interpreter.interpret(&file, long_line, NOW);
+
+    try testing.expectEqual(@as(usize, 0), fixture.systemUpdates().len);
+    try testing.expectEqual(@as(u32, 1), file.long_line_warning_count);
+}
+
+test "a gamelog event queues its notification for the log's character" {
+    var fixture: Fixture = undefined;
+    fixture.init();
+    defer fixture.deinit();
+    var file = gamelog("Alpha");
+
+    fixture.interpreter.interpret(&file, "[ 2026.09.06 16:13:00 ] (question) Some Pilot wants you to join their fleet, do you accept?", NOW);
+
+    try testing.expectEqual(@as(usize, 1), fixture.queuedNotifications().len);
+    const event = fixture.queuedNotifications()[0];
+    try testing.expectEqualStrings("Alpha", event.character_name);
+    try testing.expectEqual(notification_mod.NotificationType.FleetInvite, event.notification.notification_type);
+}
+
+test "combat hits feed the combat tracker, and an excluded weapon's hit doesn't arm the damage alert" {
+    var fixture: Fixture = undefined;
+    fixture.init();
+    defer fixture.deinit();
+    var combat: tracker_mod.CombatTracker = .init(testing.allocator, testing.io, 60);
+    defer combat.deinit();
+    fixture.interpreter.setTrackers(&combat, null, null);
+    fixture.interpreter.setDamageAlertExcludedWeapons("heavy missile");
+    var file = gamelog("Alpha");
+
+    fixture.interpreter.interpret(&file, "[ 2026.09.17 19:28:06 ] (combat) <b>484</b> from Gist Seraphim - Heavy Missile - Hits", NOW);
+    const window = combat.windows.getPtr("Alpha") orelse return error.TestExpectedWindow;
+    try testing.expectEqual(@as(usize, 1), window.ring.entry_count);
+    try testing.expect(window.last_incoming_hit.isZero());
+
+    const later: win32.Ticks = .{ .ms = NOW.ms + 1_000 };
+    fixture.interpreter.interpret(&file, "[ 2026.09.17 19:28:07 ] (combat) <b>120</b> from Gist Seraphim - Light Missile - Hits", later);
+    try testing.expectEqual(@as(usize, 2), window.ring.entry_count);
+    try testing.expectEqual(later.ms, window.last_incoming_hit.ms);
+}
+
+test "a bounty payout feeds the bounty tracker" {
+    var fixture: Fixture = undefined;
+    fixture.init();
+    defer fixture.deinit();
+    var bounty: tracker_mod.BountyTracker = .init(testing.allocator, testing.io, 60);
+    defer bounty.deinit();
+    fixture.interpreter.setTrackers(null, null, &bounty);
+    var file = gamelog("Alpha");
+
+    fixture.interpreter.interpret(&file, "[ 2026.09.17 19:28:07 ] (bounty) <b>120,272 ISK</b> added to next bounty payout", NOW);
+
+    const window = bounty.windows.getPtr("Alpha") orelse return error.TestExpectedWindow;
+    try testing.expectEqual(@as(usize, 1), window.ring.entry_count);
+    try testing.expectEqual(@as(f32, 120_272), window.ring.entries[0].isk);
+}
+
+test "forget drops a character's tracker history" {
+    var fixture: Fixture = undefined;
+    fixture.init();
+    defer fixture.deinit();
+    var bounty: tracker_mod.BountyTracker = .init(testing.allocator, testing.io, 60);
+    defer bounty.deinit();
+    fixture.interpreter.setTrackers(null, null, &bounty);
+    var file = gamelog("Alpha");
+    fixture.interpreter.interpret(&file, "[ 2026.09.17 19:28:07 ] (bounty) <b>120,272 ISK</b> added to next bounty payout", NOW);
+
+    fixture.interpreter.forget("Alpha");
+
+    try testing.expect(bounty.windows.getPtr("Alpha") == null);
+}
+
+test "intel near a client alerts it and goes on the map" {
+    var fixture: Fixture = undefined;
+    fixture.init();
+    defer fixture.deinit();
+    try listenToFleetIntel(&fixture, &.{"Alpha"});
+    var file = chatlog("Alpha", "Fleet");
+
+    fixture.interpreter.interpret(&file, FLEET_INTEL_LINE, NOW);
+
+    try testing.expectEqual(@as(usize, 1), fixture.queuedNotifications().len);
+    const alert = fixture.queuedNotifications()[0];
+    try testing.expectEqualStrings("Alpha", alert.character_name);
+    try testing.expectEqual(notification_mod.NotificationType.ChatIntel, alert.notification.notification_type);
+    try testing.expectEqualStrings("Maurasi", alert.notification.target.?);
+    try testing.expectEqualStrings("Some Pilot", alert.notification.source.?);
+    try testing.expect(alert.notification.jumps != null);
+
+    try testing.expectEqual(@as(usize, 1), fixture.intelSightings().len);
+    const sighting = fixture.intelSightings()[0];
+    try testing.expectEqual(universe.findSystem("Maurasi").?, sighting.system);
+    try testing.expect(sighting.is_message_first);
+}
+
+test "the same intel heard through a second client's log alerts and maps once" {
+    var fixture: Fixture = undefined;
+    fixture.init();
+    defer fixture.deinit();
+    try listenToFleetIntel(&fixture, &.{ "Alpha", "Bravo" });
+    var alpha_file = chatlog("Alpha", "Fleet");
+    var bravo_file = chatlog("Bravo", "Fleet");
+
+    fixture.interpreter.interpret(&alpha_file, FLEET_INTEL_LINE, NOW);
+    const alert_count = fixture.queuedNotifications().len;
+    fixture.interpreter.interpret(&bravo_file, FLEET_INTEL_LINE, .{ .ms = NOW.ms + 100 });
+
+    try testing.expect(alert_count > 0);
+    try testing.expectEqual(alert_count, fixture.queuedNotifications().len);
+    try testing.expectEqual(@as(usize, 1), fixture.intelSightings().len);
+}
+
+test "a followed character's own chat never alerts" {
+    var fixture: Fixture = undefined;
+    fixture.init();
+    defer fixture.deinit();
+    try listenToFleetIntel(&fixture, &.{"Alpha"});
+    try fixture.own_characters.put("Some Pilot", {});
+    var file = chatlog("Alpha", "Fleet");
+
+    fixture.interpreter.interpret(&file, FLEET_INTEL_LINE, NOW);
+
+    try testing.expectEqual(@as(usize, 0), fixture.queuedNotifications().len);
+}
+
+test "chat in a channel no rule follows raises nothing" {
+    var fixture: Fixture = undefined;
+    fixture.init();
+    defer fixture.deinit();
+    try listenToFleetIntel(&fixture, &.{"Alpha"});
+    var file = chatlog("Alpha", "Corp");
+
+    fixture.interpreter.interpret(&file, FLEET_INTEL_LINE, NOW);
+
+    try testing.expectEqual(@as(usize, 0), fixture.queuedNotifications().len);
+    try testing.expectEqual(@as(usize, 0), fixture.intelSightings().len);
+}

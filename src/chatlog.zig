@@ -91,7 +91,7 @@ pub const ChatlogMonitor = struct {
 
         pub fn onLine(self: LineHandler, line: []const u8) void {
             const trimmed = std.mem.trim(u8, line, " \r\t");
-            if (trimmed.len > 0) self.monitor.interpreter.interpret(self.file, trimmed);
+            if (trimmed.len > 0) self.monitor.interpreter.interpret(self.file, trimmed, win32.Ticks.now());
         }
 
         pub fn onLongLine(self: LineHandler, line_length: usize) void {

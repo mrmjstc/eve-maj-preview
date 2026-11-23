@@ -57,6 +57,7 @@
 - Update check logs a short excerpt of GitHub's reply
 - CI type-checks the simulator
 - Changelog moved to docs/; older versions match their release notes
+- Unit tests for alert history, the notified queue and log interpretation
 
 ### Fixed
 - Dragged panels stay under the cursor instead of lagging behind

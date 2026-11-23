@@ -1,4 +1,5 @@
 //! The recent notifications the History and Intel panels list.
+const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const notification = @import("notification.zig");
 const template = @import("template.zig");
@@ -57,6 +58,7 @@ pub const NewEntry = struct {
     /// Borrowed for the call; push copies it.
     text: []const u8,
     notification_type: notification.NotificationType,
+    timestamp: win32.Ticks,
     character_color: ?u32 = null,
     text_color: ?u32 = null,
     /// Within `text`.
@@ -77,7 +79,7 @@ pub const NotificationHistory = struct {
         var entry: Entry = .{
             .source_hwnd = new_entry.source_hwnd,
             .notification_type = new_entry.notification_type,
-            .timestamp = win32.Ticks.now(),
+            .timestamp = new_entry.timestamp,
             .character_color = new_entry.character_color,
             .text_color = new_entry.text_color,
             .system = new_entry.system,
@@ -119,3 +121,95 @@ pub const NotificationHistory = struct {
         return (self.head + CAPACITY - 1 - newest_index) % CAPACITY;
     }
 };
+
+const testing = std.testing;
+
+fn pushText(history: *NotificationHistory, text: []const u8, timestamp_ms: u64) void {
+    history.push(.{
+        .source_hwnd = @ptrFromInt(1),
+        .character_name = "Alpha",
+        .text = text,
+        .notification_type = .FleetInvite,
+        .timestamp = .{ .ms = timestamp_ms },
+    });
+}
+
+test "snapshot lists entries newest first" {
+    var history: NotificationHistory = .{};
+    pushText(&history, "first", 1);
+    pushText(&history, "second", 2);
+    pushText(&history, "third", 3);
+
+    var out: [CAPACITY]Entry = undefined;
+    const entries = history.snapshot(&out);
+    try testing.expectEqual(@as(usize, 3), entries.len);
+    try testing.expectEqualStrings("third", entries[0].text());
+    try testing.expectEqualStrings("second", entries[1].text());
+    try testing.expectEqualStrings("first", entries[2].text());
+    try testing.expectEqual(@as(u64, 3), entries[0].timestamp.ms);
+}
+
+test "past CAPACITY each push overwrites the oldest entry" {
+    var history: NotificationHistory = .{};
+    var text_buf: [8]u8 = undefined;
+    for (0..CAPACITY + 3) |i| pushText(&history, std.mem.print(&text_buf, "{d}", .{i}) catch unreachable, i);
+
+    var out: [CAPACITY]Entry = undefined;
+    const entries = history.snapshot(&out);
+    try testing.expectEqual(@as(usize, CAPACITY), entries.len);
+    try testing.expectEqualStrings(std.mem.print(&text_buf, "{d}", .{CAPACITY + 2}) catch unreachable, entries[0].text());
+    try testing.expectEqualStrings("3", entries[CAPACITY - 1].text());
+}
+
+test "snapshot copies no more than its buffer holds, newest first" {
+    var history: NotificationHistory = .{};
+    pushText(&history, "old", 1);
+    pushText(&history, "new", 2);
+
+    var out: [1]Entry = undefined;
+    const entries = history.snapshot(&out);
+    try testing.expectEqual(@as(usize, 1), entries.len);
+    try testing.expectEqualStrings("new", entries[0].text());
+}
+
+test "entryFromNewest counts from the newest and is null past the last entry" {
+    var history: NotificationHistory = .{};
+    pushText(&history, "old", 1);
+    pushText(&history, "new", 2);
+
+    try testing.expectEqualStrings("new", history.entryFromNewest(0).?.text());
+    try testing.expectEqualStrings("old", history.entryFromNewest(1).?.text());
+    try testing.expect(history.entryFromNewest(2) == null);
+}
+
+test "clear empties the history and bumps its revision" {
+    var history: NotificationHistory = .{};
+    pushText(&history, "gone", 1);
+    const revision = history.revision;
+    history.clear();
+
+    var out: [CAPACITY]Entry = undefined;
+    try testing.expectEqual(@as(usize, 0), history.snapshot(&out).len);
+    try testing.expect(history.revision != revision);
+}
+
+test "push cuts a long name and text to fit, flattens line breaks, and keeps the lead within the text" {
+    var history: NotificationHistory = .{};
+    const long_name: [70]u8 = @splat('N');
+    const long_text = "line one\nline two " ++ @as([100]u8, @splat('x'));
+    history.push(.{
+        .source_hwnd = @ptrFromInt(1),
+        .character_name = &long_name,
+        .text = long_text,
+        .notification_type = .FleetInvite,
+        .timestamp = .{ .ms = 1 },
+        .lead = .{ .length = 500, .color = 0xFF00FF00 },
+    });
+
+    const entry = history.entryFromNewest(0).?;
+    try testing.expectEqualStrings(long_name[0..64], entry.characterName());
+    try testing.expectEqual(@as(usize, 96), entry.text().len);
+    try testing.expect(std.mem.startsWith(u8, entry.text(), "line one line two "));
+    try testing.expectEqual(@as(usize, 96), entry.lead.?.length);
+    try testing.expectEqual(@as(u32, 0xFF00FF00), entry.lead.?.color);
+}

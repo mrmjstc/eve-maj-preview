@@ -9,6 +9,7 @@ test {
     _ = @import("activity/tracker.zig");
     _ = @import("arguments.zig");
     _ = @import("chatlog/alert_rules.zig");
+    _ = @import("chatlog/interpret.zig");
     _ = @import("chatlog/lines.zig");
     _ = @import("chatlog/queue.zig");
     _ = @import("chatlog/routing.zig");
@@ -81,7 +82,9 @@ test {
     _ = @import("map/wormholes.zig");
     _ = @import("map/zkill.zig");
     _ = @import("notifications/gamelog_events.zig");
+    _ = @import("notifications/history.zig");
     _ = @import("notifications/notification.zig");
+    _ = @import("notifications/notified_queue.zig");
     _ = @import("notifications/rules.zig");
     _ = @import("notifications/stack.zig");
     _ = @import("notifications/template.zig");

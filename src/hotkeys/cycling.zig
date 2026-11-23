@@ -176,7 +176,7 @@ pub fn cycleNotified(commands: *const Commands, is_forward: bool) ?win32.HWND {
     slog.info("Cycle notified character hotkey pressed ({s})", .{directionName(is_forward)});
     const retention_ms: u64 = @as(u64, commands.live().notifications.notified_cycle_retention_seconds) * std.time.ms_per_s;
 
-    var names = commands.notified_queue.namesWithin(commands.allocator, retention_ms) catch |err| {
+    var names = commands.notified_queue.namesWithin(commands.allocator, retention_ms, win32.Ticks.now()) catch |err| {
         slog.err("Failed to build notified-character list: {}", .{err});
         return null;
     };

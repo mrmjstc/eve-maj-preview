@@ -20,9 +20,7 @@ pub const NotifiedQueue = struct {
     }
 
     /// Re-notifying bumps the character to the back instead of duplicating.
-    pub fn track(self: *NotifiedQueue, allocator: std.mem.Allocator, character_name: []const u8) void {
-        const now = win32.Ticks.now();
-
+    pub fn track(self: *NotifiedQueue, allocator: std.mem.Allocator, character_name: []const u8, now: win32.Ticks) void {
         for (self.entries.items, 0..) |entry, i| {
             if (std.mem.eql(u8, entry.character_name, character_name)) {
                 const existing = self.entries.orderedRemove(i);
@@ -48,8 +46,7 @@ pub const NotifiedQueue = struct {
     }
 
     /// Oldest first, borrowing the queue's storage until the next track call; the caller frees the list with out_allocator.
-    pub fn namesWithin(self: *const NotifiedQueue, out_allocator: std.mem.Allocator, retention_ms: u64) !std.ArrayList([]const u8) {
-        const now = win32.Ticks.now();
+    pub fn namesWithin(self: *const NotifiedQueue, out_allocator: std.mem.Allocator, retention_ms: u64, now: win32.Ticks) !std.ArrayList([]const u8) {
         var result: std.ArrayList([]const u8) = .empty;
         errdefer result.deinit(out_allocator);
 
@@ -61,3 +58,60 @@ pub const NotifiedQueue = struct {
         return result;
     }
 };
+
+const testing = std.testing;
+
+fn expectNames(queue: *const NotifiedQueue, retention_ms: u64, now_ms: u64, expected: []const []const u8) !void {
+    var names = try queue.namesWithin(testing.allocator, retention_ms, .{ .ms = now_ms });
+    defer names.deinit(testing.allocator);
+    try testing.expectEqual(expected.len, names.items.len);
+    for (expected, names.items) |expected_name, name| try testing.expectEqualStrings(expected_name, name);
+}
+
+test "names come oldest first" {
+    var queue: NotifiedQueue = .{};
+    defer queue.deinit(testing.allocator);
+    queue.track(testing.allocator, "Alpha", .{ .ms = 1_000 });
+    queue.track(testing.allocator, "Bravo", .{ .ms = 2_000 });
+
+    try expectNames(&queue, 10_000, 3_000, &.{ "Alpha", "Bravo" });
+}
+
+test "a character notified again moves to the back instead of repeating" {
+    var queue: NotifiedQueue = .{};
+    defer queue.deinit(testing.allocator);
+    queue.track(testing.allocator, "Alpha", .{ .ms = 1_000 });
+    queue.track(testing.allocator, "Bravo", .{ .ms = 2_000 });
+    queue.track(testing.allocator, "Alpha", .{ .ms = 3_000 });
+
+    try expectNames(&queue, 10_000, 4_000, &.{ "Bravo", "Alpha" });
+}
+
+test "a notification older than the retention is left out" {
+    var queue: NotifiedQueue = .{};
+    defer queue.deinit(testing.allocator);
+    queue.track(testing.allocator, "Alpha", .{ .ms = 1_000 });
+    queue.track(testing.allocator, "Bravo", .{ .ms = 5_000 });
+
+    try expectNames(&queue, 3_000, 6_000, &.{"Bravo"});
+    try expectNames(&queue, 5_000, 6_000, &.{ "Alpha", "Bravo" });
+}
+
+test "a requeue refreshes the time the retention counts from" {
+    var queue: NotifiedQueue = .{};
+    defer queue.deinit(testing.allocator);
+    queue.track(testing.allocator, "Alpha", .{ .ms = 1_000 });
+    queue.track(testing.allocator, "Alpha", .{ .ms = 5_000 });
+
+    try expectNames(&queue, 3_000, 6_000, &.{"Alpha"});
+}
+
+test "the queue keeps its own copy of each name" {
+    var queue: NotifiedQueue = .{};
+    defer queue.deinit(testing.allocator);
+    var name_buf = "Alpha".*;
+    queue.track(testing.allocator, &name_buf, .{ .ms = 1_000 });
+    name_buf[0] = 'X';
+
+    try expectNames(&queue, 10_000, 2_000, &.{"Alpha"});
+}
