@@ -58,6 +58,7 @@
 - CI type-checks the simulator
 - Changelog moved to docs/; older versions match their release notes
 - Unit tests for alert history, the notified queue and log interpretation
+- Unit tests for hotkey press handling
 
 ### Fixed
 - Dragged panels stay under the cursor instead of lagging behind

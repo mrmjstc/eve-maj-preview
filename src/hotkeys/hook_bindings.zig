@@ -1,49 +1,17 @@
 //! Bindings for one low-level input hook, installed only while something is bound, re-posting each match as WM_HOTKEY from hook_thread.zig's thread.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
-const vk = @import("../platform/virtual_keys.zig");
 const hook_thread = @import("hook_thread.zig");
+const press_rules = @import("press_rules.zig");
 const log = @import("../log.zig");
 
 const slog = log.Scoped("hotkeys");
 
-/// Far more clients and window-filter matches than anyone runs.
-const MAX_FOCUS_WINDOWS = 128;
+/// Built by HotkeyManager and handed over through setFocusFilter.
+pub const FocusFilter = press_rules.FocusFilter;
+
 /// WM_HOTKEY's lParam for a key held past its first press.
 const REPEAT_LPARAM: win32.LPARAM = 1;
-
-/// What the require-EVE-focus setting checks a match against; built by the main thread, with a copy kept on the hook thread.
-pub const FocusFilter = struct {
-    is_required: bool = false,
-    /// Matches anywhere, so the suspend hotkey still resumes outside EVE.
-    exempt_id: ?c_int = null,
-    /// Every tracked window, window-filter matches included, as HotkeyManager.foregroundEveWindow counts them.
-    windows: [MAX_FOCUS_WINDOWS]win32.HWND = undefined,
-    window_count: usize = 0,
-
-    /// False once full, leaving `hwnd` out.
-    pub fn add(self: *FocusFilter, hwnd: win32.HWND) bool {
-        if (self.window_count == self.windows.len) return false;
-        self.windows[self.window_count] = hwnd;
-        self.window_count += 1;
-        return true;
-    }
-
-    pub fn eql(self: *const FocusFilter, other: *const FocusFilter) bool {
-        return self.is_required == other.is_required and
-            std.meta.eql(self.exempt_id, other.exempt_id) and
-            std.mem.eql(win32.HWND, self.windows[0..self.window_count], other.windows[0..other.window_count]);
-    }
-
-    fn allows(self: *const FocusFilter, id: c_int) bool {
-        if (!self.is_required) return true;
-        if (self.exempt_id) |exempt_id| {
-            if (id == exempt_id) return true;
-        }
-        const foreground = win32.GetForegroundWindow() orelse return false;
-        return std.mem.indexOfScalar(win32.HWND, self.windows[0..self.window_count], foreground) != null;
-    }
-};
 
 /// Owned by the hook thread: the main thread changes it only through the pub methods, which run there by hook_thread.call.
 pub const HookBindings = struct {
@@ -131,13 +99,11 @@ pub const HookBindings = struct {
         self.send(.deinit);
     }
 
-    /// Hook thread only; whether it posted, an unbound combo using its bare key's binding unless requires_exact_modifiers, so a held modifier can't block it.
+    /// Hook thread only; whether a binding matched (see press_rules.bindingFor) and the focus filter let it through.
     pub fn dispatch(self: *const HookBindings, base_vk: u32, modifiers: u32, is_repeat: bool) bool {
         const map = if (self.map) |*m| m else return false;
-        const id = map.get(vk.combineKey(base_vk, modifiers)) orelse
-            (if (modifiers != 0 and !self.requires_exact_modifiers) map.get(vk.combineKey(base_vk, 0)) else null) orelse
-            return false;
-        if (!g_focus_filter.allows(id)) return false;
+        const id = press_rules.bindingFor(map, base_vk, modifiers, self.requires_exact_modifiers) orelse return false;
+        if (!g_focus_filter.allows(id, win32.GetForegroundWindow())) return false;
 
         if (self.target_hwnd) |hwnd| {
             if (!win32.toBool(win32.PostMessageA(hwnd, win32.WM_HOTKEY, @intCast(id), if (is_repeat) REPEAT_LPARAM else 0))) {

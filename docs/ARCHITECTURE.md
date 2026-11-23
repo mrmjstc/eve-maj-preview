@@ -284,7 +284,7 @@ Driven by `WM_TIMER` at `timer.scanIntervalMs`, or every 1 s while no EVE window
 
 ### Hotkeys and focus
 
-- **Low-level hooks** (`hotkeys/keyboard_hook.zig`, `mouse_hook.zig`, shared `hook_bindings.zig`; `hooks.zig` routes each binding to its hook): `WH_KEYBOARD_LL` and `WH_MOUSE_LL` on their own thread instead of `RegisterHotKey`, so bare modifiers and mouse buttons bind, and a busy main thread never delays input or gets the hooks removed by Windows. Matches are posted as `WM_HOTKEY`.
+- **Low-level hooks** (`hotkeys/keyboard_hook.zig`, `mouse_hook.zig`, shared `hook_bindings.zig`; `hooks.zig` routes each binding to its hook; which presses match, pass or are swallowed in `press_rules.zig`, pure and tested): `WH_KEYBOARD_LL` and `WH_MOUSE_LL` on their own thread instead of `RegisterHotKey`, so bare modifiers and mouse buttons bind, and a busy main thread never delays input or gets the hooks removed by Windows. Matches are posted as `WM_HOTKEY`.
   - Each press is decided at its first down: a swallowed press has its repeats and release swallowed too, so a client never sees a key-up without its down, which holding Ctrl through a cycle depends on.
   - With `requireEveFocus`, a bound key pressed outside a tracked EVE window passes through untouched.
   - With NumLock on, Windows sends Shift+Numpad as a fake Shift release then a navigation key; the hook and the dialog's recorder read it back as Shift+Numpad.

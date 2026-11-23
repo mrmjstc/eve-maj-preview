@@ -54,6 +54,7 @@ test {
     _ = @import("hotkeys/cycle_order.zig");
     _ = @import("hotkeys/paste_upload.zig");
     _ = @import("hotkeys/plan.zig");
+    _ = @import("hotkeys/press_rules.zig");
     _ = @import("lang/wording.zig");
     _ = @import("layout/placement.zig");
     _ = @import("layout/region_grid.zig");
