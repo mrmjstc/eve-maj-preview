@@ -14,6 +14,7 @@ const stat_text = @import("../activity/stat_text.zig");
 const roster = @import("../clients/roster.zig");
 const spaces = @import("../layout/spaces.zig");
 const pixel_buffer = @import("../util/pixel_buffer.zig");
+const selected_font = @import("../util/selected_font.zig");
 const universe = @import("../map/universe.zig");
 const layout_mod = @import("../map/layout.zig");
 const connections_mod = @import("../map/connections.zig");
@@ -95,6 +96,8 @@ pub const DrawnText = struct {
     box: DrawnBox,
     color: u32,
     bg_color: u32,
+    /// Null if GDI couldn't say.
+    font: ?selected_font.SelectedFont,
 
     pub fn text(self: *const DrawnText) []const u8 {
         return self.text_buffer[0..self.text_length];
@@ -377,7 +380,7 @@ pub fn renderOverlay(font_cache: *FontCache, cache: *RenderCache, target_hwnd: w
     }
 
     if (g_recorder) |drawn_recorder| {
-        if (drawn_recorder.begin(@intFromPtr(target_hwnd))) |drawn| drawn.* = recordDrawn(lines, notifications, settings, if (connection_font != null) connection_map.area else null);
+        if (drawn_recorder.begin(@intFromPtr(target_hwnd))) |drawn| drawn.* = recordDrawn(overlay.mem_dc, lines, notifications, settings, if (connection_font != null) connection_map.area else null);
     }
     gdi_overlay.presentLayered(target_hwnd, overlay, settings.overlay_alpha);
 }
@@ -412,7 +415,7 @@ pub fn createRenderSettings(config: *const config_mod.Config, thumbnail: *const 
     });
 }
 
-fn recordDrawn(lines: []const DrawLine, notifications: ?NotificationBlock, settings: RenderSettings, connection_area: ?layout_mod.Box) Drawn {
+fn recordDrawn(dc: win32.HDC, lines: []const DrawLine, notifications: ?NotificationBlock, settings: RenderSettings, connection_area: ?layout_mod.Box) Drawn {
     var drawn: Drawn = .{ .text_count = lines.len };
     for (lines, drawn.texts[0..lines.len]) |line, *entry| {
         const length = @min(line.text.len, DRAWN_TEXT_SIZE);
@@ -427,6 +430,7 @@ fn recordDrawn(lines: []const DrawLine, notifications: ?NotificationBlock, setti
             },
             .color = line.color,
             .bg_color = line.bg_color,
+            .font = gdi_overlay.realizedFont(dc, line.font),
         };
         @memcpy(entry.text_buffer[0..length], line.text[0..length]);
     }

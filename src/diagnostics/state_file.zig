@@ -124,6 +124,17 @@ pub const Snapshot = struct {
         box: Box,
         color: u32,
         bg_color: u32,
+        /// Null if GDI couldn't say.
+        font: ?Font,
+    };
+
+    pub const Font = struct {
+        /// Borrows from the text's record.
+        face: []const u8,
+        /// A Win32 FW_ value.
+        weight: i32,
+        is_italic: bool,
+        height_px: i32,
     };
 
     pub const Box = struct {
@@ -149,6 +160,8 @@ pub const Snapshot = struct {
         left: i32,
         top: i32,
         color: u32,
+        /// Null if GDI couldn't say.
+        font: ?Font,
     };
 };
 
@@ -252,15 +265,16 @@ test "format names alert types and leaves rates not yet measured as null" {
     ) != null);
 }
 
-test "format names each panel's kind and lists its texts in order" {
-    const texts = [_]Snapshot.PanelText{ .{ .text = "Client List", .left = 30, .top = 6, .color = 0xFFFFFFFF }, .{ .text = "Jita", .left = 200, .top = 40, .color = 0xFF8B8F96 } };
+test "format names each panel's kind and lists its texts in order with their fonts" {
+    const font: Snapshot.Font = .{ .face = "Cascadia Code", .weight = 400, .is_italic = false, .height_px = 13 };
+    const texts = [_]Snapshot.PanelText{ .{ .text = "Client List", .left = 30, .top = 6, .color = 0xFFFFFFFF, .font = font }, .{ .text = "Jita", .left = 200, .top = 40, .color = 0xFF8B8F96, .font = null } };
     const panels = [_]Snapshot.Panel{.{ .kind = .client_list, .hwnd = 30, .texts = &texts }};
     var snapshot = emptySnapshot();
     snapshot.panels = &panels;
     const json = try format(testing.allocator, snapshot);
     defer testing.allocator.free(json);
     try testing.expect(std.mem.indexOf(u8, json,
-        \\"panels":[{"kind":"client_list","hwnd":30,"texts":[{"text":"Client List","left":30,"top":6,"color":4294967295},{"text":"Jita","left":200,"top":40,"color":4287336342}]}]
+        \\"panels":[{"kind":"client_list","hwnd":30,"texts":[{"text":"Client List","left":30,"top":6,"color":4294967295,"font":{"face":"Cascadia Code","weight":400,"is_italic":false,"height_px":13}},{"text":"Jita","left":200,"top":40,"color":4287336342,"font":null}]}]
     ) != null);
 }
 

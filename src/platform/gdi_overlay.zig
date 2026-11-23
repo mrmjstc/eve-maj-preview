@@ -3,11 +3,13 @@ const std = @import("std");
 const win32 = @import("win32.zig");
 const fonts = @import("fonts.zig");
 const pixel_buffer = @import("../util/pixel_buffer.zig");
+const selected_font = @import("../util/selected_font.zig");
 const box = @import("../util/box.zig");
 const utf8 = @import("../util/utf8.zig");
 const log = @import("../log.zig");
 
 const Box = box.Box;
+const SelectedFont = selected_font.SelectedFont;
 const slog = log.Scoped("gdi_overlay");
 
 /// Translucent black backing shared by the small hint boxes and labels drawn over the desktop.
@@ -19,6 +21,10 @@ const HINT_LINE_PADDING_Y = 2;
 /// Longest hint line drawn.
 const HINT_TEXT_MAX_BYTES = 256;
 const ELLIPSIS = "...";
+
+comptime {
+    std.debug.assert(SelectedFont.FACE_SIZE == win32.LF_FACESIZE);
+}
 
 /// A top-down 32bpp DIB section selected into its own memory DC, drawn with GDI and then presented as a layered window's alpha-blended source.
 pub const OverlayBitmap = struct {
@@ -285,6 +291,33 @@ pub fn createInstalledFont(dc: win32.HDC, name: [:0]const u8, height_px: i32, we
     if (face_length > 0 and std.ascii.startsWithIgnoreCase(std.mem.sliceTo(&face, 0), name)) return font;
     _ = win32.DeleteObject(font);
     return null;
+}
+
+/// The font selected into `dc`; logs its own failures, at debug as only the state file loses it.
+pub fn selectedFont(dc: win32.HDC) ?SelectedFont {
+    var metrics: win32.TEXTMETRICA = undefined;
+    if (win32.GetTextMetricsA(dc, &metrics) == 0) {
+        slog.debug("Failed to read the selected font's metrics", .{});
+        return null;
+    }
+    var face = std.mem.zeroes([win32.LF_FACESIZE + 1]u8);
+    if (win32.GetTextFaceA(dc, win32.LF_FACESIZE, &face) == 0) {
+        slog.debug("Failed to read the selected font's face", .{});
+        return null;
+    }
+    var font: SelectedFont = .{ .weight = metrics.tmWeight, .is_italic = metrics.tmItalic != 0, .height_px = metrics.tmHeight - metrics.tmInternalLeading };
+    // Read up to the NUL: whether GetTextFaceA's count includes it varies.
+    font.setFace(std.mem.sliceTo(&face, 0));
+    return font;
+}
+
+/// What `font` realizes as in `dc`, logged like selectedFont; leaves `dc`'s selection as it was.
+pub fn realizedFont(dc: win32.HDC, font: win32.HFONT) ?SelectedFont {
+    const old_font = win32.SelectObject(dc, font);
+    defer {
+        if (old_font) |previous_font| _ = win32.SelectObject(dc, previous_font);
+    }
+    return selectedFont(dc);
 }
 
 /// A filled, bordered, rounded button with `label` centered in `font`; `rect` is in bitmap coordinates.

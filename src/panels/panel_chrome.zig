@@ -198,13 +198,18 @@ pub fn finish(canvas: Canvas) void {
 /// Ignores `color`'s alpha byte.
 pub fn drawLine(dc: win32.HDC, text: []const u8, x: i32, y: i32, color: u32) void {
     gdi_overlay.drawText(MAX_TEXT_LENGTH, dc, x, y, text, color & 0x00FF_FFFF);
-    if (g_record) |record| record.add(text, x, y, color);
+    recordText(dc, text, x, y, color);
 }
 
 /// Like drawLine, for text that may not be ASCII.
 pub fn drawWideLine(dc: win32.HDC, text: []const u8, x: i32, y: i32, color: u32) void {
     gdi_overlay.drawTextUtf8(MAX_TEXT_LENGTH, dc, x, y, text, color & 0x00FF_FFFF);
-    if (g_record) |record| record.add(text, x, y, color);
+    recordText(dc, text, x, y, color);
+}
+
+/// For text drawn some other way than drawLine, e.g. the map's haloed labels.
+pub fn recordText(dc: win32.HDC, text: []const u8, x: i32, y: i32, color: u32) void {
+    if (g_record) |record| record.add(text, x, y, color, gdi_overlay.selectedFont(dc));
 }
 
 /// Cut short with "..." to fit `max_width` pixels, as UTF-8, which chat can be; returns the width drawn.

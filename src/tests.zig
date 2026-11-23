@@ -125,6 +125,7 @@ test {
     _ = @import("util/pixel_buffer.zig");
     _ = @import("util/rgba.zig");
     _ = @import("util/schedule.zig");
+    _ = @import("util/selected_font.zig");
     _ = @import("util/strings.zig");
     _ = @import("util/time.zig");
     _ = @import("util/utf8.zig");

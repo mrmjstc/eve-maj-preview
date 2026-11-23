@@ -1396,6 +1396,7 @@ fn drawHaloText(dc: win32.HDC, text: []const u8, x: i32, y: i32, text_color: u32
     }
     _ = win32.SetTextColor(dc, gdi_overlay.toColorRef(text_color));
     _ = win32.TextOutA(dc, x, y, &buffer, length);
+    panel_chrome.recordText(dc, text, x, y, text_color);
 }
 
 /// UTF-8, as character names can be; slower than drawHaloText, so kept to the few client tags.

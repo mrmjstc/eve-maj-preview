@@ -8,6 +8,7 @@ const overlay = @import("../thumbnail/overlay.zig");
 const alert_effects = @import("../notifications/alert_effects.zig");
 const history_mod = @import("../notifications/history.zig");
 const panel_chrome = @import("../panels/panel_chrome.zig");
+const selected_font = @import("../util/selected_font.zig");
 const state_file = @import("state_file.zig");
 
 const Snapshot = state_file.Snapshot;
@@ -143,6 +144,7 @@ fn overlaySnapshot(arena: std.mem.Allocator, thumbnail: *const window.ThumbnailW
         .box = snapshotBox(drawn_text.box),
         .color = drawn_text.color,
         .bg_color = drawn_text.bg_color,
+        .font = if (drawn_text.font) |*font| snapshotFont(font) else null,
     };
     return .{
         .width = settings.overlay_width,
@@ -167,6 +169,11 @@ fn snapshotBox(box: overlay.DrawnBox) Snapshot.Box {
     return .{ .left = box.left, .top = box.top, .width = box.width, .height = box.height };
 }
 
+/// Borrows the face from `font`.
+fn snapshotFont(font: *const selected_font.SelectedFont) Snapshot.Font {
+    return .{ .face = font.face(), .weight = font.weight, .is_italic = font.is_italic, .height_px = font.height_px };
+}
+
 /// Newest first, at most state_file.HISTORY_LIMIT; borrows from copies in `arena`.
 fn historyEntries(arena: std.mem.Allocator, source: *const history_mod.NotificationHistory) ![]Snapshot.HistoryEntry {
     const copies = source.snapshot(try arena.alloc(history_mod.Entry, state_file.HISTORY_LIMIT));
@@ -183,6 +190,6 @@ fn panelSnapshot(arena: std.mem.Allocator, kind: Snapshot.PanelKind, panel_hwnd:
     const record = text_recorder.find(hwnd) orelse return .{ .kind = kind, .hwnd = hwnd, .texts = &.{} };
     const recorded = record.items();
     const texts = try arena.alloc(Snapshot.PanelText, recorded.len);
-    for (recorded, texts) |*text, *entry| entry.* = .{ .text = text.text(), .left = text.left, .top = text.top, .color = text.color };
+    for (recorded, texts) |*text, *entry| entry.* = .{ .text = text.text(), .left = text.left, .top = text.top, .color = text.color, .font = if (text.font) |*font| snapshotFont(font) else null };
     return .{ .kind = kind, .hwnd = hwnd, .texts = texts };
 }

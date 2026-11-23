@@ -970,6 +970,30 @@ pub const SRCCOPY: DWORD = 0x00CC0020;
 pub extern "gdi32" fn BitBlt(hdc: HDC, x: c_int, y: c_int, cx: c_int, cy: c_int, hdcSrc: HDC, x1: c_int, y1: c_int, rop: DWORD) callconv(.c) BOOL;
 pub extern "gdi32" fn TextOutA(hdc: HDC, x: c_int, y: c_int, lpString: LPCSTR, c: c_int) callconv(.c) BOOL;
 pub extern "gdi32" fn GetTextFaceA(hdc: HDC, c: c_int, lpName: [*]u8) callconv(.c) c_int;
+pub const LF_FACESIZE = 32;
+pub const TEXTMETRICA = extern struct {
+    tmHeight: LONG,
+    tmAscent: LONG,
+    tmDescent: LONG,
+    tmInternalLeading: LONG,
+    tmExternalLeading: LONG,
+    tmAveCharWidth: LONG,
+    tmMaxCharWidth: LONG,
+    tmWeight: LONG,
+    tmOverhang: LONG,
+    tmDigitizedAspectX: LONG,
+    tmDigitizedAspectY: LONG,
+    tmFirstChar: BYTE,
+    tmLastChar: BYTE,
+    tmDefaultChar: BYTE,
+    tmBreakChar: BYTE,
+    tmItalic: BYTE,
+    tmUnderlined: BYTE,
+    tmStruckOut: BYTE,
+    tmPitchAndFamily: BYTE,
+    tmCharSet: BYTE,
+};
+pub extern "gdi32" fn GetTextMetricsA(hdc: HDC, lptm: *TEXTMETRICA) callconv(.c) BOOL;
 pub extern "gdi32" fn GetTextExtentPoint32A(hdc: HDC, lpString: LPCSTR, c: c_int, psizl: *SIZE) callconv(.c) BOOL;
 pub const CP_UTF8: UINT = 65001;
 pub extern "kernel32" fn MultiByteToWideChar(CodePage: UINT, dwFlags: DWORD, lpMultiByteStr: [*]const u8, cbMultiByte: c_int, lpWideCharStr: [*]u16, cchWideChar: c_int) callconv(.c) c_int;
