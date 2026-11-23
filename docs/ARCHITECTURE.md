@@ -6,7 +6,7 @@ How `src/` fits together. For related docs, see [CONFIGURATION.md](CONFIGURATION
 
 - One executable, `eve-maj-preview.exe` (`src/main.zig`), built for the Windows subsystem. A console opens only when the log level is `debug`.
 - The configuration window runs in-process on the main thread using `knots` and Vulkan. `zig build config` launches the app with `--config`.
-- `zig build test` runs `src/tests.zig` (Debug build), which imports every tested module. `zig build check` type-checks without emitting a binary; ZLS runs it on save. End-to-end tests live in `tools/ui_tests/`.
+- `zig build test` runs `src/tests.zig` (Debug build), which imports every tested module. `zig build check` type-checks the app and the simulator without emitting a binary; ZLS runs it on save. End-to-end tests live in `tools/ui_tests/`.
 - `knots` is vendored in `deps/knots/`. Local changes are marked `EVE-Maj patch` and listed in `deps/knots/PATCHES.md`.
 
 ## Files on disk

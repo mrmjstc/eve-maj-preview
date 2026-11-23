@@ -24,7 +24,7 @@ jobs:
       - name: Run the source checks
         run: python tools/checks/run_all.py
 
-      - name: Type-check the app
+      - name: Type-check the app and the simulator
         run: zig build check
 
       - name: Run the unit tests

@@ -117,8 +117,14 @@ pub fn build(b: *std.Build) void {
         .name = "eve-maj-preview",
         .root_module = exe.root_module,
     });
-    const check_step = b.step("check", "Type-check the app without building it");
+    // Zig skips code nothing references, so the simulator needs its own check to catch breaks in sim-only files.
+    const sim_check = b.addExecutable(.{
+        .name = "eve-maj-sim",
+        .root_module = sim.root_module,
+    });
+    const check_step = b.step("check", "Type-check the app and the simulator without building them");
     check_step.dependOn(&exe_check.step);
+    check_step.dependOn(&sim_check.step);
 
     // Debug, for the safety checks the release build's default optimize mode leaves out.
     const tests = b.addTest(.{
