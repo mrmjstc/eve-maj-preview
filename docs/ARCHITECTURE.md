@@ -1,6 +1,6 @@
 # Architecture
 
-How `src/` fits together. For related docs, see [CONFIGURATION.md](CONFIGURATION.md) (settings), [BUILDING.md](BUILDING.md) (build steps), and `.claude/STYLE.md` (code style).
+How `src/` fits together. For related docs, see [CONFIGURATION.md](CONFIGURATION.md) (settings), [BUILDING.md](BUILDING.md) (build steps), and [STYLE.md](STYLE.md) (code style).
 
 ## Overview
 
@@ -413,6 +413,21 @@ Python (stdlib and ctypes only) that drives the built app against simulated clie
 - `eve_logs.py`: writes chatlogs and gamelogs as EVE does, so tests can feed alerts, systems, chat and activity.
 - `run.py`: runs `tests/test_<area>.py`; `--failed` reruns only what the last run failed. Each module shares one sandboxed app, and each test switches it to a profile of its own; a failed test, or exclusions or suspended hotkeys left behind, restart it. `@fresh` tests get an app of their own, for global settings.
 - `coverage.py`: lists every setting as `Struct.field`, read from `src/config/`, and the tests that claim it with `@covers`.
+- `vm/`: runs the tests inside a Hyper-V VM, so they don't take over your desktop; setup is in [TESTING.md](TESTING.md).
+
+## Source checks (`tools/checks/`)
+
+Python (stdlib only) checks that a script can decide and the compiler doesn't. `run_all.py` runs the ones that gate a push, as CI and the `pre-push` hook do. Each takes `--help`, and reads its deliberate exceptions from `allow/<checker>.txt`.
+
+| Checker | Finds |
+|---|---|
+| `style_check.py` | Breaks of [STYLE.md](STYLE.md)'s mechanical rules; `--advisory` adds the heuristics a reviewer judges. |
+| `dead_code.py` | Declarations, fields and enum tags nothing references, which Zig's lazy analysis never warns about. |
+| `import_cycles.py` | Import cycles between features, outside the top layer that reaches back up to `App`. |
+| `stale_refs.py` | Comments naming identifiers or `.zig` paths that no longer exist. |
+| `lang_keys.py` | Translated strings missing from `src/lang/en.json`, unused keys, and keys a language lacks. |
+| `config_docs.py` | Settings missing from [CONFIGURATION.md](CONFIGURATION.md), and rows naming fields that are gone. |
+| `duplicates.py` | Copied runs of code; for review, not a gate. |
 
 ## Other modules
 

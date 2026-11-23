@@ -21,6 +21,9 @@ jobs:
       - name: Check formatting
         run: zig fmt --check src
 
+      - name: Run the source checks
+        run: python tools/checks/run_all.py
+
       - name: Type-check the app
         run: zig build check
 

@@ -34,7 +34,17 @@ To run the unit tests (listed in `src/tests.zig`), which cover log parsing, hotk
 zig build test
 ```
 
-GitHub Actions (`.github/workflows/ci.yml`) runs `zig build check` and `zig build test` on every push and pull request.
+The end-to-end tests, which run the app against simulated EVE clients, have their own setup: see [TESTING.md](TESTING.md).
+
+To run the source checks (style, dead code, import cycles, stale comments, translations and the configuration doc), with Python 3.9 or later:
+
+```powershell
+python tools/checks/run_all.py
+```
+
+`cp tools/checks/pre-push .git/hooks/pre-push` runs them before every push.
+
+GitHub Actions (`.github/workflows/ci.yml`) runs `zig fmt --check`, the source checks, `zig build check` and `zig build test` on every push and pull request.
 
 ## Version
 
