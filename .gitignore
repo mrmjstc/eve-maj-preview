@@ -13,16 +13,9 @@ dist/
 *.obj
 *.o
 
-# Local profile configurations
-profiles/
-
 .vs/
 
-CLAUDE.md
-TODO
 .claude/
 .vscode/launch.json
 .vscode/settings.json
-nul
-manifests/
 __pycache__/
