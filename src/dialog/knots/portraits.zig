@@ -223,7 +223,7 @@ fn loadThread(io: std.Io, timer_hwnd: win32.HWND, command: usize, id: []const u8
 /// From the disk cache, or else fetched once and saved there; a cached file is never fetched again.
 fn load(io: std.Io, id: []const u8) !wic.Decoded {
     var path_buf: [128]u8 = undefined;
-    const path = try std.fmt.bufPrint(&path_buf, PATH_FORMAT, .{id});
+    const path = try std.mem.print(&path_buf, PATH_FORMAT, .{id});
     if (readCached(io, path)) |cached| {
         defer g_allocator.free(cached);
         if (decode(cached)) |decoded| return decoded else |err| {
@@ -257,7 +257,7 @@ fn fetch(id: []const u8) ![]u8 {
     var http_session: http_client.Session = try .init();
     defer http_session.deinit();
     var url_buf: [128]u8 = undefined;
-    const url = try std.fmt.bufPrint(&url_buf, URL_FORMAT, .{ id, FETCH_SIZE });
+    const url = try std.mem.print(&url_buf, URL_FORMAT, .{ id, FETCH_SIZE });
     return http_session.fetch(g_allocator, url, .{});
 }
 

@@ -339,7 +339,7 @@ pub fn layOutLines(allocator: std.mem.Allocator, lines: *std.ArrayList(Line), ro
 
 /// The header's count of clients.
 pub fn countText(buffer: *[COUNT_TEXT_MAX]u8, count: usize) []const u8 {
-    return std.fmt.bufPrint(buffer, "{d}", .{count}) catch unreachable;
+    return std.mem.print(buffer, "{d}", .{count}) catch unreachable;
 }
 
 pub fn showsStat(settings: StatSettings, stat: Stat) bool {

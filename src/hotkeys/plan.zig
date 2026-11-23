@@ -130,9 +130,9 @@ pub fn build(allocator: std.mem.Allocator, settings: Settings) !Plan {
     for (character_combos.items, 0..) |combo, combo_index| {
         const first_name = settings.characters[combo.indices.items[0]].name;
         const description = if (combo.indices.items.len == 1)
-            try std.fmt.allocPrint(arena, "activate character [{s}]", .{first_name})
+            try arena.print("activate character [{s}]", .{first_name})
         else
-            try std.fmt.allocPrint(arena, "activate character [{s}...] ({d} sharing hotkey)", .{ first_name, combo.indices.items.len });
+            try arena.print("activate character [{s}...] ({d} sharing hotkey)", .{ first_name, combo.indices.items.len });
         try plan.add(.{
             .id = bindings.bandId(bindings.HOTKEY_ID_PER_CHARACTER_BASE, combo_index),
             .keys = .one(combo.virtual_key),
@@ -144,7 +144,7 @@ pub fn build(allocator: std.mem.Allocator, settings: Settings) !Plan {
     for (settings.global.profileSwitchHotkeys.items, 0..) |profile_hotkey, index| {
         if (profile_hotkey.hotkey.isEmpty()) continue;
         plan.counts.profile_switches += 1;
-        const description = try std.fmt.allocPrint(arena, "switch to profile [{s}]", .{profile_hotkey.targetProfile});
+        const description = try arena.print("switch to profile [{s}]", .{profile_hotkey.targetProfile});
         try plan.add(.{
             .id = bindings.bandId(bindings.HOTKEY_ID_PROFILE_SWITCH_BASE, index),
             .keys = profile_hotkey.hotkey,
@@ -156,7 +156,7 @@ pub fn build(allocator: std.mem.Allocator, settings: Settings) !Plan {
     for (settings.global.appHotkeys.items, 0..) |app_hotkey, index| {
         if (app_hotkey.hotkey.isEmpty()) continue;
         plan.counts.apps += 1;
-        const description = try std.fmt.allocPrint(arena, "activate app [{s}]", .{app_hotkey.executableName});
+        const description = try arena.print("activate app [{s}]", .{app_hotkey.executableName});
         try plan.add(.{
             .id = bindings.bandId(bindings.HOTKEY_ID_APP_HOTKEY_BASE, index),
             .keys = app_hotkey.hotkey,
@@ -168,7 +168,7 @@ pub fn build(allocator: std.mem.Allocator, settings: Settings) !Plan {
     for (settings.global.urlHotkeys.items, 0..) |url_hotkey, index| {
         if (url_hotkey.hotkey.isEmpty()) continue;
         plan.counts.urls += 1;
-        const description = try std.fmt.allocPrint(arena, "open url [{s}]", .{url_hotkey.url});
+        const description = try arena.print("open url [{s}]", .{url_hotkey.url});
         try plan.add(.{
             .id = bindings.bandId(bindings.HOTKEY_ID_URL_HOTKEY_BASE, index),
             .keys = url_hotkey.hotkey,
@@ -194,7 +194,7 @@ pub fn globalEntry(settings: Settings, comptime binding: bindings.GlobalBinding)
 
 /// Combos bound more than once outside one SharerKind's cycle, which only the first to register gets; allocated in `arena`.
 pub fn conflicts(arena: std.mem.Allocator, settings: Settings) ![]const u32 {
-    var holders: std.AutoArrayHashMapUnmanaged(u32, Holders) = .empty;
+    var holders: std.array_hash_map.Auto(u32, Holders) = .empty;
     for (settings.characters) |*character| try collect(arena, &holders, character, .character);
     for (settings.groups) |*group| try collect(arena, &holders, group, .other);
     try collect(arena, &holders, settings.hotkeys, .other);
@@ -230,9 +230,9 @@ fn addGroupChains(plan: *Plan, groups: []const HotkeyGroupConfig, chains: []cons
             continue;
         }
         const description = if (chain.indices.items.len == 1)
-            try std.fmt.allocPrint(arena, "group [{s}] {s}", .{ first_name, direction })
+            try arena.print("group [{s}] {s}", .{ first_name, direction })
         else
-            try std.fmt.allocPrint(arena, "groups [{s}...] {s} ({d} sharing hotkey)", .{ first_name, direction, chain.indices.items.len });
+            try arena.print("groups [{s}...] {s} ({d} sharing hotkey)", .{ first_name, direction, chain.indices.items.len });
         try plan.add(.{
             .id = bindings.bandId(bindings.HOTKEY_ID_CYCLE_GROUP_BASE, slot),
             .keys = .one(chain.virtual_key),
@@ -244,7 +244,7 @@ fn addGroupChains(plan: *Plan, groups: []const HotkeyGroupConfig, chains: []cons
 
 fn addGroupKey(plan: *Plan, base: c_int, group: *const HotkeyGroupConfig, group_index: usize, keys: KeyList, action: HotkeyAction, comptime verb: []const u8) !void {
     if (keys.isEmpty()) return;
-    const description = try std.fmt.allocPrint(plan.arena.allocator(), "group {d} [{s}] " ++ verb, .{ group_index, group.name });
+    const description = try plan.arena.allocator().print("group {d} [{s}] " ++ verb, .{ group_index, group.name });
     try plan.add(.{ .id = bindings.bandId(base, group_index), .keys = keys, .action = action, .description = description });
 }
 
@@ -258,7 +258,7 @@ fn addComboSharer(arena: std.mem.Allocator, list: *std.ArrayList(ComboSharers), 
 }
 
 /// Every KeyList in `value`, however deeply nested, counted under the SharerKind of the field it sits in.
-fn collect(arena: std.mem.Allocator, holders: *std.AutoArrayHashMapUnmanaged(u32, Holders), value: anytype, kind: SharerKind) !void {
+fn collect(arena: std.mem.Allocator, holders: *std.array_hash_map.Auto(u32, Holders), value: anytype, kind: SharerKind) !void {
     const T = @TypeOf(value.*);
     if (T == KeyList) {
         // One binding listing a combo twice still counts once.

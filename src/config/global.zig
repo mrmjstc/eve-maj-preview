@@ -424,7 +424,7 @@ fn unprotectToken(allocator: std.mem.Allocator, text: []const u8) ![]u8 {
 
 /// `<file>.<seconds>.bak` in `buffer`.
 fn backupPath(buffer: *[BACKUP_PATH_SIZE]u8, seconds: i64) []const u8 {
-    return std.fmt.bufPrint(buffer, "{s}.{d}{s}", .{ files.GLOBAL_SETTINGS_FILE, seconds, UNREADABLE_BACKUP_EXTENSION }) catch unreachable;
+    return std.mem.print(buffer, "{s}.{d}{s}", .{ files.GLOBAL_SETTINGS_FILE, seconds, UNREADABLE_BACKUP_EXTENSION }) catch unreachable;
 }
 
 fn isSameChatlog(first: *const ChatlogConfig, second: *const ChatlogConfig) bool {

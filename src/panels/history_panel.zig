@@ -401,7 +401,7 @@ pub const HistoryPanelWindow = struct {
         var count_texts: [history_look.CATEGORY_COUNT][]const u8 = undefined;
         var widths: [history_look.CATEGORY_COUNT]i32 = undefined;
         for (history_look.CATEGORY_ORDER, counts, &count_buffers, &count_texts, &widths) |category, count, *count_buf, *count_text, *width| {
-            count_text.* = std.fmt.bufPrint(count_buf, "{d}", .{count}) catch unreachable;
+            count_text.* = std.mem.print(count_buf, "{d}", .{count}) catch unreachable;
             width.* = history_look.chipWidth(panel_chrome.textWidth(dc, history_look.categoryLabel(category)), panel_chrome.textWidth(dc, count_text.*));
         }
 

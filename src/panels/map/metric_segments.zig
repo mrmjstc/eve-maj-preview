@@ -31,7 +31,7 @@ pub fn segmentOf(metric: MapMetric) MetricSegment {
 /// A click on the segment showing `current` moves on to its next metric; on any other, picks that segment's first.
 pub fn metricAfterClick(current: MapMetric, segment: MetricSegment) MapMetric {
     const metrics = segmentMetrics(segment);
-    const index = std.mem.indexOfScalar(MapMetric, metrics, current) orelse return metrics[0];
+    const index = std.mem.findScalar(MapMetric, metrics, current) orelse return metrics[0];
     return metrics[(index + 1) % metrics.len];
 }
 
@@ -80,7 +80,7 @@ test "metricValue counts ships and pods apart, and Security counts nothing" {
 
 test "every metric sits in its own segment's list" {
     for (std.enums.values(MapMetric)) |metric| {
-        try testing.expect(std.mem.indexOfScalar(MapMetric, segmentMetrics(segmentOf(metric)), metric) != null);
+        try testing.expect(std.mem.findScalar(MapMetric, segmentMetrics(segmentOf(metric)), metric) != null);
     }
 }
 

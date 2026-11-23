@@ -340,7 +340,7 @@ pub const Painter = struct {
             const top = centredTop(box, text.name_height);
             const connection = &listed.connections[item.index];
             var detail_buffer: [DETAIL_TEXT_MAX]u8 = undefined;
-            const detail = std.fmt.bufPrint(&detail_buffer, "{s}  {d}h", .{ text_mod.shipSizeShort(connection.ship_size), connection.remaining_hours }) catch unreachable;
+            const detail = std.mem.print(&detail_buffer, "{s}  {d}h", .{ text_mod.shipSizeShort(connection.ship_size), connection.remaining_hours }) catch unreachable;
             self.drawPlaceRow(dc, left, right, top, .{
                 .system = item.system,
                 .place = universe.regionName(universe.systemInfo(item.system).region),
@@ -395,7 +395,7 @@ pub const Painter = struct {
         const right = card.box.right - look.INTEL_PADDING_X;
         if (card.row_count == 0) {
             var empty_buffer: [panel_chrome.MAX_TEXT_LENGTH]u8 = undefined;
-            const empty = std.fmt.bufPrint(&empty_buffer, "No kills in the last {d}m", .{self.config.mapPanel.killLifetimeMin}) catch unreachable;
+            const empty = std.mem.print(&empty_buffer, "No kills in the last {d}m", .{self.config.mapPanel.killLifetimeMin}) catch unreachable;
             _ = panel_chrome.drawFitted(dc, empty, left, card.header.bottom + look.INTEL_PADDING_Y, list_look.MUTED, right - left);
             return;
         }
@@ -894,18 +894,18 @@ pub const Painter = struct {
         const left = card.box.left + look.INTEL_PADDING_X;
         const right = card.box.right - look.INTEL_PADDING_X;
         var title_buffer: [panel_chrome.MAX_TEXT_LENGTH]u8 = undefined;
-        const title = std.fmt.bufPrint(&title_buffer, "Route to {s}", .{universe.systemName(routes.to)}) catch unreachable;
+        const title = std.mem.print(&title_buffer, "Route to {s}", .{universe.systemName(routes.to)}) catch unreachable;
         _ = win32.SelectObject(dc, fonts.semibold_font);
         _ = panel_chrome.drawFitted(dc, title, left, centredTop(card.header, text.name_height), list_look.NAME, right - look.HEADER_GLYPH_ROOM - left);
         _ = win32.SelectObject(dc, text.name_font);
         for (card.rows[0..card.row_count], routes.slice()[0..card.row_count]) |box, *route| {
             const top = centredTop(box, text.name_height);
             var detail_buffer: [ROUTE_DETAIL_MAX]u8 = undefined;
-            const detail = std.fmt.bufPrint(&detail_buffer, "{d} jumps, {d} kills", .{ route.jumps, route.kills_last_hour }) catch unreachable;
+            const detail = std.mem.print(&detail_buffer, "{d} jumps, {d} kills", .{ route.jumps, route.kills_last_hour }) catch unreachable;
             const detail_width = panel_chrome.textWidth(dc, detail);
             panel_chrome.drawLine(dc, detail, right - detail_width, top, list_look.MUTED);
             var name_buffer: [panel_chrome.MAX_TEXT_LENGTH]u8 = undefined;
-            const name = if (route.via) |via| std.fmt.bufPrint(&name_buffer, "Via {s}", .{universe.systemName(via)}) catch unreachable else "Fastest";
+            const name = if (route.via) |via| std.mem.print(&name_buffer, "Via {s}", .{universe.systemName(via)}) catch unreachable else "Fastest";
             _ = panel_chrome.drawFitted(dc, name, left, top, list_look.NAME, right - detail_width - look.LEGEND_VALUE_GAP - left);
         }
     }

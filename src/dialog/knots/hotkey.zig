@@ -440,7 +440,7 @@ fn capWidth(context: *ui.Frame, name: []const u8, keycaps: *const style.Keycaps)
 fn keyCapName(context: *ui.Frame, combo: u32) ![]const u8 {
     const virtual_key = vk.extractVk(combo);
     var buf: [vk.DISPLAY_CHARACTER_SIZE]u8 = undefined;
-    const name = vk.displayKeyName(virtual_key, &buf) orelse return std.fmt.allocPrint(context.arena(), "VK{X}", .{virtual_key});
+    const name = vk.displayKeyName(virtual_key, &buf) orelse return context.arena().print("VK{X}", .{virtual_key});
     return context.arena().dupe(u8, name);
 }
 

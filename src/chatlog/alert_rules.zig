@@ -10,7 +10,7 @@ const glob = @import("../util/glob.zig");
 const ChatAlertConfig = chat_alerts.ChatAlertConfig;
 const ChatAlertKind = chat_alerts.ChatAlertKind;
 const SystemIndex = universe.SystemIndex;
-const ClientSet = std.StaticBitSet(MAX_CLIENTS);
+const ClientSet = std.bit_set.Static(MAX_CLIENTS);
 
 /// Clients can log the same line up to 2s apart, so this is well past that and short of a real repeat.
 pub const DUPLICATE_WINDOW_MS = 5000;
@@ -259,7 +259,7 @@ fn isExcluded(rule: *const Rule, folded_body: []const u8) bool {
 
 /// "Hek clr?" asks and "Hek not clear" warns, so neither counts; a pin wrongly marked safe is the costly mistake.
 fn saysClear(folded_body: []const u8) bool {
-    if (std.mem.indexOfScalar(u8, folded_body, '?') != null or containsWord(folded_body, "not")) return false;
+    if (std.mem.findScalar(u8, folded_body, '?') != null or containsWord(folded_body, "not")) return false;
     for (CLEAR_WORDS) |word| {
         if (containsWord(folded_body, word)) return true;
     }
@@ -322,7 +322,7 @@ fn mentionedSystems(body: []const u8, out: []SystemIndex) []const SystemIndex {
         }
 
         const found = system orelse continue;
-        if (std.mem.indexOfScalar(SystemIndex, out[0..mention_count], found) != null) continue;
+        if (std.mem.findScalar(SystemIndex, out[0..mention_count], found) != null) continue;
         out[mention_count] = found;
         mention_count += 1;
     }

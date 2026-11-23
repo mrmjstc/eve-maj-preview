@@ -163,7 +163,7 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
 fn groupRow(context: *ui.Frame, group: *const config.HotkeyGroupConfig, index: usize, lifted_style: ?*const ui.Style) !void {
     const row = try roster_mod.Row.open(context, GROUP_ROW_KEY.indexed(index), index == g_selected.index, lifted_style);
     if (row.is_picked) g_selected.index = index;
-    const badge = if (group.temporaryMembership) lang.text("Temporary") else try std.fmt.allocPrint(context.arena(), "{d}", .{group.characters.items.len});
+    const badge = if (group.temporaryMembership) lang.text("Temporary") else try context.arena().print("{d}", .{group.characters.items.len});
     try row.close(context, try groupName(context, index), 0, .{ .text = badge });
 }
 

@@ -41,6 +41,30 @@ TIME_WORDS = re.compile(r"^(?:.*_)?(delay|interval|timeout|duration|elapsed|age|
 DOC_ITEM = re.compile(r"^///\s*`[^`]+`[^:`]{0,20}:\s")
 # §3: where a one-sentence comment has started doing a paragraph's work.
 MAX_COMMENT_LENGTH = 150
+# §6: std declarations Zig 0.17 marks deprecated, and what replaces each.
+DEPRECATED_STD = {
+    r"std\.fmt\.bufPrint\b": "std.mem.print",
+    r"std\.fmt\.bufPrintSentinel\b": "std.mem.printSentinel",
+    r"std\.fmt\.allocPrint\b": "allocator.print",
+    r"std\.fmt\.allocPrintSentinel\b": "allocator.printSentinel",
+    r"std\.mem\.indexOf\b": "std.mem.find",
+    r"std\.mem\.indexOfScalar\b": "std.mem.findScalar",
+    r"std\.mem\.indexOfScalarPos\b": "std.mem.findScalarPos",
+    r"std\.mem\.indexOfAny\b": "std.mem.findAny",
+    r"std\.mem\.indexOfPos\b": "std.mem.findPos",
+    r"std\.mem\.lastIndexOf\w*": "std.mem.find...Last",
+    r"std\.(?:bit_set\.)?StaticBitSet\b": "std.bit_set.Static",
+    r"std\.(?:bit_set\.)?IntegerBitSet\b": "std.bit_set.Integer",
+    r"std\.(?:bit_set\.)?ArrayBitSet\b": "std.bit_set.Array",
+    r"std\.AutoArrayHashMapUnmanaged\b": "std.array_hash_map.Auto",
+    r"std\.StringArrayHashMapUnmanaged\b": "std.array_hash_map.String",
+    r"std\.ArrayHashMapUnmanaged\b": "std.array_hash_map.Custom",
+    r"std\.ArrayListUnmanaged\b": "std.ArrayList",
+    r"\.getLastOrNull\(\)": ".last()",
+    r"std\.unicode\.utf8Decode\b": "std.unicode.Utf8View",
+    r"std\.heap\.DebugAllocator\b": "std.heap.SafeAllocator",
+    r"std\.fs\.max_path_bytes\b": "std.Io.Dir.max_path_bytes",
+}
 MAX_TAG_LIST_LENGTH = 120
 # A tag list's parts are a few words each; a longer one is a clause.
 MAX_TAG_WORDS = 4
@@ -543,7 +567,7 @@ def check_errors(s):
 
 
 def check_idioms(s):
-    """§5, §6 and §7: Self, receivers, unwrapping, bool parameters, unreachable, decl literals, anytype and pointer globals."""
+    """§5, §6 and §7: Self, receivers, unwrapping, bool parameters, unreachable, decl literals, deprecated std, anytype and pointer globals."""
     lines, codes = s.lines, s.codes
     type_fn_depth = []
     depth = 0
@@ -575,6 +599,10 @@ def check_idioms(s):
             s.add(i, "decl-literal", f"'{m.group(1)}': write `{m.group(1)}: {m.group(2)} = .{m.group(3)}...` (§6)")
         if re.search(r"\bstd\.ArrayList\([^)]*\)\.init\(", code):
             s.add(i, "managed-list", "std.ArrayList is unmanaged: start from .empty and pass the allocator to each call")
+        for pattern, replacement in DEPRECATED_STD.items():
+            found = re.search(r"(?<![\w.])" + pattern, code)
+            if found:
+                s.add(i, "deprecated-std", f"'{found.group(0)}' is deprecated in Zig 0.17: use {replacement} (§6)")
 
     for name, start, end, signature in s.functions:
         sig = code_only(signature)

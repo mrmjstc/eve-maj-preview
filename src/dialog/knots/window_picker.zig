@@ -62,7 +62,7 @@ pub fn select(context: *ui.Frame, picker: *const ?Picker, key: ui.Key, index: us
     labels[0] = lang.text(PROMPT);
     values[0] = 0;
     for (open_picker.windows, 1..) |window, option| {
-        labels[option] = try std.fmt.allocPrint(arena, "{s} \u{2014} {s}", .{ window.title, window.executable });
+        labels[option] = try arena.print("{s} \u{2014} {s}", .{ window.title, window.executable });
         values[option] = @intCast(option);
     }
     const response = try context.interact(SelectInput(u32){

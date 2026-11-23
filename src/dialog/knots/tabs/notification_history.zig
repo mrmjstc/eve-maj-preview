@@ -351,7 +351,7 @@ fn chip(context: *ui.Frame, category: notification.NotificationCategory, index: 
     };
     try context.e(Rect{ .key = key.indexed(1), .style = dot_style });
     try context.e(Text{ .selectable = false, .key = key.indexed(2), .content = history_look.categoryLabel(category), .style = try widgets.textStyle(arena, label_color, look.chip_size, .{ .opacity = opacity }) });
-    const count = try std.fmt.allocPrint(arena, "{d}", .{sampleCount(category)});
+    const count = try arena.print("{d}", .{sampleCount(category)});
     try context.e(Text{ .selectable = false, .key = key.indexed(3), .content = count, .style = try widgets.textStyle(arena, history_look.chipCountColor(label_color, fill), look.chip_size, .{ .opacity = opacity }) });
     try chip_rect.close(context);
 }

@@ -61,6 +61,7 @@
 - Unit tests for hotkey press handling
 - Unit tests for Intel Map marker and gate colours
 - Style check catches decl literals after `try` and abbreviated constants
+- Moved off std APIs Zig 0.17 deprecates; style check blocks them
 
 ### Fixed
 - Dragged panels stay under the cursor instead of lagging behind

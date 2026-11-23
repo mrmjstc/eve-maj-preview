@@ -208,13 +208,13 @@ fn thumbnailSize(context: *ui.Frame, character: CharacterRef) !void {
     try context.e(Rect{ .key = .src(@src()), .style = &style.spacer });
     const size = character.get("thumbnailSize") orelse config.CharacterThumbnailSizeConfig{};
     var next = size;
-    switch (try bind.optionalUnitValueBox(context, ui.Key.str("knots.character.width").indexed(character.index), toFloat(size.width), try std.fmt.allocPrint(arena, "{d}", .{inherited.width}), "px")) {
+    switch (try bind.optionalUnitValueBox(context, ui.Key.str("knots.character.width").indexed(character.index), toFloat(size.width), try arena.print("{d}", .{inherited.width}), "px")) {
         .unchanged => {},
         .cleared => next.width = null,
         .value => |width| next.width = @intFromFloat(@round(width)),
     }
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "\u{00D7}", .style = &style.muted_text });
-    switch (try bind.optionalUnitValueBox(context, ui.Key.str("knots.character.height").indexed(character.index), toFloat(size.height), try std.fmt.allocPrint(arena, "{d}", .{inherited.height}), "px")) {
+    switch (try bind.optionalUnitValueBox(context, ui.Key.str("knots.character.height").indexed(character.index), toFloat(size.height), try arena.print("{d}", .{inherited.height}), "px")) {
         .unchanged => {},
         .cleared => next.height = null,
         .value => |height| next.height = @intFromFloat(@round(height)),
@@ -248,7 +248,7 @@ fn preview(context: *ui.Frame, character: CharacterRef) !void {
     const was_aligned = widgets.useAlignedRows(true);
     defer _ = widgets.useAlignedRows(was_aligned);
     const row = try widgets.openBinding(context, ui.Key.str("knots.character.preview").indexed(character.index), "Thumbnail Preview");
-    const current = std.mem.indexOfScalar(@TypeOf(choice), choices, choice) orelse 0;
+    const current = std.mem.findScalar(@TypeOf(choice), choices, choice) orelse 0;
     if (try widgets.segmented(context, ui.Key.str("knots.character.preview.options").indexed(character.index), &.{ "Default", "Live", "Blank" }, current)) |picked| {
         character.set("preview", choices[picked]);
     }
@@ -306,7 +306,7 @@ fn windowPosition(context: *ui.Frame, character: CharacterRef) !void {
     const row = try widgets.openBinding(context, .str("knots.character.window_position"), "Window Position");
     try context.e(Rect{ .key = .src(@src()), .style = &style.spacer });
     const saved = character.get("windowPosition");
-    const shown = if (saved) |position| try std.fmt.allocPrint(context.arena(), "{d}, {d}", .{ position.x, position.y }) else lang.text("Not set");
+    const shown = if (saved) |position| try context.arena().print("{d}, {d}", .{ position.x, position.y }) else lang.text("Not set");
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = shown, .style = &style.muted_text });
     const name = character.get("name");
     const clear_key = ui.Key.str("knots.character.position.clear").indexed(character.index);

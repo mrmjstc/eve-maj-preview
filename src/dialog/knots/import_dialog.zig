@@ -195,7 +195,7 @@ fn optionsStep(context: *ui.Frame, analysis: *Analysis) !void {
     }
 
     const target_row = try widgets.openModalRow(context, .src(@src()), "Import into");
-    const running = try std.fmt.allocPrint(context.arena(), "'{s}'", .{profiles.displayName(session.profile().ptr.profile_name)});
+    const running = try context.arena().print("'{s}'", .{profiles.displayName(session.profile().ptr.profile_name)});
     if (try widgets.segmented(context, .src(@src()), &.{ running, "New Profile" }, @intFromBool(g_imports_into_new))) |index| {
         g_imports_into_new = index == 1;
         g_should_focus_name = g_imports_into_new;
@@ -332,19 +332,19 @@ fn summaryView(context: *ui.Frame, summary: Summary) !void {
         .name = profiles.displayName(session.profile().ptr.profile_name),
     });
     const message = if (summary.has_backup)
-        try std.fmt.allocPrint(arena_allocator, "{s} {s}", .{ saved, lang.text("Your previous settings were backed up; restore them from the Backups tab if needed.") })
+        try arena_allocator.print("{s} {s}", .{ saved, lang.text("Your previous settings were backed up; restore them from the Backups tab if needed.") })
     else
         saved;
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = message, .style = &style.modal_text });
     if (summary.skipped.len > 0) {
         try context.e(Text{ .selectable = false, .key = .src(@src()), .content = try lang.format(arena_allocator, "{n} setting(s) couldn't be read and were left unchanged:", .{ .n = summary.skipped.len }), .style = &style.status_failure });
         for (summary.skipped, 0..) |path, index| {
-            try context.e(Text{ .selectable = false, .key = ui.Key.str("knots.import.skipped").indexed(index), .content = try std.fmt.allocPrint(arena_allocator, "\u{2022} {s}", .{path}), .style = &style.muted_text });
+            try context.e(Text{ .selectable = false, .key = ui.Key.str("knots.import.skipped").indexed(index), .content = try arena_allocator.print("\u{2022} {s}", .{path}), .style = &style.muted_text });
         }
     }
     if (summary.notes.len > 0) try context.e(Text{ .selectable = false, .key = .src(@src()), .content = lang.text("Some settings need your attention:"), .style = &style.status_failure });
     for (summary.notes, 0..) |note, index| {
-        try context.e(Text{ .selectable = false, .key = ui.Key.str("knots.import.note").indexed(index), .content = try std.fmt.allocPrint(arena_allocator, "\u{2022} {s}", .{note}), .style = &style.modal_text });
+        try context.e(Text{ .selectable = false, .key = ui.Key.str("knots.import.note").indexed(index), .content = try arena_allocator.print("\u{2022} {s}", .{note}), .style = &style.modal_text });
     }
 }
 
@@ -475,7 +475,7 @@ fn translateValue(allocator: std.mem.Allocator, hint: std.json.Value) ![]const u
 }
 
 fn replace(allocator: std.mem.Allocator, text: []const u8, name: []const u8, value: []const u8) ![]const u8 {
-    const token = try std.fmt.allocPrint(allocator, "{{{s}}}", .{name});
+    const token = try allocator.print("{{{s}}}", .{name});
     return std.mem.replaceOwned(u8, allocator, text, token, value);
 }
 

@@ -132,7 +132,7 @@ fn fetchLogoColors(feed: *StatsFeed, allocator: std.mem.Allocator, io: std.Io, a
 /// NO_COLOR for a logo with no colour to pick.
 fn fetchLogoColor(session: *const http_client.Session, allocator: std.mem.Allocator, id: u32) !u32 {
     var url_buf: [96]u8 = undefined;
-    const url = try std.fmt.bufPrint(&url_buf, LOGO_URL_FORMAT, .{ id, LOGO_SIZE });
+    const url = try std.mem.print(&url_buf, LOGO_URL_FORMAT, .{ id, LOGO_SIZE });
     const body = try session.fetch(allocator, url, .{});
     defer allocator.free(body);
     const decoded = try wic.decodeRgba(allocator, body);

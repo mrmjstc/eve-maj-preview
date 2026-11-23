@@ -16,7 +16,7 @@ const DEEPEST_NULL: u32 = 0xFF8E0A12;
 pub fn securityText(buffer: *[SECURITY_TEXT_MAX]u8, security_tenths: i8) []const u8 {
     const magnitude = @abs(security_tenths);
     const sign = if (security_tenths < 0) "-" else "";
-    return std.fmt.bufPrint(buffer, "{s}{d}.{d}", .{ sign, magnitude / 10, magnitude % 10 }) catch unreachable;
+    return std.mem.print(buffer, "{s}{d}.{d}", .{ sign, magnitude / 10, magnitude % 10 }) catch unreachable;
 }
 
 /// EVE's scale from 0.0 up, carried on through null security so a region's depths show.

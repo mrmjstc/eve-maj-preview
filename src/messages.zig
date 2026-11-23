@@ -18,7 +18,7 @@ pub const HIDE_DEBOUNCE_TIMER_ID: usize = 2;
 comptime {
     const message_ids = [_]win32.UINT{ WM_TRAYICON, WM_SWITCH_PROFILE, WM_HOTKEYS_STATE_CHANGED, WM_KNOTS_COMMAND, WM_HOOK_REQUEST, WM_WIN_KEY_CAPTURED };
     for (message_ids, 0..) |id, index| {
-        if (std.mem.indexOfScalar(win32.UINT, message_ids[index + 1 ..], id) != null) @compileError(std.fmt.comptimePrint("window message {d} is defined twice", .{id}));
+        if (std.mem.findScalar(win32.UINT, message_ids[index + 1 ..], id) != null) @compileError(std.fmt.comptimePrint("window message {d} is defined twice", .{id}));
     }
     if (TICK_TIMER_ID == HIDE_DEBOUNCE_TIMER_ID) @compileError("the timer window's timers share an ID");
 }

@@ -142,7 +142,7 @@ fn fetchedLabel(arena: std.mem.Allocator, fetched_at_seconds: i64) ![]const u8 {
     const year_day = day.getEpochDay().calculateYearDay();
     const month_day = year_day.calculateMonthDay();
     const time = day.getDaySeconds();
-    const date = try std.fmt.allocPrint(arena, "{d}-{d:0>2}-{d:0>2} {d:0>2}:{d:0>2}", .{
+    const date = try arena.print("{d}-{d:0>2}-{d:0>2} {d:0>2}:{d:0>2}", .{
         year_day.year,
         month_day.month.numeric(),
         month_day.day_index + 1,

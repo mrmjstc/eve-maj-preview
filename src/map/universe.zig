@@ -33,7 +33,7 @@ pub const RegionIndex = u8;
 /// Jumps from one system to each other, by SystemIndex.
 pub const Distances = [SYSTEM_COUNT]u8;
 /// By SystemIndex.
-pub const SystemSet = std.StaticBitSet(SYSTEM_COUNT);
+pub const SystemSet = std.bit_set.Static(SYSTEM_COUNT);
 
 pub const SystemInfo = struct {
     /// CCP's, as ESI names systems.

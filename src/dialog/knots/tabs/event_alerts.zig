@@ -461,7 +461,7 @@ fn placeholderChips(context: *ui.Frame, ref: TypeRef, notification_type: Notific
     const arena = context.arena();
     const placeholders = notification.placeholders(notification_type);
     const tokens = try arena.alloc([]const u8, placeholders.len);
-    for (placeholders, tokens) |placeholder, *token| token.* = try std.fmt.allocPrint(arena, "{{{s}}}", .{placeholder.name});
+    for (placeholders, tokens) |placeholder, *token| token.* = try arena.print("{{{s}}}", .{placeholder.name});
 
     var first: usize = 0;
     while (first < tokens.len) {

@@ -110,7 +110,7 @@ fn soundsFolderPath(buf: []u8) ?[]const u8 {
         slog.warn("Failed to resolve the executable directory for the sounds folder: {}", .{err});
         return null;
     };
-    return std.fmt.bufPrint(buf, "{s}\\" ++ SOUNDS_FOLDER, .{executable_dir}) catch |err| {
+    return std.mem.print(buf, "{s}\\" ++ SOUNDS_FOLDER, .{executable_dir}) catch |err| {
         slog.warn("Failed to build the sounds folder path under '{s}': {}", .{ executable_dir, err });
         return null;
     };

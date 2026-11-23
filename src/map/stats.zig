@@ -207,7 +207,7 @@ pub const Snapshot = struct {
 
     /// `id`'s place in holder_ids, added there unless it already is; searched linearly, so applySovereignty keeps its own map.
     fn holderOf(self: *Snapshot, id: u32) !u16 {
-        if (std.mem.indexOfScalar(u32, self.holder_ids.items, id)) |index| return @intCast(index);
+        if (std.mem.findScalar(u32, self.holder_ids.items, id)) |index| return @intCast(index);
         try self.holder_ids.ensureUnusedCapacity(self.allocator, 1);
         try self.holder_names.append(self.allocator, "");
         self.holder_ids.appendAssumeCapacity(id);
@@ -216,7 +216,7 @@ pub const Snapshot = struct {
 
     /// Borrows from the snapshot; null while unknown.
     pub fn allianceName(self: *const Snapshot, id: u32) ?[]const u8 {
-        const index = std.mem.indexOfScalar(u32, self.holder_ids.items, id) orelse return null;
+        const index = std.mem.findScalar(u32, self.holder_ids.items, id) orelse return null;
         const name = self.holder_names.items[index];
         return if (name.len > 0) name else null;
     }
@@ -227,7 +227,7 @@ pub const Snapshot = struct {
         defer arena.deinit();
         const rows = try parseRows(NameRow, arena.allocator(), body);
         for (rows) |row| {
-            const index = std.mem.indexOfScalar(u32, self.holder_ids.items, row.id) orelse continue;
+            const index = std.mem.findScalar(u32, self.holder_ids.items, row.id) orelse continue;
             if (self.holder_names.items[index].len > 0) continue;
             self.holder_names.items[index] = try self.allocator.dupe(u8, row.name);
         }

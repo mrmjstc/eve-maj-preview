@@ -89,7 +89,7 @@ const RowHints = struct {
     }
 
     fn find(self: *const RowHints, row: u64) ?[]const u8 {
-        const index = std.mem.indexOfScalar(u64, self.rows[0..self.count], row) orelse return null;
+        const index = std.mem.findScalar(u64, self.rows[0..self.count], row) orelse return null;
         return self.contents[index];
     }
 };
@@ -800,7 +800,7 @@ pub fn openModalFieldRow(context: *ui.Frame, key: ui.Key) !Row {
 pub fn scrollToEnd(context: *ui.Frame, key: ui.Key) void {
     const id = key.hash();
     context.requestRedraw();
-    if (std.mem.indexOfScalar(u64, g_pending.scroll_to_end[0..g_pending.scroll_to_end_count], id) != null) return;
+    if (std.mem.findScalar(u64, g_pending.scroll_to_end[0..g_pending.scroll_to_end_count], id) != null) return;
     if (g_pending.scroll_to_end_count == MAX_PENDING_SCROLLS) return;
     g_pending.scroll_to_end[g_pending.scroll_to_end_count] = id;
     g_pending.scroll_to_end_count += 1;
@@ -810,7 +810,7 @@ pub fn scrollToEnd(context: *ui.Frame, key: ui.Key) void {
 pub fn openScrollPane(context: *ui.Frame, key: ui.Key, styles: style.ScrollPane) !ScrollPane {
     const content_key = key.indexed(1);
     const ui_state = context.ui();
-    if (std.mem.indexOfScalar(u64, g_pending.scroll_to_end[0..g_pending.scroll_to_end_count], key.hash())) |index| {
+    if (std.mem.findScalar(u64, g_pending.scroll_to_end[0..g_pending.scroll_to_end_count], key.hash())) |index| {
         g_pending.scroll_to_end_count -= 1;
         g_pending.scroll_to_end[index] = g_pending.scroll_to_end[g_pending.scroll_to_end_count];
         (try ui_state.state.getOrCreate(.scroll, ui_state.allocator, key.hash())).offset = .{ 0, SCROLL_TO_END };
@@ -1309,7 +1309,7 @@ fn presetIndex(argb: u32) ?usize {
 /// A swatch named `name` with its colour's hex as the value; `is_chosen` makes it one of a set of radio buttons.
 fn describeColor(context: *ui.Frame, key: ui.Key, name: []const u8, argb: u32, is_chosen: ?bool) !void {
     var hex_buffer: [7]u8 = undefined;
-    const hex = std.fmt.bufPrint(&hex_buffer, "#{X:0>6}", .{argb & 0x00FFFFFF}) catch unreachable;
+    const hex = std.mem.print(&hex_buffer, "#{X:0>6}", .{argb & 0x00FFFFFF}) catch unreachable;
     try context.ui().setAccessibility(key.hash(), .{
         .role = if (is_chosen == null) .button else .radio,
         .name = name,

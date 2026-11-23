@@ -64,7 +64,7 @@ comptime {
     for (MENU_ACTIONS, 0..) |item, index| {
         const id_text = std.fmt.comptimePrint("{d}", .{item.id});
         if (item.id >= IDM_PROFILE_BASE) @compileError("tray item " ++ id_text ++ " runs into the profile and group submenus' IDs");
-        if (std.mem.indexOfScalar(u16, &OWN_ITEMS, item.id) != null) @compileError("tray item " ++ id_text ++ " is one the tray handles itself");
+        if (std.mem.findScalar(u16, &OWN_ITEMS, item.id) != null) @compileError("tray item " ++ id_text ++ " is one the tray handles itself");
         for (MENU_ACTIONS[index + 1 ..]) |other| {
             if (other.id == item.id) @compileError("tray item " ++ id_text ++ " runs two actions");
             if (other.action == item.action) @compileError("tray action " ++ @tagName(item.action) ++ " has two items");

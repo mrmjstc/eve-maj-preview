@@ -105,7 +105,7 @@ fn describeAddress(buf: *[LOCATION_LENGTH]u8, address: usize) []const u8 {
     const handle = module orelse return "in no module";
     var path_buf: [win32.MAX_PATH:0]u8 = undefined;
     const path_length = win32.GetModuleFileNameA(handle, &path_buf, path_buf.len);
-    return std.fmt.bufPrint(buf, "in '{s}' +0x{x}", .{ path_buf[0..path_length], address -% @intFromPtr(handle) }) catch unreachable;
+    return std.mem.print(buf, "in '{s}' +0x{x}", .{ path_buf[0..path_length], address -% @intFromPtr(handle) }) catch unreachable;
 }
 
 /// Unsymbolized, since loading the .pdb mid-fault can fault again; the RVAs are resolved offline against the release build's .pdb.

@@ -145,7 +145,7 @@ fn readFiles(feed: *ZkillFeed, session: *const http_client.Session, batch: *Batc
     for (0..MAX_FILES_PER_RUN) |_| {
         _ = arena.reset(.retain_capacity);
         var url_buf: [96]u8 = undefined;
-        const url = std.fmt.bufPrint(&url_buf, FILE_URL_FORMAT, .{feed.sequence}) catch unreachable;
+        const url = std.mem.print(&url_buf, FILE_URL_FORMAT, .{feed.sequence}) catch unreachable;
         // Logs its own failures.
         const response = session.send(arena.allocator(), url, .{}) catch return RETRY_WAIT_MS;
         switch (response.status) {

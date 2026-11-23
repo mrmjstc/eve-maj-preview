@@ -7,7 +7,7 @@ const SystemIndex = universe.SystemIndex;
 /// Positions past this are ignored.
 pub const MAX_POSITIONS = 64;
 
-pub const Tied = std.StaticBitSet(MAX_POSITIONS);
+pub const Tied = std.bit_set.Static(MAX_POSITIONS);
 
 pub const Nearest = struct {
     jumps: u8,

@@ -81,13 +81,13 @@ pub const LogoColors = struct {
 
     /// Null while its logo hasn't been looked at.
     pub fn get(self: *const LogoColors, id: u32) ?u32 {
-        const index = std.mem.indexOfScalar(u32, self.ids[0..self.count], id) orelse return null;
+        const index = std.mem.findScalar(u32, self.ids[0..self.count], id) orelse return null;
         return self.colors[index];
     }
 
     /// A full list is emptied first, as it fills with alliances long gone.
     pub fn put(self: *LogoColors, id: u32, logo_color: u32) void {
-        if (std.mem.indexOfScalar(u32, self.ids[0..self.count], id)) |index| {
+        if (std.mem.findScalar(u32, self.ids[0..self.count], id)) |index| {
             self.colors[index] = logo_color;
             return;
         }

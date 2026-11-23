@@ -363,7 +363,7 @@ fn addTestClients(fleet: *Fleet) void {
     var started_count: usize = 0;
     for (1..QUICK_CLIENT_COUNT + 1) |number| {
         var name_buf: [32]u8 = undefined;
-        const name = std.fmt.bufPrint(&name_buf, "Test Client {d}", .{number}) catch unreachable;
+        const name = std.mem.print(&name_buf, "Test Client {d}", .{number}) catch unreachable;
         if (fleet.indexOf(name)) |index| {
             if (fleet.clients.items[index].state != .exited) continue;
         }

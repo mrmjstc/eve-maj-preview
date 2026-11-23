@@ -235,8 +235,8 @@ test "format writes window handles as numbers and a missing active window as nul
     snapshot.thumbnails = &thumbnails;
     const json = try format(testing.allocator, snapshot);
     defer testing.allocator.free(json);
-    try testing.expect(std.mem.indexOf(u8, json, "\"active_hwnd\":null") != null);
-    try testing.expect(std.mem.indexOf(u8, json,
+    try testing.expect(std.mem.find(u8, json, "\"active_hwnd\":null") != null);
+    try testing.expect(std.mem.find(u8, json,
         \\"thumbnails":[{"character_name":"Alpha Pilot","hwnd":10,"source_hwnd":20,"visibility":"visible","is_hidden_by_character":false,"group_badge":"","overlay":null}]
     ) != null);
 }
@@ -248,7 +248,7 @@ test "format lists each group's members under its name" {
     snapshot.groups = &groups;
     const json = try format(testing.allocator, snapshot);
     defer testing.allocator.free(json);
-    try testing.expect(std.mem.indexOf(u8, json,
+    try testing.expect(std.mem.find(u8, json,
         \\"groups":[{"name":"Fleet","members":["Alpha Pilot","Bravo Pilot"]}]
     ) != null);
 }
@@ -260,7 +260,7 @@ test "format names alert types and leaves rates not yet measured as null" {
     snapshot.clients = &clients;
     const json = try format(testing.allocator, snapshot);
     defer testing.allocator.free(json);
-    try testing.expect(std.mem.indexOf(u8, json,
+    try testing.expect(std.mem.find(u8, json,
         \\"alerts":[{"notification_type":"CargoFull","text":"Cargo full","shows_text":true,"shows_border":true,"flashes_border":false,"border_color":null,"text_color":null}],"incoming_dps":null,"outgoing_dps":12.5
     ) != null);
 }
@@ -273,7 +273,7 @@ test "format names each panel's kind and lists its texts in order with their fon
     snapshot.panels = &panels;
     const json = try format(testing.allocator, snapshot);
     defer testing.allocator.free(json);
-    try testing.expect(std.mem.indexOf(u8, json,
+    try testing.expect(std.mem.find(u8, json,
         \\"panels":[{"kind":"client_list","hwnd":30,"texts":[{"text":"Client List","left":30,"top":6,"color":4294967295,"font":{"face":"Cascadia Code","weight":400,"is_italic":false,"height_px":13}},{"text":"Jita","left":200,"top":40,"color":4287336342,"font":null}]}]
     ) != null);
 }

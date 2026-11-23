@@ -478,7 +478,7 @@ pub const Fleet = struct {
         win32.GetLocalTime(&time);
         var clock: journal_mod.Clock = undefined;
         // `% 100` keeps each part to two digits, so the clock always fits.
-        _ = std.fmt.bufPrint(&clock, "{d:0>2}:{d:0>2}:{d:0>2}", .{ time.wHour % 100, time.wMinute % 100, time.wSecond % 100 }) catch unreachable;
+        _ = std.mem.print(&clock, "{d:0>2}:{d:0>2}:{d:0>2}", .{ time.wHour % 100, time.wMinute % 100, time.wSecond % 100 }) catch unreachable;
         self.journal.add(kind, clock, text_format, args);
     }
 

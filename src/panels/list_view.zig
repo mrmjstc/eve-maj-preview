@@ -727,7 +727,7 @@ pub fn viewOf(thumbnail_set: ?*const ThumbnailSet) View {
 }
 
 fn alertText(buffer: *[ALERT_TEXT_MAX]u8, count: usize) []const u8 {
-    return std.fmt.bufPrint(buffer, "{d} {s}", .{ count, if (count == 1) "alert" else "alerts" }) catch unreachable;
+    return std.mem.print(buffer, "{d} {s}", .{ count, if (count == 1) "alert" else "alerts" }) catch unreachable;
 }
 
 /// The newest notification's border colour, which tints an alerting row.

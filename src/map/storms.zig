@@ -102,7 +102,7 @@ pub const Storms = struct {
 
 /// `observation_type` reads like "gamma_a"; the letter tells the two of a kind apart.
 fn kindOf(observation_type: []const u8) ?Kind {
-    const end = std.mem.indexOfScalar(u8, observation_type, '_') orelse observation_type.len;
+    const end = std.mem.findScalar(u8, observation_type, '_') orelse observation_type.len;
     return std.meta.stringToEnum(Kind, observation_type[0..end]);
 }
 
@@ -161,7 +161,7 @@ test "a gate's mark is the core's where the core covers both ends, and none past
 
     var distances: universe.Distances = undefined;
     universe.measureDistances(storm.center, 4, &distances);
-    const third = std.mem.indexOfScalar(u8, &distances, 3).?;
+    const third = std.mem.findScalar(u8, &distances, 3).?;
     var outward = universe.neighbours(@intCast(third));
     while (outward.next()) |neighbour| {
         if (distances[neighbour] == 4) try testing.expect(parsed.edgeMark(@intCast(third), neighbour) == null);

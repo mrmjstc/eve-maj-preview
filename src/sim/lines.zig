@@ -213,7 +213,7 @@ const Thousands = struct {
 
     pub fn format(self: Thousands, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         var digits_buf: [10]u8 = undefined;
-        const digits = std.fmt.bufPrint(&digits_buf, "{d}", .{self.value}) catch unreachable;
+        const digits = std.mem.print(&digits_buf, "{d}", .{self.value}) catch unreachable;
         for (digits, 0..) |digit, index| {
             if (index > 0 and (digits.len - index) % 3 == 0) try writer.writeByte(',');
             try writer.writeByte(digit);
@@ -252,7 +252,7 @@ pub fn writeChatlogHeader(writer: *std.Io.Writer, channel: []const u8, listener:
     if (std.mem.eql(u8, channel, LOCAL_CHANNEL)) return writeLocalChange(writer, started, system);
     // Names a system and a keyword, as a real MOTD can: EVE's own lines must never alert.
     var motd_buf: [160]u8 = undefined;
-    const motd = std.fmt.bufPrint(&motd_buf, "Channel MOTD: Welcome to {s}. Report every bubble near Jita and Perimeter.", .{channel[0..@min(channel.len, MAX_SYSTEM_NAME_LENGTH)]}) catch unreachable;
+    const motd = std.mem.print(&motd_buf, "Channel MOTD: Welcome to {s}. Report every bubble near Jita and Perimeter.", .{channel[0..@min(channel.len, MAX_SYSTEM_NAME_LENGTH)]}) catch unreachable;
     try writeChatLine(writer, started, "EVE System", motd);
 }
 
@@ -265,7 +265,7 @@ pub fn writeChatLine(writer: *std.Io.Writer, stamp: Stamp, speaker: []const u8, 
 
 pub fn writeLocalChange(writer: *std.Io.Writer, stamp: Stamp, system: []const u8) std.Io.Writer.Error!void {
     var text_buf: [128]u8 = undefined;
-    const text = std.fmt.bufPrint(&text_buf, "Channel changed to Local : {s}", .{system[0..@min(system.len, MAX_SYSTEM_NAME_LENGTH)]}) catch unreachable;
+    const text = std.mem.print(&text_buf, "Channel changed to Local : {s}", .{system[0..@min(system.len, MAX_SYSTEM_NAME_LENGTH)]}) catch unreachable;
     try writeChatLine(writer, stamp, "EVE System", text);
 }
 
@@ -287,7 +287,7 @@ pub fn writeGameLine(writer: *std.Io.Writer, stamp: Stamp, text: []const u8) std
 
 pub fn writeJump(writer: *std.Io.Writer, stamp: Stamp, from: []const u8, to: []const u8) std.Io.Writer.Error!void {
     var text_buf: [160]u8 = undefined;
-    const text = std.fmt.bufPrint(&text_buf, "Jumping from {s} to {s}", .{ from[0..@min(from.len, MAX_SYSTEM_NAME_LENGTH)], to[0..@min(to.len, MAX_SYSTEM_NAME_LENGTH)] }) catch unreachable;
+    const text = std.mem.print(&text_buf, "Jumping from {s} to {s}", .{ from[0..@min(from.len, MAX_SYSTEM_NAME_LENGTH)], to[0..@min(to.len, MAX_SYSTEM_NAME_LENGTH)] }) catch unreachable;
     try writeGameLine(writer, stamp, text);
 }
 
@@ -428,6 +428,6 @@ test "the mining replay runs three minutes in order" {
 
 test "ISK amounts are grouped in thousands" {
     var amount_buf: [16]u8 = undefined;
-    try testing.expectEqualStrings("1,234,567", try std.fmt.bufPrint(&amount_buf, "{f}", .{Thousands{ .value = 1234567 }}));
-    try testing.expectEqualStrings("999", try std.fmt.bufPrint(&amount_buf, "{f}", .{Thousands{ .value = 999 }}));
+    try testing.expectEqualStrings("1,234,567", try std.mem.print(&amount_buf, "{f}", .{Thousands{ .value = 1234567 }}));
+    try testing.expectEqualStrings("999", try std.mem.print(&amount_buf, "{f}", .{Thousands{ .value = 999 }}));
 }

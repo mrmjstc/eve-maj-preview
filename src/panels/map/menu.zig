@@ -274,7 +274,7 @@ pub fn branchRowIndex(has_eve_stars: bool, branch: Branch) usize {
         .jump_range => .jump_range,
     };
     // The token can go while the menu's open, taking its row along.
-    return std.mem.indexOfScalar(Row, shownRows(has_eve_stars), row) orelse 0;
+    return std.mem.findScalar(Row, shownRows(has_eve_stars), row) orelse 0;
 }
 
 /// A character listed beside "Individual"; one past the list asks for nothing.

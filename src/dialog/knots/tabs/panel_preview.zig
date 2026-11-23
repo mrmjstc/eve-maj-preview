@@ -379,7 +379,7 @@ fn stageTools(context: *ui.Frame, key: ui.Key, scale: f32, shows_off: *bool) !vo
     const row = Rect{ .key = key, .style = &style.bench_tools };
     _ = try row.open(context);
     const percent: u32 = @intFromFloat(@round(scale * 100));
-    const caption = try std.fmt.allocPrint(arena, "{s} \u{00B7} {d}%", .{ lang.text("Preview"), percent });
+    const caption = try arena.print("{s} \u{00B7} {d}%", .{ lang.text("Preview"), percent });
     try context.e(Text{ .selectable = false, .key = key.indexed(1), .content = caption, .style = &style.bench_tools_text });
     const button = Button{ .key = key.indexed(2), .style = if (shows_off.*) &style.bench_eye_on else &style.bench_eye };
     const response = try button.openResponse(context);

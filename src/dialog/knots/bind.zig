@@ -266,7 +266,7 @@ pub fn valueBox(context: *ui.Frame, key: ui.Key, value: f64, box_style: *const u
             break :blk null;
         };
     }
-    try edit.follow(try std.fmt.allocPrint(context.arena(), "{d}", .{committed orelse value}));
+    try edit.follow(try context.arena().print("{d}", .{committed orelse value}));
     try edit.draw(context, box_style, "");
     return committed;
 }
@@ -377,7 +377,7 @@ pub fn segmented(context: *ui.Frame, ref: anytype, comptime field: []const u8, l
     comptime std.debug.assert(option_labels.len == values.len);
     const key = fieldKey(ref, field);
     const row = try widgets.openBinding(context, key, label);
-    const current = std.mem.indexOfScalar(F, values, ref.get(field)) orelse 0;
+    const current = std.mem.findScalar(F, values, ref.get(field)) orelse 0;
     if (try widgets.segmented(context, key.indexed(2), option_labels, current)) |picked| ref.set(field, values[picked]);
     try row.close(context);
 }
@@ -461,7 +461,7 @@ fn optionalValueBox(context: *ui.Frame, key: ui.Key, value: ?f64, placeholder: [
         .cleared => null,
         .value => |parsed| parsed,
     };
-    try edit.follow(if (shown) |figure| try std.fmt.allocPrint(context.arena(), "{d}", .{figure}) else "");
+    try edit.follow(if (shown) |figure| try context.arena().print("{d}", .{figure}) else "");
     try edit.draw(context, box_style, lang.text(placeholder));
     return typed;
 }
@@ -486,7 +486,7 @@ fn styledNumberBox(context: *ui.Frame, ref: anytype, comptime field: []const u8,
         }
     }
     const current: ?N = ref.get(field);
-    try edit.follow(if (current) |value| try std.fmt.allocPrint(context.arena(), "{d}", .{numberTo(N, value) / scale}) else "");
+    try edit.follow(if (current) |value| try context.arena().print("{d}", .{numberTo(N, value) / scale}) else "");
     try edit.draw(context, box_style, options.placeholder);
 }
 
@@ -577,7 +577,7 @@ fn dropdown(context: *ui.Frame, ref: anytype, comptime field: []const u8, is_row
     for (english_labels, option_labels) |english, *shown| shown.* = lang.text(english);
     const box_key = fieldKey(ref, field).indexed(2);
     claimRowClickForSelect(context, box_key);
-    const current: u32 = @intCast(std.mem.indexOfScalar(F, values, ref.get(field)) orelse 0);
+    const current: u32 = @intCast(std.mem.findScalar(F, values, ref.get(field)) orelse 0);
     // The dropdown keeps its own selection; while closed it follows the setting, which may have changed elsewhere.
     if (context.ui().state.get(.select_input, box_key.hash())) |state| {
         if (!state.open) state.selected = current;

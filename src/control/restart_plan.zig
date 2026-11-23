@@ -109,7 +109,7 @@ pub const Plan = struct {
     }
 
     fn indexOf(self: *const Plan, step: Step) ?usize {
-        return std.mem.indexOfScalar(Step, self.steps(), step);
+        return std.mem.findScalar(Step, self.steps(), step);
     }
 
     fn add(self: *Plan, step: Step) void {

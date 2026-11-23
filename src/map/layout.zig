@@ -115,7 +115,7 @@ pub const Regions = struct {
     }
 
     pub fn indexOf(self: *const Regions, region: RegionIndex) ?usize {
-        return std.mem.indexOfScalar(RegionIndex, self.slice(), region);
+        return std.mem.findScalar(RegionIndex, self.slice(), region);
     }
 
     pub fn contains(self: *const Regions, region: RegionIndex) bool {
@@ -917,7 +917,7 @@ fn packRegions(regions: []const RegionIndex) [MAX_REGIONS]MapPoint {
     var bounds: [MAX_REGIONS]Bounds = @splat(.{});
     for (0..universe.SYSTEM_COUNT) |index| {
         const info = universe.systemInfo(@intCast(index));
-        const slot = std.mem.indexOfScalar(RegionIndex, regions, info.region) orelse continue;
+        const slot = std.mem.findScalar(RegionIndex, regions, info.region) orelse continue;
         bounds[slot].include(.{ .x = info.x, .y = info.y });
     }
     var centers: [MAX_REGIONS]Vector = undefined;
@@ -1189,7 +1189,7 @@ test "regions shown together clear each other by the gap, on the sides they lie 
     var bounds: [regions.len]Bounds = @splat(.{});
     for (0..universe.SYSTEM_COUNT) |index| {
         const info = universe.systemInfo(@intCast(index));
-        const slot = std.mem.indexOfScalar(RegionIndex, &regions, info.region) orelse continue;
+        const slot = std.mem.findScalar(RegionIndex, &regions, info.region) orelse continue;
         bounds[slot].include(.{ .x = info.x, .y = info.y });
     }
     for (0..regions.len) |first| {

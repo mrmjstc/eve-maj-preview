@@ -148,6 +148,7 @@ Always log before giving up on a failure. Whether "giving up" means `return err`
 ## 6. Idioms
 
 - **Decl literals:** prefer `.init`, `.empty`, `.{}` and `.fromMilliseconds(1)` where the result type is known: `.names = .init(allocator)`. For a local, put the type on the left so it is: `var arena: std.heap.ArenaAllocator = .init(allocator);`, not `var arena = std.heap.ArenaAllocator.init(allocator);`.
+- **Deprecated std:** don't use what the standard library marks `/// Deprecated` (`std.fmt.bufPrint`, `std.mem.indexOf`, `std.StaticBitSet`, ...); use what its doc comment names. `style_check.py` lists them.
 - **`Self`:** use `const Self = @This();` only inside a type-returning function (generics). Everywhere else, name the type: `self: *ProfileStore`.
 - **Receivers:** `self: *const T` for read-only methods, `self: *T` for mutating ones, `self: T` only for small value types. A type declared inside a method that already has `self` names its receiver for what it is (`context`), since Zig forbids the shadow.
 - **Optionals:** unwrap with `orelse return`, `orelse continue`, or `if (x) |v|`. Avoid `.?` unless a line above proves it's non-null. `.?` on a comptime-known value is fine, since a null is a compile error rather than a crash.

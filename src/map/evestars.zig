@@ -536,7 +536,7 @@ fn isOffline(row: CharacterRow) bool {
 fn reachableCount(characters: []const CharacterRow, member_ids: []const u64) usize {
     var count: usize = 0;
     for (characters) |row| {
-        if (!isOffline(row) and std.mem.indexOfScalar(u64, member_ids, row.id) != null) count += 1;
+        if (!isOffline(row) and std.mem.findScalar(u64, member_ids, row.id) != null) count += 1;
     }
     return count;
 }

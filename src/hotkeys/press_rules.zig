@@ -35,7 +35,7 @@ pub const FocusFilter = struct {
             if (id == exempt_id) return true;
         }
         const window = foreground orelse return false;
-        return std.mem.indexOfScalar(win32.HWND, self.windows[0..self.window_count], window) != null;
+        return std.mem.findScalar(win32.HWND, self.windows[0..self.window_count], window) != null;
     }
 };
 

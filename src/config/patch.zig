@@ -301,14 +301,14 @@ const Fixture = struct {
     /// `op_format` is an Op as JSON, formatted with `args` so a test can name an item by the id it was given.
     fn edit(self: *Fixture, comptime op_format: []const u8, args: anytype) !?u32 {
         const arena = self.arena_state.allocator();
-        const op = try std.json.parseFromSliceLeaky(Op, arena, try std.fmt.allocPrint(arena, op_format, args), .{});
+        const op = try std.json.parseFromSliceLeaky(Op, arena, try arena.print(op_format, args), .{});
         return apply(TestDocument, &self.document, op, .{ .arena = arena, .allocator = testing.allocator });
     }
 
     /// The value at the path in `path_format`, a JSON array, in the dialog's shape.
     fn read(self: *Fixture, comptime path_format: []const u8, args: anytype) ![]const u8 {
         const arena = self.arena_state.allocator();
-        const path = try std.json.parseFromSliceLeaky([]const std.json.Value, arena, try std.fmt.allocPrint(arena, path_format, args), .{});
+        const path = try std.json.parseFromSliceLeaky([]const std.json.Value, arena, try arena.print(path_format, args), .{});
         var out: std.Io.Writer.Allocating = .init(arena);
         var json_writer: std.json.Stringify = .{ .writer = &out.writer };
         try writeAt(&json_writer, TestDocument, &self.document, path);
@@ -486,7 +486,7 @@ test "writeAt reads a value back in the dialog's shape, with each keyed item's i
     const id = (try fixture.edit(
         \\{{"op":"insert","path":["items"],"value":{{"name":"A","opacity":9}}}}
     , .{})).?;
-    const expected = try std.fmt.allocPrint(fixture.arena_state.allocator(),
+    const expected = try fixture.arena_state.allocator().print(
         \\{{"id":{d},"name":"A","opacity":9}}
     , .{id});
     try testing.expectEqualStrings(expected, try fixture.read(

@@ -380,10 +380,10 @@ fn parseTypedBaseKey(key_text: []const u8) ?u32 {
 }
 
 fn loneCharacter(key_text: []const u8) ?u21 {
-    if (key_text.len == 0) return null;
-    const length = std.unicode.utf8ByteSequenceLength(key_text[0]) catch return null;
-    if (key_text.len != length) return null;
-    return std.unicode.utf8Decode(key_text) catch return null;
+    const view = std.unicode.Utf8View.init(key_text) catch return null;
+    var characters = view.iterator();
+    const character = characters.nextCodepoint() orelse return null;
+    return if (characters.nextCodepoint() == null) character else null;
 }
 
 /// The key in VkKeyScanW's result, or null for no key, or one needing Ctrl or Alt (AltGr), which a character alone can't say.
