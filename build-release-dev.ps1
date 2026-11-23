@@ -40,7 +40,7 @@ function Invoke-GhCapture([string[]]$GhArgs) {
 $root = $PSScriptRoot
 $binDir = Join-Path $root "zig-out\bin"
 $versionFile = Join-Path $root "VERSION"
-$changelogFile = Join-Path $root ".claude\CHANGELOG.md"
+$changelogFile = Join-Path $root "docs\CHANGELOG.md"
 
 $currentBranch = (git rev-parse --abbrev-ref HEAD).Trim()
 if ($currentBranch -ne "dev") {

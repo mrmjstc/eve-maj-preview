@@ -46,7 +46,7 @@ $root = $PSScriptRoot
 $binDir = Join-Path $root "zig-out\bin"
 $versionFile = Join-Path $root "VERSION"
 $zonFile = Join-Path $root "build.zig.zon"
-$changelogFile = Join-Path $root ".claude\CHANGELOG.md"
+$changelogFile = Join-Path $root "docs\CHANGELOG.md"
 
 if (-not (Test-Path $versionFile)) {
     Write-Host "ERROR: VERSION file not found at $versionFile" -ForegroundColor Red
