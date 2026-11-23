@@ -11,31 +11,31 @@ const slog = log.Scoped("sound");
 
 const WCHAR = u16;
 
-const MF_MT_MAJOR_TYPE = GUID{
+const MF_MT_MAJOR_TYPE: GUID = .{
     .Data1 = 0x48eba18e,
     .Data2 = 0xf8c9,
     .Data3 = 0x4687,
     .Data4 = [8]u8{ 0xbf, 0x11, 0x0a, 0x74, 0xc9, 0xf9, 0x6a, 0x8f },
 };
-const MF_MT_SUBTYPE = GUID{
+const MF_MT_SUBTYPE: GUID = .{
     .Data1 = 0xf7e34c9a,
     .Data2 = 0x42e8,
     .Data3 = 0x4714,
     .Data4 = [8]u8{ 0xb7, 0x4b, 0xcb, 0x29, 0xd7, 0x2c, 0x35, 0xe5 },
 };
-const MF_MT_AUDIO_NUM_CHANNELS = GUID{
+const MF_MT_AUDIO_NUM_CHANNELS: GUID = .{
     .Data1 = 0x37e48bf5,
     .Data2 = 0x645e,
     .Data3 = 0x4c5b,
     .Data4 = [8]u8{ 0x89, 0xde, 0xad, 0xa9, 0xe2, 0x9b, 0x69, 0x6a },
 };
-const MF_MT_AUDIO_SAMPLES_PER_SECOND = GUID{
+const MF_MT_AUDIO_SAMPLES_PER_SECOND: GUID = .{
     .Data1 = 0x5faeeae7,
     .Data2 = 0x0290,
     .Data3 = 0x4c31,
     .Data4 = [8]u8{ 0x9e, 0x8a, 0xc5, 0x34, 0xf6, 0x8d, 0x9d, 0xba },
 };
-const MF_MT_AUDIO_BITS_PER_SAMPLE = GUID{
+const MF_MT_AUDIO_BITS_PER_SAMPLE: GUID = .{
     .Data1 = 0xf2deb57f,
     .Data2 = 0x40fa,
     .Data3 = 0x4764,
@@ -68,13 +68,13 @@ extern "winmm" fn waveOutReset(hwo: HANDLE) callconv(.c) u32;
 extern "winmm" fn waveOutClose(hwo: HANDLE) callconv(.c) u32;
 extern "winmm" fn waveOutSetVolume(hwo: ?HANDLE, volume: u32) callconv(.c) u32;
 
-const MFMediaType_Audio = GUID{
+const MFMediaType_Audio: GUID = .{
     .Data1 = 0x73647561,
     .Data2 = 0x0000,
     .Data3 = 0x0010,
     .Data4 = [8]u8{ 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71 },
 };
-const MFAudioFormat_PCM = GUID{
+const MFAudioFormat_PCM: GUID = .{
     .Data1 = 0x00000001,
     .Data2 = 0x0000,
     .Data3 = 0x0010,
@@ -388,7 +388,7 @@ fn playBlocking(allocator: std.mem.Allocator, path: []const u8, volume_percent: 
     const pcm = try decodeToPcm(allocator, path_utf16);
     defer pcm.deinit(allocator);
 
-    const format = WAVEFORMATEX{
+    const format: WAVEFORMATEX = .{
         .nChannels = pcm.channels,
         .nSamplesPerSec = pcm.samples_per_second,
         .nBlockAlign = pcm.channels * (pcm.bits_per_sample / 8),
@@ -408,7 +408,7 @@ fn playBlocking(allocator: std.mem.Allocator, path: []const u8, volume_percent: 
     _ = win32.ResetEvent(event);
     _ = waveOutSetVolume(hwo, packVolume(volume_percent));
 
-    var header = WAVEHDR{ .lpData = pcm.data.ptr, .dwBufferLength = @intCast(pcm.data.len) };
+    var header: WAVEHDR = .{ .lpData = pcm.data.ptr, .dwBufferLength = @intCast(pcm.data.len) };
     if (waveOutPrepareHeader(hwo, &header, @sizeOf(WAVEHDR)) != 0) return error.WaveOutPrepareFailed;
     defer _ = waveOutUnprepareHeader(hwo, &header, @sizeOf(WAVEHDR));
 

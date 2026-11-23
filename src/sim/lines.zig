@@ -29,7 +29,7 @@ pub const Stamp = struct {
 
     /// `seconds` is UTC Unix time.
     pub fn fromUnix(seconds: u64) Stamp {
-        const epoch_seconds = std.time.epoch.EpochSeconds{ .secs = seconds };
+        const epoch_seconds: std.time.epoch.EpochSeconds = .{ .secs = seconds };
         const year_day = epoch_seconds.getEpochDay().calculateYearDay();
         const month_day = year_day.calculateMonthDay();
         const time = epoch_seconds.getDaySeconds();

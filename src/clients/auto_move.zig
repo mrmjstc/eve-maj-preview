@@ -38,7 +38,7 @@ pub const AutoMoveVerifier = struct {
 
     pub fn queue(self: *AutoMoveVerifier, config: *const config_mod.Config, hwnd: win32.HWND, position: config_mod.Position) void {
         if (config.autoMovePosition.verifyCount == 0) return;
-        const entry = PendingAutoMove{
+        const entry: PendingAutoMove = .{
             .hwnd = hwnd,
             .target = actions.clampOntoScreen(position),
             .last_move = win32.Ticks.now(),

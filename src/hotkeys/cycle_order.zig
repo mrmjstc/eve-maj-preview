@@ -414,7 +414,7 @@ test "a group cycle backwards from no cursor starts at the last member" {
 test "a stop-at-ends group refocuses its end member once focus has moved away" {
     var names = [_][]const u8{ "A", "B" };
     const groups = [_]HotkeyGroupConfig{testGroup(&names, .{ .stops_at_ends = true })};
-    const clients = FakeClients{ .running = &.{ "A", "B" } };
+    const clients: FakeClients = .{ .running = &.{ "A", "B" } };
 
     var cycle = cycleOver(&groups, &.{0}, &.{1});
     cycle.foreground_hwnd = fakeHwnd(9);

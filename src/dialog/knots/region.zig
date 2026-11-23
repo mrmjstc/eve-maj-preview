@@ -29,7 +29,7 @@ pub fn start(space_id: u32, is_editing: bool) void {
     if (is_editing and current == null) return;
     const should_hide = session.profile().ptr.display.hideThumbnailsDuringRegionSelect;
     const edit_region: ?win32.RECT = if (is_editing) current else null;
-    const labels = region_select.Labels{
+    const labels: region_select.Labels = .{
         .save = region_select.fixedText(region_select.BUTTON_LABEL_SIZE, lang.text("Save")),
         .cancel = region_select.fixedText(region_select.BUTTON_LABEL_SIZE, lang.text("Cancel")),
         .hint_new = region_select.fixedText(region_select.HINT_SIZE, lang.text("Drag to draw the region, then drag its edges to adjust")),

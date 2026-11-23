@@ -6,14 +6,14 @@ const log = @import("../log.zig");
 
 const slog = log.Scoped("tts");
 
-const IID_IDispatch = win32.GUID{
+const IID_IDispatch: win32.GUID = .{
     .Data1 = 0x00020400,
     .Data2 = 0x0000,
     .Data3 = 0x0000,
     .Data4 = [8]u8{ 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46 },
 };
 
-const IID_NULL = win32.GUID{
+const IID_NULL: win32.GUID = .{
     .Data1 = 0,
     .Data2 = 0,
     .Data3 = 0,
@@ -84,7 +84,7 @@ const IDispatch = extern struct {
     }
 
     fn invokeMethod(self: *IDispatch, dispid: i32, args: []VARIANT) !void {
-        var params = DISPPARAMS{
+        var params: DISPPARAMS = .{
             .rgvarg = args.ptr,
             .rgdispidNamedArgs = null,
             .cArgs = @intCast(args.len),
@@ -98,7 +98,7 @@ const IDispatch = extern struct {
     fn invokePropertyPut(self: *IDispatch, dispid: i32, value: i32) !void {
         var args = [_]VARIANT{VARIANT.fromI32(value)};
         var named_args = [_]i32{DISPID_PROPERTYPUT};
-        var params = DISPPARAMS{
+        var params: DISPPARAMS = .{
             .rgvarg = &args,
             .rgdispidNamedArgs = &named_args,
             .cArgs = 1,

@@ -163,7 +163,7 @@ pub const AutoColorStore = struct {
         var arena: std.heap.ArenaAllocator = .init(self.allocator);
         defer arena.deinit();
 
-        const file = File{
+        const file: File = .{
             .systemColors = entriesToWire(arena.allocator(), &self.system) catch |err| {
                 slog.warn("Failed to save system colors: {}", .{err});
                 return;

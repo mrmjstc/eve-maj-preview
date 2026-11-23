@@ -82,7 +82,7 @@ pub fn fetchOrePrices(allocator: std.mem.Allocator, arena: std.mem.Allocator, io
     }
 
     if (lookups.len > 0) {
-        var context = PriceFetchContext{
+        var context: PriceFetchContext = .{
             .allocator = allocator,
             .io = io,
             .session = &session,

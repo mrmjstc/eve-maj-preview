@@ -36,12 +36,12 @@ fn restoreAnimation(user_setting: i32) void {
 }
 
 fn getMinimizeAnimation() ?i32 {
-    var animation_info = win32.ANIMATIONINFO{ .cbSize = @sizeOf(win32.ANIMATIONINFO), .iMinAnimate = 0 };
+    var animation_info: win32.ANIMATIONINFO = .{ .cbSize = @sizeOf(win32.ANIMATIONINFO), .iMinAnimate = 0 };
     if (!win32.toBool(win32.SystemParametersInfoA(win32.SPI_GETANIMATION, @sizeOf(win32.ANIMATIONINFO), &animation_info, 0))) return null;
     return animation_info.iMinAnimate;
 }
 
 fn setMinimizeAnimation(value: i32) bool {
-    var animation_info = win32.ANIMATIONINFO{ .cbSize = @sizeOf(win32.ANIMATIONINFO), .iMinAnimate = value };
+    var animation_info: win32.ANIMATIONINFO = .{ .cbSize = @sizeOf(win32.ANIMATIONINFO), .iMinAnimate = value };
     return win32.toBool(win32.SystemParametersInfoA(win32.SPI_SETANIMATION, @sizeOf(win32.ANIMATIONINFO), &animation_info, 0));
 }

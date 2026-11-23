@@ -567,8 +567,9 @@ def check_errors(s):
 
 
 def check_idioms(s):
-    """§5, §6 and §7: Self, receivers, unwrapping, bool parameters, unreachable, decl literals, deprecated std, anytype and pointer globals."""
+    """§5, §6 and §7: Self, receivers, unwrapping, bool parameters, unreachable, decl and struct literals, deprecated std, anytype and pointer globals."""
     lines, codes = s.lines, s.codes
+    is_ui_file = '@import("ui")' in s.text
     type_fn_depth = []
     depth = 0
     for i, code in enumerate(codes):
@@ -603,6 +604,11 @@ def check_idioms(s):
             found = re.search(r"(?<![\w.])" + pattern, code)
             if found:
                 s.add(i, "deprecated-std", f"'{found.group(0)}' is deprecated in Zig 0.17: use {replacement} (§6)")
+        # knots UI files build their trees from `Rect{...}` literals by convention; everywhere else the type goes on the left.
+        if not is_ui_file:
+            literal = re.search(r"^\s*(?:var|const) (\w+) = ((?:[a-z_]\w*\.)*[A-Z]\w*)\{", code)
+            if literal:
+                s.add(i, "struct-literal", f"'{literal.group(1)}': write `{literal.group(1)}: {literal.group(2)} = .{{...}}` (§6)")
 
     for name, start, end, signature in s.functions:
         sig = code_only(signature)

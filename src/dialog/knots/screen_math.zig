@@ -54,7 +54,7 @@ pub fn contains(box: Box, point: [2]f32) bool {
 
 const testing = std.testing;
 
-const TWO_SIDE_BY_SIDE = RECT{ .left = -1920, .top = 0, .right = 1920, .bottom = 1080 };
+const TWO_SIDE_BY_SIDE: RECT = .{ .left = -1920, .top = 0, .right = 1920, .bottom = 1080 };
 
 test "a wide desktop is held to the maximum width" {
     const frame = Frame.fit(TWO_SIDE_BY_SIDE, 560, 400);
@@ -80,7 +80,7 @@ test "a rect off the desktop has no visible box" {
 }
 
 test "contains takes the top-left edges but not the bottom-right" {
-    const box = Box{ 10, 10, 20, 20 };
+    const box: Box = .{ 10, 10, 20, 20 };
     try testing.expect(contains(box, .{ 10, 10 }));
     try testing.expect(!contains(box, .{ 30, 15 }));
     try testing.expect(!contains(box, .{ 15, 30 }));

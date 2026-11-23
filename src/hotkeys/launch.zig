@@ -105,7 +105,7 @@ fn findByExecutableCallback(hwnd: win32.HWND, lParam: win32.LPARAM) callconv(.c)
 
 /// First visible top-level window (in Z-order, so effectively the frontmost) owned by executable_name.
 fn findWindowByExecutable(executable_name: []const u8) ?win32.HWND {
-    var context = FindByExecutableContext{ .executable_name = executable_name };
+    var context: FindByExecutableContext = .{ .executable_name = executable_name };
     _ = win32.EnumWindows(findByExecutableCallback, win32.ptrToLparam(&context));
     return context.found;
 }

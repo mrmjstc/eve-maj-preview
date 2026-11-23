@@ -51,7 +51,7 @@ fn writeMinidump(info: *win32.EXCEPTION_POINTERS) void {
     }
     defer _ = win32.CloseHandle(file);
 
-    var exception_info = win32.MINIDUMP_EXCEPTION_INFORMATION{
+    var exception_info: win32.MINIDUMP_EXCEPTION_INFORMATION = .{
         .ThreadId = win32.GetCurrentThreadId(),
         .ExceptionPointers = info,
         .ClientPointers = win32.FALSE,

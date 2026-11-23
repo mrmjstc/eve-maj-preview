@@ -70,7 +70,7 @@ fn resizedSpan(start: i32, length: i32, low: i32, high: i32, min_length: i32) [2
 
 const testing = std.testing;
 
-const MONITOR = RECT{ .left = 0, .top = 0, .right = 1920, .bottom = 1080 };
+const MONITOR: RECT = .{ .left = 0, .top = 0, .right = 1920, .bottom = 1080 };
 
 test "an edge within the snap distance of another region's edge snaps onto it" {
     const others = [_]RECT{.{ .left = 100, .top = 100, .right = 500, .bottom = 400 }};
@@ -109,19 +109,19 @@ test "a span already on an edge doesn't shift to snap its other end" {
 }
 
 test "a typed width keeps the left edge when it fits" {
-    const rect = RECT{ .left = 100, .top = 100, .right = 300, .bottom = 300 };
+    const rect: RECT = .{ .left = 100, .top = 100, .right = 300, .bottom = 300 };
     const resized = withLength(rect, .x, 500, MONITOR, 10);
     try testing.expectEqual(RECT{ .left = 100, .top = 100, .right = 600, .bottom = 300 }, resized);
 }
 
 test "a typed height too tall for the space below moves the top up" {
-    const rect = RECT{ .left = 0, .top = 900, .right = 100, .bottom = 1000 };
+    const rect: RECT = .{ .left = 0, .top = 900, .right = 100, .bottom = 1000 };
     const resized = withLength(rect, .y, 400, MONITOR, 10);
     try testing.expectEqual(RECT{ .left = 0, .top = 680, .right = 100, .bottom = 1080 }, resized);
 }
 
 test "a typed length is held between the minimum and the monitor" {
-    const rect = RECT{ .left = 100, .top = 100, .right = 300, .bottom = 300 };
+    const rect: RECT = .{ .left = 100, .top = 100, .right = 300, .bottom = 300 };
     try testing.expectEqual(@as(i32, 10), win32.rectWidth(withLength(rect, .x, 2, MONITOR, 10)));
     try testing.expectEqual(RECT{ .left = 0, .top = 100, .right = 1920, .bottom = 300 }, withLength(rect, .x, 5000, MONITOR, 10));
 }
