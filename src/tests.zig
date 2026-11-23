@@ -4,6 +4,8 @@ test {
     _ = @import("activity/ores.zig");
     _ = @import("activity/ping.zig");
     _ = @import("activity/resources.zig");
+    _ = @import("activity/stat_text.zig");
+    _ = @import("activity/stats.zig");
     _ = @import("activity/tracker.zig");
     _ = @import("arguments.zig");
     _ = @import("chatlog/alert_rules.zig");
@@ -78,8 +80,6 @@ test {
     _ = @import("map/universe.zig");
     _ = @import("map/wormholes.zig");
     _ = @import("map/zkill.zig");
-    _ = @import("panels/map/timer_list.zig");
-    _ = @import("panels/map/wormhole_list.zig");
     _ = @import("notifications/gamelog_events.zig");
     _ = @import("notifications/notification.zig");
     _ = @import("notifications/rules.zig");
@@ -99,6 +99,8 @@ test {
     _ = @import("panels/map/search.zig");
     _ = @import("panels/map/state.zig");
     _ = @import("panels/map/text.zig");
+    _ = @import("panels/map/timer_list.zig");
+    _ = @import("panels/map/wormhole_list.zig");
     _ = @import("panels/panel_header.zig");
     _ = @import("panels/panel_look.zig");
     _ = @import("panels/panel_menu_look.zig");
@@ -110,8 +112,6 @@ test {
     _ = @import("sim/lines.zig");
     _ = @import("sim/scenarios.zig");
     _ = @import("sim/schedule.zig");
-    _ = @import("activity/stat_text.zig");
-    _ = @import("activity/stats.zig");
     _ = @import("thumbnail/draw.zig");
     _ = @import("thumbnail/look.zig");
     _ = @import("thumbnail/state.zig");

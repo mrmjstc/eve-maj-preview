@@ -155,7 +155,7 @@ fn checkForUpdates(allocator: std.mem.Allocator) !?UpdateInfo {
     });
     defer allocator.free(body);
 
-    slog.debug("GitHub API response: {s}", .{body});
+    slog.debug("GitHub API response ({d} bytes): {s}", .{ body.len, http_client.loggedBody(body) });
 
     const parsed = try std.json.parseFromSlice(
         std.json.Value,
