@@ -58,7 +58,7 @@ const PriceFetchContext = struct {
 /// `allocator`: thread-safe.
 /// `arena`: holds the result.
 pub fn fetchOrePrices(allocator: std.mem.Allocator, arena: std.mem.Allocator, io: std.Io, names: []const []const u8) !Prices {
-    var session = try http_client.Session.init();
+    var session: http_client.Session = try .init();
     defer session.deinit();
 
     var type_ids = try resolveOreTypeIds(allocator, &session, names);

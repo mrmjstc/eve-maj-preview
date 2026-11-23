@@ -163,7 +163,7 @@ pub const IntelPanelWindow = struct {
     pub fn init(context: panel_host.Context, links: Links) !IntelPanelWindow {
         const intel_settings = &context.store.live.intelPanel;
         try Class.register(context.instance);
-        const panel = try PanelWindow.init(context.allocator, context.instance, INTEL_PANEL_WINDOW_CLASS, "EVE Intel", panel_lifecycle.windowRect(intel_settings), intel_settings.alwaysOnTop);
+        const panel: PanelWindow = try .init(context.allocator, context.instance, INTEL_PANEL_WINDOW_CLASS, "EVE Intel", panel_lifecycle.windowRect(intel_settings), intel_settings.alwaysOnTop);
         return .{
             .panel = panel,
             .store = context.store,

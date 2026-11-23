@@ -513,7 +513,7 @@ fn regionRow(context: *ui.Frame, space_id: u32) !void {
 
 /// The selected region is drawn last, stronger and thicker; clicking a region selects its space.
 fn regionMap(context: *ui.Frame, items: []const config.ThumbnailSpace, initial_selected: ?usize) !void {
-    var map = try ScreenMap.init(context, .str("knots.space.map"));
+    var map: ScreenMap = try .init(context, .str("knots.space.map"));
     const ui_state = context.ui();
     var selected = initial_selected;
     if (regionUnderMouse(&map, ui_state, items, selected)) |index| {
@@ -547,7 +547,7 @@ fn regionMap(context: *ui.Frame, items: []const config.ThumbnailSpace, initial_s
 
 /// Every monitor in miniature with each hand-placed character's saved thumbnail position.
 fn savedPositionMap(context: *ui.Frame, profile: ProfileRef) !void {
-    var map = try ScreenMap.init(context, .str("knots.manual.map"));
+    var map: ScreenMap = try .init(context, .str("knots.manual.map"));
     for (profile.ptr.characters.items) |character| {
         const position = character.position orelse continue;
         // A space ignores the saved position.

@@ -406,7 +406,7 @@ pub const ChatlogMonitor = struct {
         }
 
         {
-            var file = try LogFile.init(self.allocator, path, character_name, channel_name, is_chatlog);
+            var file: LogFile = try .init(self.allocator, path, character_name, channel_name, is_chatlog);
             errdefer file.deinit(self.allocator, self.io);
             try self.log_files.append(self.allocator, file);
         }

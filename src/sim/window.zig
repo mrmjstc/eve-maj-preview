@@ -36,7 +36,7 @@ pub fn run(allocator: std.mem.Allocator, io: std.Io, fleet: *Fleet) !void {
     images.init(allocator);
     defer images.deinit();
 
-    var app = try knots.App.init(io, allocator, .{
+    var app: knots.App = try .init(io, allocator, .{
         .window = .{ .width = WIDTH, .height = HEIGHT, .title = WINDOW_TITLE },
         .ui = .{
             .theme = style.theme,

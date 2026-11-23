@@ -148,7 +148,7 @@ pub const HistoryPanelWindow = struct {
     pub fn init(context: panel_host.Context, links: Links) !HistoryPanelWindow {
         const history_settings = &context.store.live.historyPanel;
         try Class.register(context.instance);
-        const panel = try PanelWindow.init(context.allocator, context.instance, HISTORY_PANEL_WINDOW_CLASS, "EVE Alert History", panel_lifecycle.windowRect(history_settings), history_settings.alwaysOnTop);
+        const panel: PanelWindow = try .init(context.allocator, context.instance, HISTORY_PANEL_WINDOW_CLASS, "EVE Alert History", panel_lifecycle.windowRect(history_settings), history_settings.alwaysOnTop);
         return .{
             .panel = panel,
             .store = context.store,

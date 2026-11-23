@@ -56,7 +56,7 @@ fn fetchThread(feed: *CampaignsFeed, allocator: std.mem.Allocator) void {
 
 /// Caller destroys the result.
 fn fetchCampaigns(allocator: std.mem.Allocator) !*Campaigns {
-    var session = try http_client.Session.init();
+    var session: http_client.Session = try .init();
     defer session.deinit();
     const body = try session.fetch(allocator, CAMPAIGNS_URL, .{});
     defer allocator.free(body);

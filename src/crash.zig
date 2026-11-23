@@ -9,7 +9,7 @@ const MINIDUMP_FILE_NAME = std.unicode.utf8ToUtf16LeStringLiteral(log.MINIDUMP_F
 const LOCATION_LENGTH = 400;
 
 /// MiniDumpWriteDump isn't thread-safe; cleared after each attempt so a later crash can still dump.
-var g_dump_write_in_progress = std.atomic.Value(bool).init(false);
+var g_dump_write_in_progress: std.atomic.Value(bool) = .init(false);
 
 /// Call first thing in main, before anything can fault.
 pub fn install() void {

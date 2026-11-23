@@ -174,7 +174,7 @@ test "forget drops only that client" {
 }
 
 test "alertable leaves out muted clients and ones off the gate map" {
-    var rules = try RuleSet.init(testing.allocator, &.{.{ .channels = "*" }}, &.{"Muted"});
+    var rules: RuleSet = try .init(testing.allocator, &.{.{ .channels = "*" }}, &.{"Muted"});
     defer rules.deinit();
     var systems: ClientSystems = .{};
     defer systems.deinit(testing.allocator);
@@ -189,7 +189,7 @@ test "alertable leaves out muted clients and ones off the gate map" {
 }
 
 test "a message from one of the user's own characters alerts no one" {
-    var rules = try RuleSet.init(testing.allocator, &.{.{ .kind = .keyword, .channels = "*", .keywords = "cyno" }}, NO_MUTES);
+    var rules: RuleSet = try .init(testing.allocator, &.{.{ .kind = .keyword, .channels = "*", .keywords = "cyno" }}, NO_MUTES);
     defer rules.deinit();
     var recent_hits: RecentHits = .{};
     var out: [alert_rules.MAX_CLIENTS][]const u8 = undefined;
@@ -202,7 +202,7 @@ test "a message from one of the user's own characters alerts no one" {
 }
 
 test "an intel hit goes to every client tied for nearest" {
-    var rules = try RuleSet.init(testing.allocator, &.{.{ .channels = "*", .max_jumps = 5 }}, NO_MUTES);
+    var rules: RuleSet = try .init(testing.allocator, &.{.{ .channels = "*", .max_jumps = 5 }}, NO_MUTES);
     defer rules.deinit();
     var recent_hits: RecentHits = .{};
     var out: [alert_rules.MAX_CLIENTS][]const u8 = undefined;
@@ -219,7 +219,7 @@ test "an intel hit goes to every client tied for nearest" {
 }
 
 test "a keyword hit goes to the client that logged the line" {
-    var rules = try RuleSet.init(testing.allocator, &.{.{ .kind = .keyword, .channels = "*", .keywords = "cyno" }}, NO_MUTES);
+    var rules: RuleSet = try .init(testing.allocator, &.{.{ .kind = .keyword, .channels = "*", .keywords = "cyno" }}, NO_MUTES);
     defer rules.deinit();
     var recent_hits: RecentHits = .{};
     var out: [alert_rules.MAX_CLIENTS][]const u8 = undefined;
@@ -235,7 +235,7 @@ test "a keyword hit goes to the client that logged the line" {
 }
 
 test "a hit logged by a muted client goes to another client instead" {
-    var rules = try RuleSet.init(testing.allocator, &.{.{ .kind = .keyword, .channels = "*", .keywords = "cyno" }}, &.{"Listener"});
+    var rules: RuleSet = try .init(testing.allocator, &.{.{ .kind = .keyword, .channels = "*", .keywords = "cyno" }}, &.{"Listener"});
     defer rules.deinit();
     var recent_hits: RecentHits = .{};
     var out: [alert_rules.MAX_CLIENTS][]const u8 = undefined;
@@ -250,7 +250,7 @@ test "a hit logged by a muted client goes to another client instead" {
 }
 
 test "a hit with every client muted still alerts, but goes to no one" {
-    var rules = try RuleSet.init(testing.allocator, &.{.{ .kind = .keyword, .channels = "*", .keywords = "cyno" }}, &.{"Listener"});
+    var rules: RuleSet = try .init(testing.allocator, &.{.{ .kind = .keyword, .channels = "*", .keywords = "cyno" }}, &.{"Listener"});
     defer rules.deinit();
     var recent_hits: RecentHits = .{};
     var out: [alert_rules.MAX_CLIENTS][]const u8 = undefined;
@@ -264,7 +264,7 @@ test "a hit with every client muted still alerts, but goes to no one" {
 }
 
 test "the same message logged by a second client alerts once" {
-    var rules = try RuleSet.init(testing.allocator, &.{.{ .kind = .keyword, .channels = "*", .keywords = "cyno", .cooldown_ms = 0 }}, NO_MUTES);
+    var rules: RuleSet = try .init(testing.allocator, &.{.{ .kind = .keyword, .channels = "*", .keywords = "cyno", .cooldown_ms = 0 }}, NO_MUTES);
     defer rules.deinit();
     var recent_hits: RecentHits = .{};
     var out: [alert_rules.MAX_CLIENTS][]const u8 = undefined;
@@ -276,7 +276,7 @@ test "the same message logged by a second client alerts once" {
 }
 
 test "a rule's cooldown holds back its term from another message until it ends" {
-    var rules = try RuleSet.init(testing.allocator, &.{.{ .kind = .keyword, .channels = "*", .keywords = "cyno", .cooldown_ms = 15000 }}, NO_MUTES);
+    var rules: RuleSet = try .init(testing.allocator, &.{.{ .kind = .keyword, .channels = "*", .keywords = "cyno", .cooldown_ms = 15000 }}, NO_MUTES);
     defer rules.deinit();
     var recent_hits: RecentHits = .{};
     var out: [alert_rules.MAX_CLIENTS][]const u8 = undefined;
@@ -299,7 +299,7 @@ test "a rule's cooldown holds back its term from another message until it ends" 
 }
 
 test "a message no rule matches alerts no one" {
-    var rules = try RuleSet.init(testing.allocator, &.{.{ .kind = .keyword, .channels = "Fleet", .keywords = "cyno" }}, NO_MUTES);
+    var rules: RuleSet = try .init(testing.allocator, &.{.{ .kind = .keyword, .channels = "Fleet", .keywords = "cyno" }}, NO_MUTES);
     defer rules.deinit();
     var recent_hits: RecentHits = .{};
     var out: [alert_rules.MAX_CLIENTS][]const u8 = undefined;

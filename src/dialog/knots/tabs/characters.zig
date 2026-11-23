@@ -333,7 +333,7 @@ fn windowPosition(context: *ui.Frame, character: CharacterRef) !void {
 
 /// Every monitor with the saved window on it, or a marker at its top-left when it was saved without a size.
 fn positionMap(context: *ui.Frame, character: CharacterRef) !void {
-    var map = try ScreenMap.init(context, .str("knots.character.position.map"));
+    var map: ScreenMap = try .init(context, .str("knots.character.position.map"));
     if (character.get("windowPosition")) |position| {
         const size = character.get("windowSize");
         const width = if (size) |saved| saved.width else 0;

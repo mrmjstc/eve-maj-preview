@@ -171,7 +171,7 @@ fn publishColors(feed: *StatsFeed, allocator: std.mem.Allocator, colors: *const 
 
 /// Keeps what arrived, each reply's failure logged where it happened; an error only when nothing did.
 fn fetchSnapshot(allocator: std.mem.Allocator) !*Snapshot {
-    var session = try http_client.Session.init();
+    var session: http_client.Session = try .init();
     defer session.deinit();
 
     const snapshot = try allocator.create(Snapshot);

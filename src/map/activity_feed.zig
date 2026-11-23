@@ -136,7 +136,7 @@ fn npcHoursThread(feed: *ActivityFeed, allocator: std.mem.Allocator, urls: [2][]
 
 /// The answer's body, which the caller frees; logs its own failures, a status other than 200 included.
 fn fetch(allocator: std.mem.Allocator, url: []const u8, header: []const u8) ![]u8 {
-    var session = try http_client.Session.init();
+    var session: http_client.Session = try .init();
     defer session.deinit();
     const headers = [_]http_client.Header{.{ .name = "Authorization", .value = header }};
     return session.fetch(allocator, url, .{ .extra_headers = &headers });

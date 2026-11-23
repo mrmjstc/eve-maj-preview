@@ -146,7 +146,7 @@ fn checkForUpdates(allocator: std.mem.Allocator) !?UpdateInfo {
     const current_version = build_options.version;
     slog.info("Checking for updates (current: {s})", .{current_version});
 
-    var session = try http_client.Session.init();
+    var session: http_client.Session = try .init();
     defer session.deinit();
 
     // per_page=100 covers skipping many releases at once.

@@ -60,6 +60,7 @@
 - Unit tests for alert history, the notified queue and log interpretation
 - Unit tests for hotkey press handling
 - Unit tests for Intel Map marker and gate colours
+- Style check catches decl literals after `try` and abbreviated constants
 
 ### Fixed
 - Dragged panels stay under the cursor instead of lagging behind

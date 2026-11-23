@@ -295,6 +295,12 @@ def check_names(s):
         if field and not code.strip().startswith("."):
             names.append(field.group(1))
         for name in names:
+            # SCREAMING_SNAKE constants are held to the same spelled-out words, read in lower case.
+            if name and re.match(r"^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$", name):
+                lowered = name.lower()
+                if any(p in BANNED_PARTS for p in lowered.split("_")) or lowered.endswith(BANNED_SUFFIXES):
+                    s.add(i, "abbreviation", f"'{name}': spell the word out (§2)")
+                continue
             if not name or not re.match(r"^[a-z_]\w*$", name):
                 continue
             declared.add(name)
@@ -563,7 +569,8 @@ def check_idioms(s):
                     break
         if "HWND_TOP" in code and "HWND_TOPMOST" not in code:
             s.add(i, "hwnd-top", "HWND_TOP doesn't compile against HWND; use HWND_NOTOPMOST with SWP_NOZORDER")
-        m = re.search(r"^\s*(?:var|const) (\w+) = ((?:std\.)?(?:\w+\.)*[A-Z]\w*)\.(init|empty)\b", code)
+        # `try` passes the result type through, and a generic's arguments are part of its name; `catch` doesn't, so it's left out below.
+        m = re.search(r"^\s*(?:pub\s+)?(?:var|const) (\w+) = (?:try\s+)?((?:std\.)?(?:\w+\.)*[A-Z]\w*(?:\([^()]*\))?)\.(init|empty|initCapacity)\b", code)
         if m and not re.search(r"\bcatch\b", statement_text(codes, i)):
             s.add(i, "decl-literal", f"'{m.group(1)}': write `{m.group(1)}: {m.group(2)} = .{m.group(3)}...` (§6)")
         if re.search(r"\bstd\.ArrayList\([^)]*\)\.init\(", code):

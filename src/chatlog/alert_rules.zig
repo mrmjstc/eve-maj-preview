@@ -401,7 +401,7 @@ fn said(body: []const u8) lines.ChatMessage {
 }
 
 test "an intel rule picks the client nearest the mentioned system" {
-    var rules = try RuleSet.init(testing.allocator, &.{.{ .channels = "*.imperium", .max_jumps = 5 }}, NO_MUTES);
+    var rules: RuleSet = try .init(testing.allocator, &.{.{ .channels = "*.imperium", .max_jumps = 5 }}, NO_MUTES);
     defer rules.deinit();
     const clients = [_]Client{ clientAt("Far", "Jita"), clientAt("Near", "Perimeter"), clientAt("Same", "Maurasi") };
 
@@ -414,7 +414,7 @@ test "an intel rule picks the client nearest the mentioned system" {
 }
 
 test "an intel rule names every client tied for nearest, and only them" {
-    var rules = try RuleSet.init(testing.allocator, &.{.{ .channels = "*", .max_jumps = 5 }}, NO_MUTES);
+    var rules: RuleSet = try .init(testing.allocator, &.{.{ .channels = "*", .max_jumps = 5 }}, NO_MUTES);
     defer rules.deinit();
     const clients = [_]Client{ clientAt("Near", "Perimeter"), clientAt("Same", "Maurasi"), clientAt("Also Same", "Maurasi") };
 
@@ -425,7 +425,7 @@ test "an intel rule names every client tied for nearest, and only them" {
 }
 
 test "an intel rule ignores systems out of range" {
-    var rules = try RuleSet.init(testing.allocator, &.{.{ .channels = "*", .max_jumps = 5 }}, NO_MUTES);
+    var rules: RuleSet = try .init(testing.allocator, &.{.{ .channels = "*", .max_jumps = 5 }}, NO_MUTES);
     defer rules.deinit();
     const clients = [_]Client{clientAt("Trader", "Jita")};
     try testing.expect(rules.firstHit("Fleet", said("C-J6MT hostile"), &clients) == null);
@@ -433,7 +433,7 @@ test "an intel rule ignores systems out of range" {
 }
 
 test "intelReport pins systems out of alert range, but not in other channels or excluded lines" {
-    var rules = try RuleSet.init(testing.allocator, &.{.{ .channels = "I. * Intel", .max_jumps = 1, .exclude = "nv" }}, NO_MUTES);
+    var rules: RuleSet = try .init(testing.allocator, &.{.{ .channels = "I. * Intel", .max_jumps = 1, .exclude = "nv" }}, NO_MUTES);
     defer rules.deinit();
     var buffer: [MAX_MENTIONS]SystemIndex = undefined;
     try testing.expectEqual(@as(usize, 1), rules.intelReport("I. Delve Intel", said("C-J6MT hostile"), &buffer).pin_count);
@@ -442,7 +442,7 @@ test "intelReport pins systems out of alert range, but not in other channels or 
 }
 
 test "an excluded line still reports its systems for the feed, without a pin" {
-    var rules = try RuleSet.init(testing.allocator, &.{.{ .channels = "I. * Intel", .exclude = "nv" }}, NO_MUTES);
+    var rules: RuleSet = try .init(testing.allocator, &.{.{ .channels = "I. * Intel", .exclude = "nv" }}, NO_MUTES);
     defer rules.deinit();
     var buffer: [MAX_MENTIONS]SystemIndex = undefined;
     const report = rules.intelReport("I. Delve Intel", said("C-J6MT nv"), &buffer);
@@ -451,14 +451,14 @@ test "an excluded line still reports its systems for the feed, without a pin" {
 }
 
 test "a line excluded by one rule still pins for another following the channel" {
-    var rules = try RuleSet.init(testing.allocator, &.{ .{ .channels = "I. * Intel", .exclude = "nv" }, .{ .channels = "I. *" } }, NO_MUTES);
+    var rules: RuleSet = try .init(testing.allocator, &.{ .{ .channels = "I. * Intel", .exclude = "nv" }, .{ .channels = "I. *" } }, NO_MUTES);
     defer rules.deinit();
     var buffer: [MAX_MENTIONS]SystemIndex = undefined;
     try testing.expectEqual(@as(usize, 1), rules.intelReport("I. Delve Intel", said("C-J6MT nv"), &buffer).pin_count);
 }
 
 test "a starred system is found, in alerts and on the map" {
-    var rules = try RuleSet.init(testing.allocator, &.{.{ .channels = "I. * Intel", .max_jumps = 1 }}, NO_MUTES);
+    var rules: RuleSet = try .init(testing.allocator, &.{.{ .channels = "I. * Intel", .max_jumps = 1 }}, NO_MUTES);
     defer rules.deinit();
     var buffer: [MAX_MENTIONS]SystemIndex = undefined;
     const report = rules.intelReport("I. Delve Intel", said("Hatsashin Purvanen  C-J6MT*"), &buffer);
@@ -469,7 +469,7 @@ test "a starred system is found, in alerts and on the map" {
 }
 
 test "only a clear report's first system passes a rule's exclusions" {
-    var rules = try RuleSet.init(testing.allocator, &.{.{ .channels = "I. * Intel", .exclude = "clr" }}, NO_MUTES);
+    var rules: RuleSet = try .init(testing.allocator, &.{.{ .channels = "I. * Intel", .exclude = "clr" }}, NO_MUTES);
     defer rules.deinit();
     var buffer: [MAX_MENTIONS]SystemIndex = undefined;
     const report = rules.intelReport("I. Delve Intel", said("C-J6MT clr, watch X-1QGA"), &buffer);
@@ -480,7 +480,7 @@ test "only a clear report's first system passes a rule's exclusions" {
 }
 
 test "a rule without the exclusion keeps a clear report's other systems" {
-    var rules = try RuleSet.init(testing.allocator, &.{.{ .channels = "I. * Intel" }}, NO_MUTES);
+    var rules: RuleSet = try .init(testing.allocator, &.{.{ .channels = "I. * Intel" }}, NO_MUTES);
     defer rules.deinit();
     var buffer: [MAX_MENTIONS]SystemIndex = undefined;
     const report = rules.intelReport("I. Delve Intel", said("C-J6MT clr, watch X-1QGA"), &buffer);
@@ -489,7 +489,7 @@ test "a rule without the exclusion keeps a clear report's other systems" {
 }
 
 test "a clear report passes a rule's exclusions, but a question or a denial doesn't count" {
-    var rules = try RuleSet.init(testing.allocator, &.{.{ .channels = "I. * Intel", .exclude = "clr, clear" }}, NO_MUTES);
+    var rules: RuleSet = try .init(testing.allocator, &.{.{ .channels = "I. * Intel", .exclude = "clr, clear" }}, NO_MUTES);
     defer rules.deinit();
     var buffer: [MAX_MENTIONS]SystemIndex = undefined;
     const clear = rules.intelReport("I. Delve Intel", said("C-J6MT CLR"), &buffer);
@@ -502,7 +502,7 @@ test "a clear report passes a rule's exclusions, but a question or a denial does
 }
 
 test "only channels a rule names are followed, and the Utopia in Corp stays quiet" {
-    var rules = try RuleSet.init(testing.allocator, &.{.{ .channels = "I. * Intel, Fleet" }}, NO_MUTES);
+    var rules: RuleSet = try .init(testing.allocator, &.{.{ .channels = "I. * Intel, Fleet" }}, NO_MUTES);
     defer rules.deinit();
     const clients = [_]Client{clientAt("Main", "Utopia")};
     try testing.expect(rules.followsChannel("I. Delve Intel"));
@@ -512,7 +512,7 @@ test "only channels a rule names are followed, and the Utopia in Corp stays quie
 }
 
 test "a word in exclude stops a message matching its rule" {
-    var rules = try RuleSet.init(testing.allocator, &.{.{ .channels = "*", .exclude = "clr, all clear" }}, NO_MUTES);
+    var rules: RuleSet = try .init(testing.allocator, &.{.{ .channels = "*", .exclude = "clr, all clear" }}, NO_MUTES);
     defer rules.deinit();
     const clients = [_]Client{clientAt("Main", "Jita")};
     try testing.expect(rules.firstHit("Fleet", said("Jita CLR"), &clients) == null);
@@ -521,7 +521,7 @@ test "a word in exclude stops a message matching its rule" {
 }
 
 test "a keyword matches a whole word in any case, in Russian too" {
-    var rules = try RuleSet.init(testing.allocator, &.{.{ .kind = .keyword, .channels = "*", .keywords = "bubble, warp in, Пузырь" }}, NO_MUTES);
+    var rules: RuleSet = try .init(testing.allocator, &.{.{ .kind = .keyword, .channels = "*", .keywords = "bubble, warp in, Пузырь" }}, NO_MUTES);
     defer rules.deinit();
     const hit = rules.firstHit("Fleet", said("BUBBLE on gate"), &.{}).?;
     try testing.expectEqual(notification.NotificationType.ChatKeyword, hit.notification_type);
@@ -538,7 +538,7 @@ test "intel beats a keyword, however the rules are listed" {
         .{ .kind = .keyword, .channels = "*", .keywords = "bubble" },
         .{ .kind = .intel, .channels = "*", .max_jumps = 1 },
     };
-    var rules = try RuleSet.init(testing.allocator, &configs, NO_MUTES);
+    var rules: RuleSet = try .init(testing.allocator, &configs, NO_MUTES);
     defer rules.deinit();
     const clients = [_]Client{clientAt("Main", "Jita")};
     try testing.expectEqual(notification.NotificationType.ChatIntel, rules.firstHit("Fleet", said("bubble in Perimeter"), &clients).?.notification_type);
@@ -550,7 +550,7 @@ test "a hit names its rule's place in the profile, not its place after sorting b
         .{ .kind = .keyword, .channels = "*", .keywords = "bubble" },
         .{ .kind = .intel, .channels = "*", .max_jumps = 1 },
     };
-    var rules = try RuleSet.init(testing.allocator, &configs, NO_MUTES);
+    var rules: RuleSet = try .init(testing.allocator, &configs, NO_MUTES);
     defer rules.deinit();
     const clients = [_]Client{clientAt("Main", "Jita")};
     try testing.expectEqual(@as(usize, 1), rules.firstHit("Fleet", said("Perimeter hostile"), &clients).?.rule_index);
@@ -563,7 +563,7 @@ test "disabled rules and ones that can't match are left out" {
         .{ .channels = " , " },
         .{ .kind = .keyword, .channels = "*", .keywords = " , " },
     };
-    var rules = try RuleSet.init(testing.allocator, &configs, NO_MUTES);
+    var rules: RuleSet = try .init(testing.allocator, &configs, NO_MUTES);
     defer rules.deinit();
     try testing.expectEqual(@as(usize, 0), rules.rules.len);
     try testing.expect(!rules.followsChannel("Fleet"));
@@ -571,7 +571,7 @@ test "disabled rules and ones that can't match are left out" {
 
 test "isMuted reads the copied character names" {
     const muted = [_][]const u8{"Alt"};
-    var rules = try RuleSet.init(testing.allocator, &.{}, &muted);
+    var rules: RuleSet = try .init(testing.allocator, &.{}, &muted);
     defer rules.deinit();
     try testing.expect(rules.isMuted("Alt"));
     try testing.expect(!rules.isMuted("Main"));

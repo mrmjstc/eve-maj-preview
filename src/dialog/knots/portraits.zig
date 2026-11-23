@@ -254,7 +254,7 @@ fn readCached(io: std.Io, path: []const u8) ?[]u8 {
 
 /// Caller frees.
 fn fetch(id: []const u8) ![]u8 {
-    var http_session = try http_client.Session.init();
+    var http_session: http_client.Session = try .init();
     defer http_session.deinit();
     var url_buf: [128]u8 = undefined;
     const url = try std.fmt.bufPrint(&url_buf, URL_FORMAT, .{ id, FETCH_SIZE });
