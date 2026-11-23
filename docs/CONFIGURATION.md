@@ -28,7 +28,7 @@ Paths are relative to the executable's folder.
 | `logs\eve-maj.log`, `eve-maj.log.old` | Log, and the previous one. |
 | `logs\eve-maj-crash.dmp` | Minidump from the last crash. |
 
-Profile file names: `<name>.json` with no path separators or `:*?"<>|`, not starting with `.`. Names created in the dialog are 1–16 characters of letters, digits, space, `-`, `_`.
+Profile file names: `<name>.json` with no path separators or `:*?"<>|`, not starting with `.`, and not `global.settings.json`. Names created in the dialog are 1–16 characters of letters, digits, space, `-`, `_`.
 
 ## Loading rules
 
@@ -40,7 +40,7 @@ Profile file names: `<name>.json` with no path separators or `:*?"<>|`, not star
 - A profile or the global settings file that another program holds is read again a few times, about half a second in all, before it counts as unreadable.
 - Profiles are saved with `null` optionals omitted, colours as 8-digit hex and hotkeys as hex codes.
 - `formatVersion` below 3 migrates on load: `display.layoutMode`/`regionX`/`regionY`/`regionWidth`/`regionHeight`/`spacing`/`regionFitOrder`/`regionFitDirection`/`regionFitLimitToThumbnailSize` become an `Everyone` space (enabled only if `layoutMode` was `RegionFit`, with `takesUnassigned` and `takesLoginScreen`); `display.notLoggedInSpace*` becomes a `Login Screen` space ahead of it. Below 2, character `position`s are rescaled from DPI-unaware pixels.
-- `formatVersion` below 4 migrates on load: the Client List's and panels' `display` keys move into `listView`, `historyPanel`, `mapPanel` and `intelPanel`, dropping their prefix (`mapPanel.x` becomes `mapPanel.x`, `mapPanel.show` becomes `mapPanel.show`); a key already in its section wins.
+- `formatVersion` below 4 migrates on load: the Client List's and panels' `display` keys move into `listView`, `historyPanel`, `mapPanel` and `intelPanel`, dropping their prefix (`display.mapPanelX` becomes `mapPanel.x`, `display.showMapPanel` becomes `mapPanel.show`, `display.notifInfoPanelX` becomes `historyPanel.x`); a key already in its section wins.
 - `formatVersion` below 5 migrates on load: a `listView.activeColor` or `thumbnail.borderColor` still at the old default `0xFFD9A441` is removed, so it follows `accentColor`.
 - `formatVersion` below 6 migrates on load: `listView.showIncomingDps`/`showOutgoingDps`/`showMiningRate`/`showBountyRate` stay on only where `combat`/`mining`/`bounty.enabled` was on, and are removed otherwise.
 - `formatVersion` below 7 migrates on load: `display.startX`/`startY` are copied into `listView.x`/`y`, which the Client List used to share with the thumbnails' start position.
@@ -218,7 +218,7 @@ The thumbnails' incoming and outgoing DPS texts; what's measured is in [combat](
 | `outgoing_position` | enum | `TopCenter` | position | |
 | `incoming_offset_x`, `incoming_offset_y`, `outgoing_offset_x` | int | `0` | offset | |
 | `outgoing_offset_y` | int | `24` | offset | Below Incoming DPS. |
-| `incoming_show_prefix`, `outgoing_show_prefix` | bool | `true` | | |
+| `incoming_show_prefix`, `outgoing_show_prefix` | bool | `true` | | `IN:` and `OUT:` |
 
 ### thumbnail.miningText
 
@@ -312,7 +312,7 @@ A key left out takes that type's own default.
 | `enabled` | bool | `true` | | |
 | `show_text` | bool | `true` | | Show the text on thumbnails and the client list. Off keeps the border, sound, speech and history entry. |
 | `duration_ms` | int | `10000`; `3000` for user-action types | 0–60000 | |
-| `throttle_ms` | int | `10000`; `60000` for `TakingDamage`; `0` for user-action types | 0–300000 | Per thumbnail, from the last one shown. `0` = off. Repeats are still listed in Alert History. |
+| `throttle_ms` | int | `10000`; `60000` for `TakingDamage`; `0` for user-action and Chat types | 0–300000 | Per thumbnail, from the last one shown. `0` = off. Repeats are still listed in Alert History. |
 | `suppress_when_focused` | bool | `false` | | Skip while that client has focus. Still listed in Alert History. |
 | `suppress_when_clicked` | bool | `false` | | Skip for `suppress_click_duration_ms` after clicking the thumbnail. Still listed in Alert History. |
 | `show_hidden_thumbnail` | bool | `false` | | Show a thumbnail hidden by focus auto-hide or the visibility toggle while active. `hideThumbnail` still wins. |
@@ -361,6 +361,8 @@ A key left out takes that type's own default.
 | `JumpCloning` | Navigation | Clone jump | | |
 | `SystemChange` | Navigation | New solar system | `{system}` | |
 | `TravelLeftBehind` | Navigation | See [travel](#travel) | `{system}`, `{group_system}` | |
+| `ChatIntel` | Chat | An intel rule matched; see [chatAlerts](#chatalerts) | `{system}`, `{jumps}`, `{pilot}`, `{channel}`, `{message}` | |
+| `ChatKeyword` | Chat | A keyword rule matched; see [chatAlerts](#chatalerts) | `{keyword}`, `{pilot}`, `{channel}`, `{message}` | |
 | `ConversationInvite` | General | Conversation invite | `{pilot}` | |
 | `GroupMembership` | General | **U** Group assign key | `{group}` | removed |
 | `CycleExclusion` | General | **U** Exclusion toggled | | included |
@@ -370,7 +372,7 @@ A key left out takes that type's own default.
 | `SavedPositionMove` | General | **U** Moved by `hotkeyMoveToSavedPositions` | | |
 | `Generic` | General | Other game events | `{message}` | |
 
-Every type except `HotkeySuspend`, `ProfileSwitch` and `AutoMinimizeToggle` also has `{character}`. Placeholder names are case-insensitive; unknown ones are left as typed. Category drives the Alert History filters.
+Every type except `HotkeySuspend`, `ProfileSwitch` and `AutoMinimizeToggle` also has `{character}`. Placeholder names are case-insensitive; unknown ones are left as typed. Category drives the Alert History filters. A chat alert looks and sounds as its rule's `alert` says; `type_configs.ChatIntel` and `ChatKeyword` are used only if that rule has since been removed, and the dialog doesn't show them.
 
 ### timer
 
@@ -420,7 +422,7 @@ The Client List (`viewMode: ClientList` or `ThumbnailsAndList`): one row per cli
 | `useUniqueActiveColors` | bool | `false` | | Character's generated colour as its active colour. |
 | `showNotifications` | bool | `true` | | |
 | `notificationColor` | colour | `0xFFFFFFFF` | | For types without `text_color`. |
-| `showIncomingDps`, `showOutgoingDps`, `showMiningRate`, `showBountyRate` | bool | `false` | | Independent of the thumbnails' overlay `enabled`. While any shows, every row keeps a second line for them under its name. |
+| `showIncomingDps`, `showOutgoingDps`, `showMiningRate`, `showBountyRate` | bool | `false` | | Independent of the thumbnails' texts (`thumbnail.combatText.shown` and the like). While any shows, every row keeps a second line for them under its name. |
 | `showIncomingPrefix`, `showOutgoingPrefix`, `showMiningPrefix`, `showBountyPrefix` | bool | `true` | | `IN: `, `OUT: `, `M: `, `ISK: `, as on the thumbnails. |
 | `incomingDpsColor` | colour | `0xFFE05A4E` | | |
 | `outgoingDpsColor` | colour | `0xFF68CA6B` | | |
@@ -489,7 +491,7 @@ The Map: a schematic of one region, or up to four side by side (Ctrl+click a reg
 | `showStorms` | bool | `true` | | Mark metaliminal storms and the gates they cover. Needs `liveStats`. Off only hides them. |
 | `showIncursions` | bool | `true` | | Mark incursions, the systems they infest and where they stage. Needs `liveStats`. Off only hides them. |
 | `showSovTimers` | bool | `true` | | Square each system with a sov campaign, with a countdown to its start beside its name, then the defender's score once it runs. Needs `liveStats`. Off only hides them. |
-| `showWormholes` | bool | `true` | | Draw a stub labelled Thera or Turnur from each system with a connection to it, and ring Turnur; and list every connection in New Eden in a card under the Intel card, a tab a hub, which scrolls, and whose rows open the system. Needs `liveStats`. Off only hides them. |
+| `showWormholes` | bool | `true` | | Draw a stub labelled Thera or Turnur from each system with a wormhole to it, and ring Turnur. A card under the Intel card lists every connection in New Eden, one tab per hub; click a row to open its system. Needs `liveStats`. Off only hides them. |
 | `showAnsiblex` | bool | `true` | | Draw the Eve Stars account's Ansiblex gates: an arc between two systems shown, or a stub naming the far end. Needs `evestarsToken`; a read-only token is enough. Fetched every 30 minutes while shown. |
 | `showKills` | bool | `true` | | Follow zKillboard's live feed while the panel shows: each kill ripples and leaves a fading mark, and the Intel card gains a Kills tab listing those in the regions shown. Kills only NPCs took part in are left out. |
 | `killLifetimeMin` | int | `30` | 1–120 | Minutes a kill stays on the map and in the Kills tab. |
@@ -663,7 +665,7 @@ Incoming/outgoing DPS from gamelog `(combat)` lines, for [thumbnail.combatText](
 
 ### mining
 
-m³/min and ISK rate from gamelog `(mining)` lines (normal and critical yields; residue ignored), for [thumbnail.miningText](#thumbnailminingtext) and the Client List; the tracker and its alerts run while either shows the rate.
+m³ and ISK rates from gamelog `(mining)` lines (normal and critical yields; residue ignored), for [thumbnail.miningText](#thumbnailminingtext) and the Client List; the tracker and its alerts run while either shows the rate.
 
 | Key | Type | Default | Range | Notes |
 |---|---|---|---|---|
@@ -713,11 +715,11 @@ Fires `TravelLeftBehind` when a character isn't in the group's system. Checked a
 | `threshold_percent` | float | `50.0` | 1–100 | Share of eligible characters that must share a system for it to count as the group. |
 | `threshold_count` | int | `2` | 1–50 | As above, as a count. |
 
-Eligible: jumped (gate or Conduit, not undock) at least once this session and not [excluded](#exclusion) from cycling, as a character set aside, like a scout ahead or a parked hauler, is off on its own. The group system is the one most eligible characters share. A straggler is flagged once; its next jump rearms.
+Only eligible characters count: those that have jumped (by gate or Conduit, not undocking) at least once this session and aren't [excluded](#exclusion) from cycling. Exclude a character you've set aside, like a scout ahead or a parked hauler, so it isn't flagged for being on its own. The group system is the one most eligible characters share. A straggler is flagged once; its next jump rearms.
 
 ### hotkeys
 
-All values are **keys**.
+Four switches, then the global hotkeys; every `hotkey*` value is **keys**.
 
 | Key | Type | Default | Notes |
 |---|---|---|---|
@@ -739,8 +741,8 @@ All values are **keys**.
 | `hotkeyMoveToSavedPositions` | keys | | Move clients to `windowPosition`, honouring `excludeFromAutoMove`. |
 | `hotkeyToggleDragging` | keys | | Toggle `interaction.enableDragging`. |
 | `hotkeyToggleTravelMode` | keys | | Toggle `travel.enabled`. |
-| `hotkeyToggleNotificationHistory` | keys | | Show/hide the notification history panel. |
-| `hotkeyClearNotificationHistory` | keys | | Clear the notification history. |
+| `hotkeyToggleNotificationHistory` | keys | | Show/hide the Alert History panel. |
+| `hotkeyClearNotificationHistory` | keys | | Clear the alert history. |
 | `hotkeyToggleMapPanel` | keys | | Show/hide the map panel. |
 | `hotkeyToggleIntelPanel` | keys | | Show/hide the intel panel. |
 
@@ -785,14 +787,14 @@ Matched by exact `name`. Positions are saved automatically on drag.
 | `excludeFromChatAlerts` | bool | `false` | This client never receives chat alerts. |
 | `hideThumbnail` | bool | `false` | Hide its thumbnail; takes no space cell. |
 | `hideFromClientList` | bool | `false` | Hide its row in the client list. |
-| `notificationsMuted` | bool | `false` | |
+| `notificationsMuted` | bool | `false` | No alerts on this character, from game events or chat. |
 
 ### systemColors
 
 | Key | Type | Default | Notes |
 |---|---|---|---|
 | `systemName` | string | `""` | Comma-separated names and patterns, case-insensitive. `*` any text, `?` one character, `#` one digit (`J######` = wormholes). |
-| `color` | colour | `0` | |
+| `color` | colour | `0x00000000` | |
 
 An exact name beats a pattern regardless of order; otherwise the first match wins. The key is `systemName`; an entry using `name` never matches.
 
