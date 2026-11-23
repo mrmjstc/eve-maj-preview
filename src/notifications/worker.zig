@@ -3,8 +3,8 @@ const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const log = @import("../log.zig");
 
-/// `Engine`: `init`, `run` and `deinit`, all called on the worker thread.
-/// `Command.deinit`: frees what it owns once run or dropped.
+/// `Engine`: `init`, `run(command, allocator)` and `deinit`, all called on the worker thread.
+/// `Command.deinit(allocator)`: frees what it owns once run or dropped.
 /// `Command.isAlert`: whether pushAlert may drop it.
 /// `Command.isMinorAlert`: whether it's dropped before other alerts.
 /// `description`: names the feature in logs.
@@ -14,6 +14,8 @@ pub fn Worker(comptime Command: type, comptime Engine: type, comptime scope: []c
     return struct {
         /// Set once, before the first command.
         io: std.Io = undefined,
+        /// Set once, before the first command; thread-safe, as both threads free commands.
+        allocator: std.mem.Allocator = undefined,
         mutex: std.Io.Mutex = .init,
         /// Guarded by mutex.
         queue: std.ArrayList(Command) = .empty,
@@ -64,7 +66,7 @@ pub fn Worker(comptime Command: type, comptime Engine: type, comptime scope: []c
         pub fn push(self: *Self, command: Command) void {
             self.append(command, null) catch |err| {
                 slog.warn("Failed to queue a {s} command: {}", .{ description, err });
-                command.deinit();
+                command.deinit(self.allocator);
             };
         }
 
@@ -72,14 +74,14 @@ pub fn Worker(comptime Command: type, comptime Engine: type, comptime scope: []c
         pub fn pushAlert(self: *Self, command: Command, max_waiting: usize) void {
             self.append(command, @max(max_waiting, 1)) catch |err| {
                 slog.warn("Failed to queue a {s} alert: {}", .{ description, err });
-                command.deinit();
+                command.deinit(self.allocator);
             };
         }
 
         /// Call once during app shutdown; drops anything still queued.
         pub fn shutdown(self: *Self) void {
             self.stop();
-            while (self.pop()) |command| command.deinit();
+            while (self.pop()) |command| command.deinit(self.allocator);
         }
 
         /// Ends the thread and its engine unless it has work the join would wait on; the next start runs it again.
@@ -129,7 +131,7 @@ pub fn Worker(comptime Command: type, comptime Engine: type, comptime scope: []c
         fn appendLocked(self: *Self, command: Command, max_waiting_alerts: ?usize) !usize {
             try self.mutex.lock(self.io);
             defer self.mutex.unlock(self.io);
-            try self.queue.append(std.heap.page_allocator, command);
+            try self.queue.append(self.allocator, command);
             const max_waiting = max_waiting_alerts orelse return 0;
 
             var alert_count: usize = 0;
@@ -151,7 +153,7 @@ pub fn Worker(comptime Command: type, comptime Engine: type, comptime scope: []c
                     i += 1;
                     continue;
                 }
-                self.queue.orderedRemove(i).deinit();
+                self.queue.orderedRemove(i).deinit(self.allocator);
                 dropped_count += 1;
             }
             return dropped_count;
@@ -200,8 +202,8 @@ pub fn Worker(comptime Command: type, comptime Engine: type, comptime scope: []c
                     }
                     continue;
                 };
-                defer command.deinit();
-                engine.run(command);
+                defer command.deinit(self.allocator);
+                engine.run(command, self.allocator);
             }
         }
     };
@@ -225,7 +227,7 @@ const TestCommand = struct {
     is_minor: bool = false,
     freed_log: *FreedLog,
 
-    fn deinit(self: TestCommand) void {
+    fn deinit(self: TestCommand, _: std.mem.Allocator) void {
         self.freed_log.ids[self.freed_log.count] = self.id;
         self.freed_log.count += 1;
     }
@@ -244,7 +246,7 @@ const TestEngine = struct {
         return .{};
     }
 
-    fn run(_: *TestEngine, _: TestCommand) void {}
+    fn run(_: *TestEngine, _: TestCommand, _: std.mem.Allocator) void {}
 
     fn deinit(_: *TestEngine) void {}
 };
@@ -258,14 +260,14 @@ fn drainIds(worker: *TestWorker, buffer: []u8) []const u8 {
         buffer[count] = command.id;
         count += 1;
     }
-    worker.queue.deinit(std.heap.page_allocator);
+    worker.queue.deinit(worker.allocator);
     worker.queue = .empty;
     return buffer[0..count];
 }
 
 test "pushAlert drops the oldest waiting alerts past max_waiting" {
     var log_entries: FreedLog = .{};
-    var worker: TestWorker = .{ .io = testing.io };
+    var worker: TestWorker = .{ .io = testing.io, .allocator = testing.allocator };
     for (1..4) |id| worker.pushAlert(.{ .id = @intCast(id), .is_alert = true, .freed_log = &log_entries }, 2);
 
     var buffer: [8]u8 = undefined;
@@ -275,7 +277,7 @@ test "pushAlert drops the oldest waiting alerts past max_waiting" {
 
 test "pushAlert never drops commands that aren't alerts" {
     var log_entries: FreedLog = .{};
-    var worker: TestWorker = .{ .io = testing.io };
+    var worker: TestWorker = .{ .io = testing.io, .allocator = testing.allocator };
     worker.push(.{ .id = 1, .is_alert = false, .freed_log = &log_entries });
     worker.push(.{ .id = 2, .is_alert = true, .freed_log = &log_entries });
     worker.push(.{ .id = 3, .is_alert = false, .freed_log = &log_entries });
@@ -288,7 +290,7 @@ test "pushAlert never drops commands that aren't alerts" {
 
 test "pushAlert keeps the new alert when max_waiting is 0" {
     var log_entries: FreedLog = .{};
-    var worker: TestWorker = .{ .io = testing.io };
+    var worker: TestWorker = .{ .io = testing.io, .allocator = testing.allocator };
     worker.pushAlert(.{ .id = 1, .is_alert = true, .freed_log = &log_entries }, 0);
     worker.pushAlert(.{ .id = 2, .is_alert = true, .freed_log = &log_entries }, 0);
 
@@ -299,7 +301,7 @@ test "pushAlert keeps the new alert when max_waiting is 0" {
 
 test "pushAlert drops minor alerts before older ones that aren't" {
     var log_entries: FreedLog = .{};
-    var worker: TestWorker = .{ .io = testing.io };
+    var worker: TestWorker = .{ .io = testing.io, .allocator = testing.allocator };
     worker.push(.{ .id = 1, .is_alert = true, .freed_log = &log_entries });
     worker.push(.{ .id = 2, .is_alert = true, .is_minor = true, .freed_log = &log_entries });
     worker.pushAlert(.{ .id = 3, .is_alert = true, .freed_log = &log_entries }, 2);
@@ -311,7 +313,7 @@ test "pushAlert drops minor alerts before older ones that aren't" {
 
 test "a new minor alert never pushes out one that isn't" {
     var log_entries: FreedLog = .{};
-    var worker: TestWorker = .{ .io = testing.io };
+    var worker: TestWorker = .{ .io = testing.io, .allocator = testing.allocator };
     worker.push(.{ .id = 1, .is_alert = true, .freed_log = &log_entries });
     worker.pushAlert(.{ .id = 2, .is_alert = true, .is_minor = true, .freed_log = &log_entries }, 1);
 
@@ -322,13 +324,13 @@ test "a new minor alert never pushes out one that isn't" {
 
 test "the worker is busy from taking a command until it finds the queue empty" {
     var log_entries: FreedLog = .{};
-    var worker: TestWorker = .{ .io = testing.io };
+    var worker: TestWorker = .{ .io = testing.io, .allocator = testing.allocator };
     try testing.expect(worker.isIdle());
     worker.push(.{ .id = 1, .is_alert = true, .freed_log = &log_entries });
     try testing.expect(!worker.isIdle());
 
     const taken = worker.next() orelse return error.TestExpectedCommand;
-    taken.deinit();
+    taken.deinit(testing.allocator);
     try testing.expect(!worker.isIdle());
     try testing.expectEqual(null, worker.next());
     try testing.expect(worker.isIdle());
@@ -338,7 +340,7 @@ test "the worker is busy from taking a command until it finds the queue empty" {
 
 test "push keeps every alert" {
     var log_entries: FreedLog = .{};
-    var worker: TestWorker = .{ .io = testing.io };
+    var worker: TestWorker = .{ .io = testing.io, .allocator = testing.allocator };
     for (1..4) |id| worker.push(.{ .id = @intCast(id), .is_alert = true, .freed_log = &log_entries });
 
     var buffer: [8]u8 = undefined;

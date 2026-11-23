@@ -59,8 +59,8 @@ pub fn main(init: std.process.Init) void {
 
 fn mainImpl(init: std.process.Init) !void {
     const allocator = init.gpa;
-    tts.setIo(init.io);
-    sound.setIo(init.io);
+    tts.setup(init.io, allocator);
+    sound.setup(init.io, allocator);
     config.setEnvironMap(init.environ_map);
 
     const is_in_executable_dir = setCwdToExecutableDir();

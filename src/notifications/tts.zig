@@ -6,7 +6,7 @@ const log = @import("../log.zig");
 
 const slog = log.Scoped("tts");
 
-const IID_IDispatch: win32.GUID = .{
+const IID_IDISPATCH: win32.GUID = .{
     .Data1 = 0x00020400,
     .Data2 = 0x0000,
     .Data3 = 0x0000,
@@ -130,7 +130,7 @@ const TtsEngine = struct {
         }
 
         var dispatch_ptr: ?*anyopaque = null;
-        const create_hr = win32.CoCreateInstance(&clsid, null, win32.CLSCTX_INPROC_SERVER, &IID_IDispatch, &dispatch_ptr);
+        const create_hr = win32.CoCreateInstance(&clsid, null, win32.CLSCTX_INPROC_SERVER, &IID_IDISPATCH, &dispatch_ptr);
         if (create_hr < 0) return error.CreateSpVoiceFailed;
 
         const dispatch: *IDispatch = @ptrCast(@alignCast(dispatch_ptr orelse return error.CreateSpVoiceFailed));
@@ -161,12 +161,12 @@ const TtsEngine = struct {
     }
 
     /// Blocks until spoken, as SpVoice's Invoke rejects the Flags that would make it asynchronous.
-    fn speak(self: *const TtsEngine, text: []const u8) void {
-        const wide_text = std.unicode.utf8ToUtf16LeAllocZ(std.heap.page_allocator, text) catch |err| {
+    fn speak(self: *const TtsEngine, allocator: std.mem.Allocator, text: []const u8) void {
+        const wide_text = std.unicode.utf8ToUtf16LeAllocZ(allocator, text) catch |err| {
             slog.warn("Failed to convert TTS text to UTF-16: {}", .{err});
             return;
         };
-        defer std.heap.page_allocator.free(wide_text);
+        defer allocator.free(wide_text);
 
         const bstr = SysAllocString(wide_text) orelse {
             slog.warn("Failed to allocate a BSTR for TTS text", .{});
@@ -180,9 +180,9 @@ const TtsEngine = struct {
         };
     }
 
-    pub fn run(self: *TtsEngine, command: Command) void {
+    pub fn run(self: *TtsEngine, command: Command, allocator: std.mem.Allocator) void {
         switch (command) {
-            .speak => |speech| self.speak(speech.text),
+            .speak => |speech| self.speak(allocator, speech.text),
             .set_volume_percent => |volume_percent| self.setVolume(volume_percent),
             .set_rate => |rate| self.setRate(rate),
         }
@@ -195,7 +195,7 @@ const TtsEngine = struct {
 };
 
 const Speech = struct {
-    /// Owned by page_allocator.
+    /// Owned; freed by Command.deinit.
     text: []const u8,
     is_minor: bool,
 };
@@ -205,8 +205,8 @@ const Command = union(enum) {
     set_volume_percent: u8,
     set_rate: i8,
 
-    pub fn deinit(self: Command) void {
-        if (self == .speak) std.heap.page_allocator.free(self.speak.text);
+    pub fn deinit(self: Command, allocator: std.mem.Allocator) void {
+        if (self == .speak) allocator.free(self.speak.text);
     }
 
     /// Voice settings are never dropped, or later alerts would speak with stale ones.
@@ -224,9 +224,10 @@ const Command = union(enum) {
 
 var g_worker: worker.Worker(Command, TtsEngine, "tts", "text-to-speech") = .{};
 
-/// Must be called once before any TTS function is used.
-pub fn setIo(io: std.Io) void {
+/// Must be called once before any TTS function is used; `allocator` must be thread-safe.
+pub fn setup(io: std.Io, allocator: std.mem.Allocator) void {
     g_worker.io = io;
+    g_worker.allocator = allocator;
 }
 
 /// Safe before TTS has started; does nothing if it can't start.
@@ -239,7 +240,7 @@ pub fn setVoiceSettings(volume_percent: u8, rate: i8) void {
 /// Returns at once; past `max_waiting` the oldest waiting alerts are dropped, `is_minor` ones first.
 pub fn speakAlert(text: []const u8, max_waiting: usize, is_minor: bool) void {
     if (!g_worker.start()) return;
-    const copy = std.heap.page_allocator.dupe(u8, text) catch |err| {
+    const copy = g_worker.allocator.dupe(u8, text) catch |err| {
         slog.warn("Failed to queue TTS alert: {}", .{err});
         return;
     };

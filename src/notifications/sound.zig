@@ -244,13 +244,13 @@ const DecodedPcm = struct {
 
 /// Queued, so overlapping alerts play in full instead of cutting each other off.
 const Command = struct {
-    /// Owned by page_allocator.
+    /// Owned; freed by deinit.
     path: []const u8,
     volume_percent: u8,
     is_minor: bool,
 
-    pub fn deinit(self: Command) void {
-        std.heap.page_allocator.free(self.path);
+    pub fn deinit(self: Command, allocator: std.mem.Allocator) void {
+        allocator.free(self.path);
     }
 
     pub fn isAlert(_: Command) bool {
@@ -269,8 +269,8 @@ const Player = struct {
         return .{};
     }
 
-    pub fn run(_: *Player, command: Command) void {
-        playBlocking(std.heap.page_allocator, command.path, command.volume_percent) catch |err| {
+    pub fn run(_: *Player, command: Command, allocator: std.mem.Allocator) void {
+        playBlocking(allocator, command.path, command.volume_percent) catch |err| {
             slog.warn("Failed to play sound alert '{s}': {}", .{ command.path, err });
         };
     }
@@ -282,15 +282,16 @@ const Player = struct {
 
 var g_worker: worker.Worker(Command, Player, "sound", "sound alerts") = .{};
 
-/// Must be called once before any sound function is used.
-pub fn setIo(io: std.Io) void {
+/// Must be called once before any sound function is used; `allocator` must be thread-safe.
+pub fn setup(io: std.Io, allocator: std.mem.Allocator) void {
     g_worker.io = io;
+    g_worker.allocator = allocator;
 }
 
 /// Returns at once; alerts play in order, each in full, and a waiting `is_minor` one is the first dropped.
 pub fn playAlert(path: []const u8, volume_percent: u8, is_minor: bool) void {
     if (!g_worker.start()) return;
-    const copy = std.heap.page_allocator.dupe(u8, path) catch |err| {
+    const copy = g_worker.allocator.dupe(u8, path) catch |err| {
         slog.warn("Failed to queue sound alert '{s}': {}", .{ path, err });
         return;
     };
