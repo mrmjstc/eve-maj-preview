@@ -1,4 +1,4 @@
-//! Edits to a settings document by path, the one way the config dialog changes settings and hears about the app's own changes.
+//! Edits to a settings document by path, as an import applies them, and the ids keyed lists are addressed by.
 const std = @import("std");
 const wire = @import("wire.zig");
 const key_list = @import("key_list.zig");
@@ -52,7 +52,7 @@ pub fn assignIds(comptime T: type, value: *T) void {
     }
 }
 
-/// `value` in the dialog's shape: the saved JSON plus each keyed list item's `id`.
+/// `value` as saved, plus each keyed list item's `id`, so ops can address what's read back.
 pub fn write(json_writer: anytype, comptime T: type, value: *const T) !void {
     return writeValue(json_writer, T, "", value);
 }
@@ -284,7 +284,7 @@ const TestDocument = struct {
     pub const Wire = wire.Wire(TestDocument);
 };
 
-/// A document edited the way the config window does, by JSON ops; deinit frees it, so a leaked edit fails the test.
+/// A document edited by JSON ops, as an import does; deinit frees it, so a leaked edit fails the test.
 const Fixture = struct {
     arena_state: std.heap.ArenaAllocator,
     document: TestDocument = .{},
@@ -305,7 +305,7 @@ const Fixture = struct {
         return apply(TestDocument, &self.document, op, .{ .arena = arena, .allocator = testing.allocator });
     }
 
-    /// The value at the path in `path_format`, a JSON array, in the dialog's shape.
+    /// The value at the path in `path_format`, a JSON array, as writeAt gives it.
     fn read(self: *Fixture, comptime path_format: []const u8, args: anytype) ![]const u8 {
         const arena = self.arena_state.allocator();
         const path = try std.json.parseFromSliceLeaky([]const std.json.Value, arena, try arena.print(path_format, args), .{});
@@ -480,7 +480,7 @@ test "assignIds gives only the items still at 0 an id" {
     try testing.expect(fixture.document.items.items[1].id != 0);
 }
 
-test "writeAt reads a value back in the dialog's shape, with each keyed item's id" {
+test "writeAt reads a value back as saved, with each keyed item's id" {
     var fixture: Fixture = .init();
     defer fixture.deinit();
     const id = (try fixture.edit(

@@ -33,7 +33,7 @@ pub fn build(b: *std.Build) void {
         .win32_manifest = null,
     });
 
-    // Windows subsystem hides the console window; main.zig calls AllocConsole() itself when logLevel == .debug, so debug builds still get a console.
+    // Windows subsystem hides the console window; log.openDebugConsole opens one when logLevel is debug.
     exe.subsystem = .windows;
 
     // Default Windows stack size is often too small.
