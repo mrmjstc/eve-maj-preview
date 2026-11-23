@@ -126,7 +126,7 @@ pub fn build(b: *std.Build) void {
     check_step.dependOn(&exe_check.step);
     check_step.dependOn(&sim_check.step);
 
-    // Debug, for the safety checks the release build's default optimize mode leaves out.
+    // Debug whatever -Doptimize says: only Debug fills undefined memory with 0xAA, so a read of it shows up.
     const tests = b.addTest(.{
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/tests.zig"),

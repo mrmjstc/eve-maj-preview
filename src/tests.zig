@@ -95,6 +95,7 @@ test {
     _ = @import("panels/history_look.zig");
     _ = @import("panels/intel_look.zig");
     _ = @import("panels/list_look.zig");
+    _ = @import("panels/map/coloring.zig");
     _ = @import("panels/map/look.zig");
     _ = @import("panels/map/marks.zig");
     _ = @import("panels/map/menu.zig");

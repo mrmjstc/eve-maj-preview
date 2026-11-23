@@ -625,6 +625,14 @@ pub const Layout = struct {
         return if (index == NO_NODE) null else index;
     }
 
+    /// The gate between two nodes, either way round; searched linearly, as a route asks this once a jump.
+    pub fn edgeBetween(self: *const Layout, first: u16, second: u16) ?Edge {
+        for (self.edges[0..self.edge_count]) |edge| {
+            if ((edge.first_index == first and edge.second_index == second) or (edge.first_index == second and edge.second_index == first)) return edge;
+        }
+        return null;
+    }
+
     fn hasGathered(self: *const Layout, regions: Regions) bool {
         const gathered = self.gathered orelse return false;
         return std.mem.eql(RegionIndex, gathered.slice(), regions.slice());
@@ -1388,6 +1396,14 @@ test "buildAround keeps its systems in order, joined by the gates among them alo
     try testing.expectEqual(perimeter, layout.nodes[1].system);
     try testing.expectEqual(@as(usize, 1), layout.edge_count);
     try testing.expectEqual(@as(usize, 0), layout.exit_count);
+}
+
+test "edgeBetween finds a gate either way round, and none between systems it doesn't join" {
+    var layout: Layout = .{};
+    layout.buildAround(&.{ universe.findSystem("Jita").?, universe.findSystem("Perimeter").?, universe.findSystem("Amarr").? }, TEST_AREA);
+    try testing.expect(layout.edgeBetween(0, 1) != null);
+    try testing.expect(layout.edgeBetween(1, 0) != null);
+    try testing.expect(layout.edgeBetween(0, 2) == null);
 }
 
 test "buildAround makes a listed system over the border an exit, and ignores other gates" {

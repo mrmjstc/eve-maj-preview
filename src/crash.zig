@@ -6,7 +6,7 @@ const log = @import("log.zig");
 /// Overwritten on every crash, so a crash loop can't fill the disk; the crash line written just before creates its folder.
 const MINIDUMP_FILE_NAME = std.unicode.utf8ToUtf16LeStringLiteral(log.MINIDUMP_FILE_NAME);
 /// Room for a MAX_PATH module path and a 64-bit offset.
-const LOCATION_LEN = 400;
+const LOCATION_LENGTH = 400;
 
 /// MiniDumpWriteDump isn't thread-safe; cleared after each attempt so a later crash can still dump.
 var g_dump_write_in_progress = std.atomic.Value(bool).init(false);
@@ -85,7 +85,7 @@ fn firstChanceExceptionHandler(info: *win32.EXCEPTION_POINTERS) callconv(.c) win
 
 /// Names the modules of the faulting code and of the stack's top word, which after a call through a null pointer is the caller's return address.
 fn logFaultLocation(info: *win32.EXCEPTION_POINTERS, code_address: usize) void {
-    var code_buf: [LOCATION_LEN]u8 = undefined;
+    var code_buf: [LOCATION_LENGTH]u8 = undefined;
     const code = describeAddress(&code_buf, code_address);
     const context = info.ContextRecord orelse {
         log.writeCrashLine("  Thread {d}, code {s}, no context record", .{ win32.GetCurrentThreadId(), code });
@@ -93,12 +93,12 @@ fn logFaultLocation(info: *win32.EXCEPTION_POINTERS, code_address: usize) void {
     };
     const stack_top: ?*align(1) const usize = @ptrFromInt(context.getRegs().sp);
     const top_word = if (stack_top) |word| word.* else 0;
-    var top_buf: [LOCATION_LEN]u8 = undefined;
+    var top_buf: [LOCATION_LENGTH]u8 = undefined;
     log.writeCrashLine("  Thread {d}, code {s}; top of stack 0x{x} {s}", .{ win32.GetCurrentThreadId(), code, top_word, describeAddress(&top_buf, top_word) });
 }
 
 /// The module's path and the offset into it, so code in another DLL, e.g. a Vulkan layer, is named.
-fn describeAddress(buf: *[LOCATION_LEN]u8, address: usize) []const u8 {
+fn describeAddress(buf: *[LOCATION_LENGTH]u8, address: usize) []const u8 {
     var module: ?win32.HMODULE = null;
     const flags = win32.GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | win32.GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT;
     if (address == 0 or !win32.toBool(win32.GetModuleHandleExA(flags, @ptrFromInt(address), &module))) return "in no module";

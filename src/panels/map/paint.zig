@@ -9,6 +9,7 @@ const history_rows = @import("../history_rows.zig");
 const list_look = @import("../list_look.zig");
 const destinations_mod = @import("destinations.zig");
 const scene_mod = @import("scene.zig");
+const coloring = @import("coloring.zig");
 const look = @import("look.zig");
 const metric_segments = @import("metric_segments.zig");
 const ownership = @import("ownership.zig");
@@ -46,8 +47,8 @@ const Kills = zkill.Kills;
 const Destinations = destinations_mod.Destinations;
 const FixedText = fixed_text.FixedText;
 const Incursions = incursions_mod.Incursions;
-const Layout = layout_mod.Layout;
 const MapMetric = types.MapMetric;
+const MapPaint = coloring.MapPaint;
 const MapState = state_mod.MapState;
 const MetricSegment = metric_segments.MetricSegment;
 const PopupRow = popup_look.PopupRow;
@@ -105,18 +106,6 @@ pub const Measured = struct {
     popup: *popup_menu.PopupMenu,
     /// Borrowed for one render.
     search_stops: *search.Stops,
-};
-
-/// What's measured once a frame for colouring the map.
-const MapPaint = struct {
-    metric: MapMetric,
-    /// By SystemIndex, what `metric` reads; null while none have come.
-    traffic: ?[]const SystemStats,
-    /// What Eve Stars summed `traffic` over; null for ESI's last hour.
-    span: ?TrafficSpan,
-    /// The busiest system shown by `metric`, which heat is measured against.
-    peak: u32,
-    holders: ownership.HolderRanks,
 };
 
 /// What follows a system's name.
@@ -249,8 +238,9 @@ pub const Painter = struct {
             .metric = metric,
             .traffic = traffic,
             .span = self.pickedSpan(metric),
-            .peak = peakValue(&self.state.layout, traffic, metric),
+            .peak = coloring.peakValue(&self.state.layout, traffic, metric),
             .holders = if (scene.stats) |stats| .fromNodes(stats, nodes, scene.logo_colors) else .{},
+            .stats = scene.stats,
         };
     }
 
@@ -739,7 +729,7 @@ pub const Painter = struct {
             const second = layout.nodes[edge.second_index];
             const is_lit = hovered_node == edge.first_index or hovered_node == edge.second_index or focus_node_index == edge.first_index or focus_node_index == edge.second_index;
             const plain_color = markers.edgeColor(edge.kind);
-            const edge_color = if (is_lit) look.EDGE_HOVER else stormEdgeColor(storms, first.system, second.system) orelse incursionEdgeColor(incursions, first.system, second.system) orelse holderEdgeColor(scene, paint, first.system, second.system) orelse plain_color;
+            const edge_color = if (is_lit) look.EDGE_HOVER else stormEdgeColor(storms, first.system, second.system) orelse incursionEdgeColor(incursions, first.system, second.system) orelse paint.holderEdgeColor(first.system, second.system) orelse plain_color;
             var point_buffer: [layout_mod.CURVE_SEGMENTS + 1]layout_mod.PixelPoint = undefined;
             const points = layout.edgePoints(edge, &point_buffer);
             for (points[0 .. points.len - 1], points[1..]) |from, to| pixel_buffer.drawLine(canvas, from.x, from.y, to.x, to.y, edge_color);
@@ -766,7 +756,7 @@ pub const Painter = struct {
             const radius = look.markerRadius(value, paint.peak) * scale;
             const ring_radius = radius + markers.RING_GAP;
             const is_focus = self.state.focus_system == node.system;
-            look.drawMarker(canvas, node.x, node.y, radius, if (self.state.isOutOfRange(node.system)) look.OUT_OF_RANGE else markerColor(scene, paint, node.system, value));
+            look.drawMarker(canvas, node.x, node.y, radius, if (self.state.isOutOfRange(node.system)) look.OUT_OF_RANGE else paint.markerColor(node.system, value));
             const is_hovered = if (hovered_node) |hovered| hovered == index else false;
             if (is_focus) {
                 pixel_buffer.drawRing(canvas, node.x, node.y, ring_radius, look.FOCUS_RING_THICKNESS, focus_ring_color);
@@ -883,7 +873,7 @@ pub const Painter = struct {
         for (systems[0 .. systems.len - 1], systems[1..]) |from, to| {
             const first = layout.nodeOf(from) orelse continue;
             const second = layout.nodeOf(to) orelse continue;
-            if (edgeBetween(layout, first, second)) |edge| {
+            if (layout.edgeBetween(first, second)) |edge| {
                 var point_buffer: [layout_mod.CURVE_SEGMENTS + 1]layout_mod.PixelPoint = undefined;
                 const points = layout.edgePoints(edge, &point_buffer);
                 for (points[0 .. points.len - 1], points[1..]) |start, end| mask.addBand(start.x, start.y, end.x, end.y, radius);
@@ -1144,14 +1134,6 @@ pub fn titleText(state: *const MapState) FixedText {
 /// `scale` is the zoom's marker scale.
 pub fn intelHaloRadius(intel_settings: *const config_mod.IntelConfig, pin: *const intel_pins.Pin, scale: f32, now_ms: u64) f32 {
     return markers.intelHaloRadius(now_ms -| pin.seen_ms, intel_settings.shrinkMs()) * scale;
-}
-
-/// Searched linearly, as a route asks this once a jump.
-fn edgeBetween(layout: *const Layout, first: u16, second: u16) ?layout_mod.Edge {
-    for (layout.edges[0..layout.edge_count]) |edge| {
-        if ((edge.first_index == first and edge.second_index == second) or (edge.first_index == second and edge.second_index == first)) return edge;
-    }
-    return null;
 }
 
 /// Empty when named on the list, else the area covering it; null when not avoided.
@@ -1438,40 +1420,8 @@ fn incursionEdgeColor(incursions: ?*const Incursions, first: SystemIndex, second
     return if (shown.coversGate(first, second)) look.INCURSION else null;
 }
 
-/// Null outside Sovereignty and Faction Warfare, or unless one holder or occupier has both ends, so a grey gate marks where two meet.
-fn holderEdgeColor(scene: Scene, paint: *const MapPaint, first: SystemIndex, second: SystemIndex) ?u32 {
-    const stats = scene.stats orelse return null;
-    if (paint.metric == .FactionWarfare) {
-        const occupier = stats.warfare[first].occupier;
-        if (occupier == faction_warfare.NO_FACTION or occupier != stats.warfare[second].occupier) return null;
-        return look.factionColorOf(occupier);
-    }
-    if (paint.metric != .Sovereignty) return null;
-    const holder = stats.systems[first].holder;
-    if (holder == stats_mod.NO_HOLDER or holder != stats.systems[second].holder) return null;
-    return paint.holders.colorOf(holder);
-}
-
 /// Null unless an incursion stages from `system`.
 fn incursionStagingColor(incursions: ?*const Incursions, system: SystemIndex) ?u32 {
     const shown = incursions orelse return null;
     return if (shown.stagedAt(system) != null) look.INCURSION else null;
-}
-
-fn markerColor(scene: Scene, paint: *const MapPaint, system: SystemIndex, value: u32) u32 {
-    return switch (paint.metric) {
-        .Security => security.securityColor(universe.systemInfo(system).security_tenths),
-        .ShipKills, .PodKills, .NpcKills, .Jumps => look.heatColor(value, paint.peak),
-        .NpcDelta => if (scene.stats) |stats| look.deltaColor(stats.systems[system].npc_delta, paint.peak) else look.HEAT_NONE,
-        .Sovereignty => paint.holders.colorOf(if (scene.stats) |stats| stats.systems[system].holder else stats_mod.NO_HOLDER),
-        .FactionWarfare => if (scene.stats) |stats| look.warfareColor(stats.warfare[system]) else look.HEAT_NONE,
-    };
-}
-
-/// The busiest system shown by `metric`, which heat is measured against.
-fn peakValue(layout: *const Layout, traffic: ?[]const SystemStats, metric: MapMetric) u32 {
-    const systems = traffic orelse return 0;
-    var peak: u32 = 0;
-    for (layout.nodes[0..layout.node_count]) |node| peak = @max(peak, metric_segments.metricValue(metric, systems[node.system]));
-    return peak;
 }
