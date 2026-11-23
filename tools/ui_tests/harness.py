@@ -44,6 +44,7 @@ BYSTANDER_NAME = "Bystander"
 BYSTANDER_EXES = ("bystander.exe", "onlooker.exe")
 # src/panels/panel_header.zig's HEIGHT, in physical pixels: the strip a panel drags by, and all a folded one shows.
 PANEL_HEADER_HEIGHT = 34
+FW_BOLD = 700
 
 user32 = ctypes.WinDLL("user32", use_last_error=True)
 WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
@@ -832,6 +833,13 @@ ALPHA, BRAVO, CHARLIE = "Alpha Pilot", "Bravo Pilot", "Charlie Pilot"
 def check(condition: bool, message: str):
     if not condition:
         raise TestFailure(message)
+
+
+def check_font(what: str, text: dict, face: str, is_bold: bool, is_italic: bool):
+    """`text`, an overlay or panel text from the state file, was drawn in `face`, bold or not, italic or not."""
+    font = text.get("font") or {}
+    actual = (font.get("face"), font.get("weight", 0) >= FW_BOLD, font.get("is_italic"))
+    check(actual == (face, is_bold, is_italic), f"{what} drawn in {font or 'an unknown font'}, expected {face}, bold={is_bold}, italic={is_italic}")
 
 
 def scaled(value: int, scale: float) -> int:

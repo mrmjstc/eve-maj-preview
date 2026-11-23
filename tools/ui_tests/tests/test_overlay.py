@@ -8,7 +8,7 @@ import time
 from dataclasses import dataclass, field
 
 from eve_logs import bounty, combat_in, combat_out, mined, pace
-from harness import ALPHA, BRAVO, GENERIC_CHARACTER_NAME, check, close_to, covers, pixel, wait_for
+from harness import ALPHA, BRAVO, GENERIC_CHARACTER_NAME, check, check_font, close_to, covers, pixel, wait_for
 
 GLOBAL_SETTINGS = {"chatlog": {"enabled": True}}
 RED, GREEN, BLUE = 0xFFFF0000, 0xFF00FF00, 0xFF0000FF
@@ -58,8 +58,6 @@ class Element:
     keys: dict
     show: dict = field(default_factory=dict)
     feed: object = None
-    # Its words stay the same between renders, so a font's width can be compared.
-    is_stable: bool = False
 
 
 def thumbnail_keys(prefix: str) -> dict:
@@ -84,17 +82,19 @@ def feed_lines(make_line, count: int = 8, spacing_s: float = 0.3):
 
 
 ELEMENTS = {
-    "character_name": Element("ThumbnailConfig", "thumbnail", thumbnail_keys("characterName"), is_stable=True),
-    "system_name": Element("ThumbnailConfig", "thumbnail", thumbnail_keys("systemName"), {"thumbnail": {"showSystemName": True}}, is_stable=True),
+    "character_name": Element("ThumbnailConfig", "thumbnail", thumbnail_keys("characterName")),
+    "system_name": Element("ThumbnailConfig", "thumbnail", thumbnail_keys("systemName"), {"thumbnail": {"showSystemName": True}}),
     "group_badge": Element("ThumbnailConfig", "thumbnail", thumbnail_keys("quickGroupBadge"),
-                           {"thumbnail": {"showQuickGroupBadge": True}, "hotkeyGroups": [{"name": "Fleet", "characters": [ALPHA], "showBadge": True}]}, is_stable=True),
-    "session_timer": Element("ThumbnailConfig", "thumbnail", thumbnail_keys("sessionTimer"), {"thumbnail": {"showSessionTimer": True}}, is_stable=True),
+                           {"thumbnail": {"showQuickGroupBadge": True}, "hotkeyGroups": [{"name": "Fleet", "characters": [ALPHA], "showBadge": True}]}),
+    "session_timer": Element("ThumbnailConfig", "thumbnail", thumbnail_keys("sessionTimer"), {"thumbnail": {"showSessionTimer": True}}),
     "incoming_dps": Element("CombatTextStyle", "combatText", stat_keys("incoming_"), {"thumbnail": {"combatText": {"shown": True}}}, feed_lines(lambda _: combat_in(100))),
     "outgoing_dps": Element("CombatTextStyle", "combatText", stat_keys("outgoing_"), {"thumbnail": {"combatText": {"shown": True}}}, feed_lines(lambda _: combat_out(100))),
     "mining": Element("MiningTextStyle", "miningText", stat_keys(), {"thumbnail": {"miningText": {"shown": True}}}, feed_lines(lambda _: mined(110), 6, RATED_SPACING_S)),
     "bounty": Element("BountyTextStyle", "bountyText", stat_keys(), {"thumbnail": {"bountyText": {"shown": True}}}, feed_lines(lambda i: bounty(100000 + i), 5, RATED_SPACING_S)),
     "resources": Element("ResourcesTextStyle", "resourcesText", stat_keys(), {"thumbnail": {"resourcesText": {"shown": True}}, "resources": {"update_interval_ms": 1000}}),
 }
+
+
 def element_settings(spec: Element, **values) -> dict:
     """`values` keyed by the snake-case names in Element.keys."""
     settings = {spec.keys[name]: value for name, value in values.items()}
@@ -115,7 +115,7 @@ def show_element(session, name: str, profile: dict | None = None) -> list[dict]:
 
 
 def make_style_test(name: str, spec: Element):
-    keys = ["position", "offset_x", "offset_y", "font_size", "color", "bg_color"] + (["font_name", "font_weight"] if spec.is_stable else [])
+    keys = ("position", "offset_x", "offset_y", "font_size", "color", "bg_color", "font_name", "font_weight")
 
     @covers(*(f"{spec.struct}.{spec.keys[key]}" for key in keys))
     def test(session):
@@ -128,15 +128,11 @@ def make_style_test(name: str, spec: Element):
         check((box["left"], box["top"]) == expected, f"{name} at ({box['left']}, {box['top']}), expected {expected}")
         check((lines[0]["color"], lines[0]["bg_color"]) == (TEXT_COLOR, BG_COLOR),
               f"{name} colours {lines[0]['color']:08X}/{lines[0]['bg_color']:08X}, expected {TEXT_COLOR:08X}/{BG_COLOR:08X}")
+        check_font(name, lines[0], "Segoe UI", is_bold=False, is_italic=False)
 
-        bigger = block(show_element(session, name, merged(styled, element_settings(spec, font_size=22))))
-        check(bigger["height"] > box["height"], f"{name} is {bigger['height']} high at font size 22, {box['height']} at 10")
-        if not spec.is_stable:
-            return
-        other_font = block(show_element(session, name, merged(styled, element_settings(spec, font_name="Courier New"))))
-        check(other_font["width"] != box["width"], f"{name} kept its width {box['width']} in another font")
-        bold = block(show_element(session, name, merged(styled, element_settings(spec, font_weight="Bold"))))
-        check(bold["width"] > box["width"], f"{name} is {bold['width']} wide in bold, {box['width']} regular")
+        restyled = show_element(session, name, merged(styled, element_settings(spec, font_size=22, font_name="Courier New", font_weight="BoldItalic")))
+        check(block(restyled)["height"] > box["height"], f"{name} is {block(restyled)['height']} high at font size 22, {box['height']} at 10")
+        check_font(name, restyled[0], "Courier New", is_bold=True, is_italic=True)
 
     test.__name__ = f"test_the_{name}_text_takes_its_position_offset_colours_and_font"
     return test

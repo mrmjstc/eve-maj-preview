@@ -3,7 +3,7 @@
 import time
 
 from eve_logs import bounty, combat_in, combat_out, mined, pace
-from harness import ALPHA, BRAVO, check, client_to_screen, covers, monitors, pixel, stays, wait_for, wheel
+from harness import ALPHA, BRAVO, check, check_font, client_to_screen, covers, monitors, pixel, stays, wait_for, wheel
 
 GLOBAL_SETTINGS = {"chatlog": {"enabled": True}}
 QUIET_MAP = {"liveStats": False, "showKills": False, "showAnsiblex": False}
@@ -15,6 +15,7 @@ RGB = 0x00FFFFFF
 # src/panels/list_look.zig's NAME (palette.TEXT), for a row that's neither active nor coloured.
 LIST_NAME_COLOR = 0xFFE8E6E1
 REGIONS = {"The Forge": 10000002, "Domain": 10000043, "Lonetrek": 10000016, "Sinq Laison": 10000032}
+SOLITUDE = 10000044
 
 
 def strings(session, kind: str) -> list[str]:
@@ -98,6 +99,14 @@ def test_a_bigger_font_makes_taller_rows(session):
         session.start_client(ALPHA)
         heights.append(session.wait_for_panel_window(LIST_CLASS).height)
     check(heights[1] > heights[0], f"the list is {heights[1]} high at font size 20, {heights[0]} at 12")
+
+
+@covers("ListViewConfig.fontName", "ListViewConfig.fontWeight")
+def test_the_list_draws_in_its_font(session):
+    show_list(session, fontName="Courier New", fontWeight="Italic")
+    session.start_client(ALPHA)
+    # Names are drawn in the bold of the font set.
+    check_font("the name", session.wait_for_panel_text(LIST, ALPHA), "Courier New", is_bold=True, is_italic=True)
 
 
 @covers("ListViewConfig.showSystemName", "ListViewConfig.systemNameColor")
@@ -352,6 +361,15 @@ def test_a_bigger_history_font_spaces_rows_further_apart(session):
     check(gaps[1] > gaps[0], f"history rows {gaps[1]} apart at size 18, {gaps[0]} at 9")
 
 
+@covers("HistoryPanelConfig.fontName", "HistoryPanelConfig.fontWeight")
+def test_history_draws_in_its_font(session):
+    logs = show_history(session, fontName="Courier New", fontWeight="Italic")
+    logs.alert("CargoFull")
+    text = entry_text(session, "CargoFull")
+    check_font("the entry", session.wait_for_panel_text(HISTORY, text), "Courier New", is_bold=False, is_italic=True)
+    check_font("the name", session.wait_for_panel_text(HISTORY, ALPHA), "Courier New", is_bold=True, is_italic=True)
+
+
 @covers("HistoryPanelConfig.showTimestamp")
 def test_history_rows_show_their_age_as_set(session):
     for shows in (True, False):
@@ -508,6 +526,14 @@ def test_a_bigger_intel_font_spaces_rows_further_apart(session):
     check(gaps[1] > gaps[0], f"intel rows {gaps[1]} apart at size 18, {gaps[0]} at 9")
 
 
+@covers("IntelPanelConfig.fontName", "IntelPanelConfig.fontWeight")
+def test_intel_draws_in_its_font(session):
+    logs = show_intel(session, fontName="Courier New", fontWeight="Italic")
+    report(logs, "Perimeter +1 neut")
+    # The system is drawn in the bold of the font set.
+    check_font("the system", session.wait_for_panel_text(INTEL, "Perimeter"), "Courier New", is_bold=True, is_italic=True)
+
+
 @covers("IntelPanelConfig.colorSystemNames")
 def test_intel_rows_can_draw_systems_in_their_name_colour(session):
     colors = []
@@ -560,8 +586,8 @@ def show_map(session, **map_settings):
 
 
 def map_names(session, wanted) -> set[str]:
-    """The region names any of the map's texts mention."""
-    return {name for name in wanted if any(name in text for text in strings(session, MAP))}
+    """The region names any of the map's texts mention, leaving out exit labels ("Tunttaras - Lonetrek"), which name the next region."""
+    return {name for name in wanted if any(name in text and " - " not in text for text in strings(session, MAP))}
 
 
 @covers("MapPanelConfig.regionId")
@@ -631,3 +657,13 @@ def test_the_metric_bar_picks_the_set_metric(session):
     check(text_named(session, MAP, "Kills") is None, "the kills segment still says Kills with Pods picked")
     security_idle = session.wait_for_panel_text(MAP, "Security")["color"]
     check(not same_color(security_picked, security_idle), f"Security drawn in {security_idle:08X} picked or not")
+
+
+@covers("MapPanelConfig.fontName", "MapPanelConfig.fontSize", "MapPanelConfig.fontWeight")
+def test_the_map_labels_systems_in_its_font(session):
+    # A small region, as a crowded one shows its systems as pips with no names.
+    show_map(session, regionId=SOLITUDE, followActive=False, fontName="Courier New", fontSize=12, fontWeight="Italic")
+    label = wait_for("a system named in the map's font", lambda: next((t for t in session.panel_texts(MAP) if (t.get("font") or {}).get("is_italic")), None),
+                     details=lambda: session.panel_texts(MAP)[:6])
+    check_font(f"'{label['text']}'", label, "Courier New", is_bold=False, is_italic=True)
+    check(label["font"]["height_px"] == 12, f"'{label['text']}' drawn {label['font']['height_px']} px high at font size 12")

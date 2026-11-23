@@ -280,7 +280,8 @@ def test_the_notified_keys_visit_clients_with_recent_alerts(session):
     for _ in range(2):
         session.press(VK_F13)
         reached = lambda: (lambda name: name if name in (BRAVO, CHARLIE) and name not in visited else None)(session.foreground_client())
-        visited.append(wait_for("focus to reach a notified client", reached, details=session.foreground_client))
+        visited.append(wait_for("focus to reach a notified client", reached,
+                                details=lambda: f"{session.foreground_client()}; log: {session.log_lines('notified', 'focus')[-8:]}"))
     check(sorted(visited) == [BRAVO, CHARLIE], f"visited {visited}")
     session.press(VK_F13 + 1)
     session.wait_for_foreground(visited[0])
