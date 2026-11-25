@@ -1,4 +1,4 @@
-//! The configuration window's Client Windows tab: how EVE windows animate, minimize and return to their saved positions, then, in Advanced Mode, which windows are tracked and Ultra Potato Mode; main thread only.
+//! The configuration window's Client Windows tab: how EVE windows animate, minimize, return to their saved positions and sit with the taskbar, then, in Advanced Mode, which windows are tracked and Ultra Potato Mode; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const config = @import("../../../config.zig");
@@ -67,6 +67,7 @@ pub fn show(context: *ui.Frame) !void {
     try animation(context);
     try autoMinimize(context);
     try windowPosition(context);
+    try taskbar(context);
     if (!session.global().get("advancedMode")) return;
     try scanning(context);
     try window_filters.show(context);
@@ -92,6 +93,13 @@ fn autoMinimize(context: *ui.Frame) !void {
     try options.close(context);
     try bind.toggle(context, ref, "startMinimized", "Start Clients Minimized");
     try widgets.hintText(context, .src(@src()), "Minimizes each client as it opens, even with Auto-Minimize off.");
+    try section.close(context);
+}
+
+fn taskbar(context: *ui.Frame) !void {
+    const section = try widgets.openSection(context, "Taskbar", "Whether the Windows taskbar stays over a client.", &style.section);
+    try bind.toggle(context, session.profile().child("interaction"), "hideTaskbarOverClients", "Hide Taskbar Over Clients");
+    try widgets.hintText(context, .src(@src()), "Puts the taskbar behind the active client, even one smaller than the screen.");
     try section.close(context);
 }
 

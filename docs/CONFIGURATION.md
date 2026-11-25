@@ -601,6 +601,7 @@ Client List and History, Map and Intel panel drags. Panels measure by their visi
 |---|---|---|---|---|
 | `enableDragging` | bool | `true` | | Right-drag moves a thumbnail; Ctrl+right-drag moves all. |
 | `animationStyle` | enum | `NoAnimation` | `NoAnimation` `OriginalAnimation` | `NoAnimation` disables Windows' minimize/restore animation around the app's own minimize/restore calls, then restores the setting. |
+| `hideTaskbarOverClients` | bool | `true` | | Marks EVE clients fullscreen for Explorer, so the taskbar goes behind the active one even when it doesn't cover the monitor. |
 | `clickTrigger` | enum | `MouseDown` | `MouseDown` `MouseUp` | When left-click activates. |
 | `clickThrough` | bool | `false` | | Thumbnails and Client List ignore the mouse. Disables clicking, exclusion, dragging and hover zoom. |
 | `hoverCursor` | enum | `Default` | `Default` `Hand` `Crosshair` `Move` `Help` | Over thumbnails and Client List rows. |

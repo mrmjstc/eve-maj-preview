@@ -292,7 +292,10 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
         },
         else => {
             if (app.tray_icon) |*icon| {
-                if (icon.handleTaskbarCreated(msg)) return 0;
+                if (icon.handleTaskbarCreated(msg)) {
+                    app.taskbar_marks = null;
+                    return 0;
+                }
             }
             return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
         },

@@ -24,6 +24,7 @@
 - Config dialog controls named for screen readers and automation
 - Style guide and source checks in the repo, run in CI
 - Manual placement map shows unsaved thumbnails where they are, and follows them live
+- Hide Taskbar Over Clients: taskbar goes behind the active client, even one smaller than the screen
 
 ### Changed
 - Client List, History and Intel panels redesigned, with collapsible headers and a ⋯ settings menu

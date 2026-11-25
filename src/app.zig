@@ -9,6 +9,7 @@ const auto_colors_mod = @import("clients/auto_colors.zig");
 const exclusions_mod = @import("clients/exclusions.zig");
 const auto_move_mod = @import("clients/auto_move.zig");
 const actions = @import("clients/actions.zig");
+const taskbar = @import("clients/taskbar.zig");
 const activation = @import("control/activation.zig");
 const auto_minimize = @import("control/auto_minimize.zig");
 const focus_mod = @import("control/focus.zig");
@@ -139,6 +140,8 @@ pub const App = struct {
     last_travel_check: win32.Ticks = .{},
     /// The ThumbnailSet.placementHash the open dialog was last redrawn for.
     thumbnail_placement_hash: u64 = 0,
+    /// What every client was last marked for the taskbar; null until the first tick and after Explorer restarts, which forgets the marks.
+    taskbar_marks: ?bool = null,
     /// Null unless the end-to-end tests asked for it.
     state_report: ?state_file.StateFile = null,
     /// Owned; null unless state_report is set.
@@ -207,6 +210,8 @@ pub const App = struct {
         self.auto_move.deinit();
         self.exclusions.deinit();
         self.auto_colors.deinit();
+        // Explorer would otherwise keep hiding the taskbar behind clients after the app has gone.
+        if (self.taskbar_marks == true) taskbar.markClients(self.roster.clients.items, .all, false);
         self.roster.deinit();
         self.scout.deinit();
         self.map_panel.deinit(self.allocator);
@@ -372,6 +377,7 @@ pub const App = struct {
         defer scout_result.deinit(self.allocator);
         self.syncRoster(scout_result.windows);
         self.followNewClients();
+        self.syncTaskbarMarks();
         if (self.roster.clients.items.len == 0) self.auto_colors.flush();
         self.clearLoggedOutExclusions(scout_result.name_changes.items);
         // The Characters tab marks who's logged in, which only a login, logout or closed client changes.
@@ -794,6 +800,18 @@ pub const App = struct {
             }
         }
         self.auto_move.verify(live);
+    }
+
+    /// After the tick's sync: marks every client when the setting changed or Explorer restarted, else only those that joined.
+    fn syncTaskbarMarks(self: *App) void {
+        const should_hide = self.store.live.interaction.hideTaskbarOverClients;
+        if (self.taskbar_marks == should_hide) {
+            if (should_hide) taskbar.markClients(self.roster.clients.items, .joined, true);
+            return;
+        }
+        // With nothing marked yet, unmarking would have nothing to undo.
+        if (self.taskbar_marks != null or should_hide) taskbar.markClients(self.roster.clients.items, .all, should_hide);
+        self.taskbar_marks = should_hide;
     }
 
     /// Runs control/restart_plan.zig's steps, at startup and on a reload; takes ownership of `replacement`, which becomes the running store.

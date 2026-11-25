@@ -41,6 +41,7 @@ NOT_TESTED = {
     "ThumbnailSpace.name": "a label in the dialog only",
     "DisplayConfig.hideThumbnailsDuringRegionSelect": "the config dialog's region tool",
     "InteractionConfig.animationStyle": "turns Windows' animation off only for the instant of each call; restoring it is tested",
+    "InteractionConfig.hideTaskbarOverClients": "Explorer keeps the fullscreen marks, with no way to read them back",
     "NotificationType.Generic": "only the config dialog's Test button raises it",
     "NotificationTypeConfig.sound_volume": "audio output",
     "NotificationConfig.tts_volume": "audio output",

@@ -1662,6 +1662,69 @@ fn showAndGetPath(allocator: std.mem.Allocator, dialog: *IFileOpenDialog, owner:
     return try std.unicode.utf16LeToUtf8Alloc(allocator, std.mem.span(path_wide));
 }
 
+/// CoInitializeEx's "already initialized as multithreaded", which still lets this thread use COM.
+const RPC_E_CHANGED_MODE: c_long = @bitCast(@as(u32, 0x80010106));
+
+const CLSID_TaskbarList: GUID = .{
+    .Data1 = 0x56FDF344,
+    .Data2 = 0xFD6D,
+    .Data3 = 0x11D0,
+    .Data4 = .{ 0x95, 0x8A, 0x00, 0x60, 0x97, 0xC9, 0xA0, 0x90 },
+};
+
+const IID_ITaskbarList2: GUID = .{
+    .Data1 = 0x602D4995,
+    .Data2 = 0xB13A,
+    .Data3 = 0x429B,
+    .Data4 = .{ 0xA6, 0x6E, 0x19, 0x35, 0xE4, 0x4F, 0x43, 0x17 },
+};
+
+const ITaskbarList2 = extern struct {
+    vtable: *const ITaskbarList2Vtbl,
+
+    const ITaskbarList2Vtbl = extern struct {
+        QueryInterface: *const fn (*ITaskbarList2, *const GUID, *?*anyopaque) callconv(.c) c_long,
+        AddRef: *const fn (*ITaskbarList2) callconv(.c) u32,
+        Release: *const fn (*ITaskbarList2) callconv(.c) u32,
+        HrInit: *const fn (*ITaskbarList2) callconv(.c) c_long,
+        AddTab: *const fn (*ITaskbarList2, HWND) callconv(.c) c_long,
+        DeleteTab: *const fn (*ITaskbarList2, HWND) callconv(.c) c_long,
+        ActivateTab: *const fn (*ITaskbarList2, HWND) callconv(.c) c_long,
+        SetActiveAlt: *const fn (*ITaskbarList2, HWND) callconv(.c) c_long,
+        MarkFullscreenWindow: *const fn (*ITaskbarList2, HWND, BOOL) callconv(.c) c_long,
+    };
+};
+
+/// Explorer's taskbar, for marking windows it treats as fullscreen; init and deinit on the same thread.
+pub const TaskbarList = struct {
+    list: *ITaskbarList2,
+    /// False when the thread already ran multithreaded COM, which deinit then leaves alone.
+    owns_com: bool,
+
+    pub fn init() !TaskbarList {
+        const hr = CoInitializeEx(null, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+        if (hr < 0 and hr != RPC_E_CHANGED_MODE) return error.ComInitFailed;
+        const owns_com = hr >= 0;
+        errdefer if (owns_com) CoUninitialize();
+        var list_ptr: ?*anyopaque = null;
+        if (CoCreateInstance(&CLSID_TaskbarList, null, CLSCTX_INPROC_SERVER, &IID_ITaskbarList2, &list_ptr) < 0) return error.CreateTaskbarListFailed;
+        const list: *ITaskbarList2 = @ptrCast(@alignCast(list_ptr orelse return error.CreateTaskbarListFailed));
+        errdefer _ = list.vtable.Release(list);
+        if (list.vtable.HrInit(list) < 0) return error.TaskbarListInitFailed;
+        return .{ .list = list, .owns_com = owns_com };
+    }
+
+    pub fn deinit(self: *TaskbarList) void {
+        _ = self.list.vtable.Release(self.list);
+        if (self.owns_com) CoUninitialize();
+    }
+
+    /// While a marked window is active, Explorer puts the taskbar behind it, whatever its size.
+    pub fn markFullscreen(self: *const TaskbarList, hwnd: HWND, is_fullscreen: bool) !void {
+        if (self.list.vtable.MarkFullscreenWindow(self.list, hwnd, if (is_fullscreen) TRUE else FALSE) < 0) return error.MarkFullscreenFailed;
+    }
+};
+
 extern "shell32" fn SHGetKnownFolderPath(
     rfid: *const GUID,
     dwFlags: u32,

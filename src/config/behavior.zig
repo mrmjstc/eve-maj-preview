@@ -52,6 +52,8 @@ pub const PanelSnappingConfig = struct {
 pub const InteractionConfig = struct {
     enableDragging: bool = true,
     animationStyle: types.AnimationStyle = .NoAnimation,
+    /// Behind the active client only, even one smaller than its monitor.
+    hideTaskbarOverClients: bool = true,
     clickTrigger: types.ClickTrigger = .MouseDown,
     clickThrough: bool = false,
     hoverCursor: types.HoverCursor = .Default,
