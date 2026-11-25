@@ -145,15 +145,16 @@ Work that runs less often than every tick (every 2 s, every 15 min, ...) is time
 14. ThumbnailSet.updateConnections  the thumbnails' connection maps, from the intel pins
 15. ThumbnailSet.update             create, destroy or rename thumbnails to match the roster
 16. ThumbnailSet.checkHoverZoom     enlarged preview under the cursor
-17. ListWindow.render               the client list, when shown
-18. AutoMinimizer.check             minimize idle clients on the roster
-19. ChatlogMonitor.update + drain   findings to Roster (systems), Intel (pins), Notifier (alerts) and Scout
-20. MapPanel.update                 take new feed snapshots, render the map
-21. NotificationCenter.update       History and Intel panels, after the chatlog so they list this tick's alerts
-22. Trackers.tick                   throttled push of rates and resources onto the roster; alerts via Notifier
-23. travel_left_behind.check        every 2 s
-24. adjust tick interval            active scan rate, or the 1 s idle rate
-25. publishState                    rewrite the state file when it changed; only when EVE_MAJ_STATE_FILE is set
+17. redrawDialogIfThumbnailsMoved   while the dialog is open, so the Placement tab's map follows the thumbnails
+18. ListWindow.render               the client list, when shown
+19. AutoMinimizer.check             minimize idle clients on the roster
+20. ChatlogMonitor.update + drain   findings to Roster (systems), Intel (pins), Notifier (alerts) and Scout
+21. MapPanel.update                 take new feed snapshots, render the map
+22. NotificationCenter.update       History and Intel panels, after the chatlog so they list this tick's alerts
+23. Trackers.tick                   throttled push of rates and resources onto the roster; alerts via Notifier
+24. travel_left_behind.check        every 2 s
+25. adjust tick interval            active scan rate, or the 1 s idle rate
+26. publishState                    rewrite the state file when it changed; only when EVE_MAJ_STATE_FILE is set
 ```
 
 ## Threads and concurrency

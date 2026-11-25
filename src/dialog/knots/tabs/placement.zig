@@ -15,6 +15,7 @@ const hotkey_groups = @import("hotkey_groups.zig");
 const screen_map = @import("../screen_map.zig");
 const screen_math = @import("../screen_math.zig");
 const lang = @import("../../../lang/lang.zig");
+const log = @import("../../../log.zig");
 
 const Rect = ui.component.Rect;
 const Text = ui.component.Text;
@@ -26,6 +27,7 @@ const ScreenMap = screen_map.ScreenMap;
 // knots doesn't export its grid types by name.
 const GridTemplate = @typeInfo(@FieldType(ui.Style, "grid")).optional.child;
 const GridTrack = @typeInfo(@FieldType(GridTemplate, "rows")).pointer.child;
+const slog = log.Scoped("dialog_knots");
 
 const SPACE_ROW_KEY: ui.Key = .str("knots.space.row");
 /// How faded a switched-off space is, in the list and on the map alike.
@@ -92,7 +94,7 @@ fn thumbnailPlacement(context: *ui.Frame) !void {
     const section = try widgets.openSection(context, "Thumbnail Placement", "Drag thumbnails where you want them, or let Thumbnail Spaces arrange them.", &style.section);
     try bind.segmented(context, display, "placementMode", "Placement Mode", &.{ "Manual", "Thumbnail Spaces" });
     try widgets.hintText(context, .src(@src()), "Thumbnail Spaces arranges thumbnails for you in areas you draw.");
-    if (shows_manual) try savedPositionMap(context, profile);
+    if (shows_manual) try thumbnailPositionMap(context, profile);
     if (shows_spaces) {
         const items = profile.ptr.thumbnailSpaces.items;
         try regionMap(context, items, selectedIndex(items));
@@ -545,11 +547,18 @@ fn regionMap(context: *ui.Frame, items: []const config.ThumbnailSpace, initial_s
     try map.show(context, true);
 }
 
-/// Every monitor in miniature with each hand-placed character's saved thumbnail position.
-fn savedPositionMap(context: *ui.Frame, profile: ProfileRef) !void {
+/// Every monitor in miniature with each hand-placed thumbnail: its saved position, else where it is now.
+fn thumbnailPositionMap(context: *ui.Frame, profile: ProfileRef) !void {
     var map: ScreenMap = try .init(context, .str("knots.manual.map"));
+    try savedPositions(context, &map, profile);
+    try unsavedThumbnails(context, &map, profile);
+    try map.show(context, false);
+}
+
+fn savedPositions(context: *ui.Frame, map: *ScreenMap, profile: ProfileRef) !void {
     for (profile.ptr.characters.items) |character| {
         const position = character.position orelse continue;
+        if (profile.ptr.isThumbnailHidden(character.name)) continue;
         // A space ignores the saved position.
         if (spaces.spaceFor(profile.ptr, character.name) != null) continue;
         const size = profile.ptr.handPlacedSize(character.name);
@@ -564,7 +573,24 @@ fn savedPositionMap(context: *ui.Frame, profile: ProfileRef) !void {
         const box = map.frame.visibleBox(rect) orelse continue;
         try map.addSavedPosition(context, box);
     }
-    try map.show(context, false);
+}
+
+/// Running thumbnails whose character has no saved position, where their windows are now.
+fn unsavedThumbnails(context: *ui.Frame, map: *ScreenMap, profile: ProfileRef) !void {
+    const thumbnail_set = session.thumbnailSet() orelse return;
+    for (thumbnail_set.thumbnails.items) |*thumbnail| {
+        const name = thumbnail.character_name;
+        if (profile.ptr.isThumbnailHidden(name)) continue;
+        if (spaces.spaceFor(profile.ptr, name) != null) continue;
+        if (profile.ptr.findCharacterConst(name)) |character| if (character.position != null) continue;
+        var rect: win32.RECT = undefined;
+        if (!win32.toBool(win32.GetWindowRect(thumbnail.hwnd, &rect))) {
+            slog.debug("Failed to read the thumbnail rect of '{s}'", .{name});
+            continue;
+        }
+        const box = map.frame.visibleBox(rect) orelse continue;
+        try map.addSavedPosition(context, box);
+    }
 }
 
 /// Null for a switched-off built-in space, which the map leaves out rather than fades.

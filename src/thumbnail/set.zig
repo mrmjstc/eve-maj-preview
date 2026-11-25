@@ -381,6 +381,19 @@ pub const ThumbnailSet = struct {
         return null;
     }
 
+    /// A hash of every thumbnail's window rect, which changes whenever one moves, resizes, appears or goes.
+    pub fn placementHash(self: *const ThumbnailSet) u64 {
+        var hasher: std.hash.Wyhash = .init(0);
+        for (self.thumbnails.items) |*thumbnail| {
+            var rect: win32.RECT = .{ .left = 0, .top = 0, .right = 0, .bottom = 0 };
+            // A failed read hashes as an empty rect, which only costs the dialog a redraw.
+            _ = win32.GetWindowRect(thumbnail.hwnd, &rect);
+            hasher.update(std.mem.asBytes(&thumbnail.hwnd));
+            hasher.update(std.mem.asBytes(&rect));
+        }
+        return hasher.final();
+    }
+
     /// Reflows once at the end, since createThumbnail sizes each against the count so far.
     pub fn populate(self: *ThumbnailSet, eve_windows: []const scout.EveWindow) void {
         if (self.addMissingThumbnails(eve_windows) and arrange.hasCountDependentLayout(self)) self.repositionAllThumbnails();
@@ -462,15 +475,14 @@ pub const ThumbnailSet = struct {
     fn onLogin(self: *ThumbnailSet, thumbnail: *ThumbnailWindow) void {
         const name = thumbnail.character_name;
         // A space ignores the saved spot; applyNameChanges' reflow places it instead.
-        if (spaces.spaceFor(self.config, name) == null) {
-            if (self.config.getCharacterPosition(name)) |saved_position| {
-                thumbnail.moveTo(saved_position.x, saved_position.y, null);
-                self.resizeThumbnailIfNeeded(thumbnail, null);
-                slog.info("Moved {s} thumbnail to saved position: ({}, {})", .{ name, saved_position.x, saved_position.y });
-            } else {
-                slog.debug("No saved thumbnail position for {s}, keeping current location", .{name});
-            }
-        }
+        if (spaces.spaceFor(self.config, name) != null) return;
+        const saved_position = self.config.getCharacterPosition(name) orelse {
+            slog.debug("No saved thumbnail position for {s}, keeping current location", .{name});
+            return;
+        };
+        thumbnail.moveTo(saved_position.x, saved_position.y, null);
+        self.resizeThumbnailIfNeeded(thumbnail, null);
+        slog.info("Moved {s} thumbnail to saved position: ({}, {})", .{ name, saved_position.x, saved_position.y });
     }
 
     /// Redraws each thumbnail whose client changed, copying its system only when it differs, since replaceText drops the measured text sizes.

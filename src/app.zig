@@ -137,6 +137,8 @@ pub const App = struct {
     last_forced_scan: win32.Ticks = .{},
     tick_interval_ms: win32.UINT = 0,
     last_travel_check: win32.Ticks = .{},
+    /// The ThumbnailSet.placementHash the open dialog was last redrawn for.
+    thumbnail_placement_hash: u64 = 0,
     /// Null unless the end-to-end tests asked for it.
     state_report: ?state_file.StateFile = null,
     /// Owned; null unless state_report is set.
@@ -387,6 +389,7 @@ pub const App = struct {
             thumbnail_set.updateConnections(&self.intel.pins, tick_start.ms);
             thumbnail_set.update(scout_result.windows, scout_result.closed_windows.items, scout_result.name_changes.items);
             thumbnail_set.checkHoverZoom();
+            self.redrawDialogIfThumbnailsMoved(thumbnail_set);
         }
         if (self.list_window) |*list_window| {
             list_window.render(&self.roster, list_view.viewOf(self.thumbnail_set)) catch |err| {
@@ -565,6 +568,16 @@ pub const App = struct {
                 membership.clearLoggedOutExclusion(&self.commands(), change.old_name);
             }
         }
+    }
+
+    /// The Placement tab's map shows where thumbnails are, which the dialog doesn't see change.
+    fn redrawDialogIfThumbnailsMoved(self: *App, thumbnail_set: *const ThumbnailSet) void {
+        const dialog = self.dialog orelse return;
+        if (!dialog.is_open()) return;
+        const hash = thumbnail_set.placementHash();
+        if (hash == self.thumbnail_placement_hash) return;
+        self.thumbnail_placement_hash = hash;
+        dialog.redraw();
     }
 
     fn tickIntervalFor(self: *const App, window_count: usize) win32.UINT {
