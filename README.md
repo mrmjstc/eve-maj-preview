@@ -12,6 +12,8 @@ A *very* lightweight Windows tool for displaying DWM-based thumbnail previews of
 
 It's **never** going to let you input broadcast, display cropped portions of your eve client, manipulate your eve client in any way or intentionally help you break the EVE Online EULA/TOS. 
 
+The one file of EVE's it will touch is its graphics settings file (`core_public__.yaml`), and only if you run the optional Ultra Potato Mode tool, which sets the graphics quality options to their lowest and keeps a `.bak` of the original.
+
 > **Not publicly supported.** This is built for my corporation, friends, and anyone brave enough to run it - not a supported public release. Use it as-is, no guarantees, no support whatsoever.
 
 ## Features
