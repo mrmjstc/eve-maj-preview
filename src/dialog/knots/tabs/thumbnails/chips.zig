@@ -10,8 +10,10 @@ const widgets = @import("../../widgets.zig");
 const overlay_text = @import("../overlay_text.zig");
 const panel_preview = @import("../panel_preview.zig");
 const lang = @import("../../../../lang/lang.zig");
+const window_mod = @import("../../window.zig");
 
 const Fields = overlay_text.Fields;
+const Window = window_mod.Window;
 
 const STYLE_ROWS = [_]Row{ .sync, .font, .background };
 const WINDOW_HINT = "The rate is averaged over this time.";
@@ -299,17 +301,20 @@ pub const Look = struct {
     off_switch: ?[]const u8,
 };
 
-/// Same for All Texts; not saved.
-pub var g_should_sync_styling: bool = true;
+/// Kept from one opening of the window to the next.
+pub const Kept = struct {
+    /// Same for All Texts; not saved.
+    should_sync_styling: bool = true,
+};
 
 comptime {
     std.debug.assert(CHIPS.len == std.enums.values(Part).len);
 }
 
-pub fn look(comptime chip: Chip) Look {
-    const ref = refFor(chip.section);
-    const switch_ref = switchRef(chip);
-    const thumbnail = &session.profile().ptr.thumbnail;
+pub fn look(window: *Window, comptime chip: Chip) Look {
+    const ref = refFor(window, chip.section);
+    const switch_ref = switchRef(window, chip);
+    const thumbnail = &window.session.profile().ptr.thumbnail;
     const fields = chip.fields;
     const is_unique = if (chip.unique_field) |field| ref.get(field) else false;
     const is_enabled = if (chip.enabled_field) |field| ref.get(field) else true;
@@ -344,8 +349,8 @@ pub fn tipText(arena: std.mem.Allocator, off_switch: ?[]const u8) ![]const u8 {
 }
 
 /// Saves a drag's result; `offset_x`/`offset_y` are already clamped to the field's range.
-pub fn place(comptime chip: Chip, position: types.TextPosition, offset_x: i32, offset_y: i32) void {
-    const ref = refFor(chip.section);
+pub fn place(window: *Window, comptime chip: Chip, position: types.TextPosition, offset_x: i32, offset_y: i32) void {
+    const ref = refFor(window, chip.section);
     ref.set(chip.fields.position, position);
     ref.set(chip.fields.offset_x, offset_x);
     ref.set(chip.fields.offset_y, offset_y);
@@ -357,27 +362,27 @@ pub fn offsetRange(comptime chip: Chip) [2]f32 {
 }
 
 /// A chip's on switch, for its row in the parts list.
-pub fn showSwitch(context: *ui.Frame, comptime chip: Chip) !void {
+pub fn showSwitch(window: *Window, context: *ui.Frame, comptime chip: Chip) !void {
     // At the settings' index, as the search draws every tab too.
-    var switch_ref = switchRef(chip);
+    var switch_ref = switchRef(window, chip);
     switch_ref.index = 1;
-    try bind.toggle(context, switch_ref, chip.show_field, "");
+    try window.bind.toggle(context, switch_ref, chip.show_field, "");
 }
 
 /// A chip's settings beside the parts list: its name, its notice, then its rows.
-pub fn showSettings(context: *ui.Frame, comptime chip: Chip, comptime index: usize) !void {
+pub fn showSettings(window: *Window, context: *ui.Frame, comptime chip: Chip, comptime index: usize) !void {
     // The search's index draws every tab with it, and they bind some of the same fields, so its rows need keys of their own.
-    var ref = refFor(chip.section);
+    var ref = refFor(window, chip.section);
     ref.index = 1;
-    var switch_ref = switchRef(chip);
+    var switch_ref = switchRef(window, chip);
     switch_ref.index = 1;
-    var tracking_ref = refFor(chip.tracking_section orelse chip.section);
+    var tracking_ref = refFor(window, chip.tracking_section orelse chip.section);
     tracking_ref.index = 1;
     const fields = chip.fields;
     try panel_preview.inspectorTitle(context, .str("knots.chip.title:" ++ chip.label), chip.label);
 
     if (chip.chatlog_notice) |notice| {
-        if (!session.global().ptr.chatlog.enabled) try widgets.notice(context, .str("knots.chip.chatlog:" ++ chip.label), notice);
+        if (!window.session.global().ptr.chatlog.enabled) try window.widgets.notice(context, .str("knots.chip.chatlog:" ++ chip.label), notice);
     }
 
     const font_before = ref.get(fields.font_name);
@@ -391,48 +396,48 @@ pub fn showSettings(context: *ui.Frame, comptime chip: Chip, comptime index: usi
     inline for (chip.rows) |row| {
         switch (row) {
             .toggle => |toggle| {
-                try bind.toggle(context, ref, toggle.field, toggle.label);
-                if (toggle.hint) |hint| try widgets.hintText(context, .str("knots.chip.hint:" ++ chip.label ++ ":" ++ toggle.field), hint);
+                try window.bind.toggle(context, ref, toggle.field, toggle.label);
+                if (toggle.hint) |hint| try window.widgets.hintText(context, .str("knots.chip.hint:" ++ chip.label ++ ":" ++ toggle.field), hint);
                 if (toggle.disables_color and ref.get(toggle.field)) is_color_disabled = true;
-                if (comptime isSubGate(chip, toggle.field)) gate = try widgets.openGroup(context, .str("knots.chip.gate:" ++ chip.label), ref.get(toggle.field));
+                if (comptime isSubGate(chip, toggle.field)) gate = try window.widgets.openGroup(context, .str("knots.chip.gate:" ++ chip.label), ref.get(toggle.field));
             },
             .number => |number| {
-                try bind.number(context, if (comptime number.tracks) tracking_ref else ref, number.field, number.label, .{
+                try window.bind.number(context, if (comptime number.tracks) tracking_ref else ref, number.field, number.label, .{
                     .unit = number.unit,
                     .singular_unit = number.singular_unit,
                     .shows_seconds = number.shows_seconds,
                 });
-                if (number.hint) |hint| try widgets.hintText(context, .str("knots.chip.hint:" ++ chip.label ++ ":" ++ number.field), hint);
+                if (number.hint) |hint| try window.widgets.hintText(context, .str("knots.chip.hint:" ++ chip.label ++ ":" ++ number.field), hint);
             },
             .segmented => |segmented| {
-                try bind.segmented(context, if (comptime segmented.tracks) tracking_ref else ref, segmented.field, segmented.label, segmented.options);
-                if (segmented.hint) |hint| try widgets.hintText(context, .str("knots.chip.hint:" ++ chip.label ++ ":" ++ segmented.field), hint);
+                try window.bind.segmented(context, if (comptime segmented.tracks) tracking_ref else ref, segmented.field, segmented.label, segmented.options);
+                if (segmented.hint) |hint| try window.widgets.hintText(context, .str("knots.chip.hint:" ++ chip.label ++ ":" ++ segmented.field), hint);
             },
             .text => |text| {
-                try bind.text(context, if (comptime text.tracks) tracking_ref else ref, text.field, text.label, text.placeholder);
-                if (text.hint) |hint| try widgets.hintText(context, .str("knots.chip.hint:" ++ chip.label ++ ":" ++ text.field), hint);
+                try window.bind.text(context, if (comptime text.tracks) tracking_ref else ref, text.field, text.label, text.placeholder);
+                if (text.hint) |hint| try window.widgets.hintText(context, .str("knots.chip.hint:" ++ chip.label ++ ":" ++ text.field), hint);
             },
             .sync => {
-                if (try widgets.checkbox(context, .str("knots.chip.sync:" ++ chip.label), "Same for All Texts", &g_should_sync_styling)) {
-                    if (g_should_sync_styling) copyStyleToOthers(index);
+                if (try window.widgets.checkbox(context, .str("knots.chip.sync:" ++ chip.label), "Same for All Texts", &window.kept.chips.should_sync_styling)) {
+                    if (window.kept.chips.should_sync_styling) copyStyleToOthers(window, index);
                 }
-                try widgets.hintText(context, .str("knots.chip.sync.hint:" ++ chip.label), "Changing one text's font or background changes them all.");
+                try window.widgets.hintText(context, .str("knots.chip.sync.hint:" ++ chip.label), "Changing one text's font or background changes them all.");
             },
             .font => {
-                const font = try widgets.openWrappingBinding(context, .str("knots.chip.font:" ++ chip.label), "Font");
-                try bind.fontBoxes(context, ref, fields.font_name, fields.font_size, fields.font_weight);
+                const font = try window.widgets.openWrappingBinding(context, .str("knots.chip.font:" ++ chip.label), "Font");
+                try window.bind.fontBoxes(context, ref, fields.font_name, fields.font_size, fields.font_weight);
                 try font.close(context);
-                const color_row = try widgets.openBinding(context, .str("knots.chip.color:" ++ chip.label), "Text Color");
+                const color_row = try window.widgets.openBinding(context, .str("knots.chip.color:" ++ chip.label), "Text Color");
                 const color_group = try widgets.openInlineGroup(context, .str("knots.chip.color_group:" ++ chip.label), !is_color_disabled);
                 // Comptime: a chip listing .font without a colour field fails to compile.
-                try bind.rgbBox(context, switch_ref, fields.color.?);
+                try window.bind.rgbBox(context, switch_ref, fields.color.?);
                 try color_group.close(context);
                 try color_row.close(context);
-                if (chip.unique_field != null) try widgets.hintText(context, .str("knots.chip.hint:" ++ chip.label ++ ":color"), "Used while unique colors are off.");
+                if (chip.unique_field != null) try window.widgets.hintText(context, .str("knots.chip.hint:" ++ chip.label ++ ":color"), "Used while unique colors are off.");
             },
             .background => {
-                try bind.rgbAlpha(context, ref, fields.bg_color, "Background");
-                try widgets.hintText(context, .str("knots.chip.hint:" ++ chip.label ++ ":background"), "A box behind the text, so it reads on busy scenes; 0% hides it.");
+                try window.bind.rgbAlpha(context, ref, fields.bg_color, "Background");
+                try window.widgets.hintText(context, .str("knots.chip.hint:" ++ chip.label ++ ":background"), "A box behind the text, so it reads on busy scenes; 0% hides it.");
             },
         }
     }
@@ -440,7 +445,7 @@ pub fn showSettings(context: *ui.Frame, comptime chip: Chip, comptime index: usi
 
     const is_restyled = !std.mem.eql(u8, font_before, ref.get(fields.font_name)) or size_before != ref.get(fields.font_size) or
         weight_before != ref.get(fields.font_weight) or background_before != ref.get(fields.bg_color);
-    if (g_should_sync_styling and is_restyled) copyStyleToOthers(index);
+    if (window.kept.chips.should_sync_styling and is_restyled) copyStyleToOthers(window, index);
 }
 
 fn SectionType(comptime section: Section) type {
@@ -461,8 +466,8 @@ fn SectionType(comptime section: Section) type {
     };
 }
 
-fn refFor(comptime section: Section) session.Ref(SectionType(section)) {
-    const profile = session.profile();
+fn refFor(window: *Window, comptime section: Section) session.Ref(SectionType(section)) {
+    const profile = window.session.profile();
     return switch (section) {
         .thumbnail => profile.child("thumbnail"),
         .notifications => profile.child("notifications"),
@@ -480,16 +485,16 @@ fn refFor(comptime section: Section) session.Ref(SectionType(section)) {
     };
 }
 
-fn switchRef(comptime chip: Chip) session.Ref(SectionType(chip.switch_section orelse chip.section)) {
-    return refFor(chip.switch_section orelse chip.section);
+fn switchRef(window: *Window, comptime chip: Chip) session.Ref(SectionType(chip.switch_section orelse chip.section)) {
+    return refFor(window, chip.switch_section orelse chip.section);
 }
 
-fn copyStyleToOthers(comptime source_index: usize) void {
+fn copyStyleToOthers(window: *Window, comptime source_index: usize) void {
     const source = CHIPS[source_index];
-    const from = refFor(source.section);
+    const from = refFor(window, source.section);
     inline for (CHIPS, 0..) |chip, index| {
         if (index != source_index) {
-            const to = refFor(chip.section);
+            const to = refFor(window, chip.section);
             to.set(chip.fields.font_name, from.get(source.fields.font_name));
             to.set(chip.fields.font_size, from.get(source.fields.font_size));
             to.set(chip.fields.font_weight, from.get(source.fields.font_weight));

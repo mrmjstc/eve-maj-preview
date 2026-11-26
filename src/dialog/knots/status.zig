@@ -12,43 +12,46 @@ const FAILURE_SHOW_MS = 10000;
 
 pub const Kind = enum { info, success, failure };
 
-var g_buf: [MAX_LENGTH]u8 = undefined;
-var g_length: usize = 0;
-var g_kind: Kind = .info;
-/// Set by show until takeShownMs reports it.
-var g_is_new: bool = false;
+pub const Status = struct {
+    /// Only the first `length` bytes are written.
+    buf: [MAX_LENGTH]u8 = undefined,
+    length: usize = 0,
+    shown_kind: Kind = .info,
+    /// Set by show until takeShownMs reports it.
+    is_new: bool = false,
 
-/// `english` translated, with its {placeholders} filled from `args` (see wording.fill); truncated to MAX_LENGTH.
-pub fn show(message_kind: Kind, english: []const u8, args: anytype) void {
-    var writer: std.Io.Writer = .fixed(&g_buf);
-    lang.write(&writer, english, args) catch |err| {
-        slog.warn("Failed to fit a status message, showing what fit: {}", .{err});
-    };
-    g_length = writer.end;
-    g_kind = message_kind;
-    g_is_new = true;
-}
+    /// `english` translated, with its {placeholders} filled from `args` (see wording.fill); truncated to MAX_LENGTH.
+    pub fn show(self: *Status, message_kind: Kind, english: []const u8, args: anytype) void {
+        var writer: std.Io.Writer = .fixed(&self.buf);
+        lang.write(&writer, english, args) catch |err| {
+            slog.warn("Failed to fit a status message, showing what fit: {}", .{err});
+        };
+        self.length = writer.end;
+        self.shown_kind = message_kind;
+        self.is_new = true;
+    }
 
-/// How long to show the message shown since the last call, if any, before clearing it.
-pub fn takeShownMs() ?u32 {
-    if (!g_is_new) return null;
-    g_is_new = false;
-    if (g_length == 0) return null;
-    return switch (g_kind) {
-        .info, .success => SHOW_MS,
-        .failure => FAILURE_SHOW_MS,
-    };
-}
+    /// How long to show the message shown since the last call, if any, before clearing it.
+    pub fn takeShownMs(self: *Status) ?u32 {
+        if (!self.is_new) return null;
+        self.is_new = false;
+        if (self.length == 0) return null;
+        return switch (self.shown_kind) {
+            .info, .success => SHOW_MS,
+            .failure => FAILURE_SHOW_MS,
+        };
+    }
 
-pub fn clear() void {
-    g_length = 0;
-}
+    pub fn clear(self: *Status) void {
+        self.length = 0;
+    }
 
-/// Borrows from this module until the next show or clear.
-pub fn text() []const u8 {
-    return g_buf[0..g_length];
-}
+    /// Borrows from `self` until the next show or clear.
+    pub fn text(self: *const Status) []const u8 {
+        return self.buf[0..self.length];
+    }
 
-pub fn kind() Kind {
-    return g_kind;
-}
+    pub fn kind(self: *const Status) Kind {
+        return self.shown_kind;
+    }
+};

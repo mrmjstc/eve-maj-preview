@@ -9,11 +9,13 @@ const style = @import("../style.zig");
 const widgets = @import("../widgets.zig");
 const color_convert = @import("../color_convert.zig");
 const lang = @import("../../../lang/lang.zig");
+const window_mod = @import("../window.zig");
 
 const Button = ui.component.Button;
 const Canvas = ui.component.Canvas;
 const Rect = ui.component.Rect;
 const Text = ui.component.Text;
+const Window = window_mod.Window;
 
 /// Where the panels' header draws its chevron and title.
 const HEADER_PADDING_X: i32 = 9;
@@ -219,11 +221,11 @@ pub fn Picker(comptime Kind: type) type {
         }
 
         /// One row per part: its dot and name, which select it, then whatever on switch `draw_switch` draws for it, named after the part.
-        pub fn partList(self: *Self, context: *ui.Frame, rows: []const Row, comptime draw_switch: fn (*ui.Frame, Kind) anyerror!void) !void {
+        pub fn partList(self: *Self, window: *Window, context: *ui.Frame, rows: []const Row, comptime draw_switch: fn (*Window, *ui.Frame, Kind) anyerror!void) !void {
             var hovered: ?Kind = null;
             for (rows, 0..) |row, index| {
                 if (index > 0 and row.starts_group) try context.e(Rect{ .key = self.rowKey(row.part).indexed(3), .style = &style.part_list_divider });
-                if (try self.partRow(context, row, draw_switch)) hovered = row.part;
+                if (try self.partRow(window, context, row, draw_switch)) hovered = row.part;
             }
             if (hovered != self.lit) {
                 self.lit = hovered;
@@ -232,7 +234,7 @@ pub fn Picker(comptime Kind: type) type {
         }
 
         /// Returns whether its name is hovered.
-        fn partRow(self: *Self, context: *ui.Frame, row: Row, comptime draw_switch: fn (*ui.Frame, Kind) anyerror!void) !bool {
+        fn partRow(self: *Self, window: *Window, context: *ui.Frame, row: Row, comptime draw_switch: fn (*Window, *ui.Frame, Kind) anyerror!void) !bool {
             const arena = context.arena();
             const key = self.rowKey(row.part);
             const is_selected = self.selected == row.part;
@@ -249,9 +251,9 @@ pub fn Picker(comptime Kind: type) type {
             const label_style = if (is_selected) &style.part_row_label_selected else if (row.is_shown) &style.part_row_label else &style.part_row_label_off;
             try context.e(Text{ .selectable = false, .key = key.indexed(2), .content = shown, .style = label_style });
             try button.close(context);
-            const previous_name = widgets.useControlName(shown);
-            try draw_switch(context, row.part);
-            _ = widgets.useControlName(previous_name);
+            const previous_name = window.widgets.useControlName(shown);
+            try draw_switch(window, context, row.part);
+            _ = window.widgets.useControlName(previous_name);
             try line.close(context);
             if (response.clicked) self.select(context, row.part);
             return response.hovered;

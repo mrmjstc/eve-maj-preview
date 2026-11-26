@@ -1,6 +1,5 @@
 //! The configuration window's frame: categorised tab sidebar, the open tab, the Save footer and the unsaved-changes prompts; main thread only.
 const std = @import("std");
-const knots = @import("knots");
 const ui = @import("ui");
 const host = @import("host.zig");
 const session = @import("session.zig");
@@ -31,11 +30,13 @@ const notification_history = @import("tabs/notification_history.zig");
 const map_panel = @import("tabs/map_panel.zig");
 const mining = @import("tabs/mining.zig");
 const placement = @import("tabs/placement.zig");
+const window_mod = @import("window.zig");
 
 const Rect = ui.component.Rect;
 const Text = ui.component.Text;
 const Button = ui.component.Button;
 const Canvas = ui.component.Canvas;
+const Window = window_mod.Window;
 
 /// A heading in the sidebar over the tabs that belong to it.
 const Category = enum {
@@ -160,29 +161,36 @@ const Offered = struct {
     }
 };
 
-var g_tab: Tab = .about;
-var g_is_close_prompt_open: bool = false;
+/// One window's, reset as each opens.
+pub const State = struct {
+    is_close_prompt_open: bool = false,
+};
+
+/// Kept from one opening of the window to the next.
+pub const Kept = struct {
+    tab: Tab = .about,
+};
 
 /// The window's close button was pressed with unsaved changes.
-pub fn confirmClose() void {
-    g_is_close_prompt_open = true;
+pub fn confirmClose(window: *Window) void {
+    window.form.is_close_prompt_open = true;
 }
 
-pub fn frame(_: *knots.View, context: *ui.Frame) !void {
-    host.useLanguage(session.global().get("language"));
-    session.beginFrame();
-    widgets.beginFrame();
-    search.beginFrame();
-    try hotkey.beginFrame(context);
-    applyAccent(context);
-    const offered = Offered{ .is_advanced_mode = session.global().get("advancedMode") };
-    if (host.takeRequestedPage()) |page| selectTab(context, switch (page) {
+pub fn frame(window: *Window, context: *ui.Frame) !void {
+    window.host.useLanguage(window.session.global().get("language"));
+    window.session.beginFrame();
+    window.widgets.beginFrame();
+    window.search.beginFrame();
+    try window.hotkey.beginFrame(context);
+    applyAccent(window, context);
+    const offered = Offered{ .is_advanced_mode = window.session.global().get("advancedMode") };
+    if (window.host.takeRequestedPage()) |page| selectTab(window, context, switch (page) {
         .client_list => .appearance,
         .history_panel => .notification_history,
         .intel_panel => .map_panel,
     });
     // Turning Advanced Mode off can hide the open tab.
-    if (!offered.has(g_tab)) selectTab(context, .about);
+    if (!offered.has(window.kept.form.tab)) selectTab(window, context, .about);
     const size = context.input().logical_extent;
     // Style pointers must outlive the frame's layout, which the arena does.
     const root_style = try context.arena().create(ui.Style);
@@ -194,90 +202,90 @@ pub fn frame(_: *knots.View, context: *ui.Frame) !void {
     };
     const root = Rect{ .key = .src(@src()), .style = root_style };
     _ = try root.open(context);
-    try header.show(context);
+    try header.show(window, context);
 
     const body = Rect{ .key = .src(@src()), .style = &.{ .width = .grow(), .height = .grow(), .direction = .row } };
     _ = try body.open(context);
-    try sidebar(context, offered);
+    try sidebar(window, context, offered);
     const fill = Rect{ .key = widgets.TAB_CONTENT_KEY, .style = &style.content_fill };
     var scroll: ?widgets.ScrollPane = null;
-    if (g_tab.fills()) {
+    if (window.kept.form.tab.fills()) {
         _ = try fill.open(context);
     } else {
-        scroll = try widgets.openScrollPane(context, widgets.TAB_CONTENT_KEY, style.content_scroll);
+        scroll = try window.widgets.openScrollPane(context, widgets.TAB_CONTENT_KEY, style.content_scroll);
     }
-    if (search.needsIndex()) {
-        try indexTabs(context, offered);
+    if (window.search.needsIndex()) {
+        try indexTabs(window, context, offered);
     } else {
-        if (search.isActive() and !search.tabHasMatches(@backingInt(g_tab))) {
-            if (search.firstMatchingTab()) |first| selectTab(context, @fromBackingInt(@intCast(first)));
+        if (window.search.isActive() and !window.search.tabHasMatches(@backingInt(window.kept.form.tab))) {
+            if (window.search.firstMatchingTab()) |first| selectTab(window, context, @fromBackingInt(@intCast(first)));
         }
-        try showTab(context, g_tab);
+        try showTab(window, context, window.kept.form.tab);
     }
     if (scroll) |pane| try pane.close(context) else try fill.close(context);
     try body.close(context);
-    if (widgets.takeNoticeTarget()) |target| selectTab(context, switch (target) {
+    if (window.widgets.takeNoticeTarget()) |target| selectTab(window, context, switch (target) {
         .notifications => .notifications,
         .log_monitoring => .general,
     });
 
-    try footer(context);
-    try import_dialog.show(context);
-    try update_notice.show(context);
-    try unsavedPrompt(context);
+    try footer(window, context);
+    try import_dialog.show(window, context);
+    try update_notice.show(window, context);
+    try unsavedPrompt(window, context);
     // Last, so it opens over the Import dialog that queued its switch.
-    try switchPrompt(context);
+    try switchPrompt(window, context);
     // An edit made after what shows it was drawn, e.g. + Add Character under its list, appears on the next frame.
-    if (session.takeEdited()) context.requestRedraw();
+    if (window.session.takeEdited()) context.requestRedraw();
 
     try root.close(context);
-    widgets.endFrame();
+    window.widgets.endFrame();
 }
 
-fn showTab(context: *ui.Frame, tab: Tab) !void {
-    const was_aligned = widgets.useAlignedRows(true);
-    defer _ = widgets.useAlignedRows(was_aligned);
+fn showTab(window: *Window, context: *ui.Frame, tab: Tab) !void {
+    const was_aligned = window.widgets.useAlignedRows(true);
+    defer _ = window.widgets.useAlignedRows(was_aligned);
     switch (tab) {
-        .about => try about.show(context),
-        .backups => try backups.show(context),
-        .appearance => try display.show(context),
-        .placement => try placement.show(context),
-        .map_panel => try map_panel.show(context),
-        .characters => try characters.show(context),
-        .client_windows => try client_windows.show(context),
-        .mouse => try mouse.show(context),
-        .notifications => try notifications.show(context),
-        .event_alerts => try event_alerts.show(context),
-        .chat_alerts => try chat_alerts.show(context),
-        .notification_history => try notification_history.show(context),
-        .mining => try mining.show(context),
-        .general => try general.show(context),
-        .hotkeys => try hotkeys.show(context),
-        .hotkey_groups => try hotkey_groups.show(context),
+        .about => try about.show(window, context),
+        .backups => try backups.show(window, context),
+        .appearance => try display.show(window, context),
+        .placement => try placement.show(window, context),
+        .map_panel => try map_panel.show(window, context),
+        .characters => try characters.show(window, context),
+        .client_windows => try client_windows.show(window, context),
+        .mouse => try mouse.show(window, context),
+        .notifications => try notifications.show(window, context),
+        .event_alerts => try event_alerts.show(window, context),
+        .chat_alerts => try chat_alerts.show(window, context),
+        .notification_history => try notification_history.show(window, context),
+        .mining => try mining.show(window, context),
+        .general => try general.show(window, context),
+        .hotkeys => try hotkeys.show(window, context),
+        .hotkey_groups => try hotkey_groups.show(window, context),
     }
 }
 
 /// Draws every tab the sidebar offers out of sight, once, so the search can see sections on tabs that aren't open.
-fn indexTabs(context: *ui.Frame, offered: Offered) !void {
+fn indexTabs(window: *Window, context: *ui.Frame, offered: Offered) !void {
     const hidden = Rect{ .key = .src(@src()), .style = &style.section_hidden };
     _ = try hidden.open(context);
     for (std.enums.values(Tab)) |tab| {
         if (!offered.has(tab)) continue;
-        search.beginCapture(@backingInt(tab));
-        try showTab(context, tab);
+        window.search.beginCapture(@backingInt(tab));
+        try showTab(window, context, tab);
     }
-    search.endIndex();
+    window.search.endIndex();
     try hidden.close(context);
     context.requestRedraw();
 }
 
-fn sidebar(context: *ui.Frame, offered: Offered) !void {
+fn sidebar(window: *Window, context: *ui.Frame, offered: Offered) !void {
     const bar = Rect{ .key = .src(@src()), .style = try sidebarStyle(context, offered) };
     _ = try bar.open(context);
     var last_category: ?Category = null;
     for (std.enums.values(Tab)) |tab| {
         if (!offered.has(tab)) continue;
-        if (!search.tabHasMatches(@backingInt(tab))) continue;
+        if (!window.search.tabHasMatches(@backingInt(tab))) continue;
         if (last_category != tab.category()) {
             last_category = tab.category();
             const index = @backingInt(tab.category());
@@ -291,7 +299,7 @@ fn sidebar(context: *ui.Frame, offered: Offered) !void {
                 }},
             });
         }
-        try tabItem(context, tab);
+        try tabItem(window, context, tab);
     }
     try bar.close(context);
 }
@@ -316,8 +324,8 @@ fn sidebarStyle(context: *ui.Frame, offered: Offered) !*const ui.Style {
     return sized;
 }
 
-fn tabItem(context: *ui.Frame, tab: Tab) !void {
-    const is_active = g_tab == tab;
+fn tabItem(window: *Window, context: *ui.Frame, tab: Tab) !void {
+    const is_active = window.kept.form.tab == tab;
     const index = @backingInt(tab);
     const item = Button{
         .key = ui.Key.str("knots.tab").indexed(index),
@@ -340,28 +348,28 @@ fn tabItem(context: *ui.Frame, tab: Tab) !void {
         .style = if (is_active or response.hovered) &style.tab_label_lit else &style.tab_label,
     });
     try item.close(context);
-    if (response.clicked and !is_active) selectTab(context, tab);
+    if (response.clicked and !is_active) selectTab(window, context, tab);
 }
 
 /// The new tab starts at its top.
-fn selectTab(context: *ui.Frame, tab: Tab) void {
-    g_tab = tab;
+fn selectTab(window: *Window, context: *ui.Frame, tab: Tab) void {
+    window.kept.form.tab = tab;
     const ui_state = context.ui();
     if (ui_state.state.get(.scroll, widgets.TAB_CONTENT_KEY.hash())) |scroll| scroll.offset = .{ 0, 0 };
     context.requestRedraw();
 }
 
-fn footer(context: *ui.Frame) !void {
+fn footer(window: *Window, context: *ui.Frame) !void {
     const bar = Rect{ .key = .src(@src()), .style = &style.footer };
     _ = try bar.open(context);
     // Copied: a dialog drawn later this frame may rewrite the status buffer.
-    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = try context.arena().dupe(u8, status.text()), .style = switch (status.kind()) {
+    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = try context.arena().dupe(u8, window.status.text()), .style = switch (window.status.kind()) {
         .info => &style.status_info,
         .success => &style.status_success,
         .failure => &style.status_failure,
     } });
     try context.e(Rect{ .key = .src(@src()), .style = &.{ .width = .grow() } });
-    if (session.isDirty()) try context.e(.{
+    if (window.session.isDirty()) try context.e(.{
         Rect{ .key = .src(@src()), .style = &style.unsaved_chip },
         .{
             Text{ .selectable = false, .key = .src(@src()), .content = "●", .style = &style.unsaved_dot },
@@ -369,46 +377,46 @@ fn footer(context: *ui.Frame) !void {
         },
     });
     if ((try context.interact(Button{ .key = .src(@src()), .label = lang.text("Close"), .style = &style.outline_button })).clicked) {
-        host.requestClose();
+        window.host.requestClose();
     }
     if ((try context.interact(Button{ .key = .src(@src()), .label = lang.text("Save"), .style = &style.primary_button })).clicked) {
-        host.postCommand(.save);
+        window.host.postCommand(.save);
     }
     try bar.close(context);
 }
 
-fn unsavedPrompt(context: *ui.Frame) !void {
-    if (!g_is_close_prompt_open) return;
-    const dialog = try widgets.openModal(context, .src(@src()), &g_is_close_prompt_open, &style.modal, lang.text("Unsaved Changes"));
+fn unsavedPrompt(window: *Window, context: *ui.Frame) !void {
+    if (!window.form.is_close_prompt_open) return;
+    const dialog = try widgets.openModal(context, .src(@src()), &window.form.is_close_prompt_open, &style.modal, lang.text("Unsaved Changes"));
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = lang.text("You have unsaved changes. Save them before closing, or close without saving?"), .style = &style.modal_text });
     const actions = Rect{ .key = .src(@src()), .style = &style.modal_actions };
     _ = try actions.open(context);
     // Furthest from Save, so the destructive choice isn't beside the default one.
     if ((try context.interact(Button{ .key = .src(@src()), .label = lang.text("Discard"), .style = &style.danger_button })).clicked) {
-        g_is_close_prompt_open = false;
-        host.postCommand(.discard_and_close);
+        window.form.is_close_prompt_open = false;
+        window.host.postCommand(.discard_and_close);
     }
     if ((try context.interact(Button{ .key = .src(@src()), .label = lang.text("Cancel"), .style = &style.outline_button })).clicked) {
-        g_is_close_prompt_open = false;
+        window.form.is_close_prompt_open = false;
         context.requestRedraw();
     }
     if ((try context.interact(Button{ .key = .src(@src()), .label = lang.text("Save"), .style = &style.primary_button })).clicked) {
-        g_is_close_prompt_open = false;
-        host.postCommand(.save_and_close);
+        window.form.is_close_prompt_open = false;
+        window.host.postCommand(.save_and_close);
     }
     try actions.close(context);
     try dialog.close(context);
 }
 
 /// A profile switch waiting on unsaved changes, which it would otherwise drop.
-fn switchPrompt(context: *ui.Frame) !void {
-    const target = profiles.awaitedName() orelse return;
-    const is_open = profiles.awaitingFlag();
+fn switchPrompt(window: *Window, context: *ui.Frame) !void {
+    const target = profiles.awaitedName(window) orelse return;
+    const is_open = profiles.awaitingFlag(window);
     const dialog = try widgets.openModal(context, .src(@src()), is_open, &style.modal, lang.text("Unsaved Changes"));
     try context.e(Text{
         .selectable = false,
         .key = .src(@src()),
-        .content = if (profiles.isAwaitingRename())
+        .content = if (profiles.isAwaitingRename(window))
             lang.text("Renaming reloads the profile, which drops your unsaved changes. Save them first?")
         else
             try lang.format(context.arena(), "Switching to '{name}' drops your unsaved changes. Save them first?", .{ .name = target }),
@@ -420,21 +428,21 @@ fn switchPrompt(context: *ui.Frame) !void {
     // Furthest from Save, so the destructive choice isn't beside the default one.
     if ((try context.interact(Button{ .key = .src(@src()), .label = lang.text("Discard"), .style = &style.danger_button })).clicked) choice = .discard;
     if ((try context.interact(Button{ .key = .src(@src()), .label = lang.text("Cancel"), .style = &style.outline_button })).clicked) is_open.* = false;
-    if ((try context.interact(Button{ .key = .src(@src()), .label = lang.text(if (profiles.isAwaitingRename()) "Save and Rename" else "Save and Switch"), .style = &style.primary_button })).clicked) choice = .save;
+    if ((try context.interact(Button{ .key = .src(@src()), .label = lang.text(if (profiles.isAwaitingRename(window)) "Save and Rename" else "Save and Switch"), .style = &style.primary_button })).clicked) choice = .save;
     try actions.close(context);
     try dialog.close(context);
     if (choice) |unsaved| {
-        profiles.resolve(unsaved);
+        profiles.resolve(window, unsaved);
     } else if (!is_open.*) {
         // Cancel, Escape and a click outside all close it without an answer.
-        profiles.cancel();
+        profiles.cancel(window);
         context.requestRedraw();
     }
 }
 
 /// The edited profile's accentColor tints the window, or the one a prompt is picking for a new profile.
-fn applyAccent(context: *ui.Frame) void {
-    const argb = header.previewAccent() orelse import_dialog.previewAccent() orelse session.profile().ptr.accentColor;
+fn applyAccent(window: *Window, context: *ui.Frame) void {
+    const argb = header.previewAccent(window) orelse import_dialog.previewAccent(window) orelse window.session.profile().ptr.accentColor;
     const r: u8 = @truncate(argb >> 16);
     const g: u8 = @truncate(argb >> 8);
     const b: u8 = @truncate(argb);

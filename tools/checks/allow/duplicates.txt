@@ -31,7 +31,7 @@ dialog/knots/form.zig ui.Key.str("knots.tab.glyph")  # sidebar tab item
 sim/view.zig ui.Key.str("sim.tab.glyph")  # sidebar tab item
 dialog/knots/form.zig const root_style = try context.arena().create(ui.Style);  # frame root
 sim/view.zig const root_style = try context.arena().create(ui.Style);  # frame root
-dialog/knots/form.zig try sidebar(context, offered);  # body row
+dialog/knots/form.zig try sidebar(window, context, offered);  # body row
 sim/view.zig try sidebar(context, controls);  # body row
 
 # The map marks each system in two passes, markers then the rings over every marker, so their loops open alike.
@@ -53,9 +53,15 @@ dialog/knots/tabs/window_filters.zig widgets.openDetailHeader  # filterDetail
 # rgbAlpha is alphaSlider plus a picker and a fixed box style; sharing the opening would hide that.
 dialog/knots/bind.zig const key = fieldKey(ref, field).indexed(11);  # alphaSlider/rgbAlpha
 
+# A one-setting row is open, its box, close; rgb and choice differ only in the box.
+dialog/knots/bind.zig const row = try self.widgets.openBinding(context, fieldKey(ref, field), label);  # rgb/choice
+
+# The name and confirm prompts end in the same Cancel row, each closing its own prompt.
+dialog/knots/header.zig const actions = Rect{ .key = .src(@src()), .style = &style.modal_actions };  # namePrompt/confirmPrompt
+
 # Each panel tab's Layout section opens with the size row, then its own settings.
-dialog/knots/tabs/map_panel.zig try bind.sizeBoxes(context, ref, "width", "height");  # layout
-dialog/knots/tabs/notification_history.zig try bind.sizeBoxes(context, ref, "width", "height");  # layout
+dialog/knots/tabs/map_panel.zig try window.bind.sizeBoxes(context, ref, "width", "height");  # layout
+dialog/knots/tabs/notification_history.zig try window.bind.sizeBoxes(context, ref, "width", "height");  # layout
 
 # Each collapsed panel's summary is its own runs, handed to panel_chrome.drawSummary.
 panels/history_panel.zig panel_chrome.drawSummary  # drawSummary

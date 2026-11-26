@@ -15,6 +15,7 @@ const hotkey_groups = @import("hotkey_groups.zig");
 const screen_map = @import("../screen_map.zig");
 const screen_math = @import("../screen_math.zig");
 const lang = @import("../../../lang/lang.zig");
+const window_mod = @import("../window.zig");
 const log = @import("../../../log.zig");
 
 const Rect = ui.component.Rect;
@@ -27,6 +28,7 @@ const ScreenMap = screen_map.ScreenMap;
 // knots doesn't export its grid types by name.
 const GridTemplate = @typeInfo(@FieldType(ui.Style, "grid")).optional.child;
 const GridTrack = @typeInfo(@FieldType(GridTemplate, "rows")).pointer.child;
+const Window = window_mod.Window;
 const slog = log.Scoped("dialog_knots");
 
 const SPACE_ROW_KEY: ui.Key = .str("knots.space.row");
@@ -75,180 +77,183 @@ const Destination = enum {
     }
 };
 
-/// The id of the space whose details are shown; not saved, and follows the space through reorders.
-var g_selected_id: u32 = 0;
+/// Kept from one opening of the window to the next.
+pub const Kept = struct {
+    /// The id of the space whose details are shown; not saved, and follows the space through reorders.
+    selected_id: u32 = 0,
+};
 
-pub fn show(context: *ui.Frame) !void {
-    if (session.showsThumbnails()) try thumbnailPlacement(context);
-    try panelSnapping(context);
+pub fn show(window: *Window, context: *ui.Frame) !void {
+    if (window.session.showsThumbnails()) try thumbnailPlacement(window, context);
+    try panelSnapping(window, context);
 }
 
-fn thumbnailPlacement(context: *ui.Frame) !void {
-    const profile = session.profile();
+fn thumbnailPlacement(window: *Window, context: *ui.Frame) !void {
+    const profile = window.session.profile();
     const display = profile.child("display");
     // A search shows both modes' settings, so a match in the other mode is still found.
     const mode = display.get("placementMode");
-    const shows_manual = mode == .Manual or search.isActive();
-    const shows_spaces = mode == .ThumbnailSpaces or search.isActive();
+    const shows_manual = mode == .Manual or window.search.isActive();
+    const shows_spaces = mode == .ThumbnailSpaces or window.search.isActive();
 
-    const section = try widgets.openSection(context, "Thumbnail Placement", "Drag thumbnails where you want them, or let Thumbnail Spaces arrange them.", &style.section);
-    try bind.segmented(context, display, "placementMode", "Placement Mode", &.{ "Manual", "Thumbnail Spaces" });
-    try widgets.hintText(context, .src(@src()), "Thumbnail Spaces arranges thumbnails for you in areas you draw.");
-    if (shows_manual) try thumbnailPositionMap(context, profile);
+    const section = try window.widgets.openSection(context, "Thumbnail Placement", "Drag thumbnails where you want them, or let Thumbnail Spaces arrange them.", &style.section);
+    try window.bind.segmented(context, display, "placementMode", "Placement Mode", &.{ "Manual", "Thumbnail Spaces" });
+    try window.widgets.hintText(context, .src(@src()), "Thumbnail Spaces arranges thumbnails for you in areas you draw.");
+    if (shows_manual) try thumbnailPositionMap(window, context, profile);
     if (shows_spaces) {
         const items = profile.ptr.thumbnailSpaces.items;
-        try regionMap(context, items, selectedIndex(items));
-        try bind.toggle(context, display, "hideThumbnailsDuringRegionSelect", "Hide Thumbnails While Drawing a Region");
-        try widgets.hintText(context, .src(@src()), "Only while you draw, so you can see the whole screen.");
+        try regionMap(window, context, items, selectedIndex(window, items));
+        try window.bind.toggle(context, display, "hideThumbnailsDuringRegionSelect", "Hide Thumbnails While Drawing a Region");
+        try window.widgets.hintText(context, .src(@src()), "Only while you draw, so you can see the whole screen.");
     }
     try section.close(context);
 
     if (shows_manual) {
-        const manual_section = try widgets.openSection(context, "Manual Placement", "Where thumbnails go when you place them by hand.", &style.section);
-        try manual(context, display);
+        const manual_section = try window.widgets.openSection(context, "Manual Placement", "Where thumbnails go when you place them by hand.", &style.section);
+        try manual(window, context, display);
         try manual_section.close(context);
     }
     if (shows_spaces) {
-        const spaces_section = try widgets.openSection(context, "Thumbnail Spaces", "Screen areas that arrange hotkey groups. Drag to reorder; the higher one wins.", &style.section);
-        try spacesMode(context);
+        const spaces_section = try window.widgets.openSection(context, "Thumbnail Spaces", "Screen areas that arrange hotkey groups. Drag to reorder; the higher one wins.", &style.section);
+        try spacesMode(window, context);
         try spaces_section.close(context);
     }
 }
 
-fn panelSnapping(context: *ui.Frame) !void {
-    const section = try widgets.openSection(context, "Panel Snapping", "How the client list and the other panels line up as you drag them.", &style.section);
-    const ref = session.profile().child("panelSnapping");
-    try bind.toggle(context, ref, "enabled", "Snap While Dragging");
-    try widgets.hintText(context, .src(@src()), "Turns all the snapping below on or off.");
-    const group = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
-    try bind.toggle(context, ref, "screenEdges", "Snap to Screen Edges");
-    try widgets.hintText(context, .src(@src()), "Panels stick to the edges of your monitors.");
-    try bind.toggle(context, ref, "panelEdges", "Snap to Other Panels");
-    try widgets.hintText(context, .src(@src()), "Panels stick to each other's edges.");
-    if (session.showsThumbnails()) {
-        try bind.toggle(context, ref, "thumbnailEdges", "Snap to Thumbnail Edges");
-        try widgets.hintText(context, .src(@src()), "Panels stick to thumbnails' edges.");
+fn panelSnapping(window: *Window, context: *ui.Frame) !void {
+    const section = try window.widgets.openSection(context, "Panel Snapping", "How the client list and the other panels line up as you drag them.", &style.section);
+    const ref = window.session.profile().child("panelSnapping");
+    try window.bind.toggle(context, ref, "enabled", "Snap While Dragging");
+    try window.widgets.hintText(context, .src(@src()), "Turns all the snapping below on or off.");
+    const group = try window.widgets.openGroup(context, .src(@src()), ref.get("enabled"));
+    try window.bind.toggle(context, ref, "screenEdges", "Snap to Screen Edges");
+    try window.widgets.hintText(context, .src(@src()), "Panels stick to the edges of your monitors.");
+    try window.bind.toggle(context, ref, "panelEdges", "Snap to Other Panels");
+    try window.widgets.hintText(context, .src(@src()), "Panels stick to each other's edges.");
+    if (window.session.showsThumbnails()) {
+        try window.bind.toggle(context, ref, "thumbnailEdges", "Snap to Thumbnail Edges");
+        try window.widgets.hintText(context, .src(@src()), "Panels stick to thumbnails' edges.");
     }
-    try bind.number(context, ref, "threshold", "Snap Distance", .{ .unit = "px" });
-    try widgets.hintText(context, .src(@src()), "How close a panel gets before it snaps into place.");
+    try window.bind.number(context, ref, "threshold", "Snap Distance", .{ .unit = "px" });
+    try window.widgets.hintText(context, .src(@src()), "How close a panel gets before it snaps into place.");
     try group.close(context);
     try section.close(context);
 }
 
-fn manual(context: *ui.Frame, display: DisplayRef) !void {
-    const profile = session.profile();
+fn manual(window: *Window, context: *ui.Frame, display: DisplayRef) !void {
+    const profile = window.session.profile();
     const interaction = profile.child("interaction");
-    const previous_rows = widgets.useDetailRows();
-    defer widgets.restoreRows(previous_rows);
+    const previous_rows = window.widgets.useDetailRows();
+    defer window.widgets.restoreRows(previous_rows);
 
     const can_drag = !interaction.get("clickThrough") and interaction.get("enableDragging");
-    const dragging = try widgets.openFieldGroup(context, .str("knots.manual.dragging"), "Dragging");
-    const drag = try widgets.openGroup(context, .src(@src()), !interaction.get("clickThrough"));
-    try bind.toggle(context, interaction, "enableDragging", "Enable Dragging");
+    const dragging = try window.widgets.openFieldGroup(context, .str("knots.manual.dragging"), "Dragging");
+    const drag = try window.widgets.openGroup(context, .src(@src()), !interaction.get("clickThrough"));
+    try window.bind.toggle(context, interaction, "enableDragging", "Enable Dragging");
     try drag.close(context);
-    try widgets.hintText(context, .src(@src()), "Stays off while Click Through is on in the Mouse tab.");
-    try bind.toggle(context, display, "honorSavedPositions", "Restore Saved Positions");
-    try widgets.hintText(context, .src(@src()), "When off, thumbnails always start at the Start Position.");
+    try window.widgets.hintText(context, .src(@src()), "Stays off while Click Through is on in the Mouse tab.");
+    try window.bind.toggle(context, display, "honorSavedPositions", "Restore Saved Positions");
+    try window.widgets.hintText(context, .src(@src()), "When off, thumbnails always start at the Start Position.");
     try dragging.close(context);
-    try widgets.separator(context, .str("knots.manual.separator.dragging"));
+    try window.widgets.separator(context, .str("knots.manual.separator.dragging"));
 
     const snapping = profile.child("snapping");
-    const snapping_group = try widgets.openFieldGroup(context, .str("knots.manual.snapping"), "Snapping");
-    const drag_options = try widgets.openGroup(context, .src(@src()), can_drag);
-    try bind.toggle(context, snapping, "enabled", "Snap While Dragging");
-    try widgets.hintText(context, .src(@src()), "Turns all the snapping below on or off.");
-    const group = try widgets.openGroup(context, .src(@src()), snapping.get("enabled"));
-    try bind.toggle(context, snapping, "screenEdges", "Snap to Screen Edges");
-    try widgets.hintText(context, .src(@src()), "Thumbnails stick to the edges of your monitors.");
-    try bind.toggle(context, snapping, "thumbnailEdges", "Snap to Thumbnail Edges");
-    try widgets.hintText(context, .src(@src()), "Thumbnails stick to each other's edges.");
-    try bind.toggle(context, snapping, "panelEdges", "Snap to Panel Edges");
-    try widgets.hintText(context, .src(@src()), "Thumbnails stick to the client list and the other panels.");
-    try bind.toggle(context, snapping, "ghostPositions", "Snap to Other Characters' Saved Positions");
-    try widgets.hintText(context, .src(@src()), "Includes characters that aren't logged in.");
-    try bind.number(context, snapping, "threshold", "Snap Distance", .{ .unit = "px" });
-    try widgets.hintText(context, .src(@src()), "How close a thumbnail gets before it snaps into place.");
+    const snapping_group = try window.widgets.openFieldGroup(context, .str("knots.manual.snapping"), "Snapping");
+    const drag_options = try window.widgets.openGroup(context, .src(@src()), can_drag);
+    try window.bind.toggle(context, snapping, "enabled", "Snap While Dragging");
+    try window.widgets.hintText(context, .src(@src()), "Turns all the snapping below on or off.");
+    const group = try window.widgets.openGroup(context, .src(@src()), snapping.get("enabled"));
+    try window.bind.toggle(context, snapping, "screenEdges", "Snap to Screen Edges");
+    try window.widgets.hintText(context, .src(@src()), "Thumbnails stick to the edges of your monitors.");
+    try window.bind.toggle(context, snapping, "thumbnailEdges", "Snap to Thumbnail Edges");
+    try window.widgets.hintText(context, .src(@src()), "Thumbnails stick to each other's edges.");
+    try window.bind.toggle(context, snapping, "panelEdges", "Snap to Panel Edges");
+    try window.widgets.hintText(context, .src(@src()), "Thumbnails stick to the client list and the other panels.");
+    try window.bind.toggle(context, snapping, "ghostPositions", "Snap to Other Characters' Saved Positions");
+    try window.widgets.hintText(context, .src(@src()), "Includes characters that aren't logged in.");
+    try window.bind.number(context, snapping, "threshold", "Snap Distance", .{ .unit = "px" });
+    try window.widgets.hintText(context, .src(@src()), "How close a thumbnail gets before it snaps into place.");
     try group.close(context);
-    try bind.toggle(context, snapping, "showGhostPositionBorders", "Outline Saved Positions While Dragging");
-    try widgets.hintText(context, .src(@src()), "Shows the spots you can snap to.");
+    try window.bind.toggle(context, snapping, "showGhostPositionBorders", "Outline Saved Positions While Dragging");
+    try window.widgets.hintText(context, .src(@src()), "Shows the spots you can snap to.");
     try drag_options.close(context);
     try snapping_group.close(context);
-    try widgets.separator(context, .str("knots.manual.separator.snapping"));
+    try window.widgets.separator(context, .str("knots.manual.separator.snapping"));
 
-    const unplaced = try widgets.openFieldGroup(context, .str("knots.manual.new"), "Unplaced");
-    const start = try widgets.openBinding(context, .src(@src()), "Start Position");
+    const unplaced = try window.widgets.openFieldGroup(context, .str("knots.manual.new"), "Unplaced");
+    const start = try window.widgets.openBinding(context, .src(@src()), "Start Position");
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "X", .style = &style.muted_text });
-    try bind.unitNumberBox(context, display, "startX", "px", .{});
+    try window.bind.unitNumberBox(context, display, "startX", "px", .{});
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "Y", .style = &style.muted_text });
-    try bind.unitNumberBox(context, display, "startY", "px", .{});
+    try window.bind.unitNumberBox(context, display, "startY", "px", .{});
     try start.close(context);
-    try widgets.hintText(context, .src(@src()), "Characters with no saved position line up from here, left to right.");
-    try bind.number(context, display, "newThumbnailSpacing", "Spacing", .{ .unit = "px" });
-    try widgets.hintText(context, .src(@src()), "The gap between thumbnails lined up from the Start Position.");
+    try window.widgets.hintText(context, .src(@src()), "Characters with no saved position line up from here, left to right.");
+    try window.bind.number(context, display, "newThumbnailSpacing", "Spacing", .{ .unit = "px" });
+    try window.widgets.hintText(context, .src(@src()), "The gap between thumbnails lined up from the Start Position.");
     try unplaced.close(context);
 }
 
-fn spacesMode(context: *ui.Frame) !void {
-    const profile = session.profile();
+fn spacesMode(window: *Window, context: *ui.Frame) !void {
+    const profile = window.session.profile();
     const master_detail = Rect{ .key = .src(@src()), .style = &style.spaces_master_detail };
     _ = try master_detail.open(context);
-    try roster(context, profile);
+    try roster(window, context, profile);
     // As tall as the selected space's settings, so none scroll out of sight; the tab scrolls instead.
     const stack = Rect{ .key = .src(@src()), .style = &style.detail_fit };
     _ = try stack.open(context);
-    try selectedDetail(context, profile);
+    try selectedDetail(window, context, profile);
     try stack.close(context);
     try master_detail.close(context);
 }
 
-fn selectedDetail(context: *ui.Frame, profile: ProfileRef) !void {
-    if (selectedIndex(profile.ptr.thumbnailSpaces.items)) |index| {
-        try detail(context, profile, index);
+fn selectedDetail(window: *Window, context: *ui.Frame, profile: ProfileRef) !void {
+    if (selectedIndex(window, profile.ptr.thumbnailSpaces.items)) |index| {
+        try detail(window, context, profile, index);
     } else {
-        try widgets.paragraph(context, .src(@src()), "Add a space, then draw its region and pick the hotkey groups whose thumbnails fill it.");
+        try window.widgets.paragraph(context, .src(@src()), "Add a space, then draw its region and pick the hotkey groups whose thumbnails fill it.");
     }
 }
 
 /// The selected space, else the first, so a removed or never-picked selection still shows one.
-fn selectedIndex(items: []const config.ThumbnailSpace) ?usize {
+fn selectedIndex(window: *Window, items: []const config.ThumbnailSpace) ?usize {
     if (items.len == 0) return null;
     for (items, 0..) |space, index| {
-        if (space.id == g_selected_id) return index;
+        if (space.id == window.kept.placement.selected_id) return index;
     }
-    g_selected_id = items[0].id;
+    window.kept.placement.selected_id = items[0].id;
     return 0;
 }
 
-fn roster(context: *ui.Frame, profile: ProfileRef) !void {
+fn roster(window: *Window, context: *ui.Frame, profile: ProfileRef) !void {
     const items = profile.ptr.thumbnailSpaces.items;
     // Stretched to the details beside it, Add Space at the bottom.
-    const list = try widgets.openRoster(context, .str("knots.space.roster"), &style.roster, true);
+    const list = try window.widgets.openRoster(context, .str("knots.space.roster"), &style.roster, true);
     if (items.len == 0) {
         try widgets.boxedText(context, .src(@src()), "No spaces yet.", &style.roster_empty, &style.roster_empty_text);
     }
     const fixed_count = fixedCount(items);
     // Fixed rows don't join the drag, so nothing can be dropped above them.
-    var order = widgets.ReorderList.begin(context, SPACE_ROW_KEY, items.len, fixed_count);
+    var order = widgets.ReorderList.begin(&window.widgets, context, SPACE_ROW_KEY, items.len, fixed_count);
     for (items, 0..) |*space, index| {
-        if (index >= fixed_count) try widgets.reorderRow(context, SPACE_ROW_KEY, index);
-        if (try order.next(context, index)) try spaceRow(context, space, index, null);
+        if (index >= fixed_count) try window.widgets.reorderRow(context, SPACE_ROW_KEY, index);
+        if (try order.next(context, index)) try spaceRow(window, context, space, index, null);
     }
     if (try order.end(context)) |lifted| {
-        const lifted_style = try order.liftedStyle(context, list.rowsKey(), roster_mod.rowStyle(items[lifted].id == g_selected_id));
-        try spaceRow(context, &items[lifted], lifted, lifted_style);
+        const lifted_style = try order.liftedStyle(context, list.rowsKey(), roster_mod.rowStyle(items[lifted].id == window.kept.placement.selected_id));
+        try spaceRow(window, context, &items[lifted], lifted, lifted_style);
     }
     const is_full = items.len >= spaces.MAX_SPACES;
     const action = try list.close(context, .{ .add_label = "Add Space", .is_add_disabled = is_full });
 
-    if (widgets.reorderFinish(context, SPACE_ROW_KEY, items.len)) |moved| profile.move("thumbnailSpaces", moved.from, @max(moved.before, fixed_count));
+    if (window.widgets.reorderFinish(context, SPACE_ROW_KEY, items.len)) |moved| profile.move("thumbnailSpaces", moved.from, @max(moved.before, fixed_count));
     if (action == .add) {
-        if (profile.append("thumbnailSpaces", .{ .name = lang.text("New Space") })) |added| g_selected_id = added.get("id");
+        if (profile.append("thumbnailSpaces", .{ .name = lang.text("New Space") })) |added| window.kept.placement.selected_id = added.get("id");
     }
 }
 
-fn spaceName(context: *ui.Frame, space: *const config.ThumbnailSpace, index: usize) ![]const u8 {
+fn spaceName(window: *Window, context: *ui.Frame, space: *const config.ThumbnailSpace, index: usize) ![]const u8 {
     if (isBuiltIn(space)) return lang.text(space.name);
-    const name = try bind.liveText(context, session.profile().item("thumbnailSpaces", index), "name");
+    const name = try window.bind.liveText(context, window.session.profile().item("thumbnailSpaces", index), "name");
     return if (name.len > 0) name else lang.text("Unnamed Space");
 }
 
@@ -263,18 +268,18 @@ fn shownName(space: *const config.ThumbnailSpace) []const u8 {
 }
 
 /// `lifted_style` while it's being dragged, otherwise the roster's own.
-fn spaceRow(context: *ui.Frame, space: *const config.ThumbnailSpace, index: usize, lifted_style: ?*const ui.Style) !void {
+fn spaceRow(window: *Window, context: *ui.Frame, space: *const config.ThumbnailSpace, index: usize, lifted_style: ?*const ui.Style) !void {
     const arena = context.arena();
-    const row = try roster_mod.Row.open(context, SPACE_ROW_KEY.indexed(index), space.id == g_selected_id, lifted_style);
-    if (row.is_picked) g_selected_id = space.id;
+    const row = try roster_mod.Row.open(&window.widgets, context, SPACE_ROW_KEY.indexed(index), space.id == window.kept.placement.selected_id, lifted_style);
+    if (row.is_picked) window.kept.placement.selected_id = space.id;
     const dot_style = try arena.create(ui.Style);
     dot_style.* = style.space_dot.with(.{
         .background = .{ .color = dotColor(context, space.id) },
         .opacity = if (space.enabled) @as(f32, 1) else DISABLED_SPACE_ALPHA,
     });
     try context.e(Rect{ .key = ui.Key.str("knots.space.dot").indexed(index), .style = dot_style });
-    const name = try spaceName(context, space, index);
-    search.captureText(name);
+    const name = try spaceName(window, context, space, index);
+    window.search.captureText(name);
     const has_region = spaces.rect(space) != null;
     var badge: roster_mod.Badge = .{};
     if (!space.enabled) {
@@ -292,16 +297,16 @@ fn fixedCount(items: []const config.ThumbnailSpace) usize {
     return count;
 }
 
-fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
+fn detail(window: *Window, context: *ui.Frame, profile: ProfileRef, index: usize) !void {
     const space = profile.item("thumbnailSpaces", index);
     const id = space.get("id");
     const is_login_screen = space.get("holdsLoginScreen");
     const is_unassigned = space.get("holdsUnassigned");
     // The Login Screen and Unassigned Characters spaces are always in the list, so they can't be renamed or removed.
     const is_special = isBuiltIn(space.ptr);
-    const previous_rows = widgets.useDetailRows();
-    defer widgets.restoreRows(previous_rows);
-    const header = try widgets.openDetailHeader(context, .src(@src()), "Name");
+    const previous_rows = window.widgets.useDetailRows();
+    defer window.widgets.restoreRows(previous_rows);
+    const header = try window.widgets.openDetailHeader(context, .src(@src()), "Name");
     var removed = false;
     if (is_special) {
         const name = Rect{ .key = .src(@src()), .style = &style.space_fixed_name };
@@ -313,41 +318,41 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
         try context.e(Text{ .selectable = false, .key = .src(@src()), .content = lang.text("Built-in"), .style = &style.hint_plain });
         try tag.close(context);
     } else {
-        try bind.textBox(context, space, "name", "e.g., Miners");
-        removed = try widgets.removeButton(context, ui.Key.str("knots.space.remove").indexed(id));
+        try window.bind.textBox(context, space, "name", "e.g., Miners");
+        removed = try window.widgets.removeButton(context, ui.Key.str("knots.space.remove").indexed(id));
     }
     try header.close(context);
     if (removed) {
         const items = profile.ptr.thumbnailSpaces.items;
-        g_selected_id = if (index + 1 < items.len) items[index + 1].id else if (index > 0) items[index - 1].id else 0;
+        window.kept.placement.selected_id = if (index + 1 < items.len) items[index + 1].id else if (index > 0) items[index - 1].id else 0;
         profile.remove("thumbnailSpaces", index);
         return;
     }
 
     var is_enabled: bool = space.get("enabled");
-    if (try widgets.switchRow(context, ui.Key.str("knots.space.enabled").indexed(id), "Enabled", &is_enabled)) space.set("enabled", is_enabled);
-    try widgets.hintText(context, .src(@src()), "When off, its characters go to the next space that holds them, or are placed by hand.");
-    try widgets.separator(context, .str("knots.space.separator.enabled"));
+    if (try window.widgets.switchRow(context, ui.Key.str("knots.space.enabled").indexed(id), "Enabled", &is_enabled)) space.set("enabled", is_enabled);
+    try window.widgets.hintText(context, .src(@src()), "When off, its characters go to the next space that holds them, or are placed by hand.");
+    try window.widgets.separator(context, .str("knots.space.separator.enabled"));
 
-    const settings = try widgets.openGroup(context, .src(@src()), is_enabled);
-    const area = try widgets.openFieldGroup(context, .str("knots.space.region"), "Region");
-    try regionRow(context, id);
-    try widgets.hintText(context, .src(@src()), "Draw marks out an area on screen; Edit moves or resizes it.");
+    const settings = try window.widgets.openGroup(context, .src(@src()), is_enabled);
+    const area = try window.widgets.openFieldGroup(context, .str("knots.space.region"), "Region");
+    try regionRow(window, context, id);
+    try window.widgets.hintText(context, .src(@src()), "Draw marks out an area on screen; Edit moves or resizes it.");
     try area.close(context);
-    try widgets.separator(context, .str("knots.space.separator.region"));
+    try window.widgets.separator(context, .str("knots.space.separator.region"));
 
     const items = profile.ptr.thumbnailSpaces.items;
-    const held = try widgets.openFieldGroup(context, .str("knots.space.holds"), "Holds");
+    const held = try window.widgets.openFieldGroup(context, .str("knots.space.holds"), "Holds");
     if (is_special) {
         // A settings row rather than a paragraph, so the text lines up with the Holds label.
-        const row = try widgets.openRow(context, .src(@src()));
+        const row = try window.widgets.openRow(context, .src(@src()));
         try context.e(Text{ .selectable = false, .key = .src(@src()), .content = lang.text(if (is_login_screen) "Clients still at the login screen." else "Characters no other active space holds."), .style = &style.hint });
         try row.close(context);
         const kind: Destination = if (is_login_screen) .login_screen else .unassigned;
         const winner = kind.spaceIn(items);
         if (winner != index) try destination(context, items, winner, kind);
     } else {
-        try holds(context, profile, space);
+        try holds(window, context, profile, space);
         try overlaps(context, items, index);
     }
     try held.close(context);
@@ -356,31 +361,31 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
     const shows_unassigned = !is_unassigned and (!is_login_screen or space.get("takesUnassigned")) and showsTake(items, space.ptr, .unassigned);
     const shows_login_screen = !is_login_screen and showsTake(items, space.ptr, .login_screen);
     if (shows_unassigned or shows_login_screen) {
-        try widgets.separator(context, .str("knots.space.separator.holds"));
-        const behavior = try widgets.openFieldGroup(context, .str("knots.space.behavior"), "Behavior");
+        try window.widgets.separator(context, .str("knots.space.separator.holds"));
+        const behavior = try window.widgets.openFieldGroup(context, .str("knots.space.behavior"), "Behavior");
         if (shows_unassigned) {
-            try bind.toggle(context, space, "takesUnassigned", "Move Unassigned Characters to the End");
-            try widgets.hintText(context, .src(@src()), "Characters not in any space go here, after its own.");
+            try window.bind.toggle(context, space, "takesUnassigned", "Move Unassigned Characters to the End");
+            try window.widgets.hintText(context, .src(@src()), "Characters not in any space go here, after its own.");
         }
         if (shows_login_screen) {
-            try bind.toggle(context, space, "takesLoginScreen", "Move Logged-Out Characters to the End");
-            try widgets.hintText(context, .src(@src()), "Characters at the login screen go here, after its own.");
+            try window.bind.toggle(context, space, "takesLoginScreen", "Move Logged-Out Characters to the End");
+            try window.widgets.hintText(context, .src(@src()), "Characters at the login screen go here, after its own.");
         }
         try behavior.close(context);
     }
-    try widgets.separator(context, .str("knots.space.separator.behavior"));
+    try window.widgets.separator(context, .str("knots.space.separator.behavior"));
 
-    const layout = try widgets.openFieldGroup(context, .str("knots.space.layout"), "Layout");
-    try bind.choice(context, space, "direction", "Fill Order");
-    try widgets.hintText(context, .src(@src()), "Which way thumbnails fill the space.");
+    const layout = try window.widgets.openFieldGroup(context, .str("knots.space.layout"), "Layout");
+    try window.bind.choice(context, space, "direction", "Fill Order");
+    try window.widgets.hintText(context, .src(@src()), "Which way thumbnails fill the space.");
     if (!is_login_screen) {
-        try bind.segmented(context, space, "order", "Order By", &.{ "Characters", "Hotkey Groups" });
-        try widgets.hintText(context, .src(@src()), "The Characters list's order, or this space's groups in order.");
+        try window.bind.segmented(context, space, "order", "Order By", &.{ "Characters", "Hotkey Groups" });
+        try window.widgets.hintText(context, .src(@src()), "The Characters list's order, or this space's groups in order.");
     }
-    try bind.number(context, space, "spacing", "Spacing", .{ .unit = "px" });
-    try widgets.hintText(context, .src(@src()), "The gap between thumbnails in this space.");
-    try bind.toggle(context, space, "limitToThumbnailSize", "Cap Size at Thumbnail Size");
-    try widgets.hintText(context, .src(@src()), "Thumbnails stay at Size, even if there's room to grow.");
+    try window.bind.number(context, space, "spacing", "Spacing", .{ .unit = "px" });
+    try window.widgets.hintText(context, .src(@src()), "The gap between thumbnails in this space.");
+    try window.bind.toggle(context, space, "limitToThumbnailSize", "Cap Size at Thumbnail Size");
+    try window.widgets.hintText(context, .src(@src()), "Thumbnails stay at Size, even if there's room to grow.");
     try layout.close(context);
     try settings.close(context);
 }
@@ -406,10 +411,10 @@ fn destination(context: *ui.Frame, items: []const config.ThumbnailSpace, winner:
 }
 
 /// A pill per hotkey group, filled while held; a name no group has stays until clicked off.
-fn holds(context: *ui.Frame, profile: ProfileRef, space: SpaceRef) !void {
+fn holds(window: *Window, context: *ui.Frame, profile: ProfileRef, space: SpaceRef) !void {
     const groups = profile.ptr.hotkeyGroups.items;
     if (groups.len == 0) {
-        try widgets.paragraph(context, .src(@src()), "No hotkey groups yet: add some in the Hotkey Groups tab to put their characters in this space.");
+        try window.widgets.paragraph(context, .src(@src()), "No hotkey groups yet: add some in the Hotkey Groups tab to put their characters in this space.");
     }
     const arena = context.arena();
     var chips: std.ArrayList(Chip) = .empty;
@@ -440,7 +445,7 @@ fn holds(context: *ui.Frame, profile: ProfileRef, space: SpaceRef) !void {
     const base = ui.Key.str("knots.space.chip");
     var toggled: ?Chip = null;
     for (chips.items, 0..) |chip, chip_index| {
-        search.captureText(chip.label);
+        window.search.captureText(chip.label);
         const is_held = if (chip.name) |held| space.ptr.groupIndex(held) != null else false;
         const chip_style = try arena.create(ui.Style);
         const look = if (is_held) &style.group_chip_held else &style.group_chip;
@@ -494,27 +499,27 @@ fn dotColor(context: *ui.Frame, space_id: u32) ui.Color {
 }
 
 /// The space's rectangle, then Draw while it has none or Edit to move or resize it, and × to clear it.
-fn regionRow(context: *ui.Frame, space_id: u32) !void {
-    const current = region.rect(space_id);
+fn regionRow(window: *Window, context: *ui.Frame, space_id: u32) !void {
+    const current = region.rect(window.session, space_id);
     const shown = if (current) |rect| try lang.format(context.arena(), "{width} \u{00D7} {height} at {x}, {y}", .{
         .width = rect.right - rect.left,
         .height = rect.bottom - rect.top,
         .x = rect.left,
         .y = rect.top,
     }) else lang.text("Not drawn yet");
-    const row = try widgets.openBinding(context, .src(@src()), shown);
+    const row = try window.widgets.openBinding(context, .src(@src()), shown);
     if (current == null) {
-        if ((try context.interact(Button{ .key = .src(@src()), .label = lang.text("Draw"), .style = &style.plain_button })).clicked) region.start(space_id, false);
+        if ((try context.interact(Button{ .key = .src(@src()), .label = lang.text("Draw"), .style = &style.plain_button })).clicked) window.host.startRegionSelect(space_id, false);
         _ = try context.interact(Button{ .key = .str("knots.region.clear"), .label = "\u{00D7}", .disabled = true, .style = &style.icon_button_disabled_text });
     } else {
-        if ((try context.interact(Button{ .key = .src(@src()), .label = lang.text("Edit"), .style = &style.plain_button })).clicked) region.start(space_id, true);
-        if (try widgets.confirmButton(context, .str("knots.region.clear"), "\u{00D7}", "OK", &style.icon_button_danger_text, &style.icon_button_confirm)) region.clear(space_id);
+        if ((try context.interact(Button{ .key = .src(@src()), .label = lang.text("Edit"), .style = &style.plain_button })).clicked) window.host.startRegionSelect(space_id, true);
+        if (try window.widgets.confirmButton(context, .str("knots.region.clear"), "\u{00D7}", "OK", &style.icon_button_danger_text, &style.icon_button_confirm)) region.clear(window.session, space_id);
     }
     try row.close(context);
 }
 
 /// The selected region is drawn last, stronger and thicker; clicking a region selects its space.
-fn regionMap(context: *ui.Frame, items: []const config.ThumbnailSpace, initial_selected: ?usize) !void {
+fn regionMap(window: *Window, context: *ui.Frame, items: []const config.ThumbnailSpace, initial_selected: ?usize) !void {
     var map: ScreenMap = try .init(context, .str("knots.space.map"));
     const ui_state = context.ui();
     var selected = initial_selected;
@@ -522,7 +527,7 @@ fn regionMap(context: *ui.Frame, items: []const config.ThumbnailSpace, initial_s
         ui_state.requestCursor(.pointer);
         const is_new = if (selected) |selected_index| index != selected_index else true;
         if (ui_state.leftClicked(map.key.hash(), .within) and is_new) {
-            g_selected_id = items[index].id;
+            window.kept.placement.selected_id = items[index].id;
             selected = index;
             context.requestRedraw();
         }
@@ -548,10 +553,10 @@ fn regionMap(context: *ui.Frame, items: []const config.ThumbnailSpace, initial_s
 }
 
 /// Every monitor in miniature with each hand-placed thumbnail: its saved position, else where it is now.
-fn thumbnailPositionMap(context: *ui.Frame, profile: ProfileRef) !void {
+fn thumbnailPositionMap(window: *Window, context: *ui.Frame, profile: ProfileRef) !void {
     var map: ScreenMap = try .init(context, .str("knots.manual.map"));
     try savedPositions(context, &map, profile);
-    try unsavedThumbnails(context, &map, profile);
+    try unsavedThumbnails(window, context, &map, profile);
     try map.show(context, false);
 }
 
@@ -576,8 +581,8 @@ fn savedPositions(context: *ui.Frame, map: *ScreenMap, profile: ProfileRef) !voi
 }
 
 /// Running thumbnails whose character has no saved position, where their windows are now.
-fn unsavedThumbnails(context: *ui.Frame, map: *ScreenMap, profile: ProfileRef) !void {
-    const thumbnail_set = session.thumbnailSet() orelse return;
+fn unsavedThumbnails(window: *Window, context: *ui.Frame, map: *ScreenMap, profile: ProfileRef) !void {
+    const thumbnail_set = window.session.thumbnailSet() orelse return;
     for (thumbnail_set.thumbnails.items) |*thumbnail| {
         const name = thumbnail.character_name;
         if (profile.ptr.isThumbnailHidden(name)) continue;

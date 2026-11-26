@@ -29,6 +29,7 @@
 - Unit tests for alert settings parsing and box geometry
 
 ### Changed
+- Configuration window state moved out of globals
 - Client List, History and Intel panels redesigned, with collapsible headers and a ⋯ settings menu
 - Panels, map and config window share one look, font, icon set and colours
 - Config window: settings regrouped into Clients, Display, Panels, Input, Alerts and App
@@ -81,6 +82,7 @@
 - ARCHITECTURE.md tick list includes taskbar marking
 
 ### Fixed
+- Mining price table starts hidden each time the window opens
 - Profile links and hotkeys refuse unknown profile names instead of switching to the default
 - Profiles: a queued action drops a leftover restore backup
 - Dragged panels stay under the cursor instead of lagging behind

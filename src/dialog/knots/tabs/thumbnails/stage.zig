@@ -12,6 +12,7 @@ const chips = @import("chips.zig");
 const images = @import("../../images.zig");
 const panel_preview = @import("../panel_preview.zig");
 const lang = @import("../../../../lang/lang.zig");
+const window_mod = @import("../../window.zig");
 
 const Rect = ui.component.Rect;
 const Text = ui.component.Text;
@@ -20,6 +21,7 @@ const Image = ui.component.Image;
 const Tooltip = ui.component.Tooltip;
 const Box = widgets.Box;
 const measuredBox = widgets.measuredBox;
+const Window = window_mod.Window;
 
 const BENCH_KEY: ui.Key = .str("knots.stage.bench");
 /// Within this many stage pixels a dragged chip locks flush to its anchor.
@@ -38,12 +40,19 @@ const Drag = struct {
 
 const Drop = struct { anchor: types.TextPosition, offset: [2]i32 };
 
-var g_drag: ?Drag = null;
-var g_picker: panel_preview.Picker(chips.Part) = .{ .part_key = .str("knots.stage.chip"), .selected = .character_name };
+/// One window's, reset as each opens.
+pub const State = struct {
+    drag: ?Drag = null,
+};
+
+/// Kept from one opening of the window to the next.
+pub const Kept = struct {
+    picker: panel_preview.Picker(chips.Part) = .{ .part_key = .str("knots.stage.chip"), .selected = .character_name },
+};
 
 /// At the thumbnail's size, shrunk only to fit the stage, over the parts list and the selected text's settings.
-pub fn show(context: *ui.Frame) !void {
-    const thumbnail = &session.profile().ptr.thumbnail;
+pub fn show(window: *Window, context: *ui.Frame) !void {
+    const thumbnail = &window.session.profile().ptr.thumbnail;
     const width: f32 = @floatFromInt(@max(thumbnail.width, 1));
     const height: f32 = @floatFromInt(@max(thumbnail.height, 1));
     const arena = context.arena();
@@ -53,7 +62,7 @@ pub fn show(context: *ui.Frame) !void {
     const scale = if (room > 2 and width > room - 2) (room - 2) / width else 1;
     const stage_size = [2]f32{ @round(width * scale), @round(height * scale) };
 
-    try bench.openStage(context, scale, &g_picker.shows_off);
+    try bench.openStage(context, scale, &window.kept.stage.picker.shows_off);
     const frame = Rect{ .key = .src(@src()), .style = &style.stage_frame };
     _ = try frame.open(context);
 
@@ -62,7 +71,7 @@ pub fn show(context: *ui.Frame) !void {
     const stage_box = measuredBox(ui_state, stage_key);
     const opacity = @as(f32, @floatFromInt(thumbnail.thumbnailOpacity)) / 255.0;
     // Opaque, since the real fill ignores alpha.
-    const background = if (thumbnail.showLivePreview) CLIENT_BACKGROUND else thumbnail.blankFill(session.profile().ptr.focusedBorderColor()) | 0xFF000000;
+    const background = if (thumbnail.showLivePreview) CLIENT_BACKGROUND else thumbnail.blankFill(window.session.profile().ptr.focusedBorderColor()) | 0xFF000000;
     const stage_style = try arena.create(ui.Style);
     stage_style.* = .{
         .width = .fixed(stage_size[0]),
@@ -72,30 +81,30 @@ pub fn show(context: *ui.Frame) !void {
     };
     const stage = Rect{ .key = stage_key, .style = stage_style };
     _ = try stage.open(context);
-    if (thumbnail.showLivePreview) try stageBackground(context, stage_size, opacity);
+    if (thumbnail.showLivePreview) try stageBackground(window, context, stage_size, opacity);
 
     inline for (chips.CHIPS, 0..) |chip, index| {
-        try showChip(context, chip, index, stage_box, stage_size, scale);
+        try showChip(window, context, chip, index, stage_box, stage_size, scale);
     }
-    try focusedBorder(context, session.profile().ptr, stage_size);
+    try focusedBorder(context, window.session.profile().ptr, stage_size);
 
     try stage.close(context);
     try frame.close(context);
     try bench.closeStage(context);
-    try g_picker.partList(context, &partRows(), partSwitch);
+    try window.kept.stage.picker.partList(window, context, &partRows(window), partSwitch);
     try bench.openInspector(context);
     inline for (chips.CHIPS, 0..) |chip, index| {
-        if (index == @backingInt(g_picker.selected)) try chips.showSettings(context, chip, index);
+        if (index == @backingInt(window.kept.stage.picker.selected)) try chips.showSettings(window, context, chip, index);
     }
     try bench.close(context);
 }
 
 /// Every text's row in the parts list, its dot in the text's colour.
-fn partRows() [chips.CHIPS.len]panel_preview.Picker(chips.Part).Row {
+fn partRows(window: *Window) [chips.CHIPS.len]panel_preview.Picker(chips.Part).Row {
     var part_rows: [chips.CHIPS.len]panel_preview.Picker(chips.Part).Row = undefined;
     inline for (chips.CHIPS, 0..) |chip, index| {
         const part: chips.Part = @fromBackingInt(index);
-        const look = chips.look(chip);
+        const look = chips.look(window, chip);
         part_rows[index] = .{
             .part = part,
             .label = chip.label,
@@ -107,20 +116,20 @@ fn partRows() [chips.CHIPS.len]panel_preview.Picker(chips.Part).Row {
     return part_rows;
 }
 
-fn partSwitch(context: *ui.Frame, part: chips.Part) !void {
+fn partSwitch(window: *Window, context: *ui.Frame, part: chips.Part) !void {
     inline for (chips.CHIPS, 0..) |chip, index| {
-        if (index == @backingInt(part)) try chips.showSwitch(context, chip);
+        if (index == @backingInt(part)) try chips.showSwitch(window, context, chip);
     }
 }
 
 /// With its sample text and a tooltip saying how to use it; skipped while hidden, a dashed ghost while otherwise off.
-fn showChip(context: *ui.Frame, comptime chip: chips.Chip, comptime index: usize, stage_box: Box, stage_size: [2]f32, scale: f32) !void {
+fn showChip(window: *Window, context: *ui.Frame, comptime chip: chips.Chip, comptime index: usize, stage_box: Box, stage_size: [2]f32, scale: f32) !void {
     const ui_state = context.ui();
     const part: chips.Part = @fromBackingInt(index);
-    const key = g_picker.keyOf(part);
+    const key = window.kept.stage.picker.keyOf(part);
     const id = key.hash();
-    const look = chips.look(chip);
-    const state = g_picker.stateOf(part, look.off_switch == null);
+    const look = chips.look(window, chip);
+    const state = window.kept.stage.picker.stateOf(part, look.off_switch == null);
     if (state.isHidden()) return;
     _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, id);
     const box = measuredBox(ui_state, key);
@@ -131,7 +140,7 @@ fn showChip(context: *ui.Frame, comptime chip: chips.Chip, comptime index: usize
 
     const mouse = ui_state.input.mouse_pos;
     if (ui_state.leftPressed(id, .within)) {
-        g_drag = .{
+        window.stage.drag = .{
             .index = index,
             .grab = .{ @as(f32, @floatCast(mouse[0])) - box.x(), @as(f32, @floatCast(mouse[1])) - box.y() },
             .start = mouse,
@@ -140,7 +149,7 @@ fn showChip(context: *ui.Frame, comptime chip: chips.Chip, comptime index: usize
     }
 
     var position = settledPosition(look, chip_size, stage_size, scale);
-    if (g_drag) |*drag| if (drag.index == index) {
+    if (window.stage.drag) |*drag| if (drag.index == index) {
         if (ui_state.input.mouseButton(.left).down) {
             if (@abs(mouse[0] - drag.start[0]) + @abs(mouse[1] - drag.start[1]) > widgets.DRAG_THRESHOLD) drag.has_moved = true;
             if (drag.has_moved) drag.position = dragTarget(mouse, drag.grab, stage_box, chip_size, stage_size, scale, range);
@@ -148,11 +157,11 @@ fn showChip(context: *ui.Frame, comptime chip: chips.Chip, comptime index: usize
         } else {
             if (drag.has_moved) {
                 const drop = dropResult(drag.position, chip_size, stage_size, scale, range);
-                chips.place(chip, drop.anchor, drop.offset[0], drop.offset[1]);
+                chips.place(window, chip, drop.anchor, drop.offset[0], drop.offset[1]);
                 position = drag.position;
             }
-            g_picker.select(context, part);
-            g_drag = null;
+            window.kept.stage.picker.select(context, part);
+            window.stage.drag = null;
             context.requestRedraw();
         }
     };
@@ -235,9 +244,9 @@ fn zoneFor(position: [2]f32, chip_size: [2]f32, stage_size: [2]f32) types.TextPo
 }
 
 /// Covers the stage, centred and cropped by it.
-fn stageBackground(context: *ui.Frame, stage_size: [2]f32, opacity: f32) !void {
+fn stageBackground(window: *Window, context: *ui.Frame, stage_size: [2]f32, opacity: f32) !void {
     const image_style = try context.arena().create(ui.Style);
-    const image_size = [2]f32{ @floatFromInt(images.g_layout_preview.width), @floatFromInt(images.g_layout_preview.height) };
+    const image_size = [2]f32{ @floatFromInt(window.images.size(.layout_preview)[0]), @floatFromInt(window.images.size(.layout_preview)[1]) };
     const cover = @max(stage_size[0] / image_size[0], stage_size[1] / image_size[1]);
     const size = [2]f32{ image_size[0] * cover, image_size[1] * cover };
     image_style.* = .{
@@ -247,7 +256,7 @@ fn stageBackground(context: *ui.Frame, stage_size: [2]f32, opacity: f32) !void {
         .height = .fixed(size[1]),
         .opacity = opacity,
     };
-    if (images.g_layout_preview.image(.str("knots.stage.backdrop"), image_style)) |image| try context.e(image);
+    if (window.images.image(.layout_preview, .str("knots.stage.backdrop"), image_style)) |image| try context.e(image);
 }
 
 /// Drawn by the thumbnail's own border code at real size, then scaled with the stage.

@@ -14,6 +14,7 @@ const style = @import("../style.zig");
 const widgets = @import("../widgets.zig");
 const glyphs = @import("../glyphs.zig");
 const lang = @import("../../../lang/lang.zig");
+const window_mod = @import("../window.zig");
 const log = @import("../../../log.zig");
 
 const Rect = ui.component.Rect;
@@ -23,6 +24,7 @@ const Canvas = ui.component.Canvas;
 const Tooltip = ui.component.Tooltip;
 const NotificationType = notification.NotificationType;
 const TypeRef = session.Ref(config.NotificationTypeConfig);
+const Window = window_mod.Window;
 const slog = log.Scoped("dialog_knots");
 
 const CUSTOM_TEXT_MAX_LENGTH = 100;
@@ -51,77 +53,80 @@ const TYPES_IN_ORDER = blk: {
 
 const TextField = enum { custom_text, custom_text_alt };
 
-var g_selected: NotificationType = TYPES_IN_ORDER[0];
-/// Where a placeholder chip inserts, per type; the first box until another is focused.
-var g_last_text_field: std.EnumArray(NotificationType, TextField) = .initFill(.custom_text);
+/// Kept from one opening of the window to the next.
+pub const Kept = struct {
+    selected: NotificationType = TYPES_IN_ORDER[0],
+    /// Where a placeholder chip inserts, per type; the first box until another is focused.
+    last_text_field: std.EnumArray(NotificationType, TextField) = .initFill(.custom_text),
+};
 
 /// A notification type's own settings, by its index in NotificationType.
-pub fn typeRef(index: usize) TypeRef {
-    const configs = &session.profile().ptr.notifications.type_configs;
-    return .{ .doc = .profile, .ptr = &configs.map.values[index], .layout = .none, .index = index };
+pub fn typeRef(window: *Window, index: usize) TypeRef {
+    const configs = &window.session.profile().ptr.notifications.type_configs;
+    return .{ .session = window.session, .doc = .profile, .ptr = &configs.map.values[index], .layout = .none, .index = index };
 }
 
-pub fn show(context: *ui.Frame) !void {
-    const is_enabled = session.profile().ptr.notifications.enabled;
+pub fn show(window: *Window, context: *ui.Frame) !void {
+    const is_enabled = window.session.profile().ptr.notifications.enabled;
     if (!is_enabled) {
-        try widgets.noticeWithButton(context, .src(@src()), "Game Events requires alerts switched on in the Alert Options tab.", "Go to Alert Options", .notifications);
-    } else if (!session.global().ptr.chatlog.enabled) {
-        try widgets.noticeWithButton(context, .src(@src()), "Without Log Monitoring, only alerts for your own actions, like Profile Switch, are shown.", "Go to Log Monitoring", .log_monitoring);
+        try window.widgets.noticeWithButton(context, .src(@src()), "Game Events requires alerts switched on in the Alert Options tab.", "Go to Alert Options", .notifications);
+    } else if (!window.session.global().ptr.chatlog.enabled) {
+        try window.widgets.noticeWithButton(context, .src(@src()), "Without Log Monitoring, only alerts for your own actions, like Profile Switch, are shown.", "Go to Log Monitoring", .log_monitoring);
     }
-    const section = try widgets.openSection(context, "Game Events", "How each game event alerts you. Pick an event on the left to edit it.", &style.fill_section);
-    const options = try widgets.openFillGroup(context, .src(@src()), is_enabled);
+    const section = try window.widgets.openSection(context, "Game Events", "How each game event alerts you. Pick an event on the left to edit it.", &style.fill_section);
+    const options = try window.widgets.openFillGroup(context, .src(@src()), is_enabled);
     const master_detail = Rect{ .key = .src(@src()), .style = &style.master_detail_fill };
     _ = try master_detail.open(context);
-    try typeRoster(context);
-    try typeDetail(context, g_selected);
+    try typeRoster(window, context);
+    try typeDetail(window, context, window.kept.event_alerts.selected);
     try master_detail.close(context);
     try options.close(context);
     try section.close(context);
 }
 
 /// Not in a frame that also draws another's, as the search's index would: their keys would clash.
-pub fn alertSettings(context: *ui.Frame, ref: TypeRef, notification_type: NotificationType, sound_target: pickers.Target, sound_index: usize) !void {
-    try customText(context, ref, notification_type);
-    try widgets.separator(context, .str("knots.events.separator.text"));
+pub fn alertSettings(window: *Window, context: *ui.Frame, ref: TypeRef, notification_type: NotificationType, sound_target: pickers.Target, sound_index: usize) !void {
+    try customText(window, context, ref, notification_type);
+    try window.widgets.separator(context, .str("knots.events.separator.text"));
 
-    const behavior = try widgets.openFieldGroup(context, .str("knots.events.behavior"), "Behavior");
-    try bind.toggle(context, ref, "suppress_when_focused", "Suppress While Focused");
-    try widgets.hintText(context, .src(@src()), "No alert while you're on that character; Alert History still lists it.");
-    try bind.toggle(context, ref, "suppress_when_clicked", "Suppress After Click");
-    try widgets.hintText(context, .src(@src()), "No alert briefly after you click that character; Alert History still lists it.");
-    try bind.toggle(context, ref, "show_hidden_thumbnail", "Show Thumbnail Even If Hidden");
-    try widgets.hintText(context, .src(@src()), "Only for as long as the alert lasts.");
-    try bind.toggle(context, ref, "tts_enabled", "Speak Aloud (TTS)");
-    try widgets.hintText(context, .src(@src()), "Reads the alert out loud. Voice settings are on the Alert Options tab.");
+    const behavior = try window.widgets.openFieldGroup(context, .str("knots.events.behavior"), "Behavior");
+    try window.bind.toggle(context, ref, "suppress_when_focused", "Suppress While Focused");
+    try window.widgets.hintText(context, .src(@src()), "No alert while you're on that character; Alert History still lists it.");
+    try window.bind.toggle(context, ref, "suppress_when_clicked", "Suppress After Click");
+    try window.widgets.hintText(context, .src(@src()), "No alert briefly after you click that character; Alert History still lists it.");
+    try window.bind.toggle(context, ref, "show_hidden_thumbnail", "Show Thumbnail Even If Hidden");
+    try window.widgets.hintText(context, .src(@src()), "Only for as long as the alert lasts.");
+    try window.bind.toggle(context, ref, "tts_enabled", "Speak Aloud (TTS)");
+    try window.widgets.hintText(context, .src(@src()), "Reads the alert out loud. Voice settings are on the Alert Options tab.");
     try behavior.close(context);
-    try widgets.separator(context, .str("knots.events.separator.behavior"));
+    try window.widgets.separator(context, .str("knots.events.separator.behavior"));
 
-    const border = try widgets.openFieldGroup(context, .str("knots.events.border"), "Border");
-    try bind.toggle(context, ref, "show_border", "Show Border");
-    try widgets.hintText(context, .src(@src()), "Marks the thumbnail with a colored border during the alert.");
+    const border = try window.widgets.openFieldGroup(context, .str("knots.events.border"), "Border");
+    try window.bind.toggle(context, ref, "show_border", "Show Border");
+    try window.widgets.hintText(context, .src(@src()), "Marks the thumbnail with a colored border during the alert.");
     // A hidden border has no colour to set and nothing to flash.
-    const border_options = try widgets.openGroup(context, .src(@src()), ref.get("show_border"));
-    try bind.toggle(context, ref, "flash_border", "Flash Border");
-    try widgets.hintText(context, .src(@src()), "Makes the border blink.");
+    const border_options = try window.widgets.openGroup(context, .src(@src()), ref.get("show_border"));
+    try window.bind.toggle(context, ref, "flash_border", "Flash Border");
+    try window.widgets.hintText(context, .src(@src()), "Makes the border blink.");
     const defaults = config.ThumbnailConfig{};
-    try bind.optionalColor(context, ref, "border_color", "Border Color", defaults.inactiveBorderColor);
-    try widgets.hintText(context, .src(@src()), "Reset uses the default color.");
+    try window.bind.optionalColor(context, ref, "border_color", "Border Color", defaults.inactiveBorderColor);
+    try window.widgets.hintText(context, .src(@src()), "Reset uses the default color.");
     try border_options.close(context);
     try border.close(context);
-    try widgets.separator(context, .str("knots.events.separator.border"));
+    try window.widgets.separator(context, .str("knots.events.separator.border"));
 
-    try sound(context, ref, sound_target, sound_index);
+    try sound(window, context, ref, sound_target, sound_index);
 }
 
 /// Fires an alert on every client with the settings the window has for it, saved or not.
-pub fn testAlert(notification_type: NotificationType, alert: config.NotificationTypeConfig) void {
-    const notifier = session.notifier() orelse {
+pub fn testAlert(window: *Window, notification_type: NotificationType, alert: config.NotificationTypeConfig) void {
+    const notifier = window.session.notifier() orelse {
         slog.warn("Failed to test alert: the app isn't running", .{});
         return;
     };
     notifier.showTest(notification_type, alert) catch |err| {
         slog.err("Failed to test alert: {}", .{err});
-        status.show(.failure, "Failed to test alert: {err}", .{ .err = err });
+        window.status.show(.failure, "Failed to test alert: {err}", .{ .err = err });
     };
 }
 
@@ -131,13 +136,13 @@ fn typeShortLabel(notification_type: NotificationType) []const u8 {
 }
 
 /// Returns whether it was clicked.
-fn typeRow(context: *ui.Frame, notification_type: NotificationType, is_selected: bool) !bool {
+fn typeRow(window: *Window, context: *ui.Frame, notification_type: NotificationType, is_selected: bool) !bool {
     const index = @backingInt(notification_type);
     const row = Button{ .key = ui.Key.str("knots.events.row").indexed(index), .style = if (is_selected) &style.roster_row_selected else &style.roster_row };
     const response = try widgets.openRosterRow(context, row);
     const shown = typeShortLabel(notification_type);
     try context.ui().setAccessibilityName(response.id, shown);
-    const ref = typeRef(index);
+    const ref = typeRef(window, index);
     try context.e(Rect{ .key = ui.Key.str("knots.events.dot").indexed(index), .style = if (ref.get("enabled")) &style.event_dot_on else &style.event_dot_off });
     try context.e(Text{
         .selectable = false,
@@ -151,109 +156,109 @@ fn typeRow(context: *ui.Frame, notification_type: NotificationType, is_selected:
     return response.clicked;
 }
 
-fn typeDetail(context: *ui.Frame, notification_type: NotificationType) !void {
-    const ref = typeRef(@backingInt(notification_type));
-    const stack = try widgets.openScrollPane(context, .str("knots.events.detail"), style.detail_scroll);
-    const previous_rows = widgets.useDetailRows();
-    defer widgets.restoreRows(previous_rows);
+fn typeDetail(window: *Window, context: *ui.Frame, notification_type: NotificationType) !void {
+    const ref = typeRef(window, @backingInt(notification_type));
+    const stack = try window.widgets.openScrollPane(context, .str("knots.events.detail"), style.detail_scroll);
+    const previous_rows = window.widgets.useDetailRows();
+    defer window.widgets.restoreRows(previous_rows);
 
-    const header = try widgets.openDetailHeader(context, .src(@src()), null);
+    const header = try window.widgets.openDetailHeader(context, .src(@src()), null);
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = typeLabel(notification_type), .style = &style.roster_name_selected });
     var is_enabled: bool = ref.get("enabled");
     if ((try context.interact(Button{ .key = .src(@src()), .label = lang.text("\u{25B6} Test"), .disabled = !is_enabled, .style = &style.plain_button })).clicked) {
-        testAlert(notification_type, ref.ptr.*);
+        testAlert(window, notification_type, ref.ptr.*);
     }
     try header.close(context);
-    if (try widgets.switchRow(context, ui.Key.str("knots.events.enabled").indexed(ref.index), "Enabled", &is_enabled)) ref.set("enabled", is_enabled);
-    try widgets.hintText(context, .src(@src()), "When off, this event never alerts.");
-    try widgets.separator(context, .str("knots.events.separator.enabled"));
+    if (try window.widgets.switchRow(context, ui.Key.str("knots.events.enabled").indexed(ref.index), "Enabled", &is_enabled)) ref.set("enabled", is_enabled);
+    try window.widgets.hintText(context, .src(@src()), "When off, this event never alerts.");
+    try window.widgets.separator(context, .str("knots.events.separator.enabled"));
 
-    const rest = try widgets.openGroup(context, .src(@src()), is_enabled);
-    const timing = try widgets.openFieldGroup(context, .str("knots.events.timing"), "Timing");
-    try bind.number(context, ref, "duration_ms", "Duration", .{ .shows_seconds = true, .unit = "s" });
-    try widgets.hintText(context, .src(@src()), "How long the alert shows; 0 keeps it until dismissed.");
-    try bind.number(context, ref, "throttle_ms", "Cooldown", .{ .shows_seconds = true, .unit = "s" });
-    try widgets.hintText(context, .src(@src()), "Repeats within this time don't alert; Alert History still lists them.");
+    const rest = try window.widgets.openGroup(context, .src(@src()), is_enabled);
+    const timing = try window.widgets.openFieldGroup(context, .str("knots.events.timing"), "Timing");
+    try window.bind.number(context, ref, "duration_ms", "Duration", .{ .shows_seconds = true, .unit = "s" });
+    try window.widgets.hintText(context, .src(@src()), "How long the alert shows; 0 keeps it until dismissed.");
+    try window.bind.number(context, ref, "throttle_ms", "Cooldown", .{ .shows_seconds = true, .unit = "s" });
+    try window.widgets.hintText(context, .src(@src()), "Repeats within this time don't alert; Alert History still lists them.");
     try timing.close(context);
-    try widgets.separator(context, .str("knots.events.separator.timing"));
-    try trigger(context, notification_type);
+    try window.widgets.separator(context, .str("knots.events.separator.timing"));
+    try trigger(window, context, notification_type);
 
-    try alertSettings(context, ref, notification_type, .sound_file, ref.index);
+    try alertSettings(window, context, ref, notification_type, .sound_file, ref.index);
     try rest.close(context);
     try stack.close(context);
 }
 
 /// What makes the few events with settings of their own fire, under their Timing.
-fn trigger(context: *ui.Frame, notification_type: NotificationType) !void {
+fn trigger(window: *Window, context: *ui.Frame, notification_type: NotificationType) !void {
     if (notification_type == .TravelLeftBehind) {
-        try travelTrigger(context);
+        try travelTrigger(window, context);
     } else if (notification_type == .MiningIdle) {
-        try miningIdleTrigger(context);
+        try miningIdleTrigger(window, context);
     } else if (notification_type == .MiningStopped) {
-        try miningStoppedTrigger(context);
+        try miningStoppedTrigger(window, context);
     }
 }
 
-fn travelTrigger(context: *ui.Frame) !void {
-    const ref = session.profile().child("travel");
-    const group = try widgets.openFieldGroup(context, .str("knots.events.travel"), "Travel Mode");
-    try bind.toggle(context, ref, "enabled", "Enable Travel Mode");
-    try widgets.hintText(context, .src(@src()), "Watches for characters left behind on a jump. Also on a hotkey and in the tray menu.");
-    const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
-    try bind.number(context, ref, "window_seconds", "Catch-Up Window", .{ .unit = "s" });
-    try widgets.hintText(context, .src(@src()), "How long a character can fall behind before the alert.");
-    try bind.segmented(context, ref, "threshold_mode", "Group Size Threshold", &.{ "Percentage", "Count" });
-    try widgets.hintText(context, .src(@src()), "How big the group must be before anyone counts as left behind.");
+fn travelTrigger(window: *Window, context: *ui.Frame) !void {
+    const ref = window.session.profile().child("travel");
+    const group = try window.widgets.openFieldGroup(context, .str("knots.events.travel"), "Travel Mode");
+    try window.bind.toggle(context, ref, "enabled", "Enable Travel Mode");
+    try window.widgets.hintText(context, .src(@src()), "Watches for characters left behind on a jump. Also on a hotkey and in the tray menu.");
+    const options = try window.widgets.openGroup(context, .src(@src()), ref.get("enabled"));
+    try window.bind.number(context, ref, "window_seconds", "Catch-Up Window", .{ .unit = "s" });
+    try window.widgets.hintText(context, .src(@src()), "How long a character can fall behind before the alert.");
+    try window.bind.segmented(context, ref, "threshold_mode", "Group Size Threshold", &.{ "Percentage", "Count" });
+    try window.widgets.hintText(context, .src(@src()), "How big the group must be before anyone counts as left behind.");
     switch (ref.get("threshold_mode")) {
         .percent => {
-            try bind.number(context, ref, "threshold_percent", "Minimum Percentage", .{ .unit = "%" });
-            try widgets.hintText(context, .src(@src()), "How much of the group must jump together.");
+            try window.bind.number(context, ref, "threshold_percent", "Minimum Percentage", .{ .unit = "%" });
+            try window.widgets.hintText(context, .src(@src()), "How much of the group must jump together.");
         },
         .count => {
-            try bind.number(context, ref, "threshold_count", "Minimum Count", .{ .unit = "characters", .singular_unit = "character" });
-            try widgets.hintText(context, .src(@src()), "How many characters must jump together.");
+            try window.bind.number(context, ref, "threshold_count", "Minimum Count", .{ .unit = "characters", .singular_unit = "character" });
+            try window.widgets.hintText(context, .src(@src()), "How many characters must jump together.");
         },
     }
     try options.close(context);
     try group.close(context);
-    try widgets.separator(context, .str("knots.events.separator.travel"));
+    try window.widgets.separator(context, .str("knots.events.separator.travel"));
 }
 
-fn miningIdleTrigger(context: *ui.Frame) !void {
-    const ref = session.profile().child("mining");
-    try miningNotice(context);
-    const group = try widgets.openFieldGroup(context, .str("knots.events.mining_idle"), "Detection");
-    const options = try widgets.openGroup(context, .src(@src()), isMiningTracked());
-    try bind.number(context, ref, "idle_alert_window_seconds", "Detection Window", .{ .unit = "s" });
-    try widgets.hintText(context, .src(@src()), "The time mining cycles are counted over.");
-    try bind.number(context, ref, "idle_alert_threshold", "Minimum Cycles", .{ .unit = "cycles", .singular_unit = "cycle" });
-    try widgets.hintText(context, .src(@src()), "Fewer mining cycles than this in the window counts as slow.");
+fn miningIdleTrigger(window: *Window, context: *ui.Frame) !void {
+    const ref = window.session.profile().child("mining");
+    try miningNotice(window, context);
+    const group = try window.widgets.openFieldGroup(context, .str("knots.events.mining_idle"), "Detection");
+    const options = try window.widgets.openGroup(context, .src(@src()), isMiningTracked(window));
+    try window.bind.number(context, ref, "idle_alert_window_seconds", "Detection Window", .{ .unit = "s" });
+    try window.widgets.hintText(context, .src(@src()), "The time mining cycles are counted over.");
+    try window.bind.number(context, ref, "idle_alert_threshold", "Minimum Cycles", .{ .unit = "cycles", .singular_unit = "cycle" });
+    try window.widgets.hintText(context, .src(@src()), "Fewer mining cycles than this in the window counts as slow.");
     try options.close(context);
     try group.close(context);
-    try widgets.separator(context, .str("knots.events.separator.mining_idle"));
+    try window.widgets.separator(context, .str("knots.events.separator.mining_idle"));
 }
 
-fn miningStoppedTrigger(context: *ui.Frame) !void {
-    const ref = session.profile().child("mining");
-    try miningNotice(context);
-    const group = try widgets.openFieldGroup(context, .str("knots.events.mining_stopped"), "Detection");
-    const options = try widgets.openGroup(context, .src(@src()), isMiningTracked());
-    try bind.number(context, ref, "stopped_alert_window_seconds", "Silence Window", .{ .unit = "s" });
-    try widgets.hintText(context, .src(@src()), "How long without mining before the alert.");
+fn miningStoppedTrigger(window: *Window, context: *ui.Frame) !void {
+    const ref = window.session.profile().child("mining");
+    try miningNotice(window, context);
+    const group = try window.widgets.openFieldGroup(context, .str("knots.events.mining_stopped"), "Detection");
+    const options = try window.widgets.openGroup(context, .src(@src()), isMiningTracked(window));
+    try window.bind.number(context, ref, "stopped_alert_window_seconds", "Silence Window", .{ .unit = "s" });
+    try window.widgets.hintText(context, .src(@src()), "How long without mining before the alert.");
     try options.close(context);
     try group.close(context);
-    try widgets.separator(context, .str("knots.events.separator.mining_stopped"));
+    try window.widgets.separator(context, .str("knots.events.separator.mining_stopped"));
 }
 
 /// The mining alerts are worked out from the mining rate, so they need it on.
-fn miningNotice(context: *ui.Frame) !void {
-    if (isMiningTracked()) return;
-    try widgets.notice(context, .src(@src()), "Needs the mining rate switched on, from its text on the thumbnail or client list preview.");
+fn miningNotice(window: *Window, context: *ui.Frame) !void {
+    if (isMiningTracked(window)) return;
+    try window.widgets.notice(context, .src(@src()), "Needs the mining rate switched on, from its text on the thumbnail or client list preview.");
 }
 
 /// The thumbnails' or the client list's mining rate is shown, which is when the tracker behind these alerts runs.
-fn isMiningTracked() bool {
-    return session.profile().ptr.tracksMining();
+fn isMiningTracked(window: *Window) bool {
+    return window.session.profile().ptr.tracksMining();
 }
 
 fn typeLabel(notification_type: NotificationType) []const u8 {
@@ -376,10 +381,10 @@ fn englishStateLabel(state: notification.State) []const u8 {
 }
 
 /// Grouped under category headings; each row's dot is filled while its event is enabled.
-fn typeRoster(context: *ui.Frame) !void {
+fn typeRoster(window: *Window, context: *ui.Frame) !void {
     const roster = Rect{ .key = .src(@src()), .style = try rosterStyle(context) };
     _ = try roster.open(context);
-    const rows = try widgets.openScrollPane(context, .str("knots.events.rows"), style.roster_scroll);
+    const rows = try window.widgets.openScrollPane(context, .str("knots.events.rows"), style.roster_scroll);
     var last_category: ?notification.NotificationCategory = null;
     for (TYPES_IN_ORDER) |notification_type| {
         const category = notification.notificationCategory(notification_type);
@@ -387,9 +392,9 @@ fn typeRoster(context: *ui.Frame) !void {
             last_category = category;
             try widgets.boxedText(context, ui.Key.str("knots.events.category").indexed(@backingInt(category)), categoryHeading(category), &style.roster_category, &style.tab_category_text);
         }
-        const is_selected = notification_type == g_selected;
-        if (try typeRow(context, notification_type, is_selected) and !is_selected) {
-            g_selected = notification_type;
+        const is_selected = notification_type == window.kept.event_alerts.selected;
+        if (try typeRow(window, context, notification_type, is_selected) and !is_selected) {
+            window.kept.event_alerts.selected = notification_type;
             context.requestRedraw();
         }
     }
@@ -424,20 +429,20 @@ fn marker(context: *ui.Frame, key: ui.Key, glyph: glyphs.Glyph, tip: []const u8)
     try tooltip.close(context);
 }
 
-fn customText(context: *ui.Frame, ref: TypeRef, notification_type: NotificationType) !void {
+fn customText(window: *Window, context: *ui.Frame, ref: TypeRef, notification_type: NotificationType) !void {
     const primary_sample = notification.sample(notification_type);
     const alt_state = notification.altState(notification_type);
-    const group = try widgets.openFieldGroup(context, .str("knots.events.text"), "Custom Text");
-    try bind.toggle(context, ref, "show_text", "Show Text");
-    try widgets.hintText(context, .src(@src()), "Off hides the text on thumbnails and the client list. Borders, sound, speech and Alert History still work.");
-    try textBox(context, ref, notification_type, .custom_text, primary_sample, alt_state != null);
+    const group = try window.widgets.openFieldGroup(context, .str("knots.events.text"), "Custom Text");
+    try window.bind.toggle(context, ref, "show_text", "Show Text");
+    try window.widgets.hintText(context, .src(@src()), "Off hides the text on thumbnails and the client list. Borders, sound, speech and Alert History still work.");
+    try textBox(window, context, ref, notification_type, .custom_text, primary_sample, alt_state != null);
     if (alt_state) |state| {
         var alt_sample = primary_sample;
         alt_sample.state = state;
-        try textBox(context, ref, notification_type, .custom_text_alt, alt_sample, true);
+        try textBox(window, context, ref, notification_type, .custom_text_alt, alt_sample, true);
     }
 
-    try placeholderChips(context, ref, notification_type);
+    try placeholderChips(window, context, ref, notification_type);
 
     try preview(context, notification_type, .custom_text, ref.get("custom_text"), primary_sample);
     if (alt_state) |state| {
@@ -445,19 +450,19 @@ fn customText(context: *ui.Frame, ref: TypeRef, notification_type: NotificationT
         alt_sample.state = state;
         try preview(context, notification_type, .custom_text_alt, ref.get("custom_text_alt"), alt_sample);
     }
-    const shown_text = try widgets.openGroup(context, .src(@src()), ref.get("show_text"));
-    try bind.optionalColor(context, ref, "text_color", "Text Color", session.profile().ptr.notifications.color);
-    try widgets.hintText(context, .src(@src()), "Reset uses the Alert text's color on the Appearance tab.");
+    const shown_text = try window.widgets.openGroup(context, .src(@src()), ref.get("show_text"));
+    try window.bind.optionalColor(context, ref, "text_color", "Text Color", window.session.profile().ptr.notifications.color);
+    try window.widgets.hintText(context, .src(@src()), "Reset uses the Alert text's color on the Appearance tab.");
     if (notification_type == .ChatIntel) {
-        try bind.toggle(context, ref, "color_system_name", "Color System Name");
-        try widgets.hintText(context, .src(@src()), "Uses the same color as the system's name on thumbnails, when the text starts with the system.");
+        try window.bind.toggle(context, ref, "color_system_name", "Color System Name");
+        try window.widgets.hintText(context, .src(@src()), "Uses the same color as the system's name on thumbnails, when the text starts with the system.");
     }
     try shown_text.close(context);
     try group.close(context);
 }
 
 /// A row per run of chips that fits, since knots only wraps text.
-fn placeholderChips(context: *ui.Frame, ref: TypeRef, notification_type: NotificationType) !void {
+fn placeholderChips(window: *Window, context: *ui.Frame, ref: TypeRef, notification_type: NotificationType) !void {
     const arena = context.arena();
     const placeholders = notification.placeholders(notification_type);
     const tokens = try arena.alloc([]const u8, placeholders.len);
@@ -471,7 +476,7 @@ fn placeholderChips(context: *ui.Frame, ref: TypeRef, notification_type: Notific
         const box = Rect{ .key = ui.Key.str("knots.events.chip.box").indexed(first), .style = &style.chip_box };
         _ = try box.open(context);
         for (tokens[first..end], first..) |token, index| {
-            if (try tagChip(context, ui.Key.str("knots.events.chip").indexed(index), token)) insertToken(context, ref, notification_type, token);
+            if (try tagChip(context, ui.Key.str("knots.events.chip").indexed(index), token)) insertToken(window, context, ref, notification_type, token);
         }
         try box.close(context);
         try row.close(context);
@@ -502,25 +507,25 @@ fn tagChip(context: *ui.Frame, key: ui.Key, token: []const u8) !bool {
     return is_clicked;
 }
 
-fn textBox(context: *ui.Frame, ref: TypeRef, notification_type: NotificationType, comptime field: TextField, sample: notification.Notification, has_states: bool) !void {
+fn textBox(window: *Window, context: *ui.Frame, ref: TypeRef, notification_type: NotificationType, comptime field: TextField, sample: notification.Notification, has_states: bool) !void {
     const name = @tagName(field);
     const state = sample.state orelse .on;
     const label = if (has_states) englishStateLabel(state) else "Text";
-    const row = try widgets.openBinding(context, ui.Key.str("knots.events.text:" ++ name).indexed(ref.index), label);
+    const row = try window.widgets.openBinding(context, ui.Key.str("knots.events.text:" ++ name).indexed(ref.index), label);
     var buffer: [DEFAULT_TEXT_SIZE]u8 = undefined;
     // The box keeps its placeholder until the frame is drawn, so it can't point at this stack buffer.
-    try bind.styledTextBox(context, ref, name, try context.arena().dupe(u8, notification.defaultText(sample, &buffer)), &style.custom_text_input);
-    if (context.ui().focused(bind.boxKey(ref, name).hash())) g_last_text_field.set(notification_type, field);
+    try window.bind.styledTextBox(context, ref, name, try context.arena().dupe(u8, notification.defaultText(sample, &buffer)), &style.custom_text_input);
+    if (context.ui().focused(bind.boxKey(ref, name).hash())) window.kept.event_alerts.last_text_field.set(notification_type, field);
     if ((try context.interact(Button{ .key = ui.Key.str("knots.events.text.clear:" ++ name).indexed(ref.index), .label = "\u{00D7}", .style = &style.icon_button_danger_text })).clicked) {
         ref.set(name, null);
     }
     try row.close(context);
-    try widgets.hintText(context, ui.Key.str("knots.events.text.hint:" ++ name).indexed(ref.index), "Leave empty for the gray default. Type \\n for a new line.");
+    try window.widgets.hintText(context, ui.Key.str("knots.events.text.hint:" ++ name).indexed(ref.index), "Leave empty for the gray default. Type \\n for a new line.");
 }
 
 /// Inserts at the caret of the box last focused, as long as it still fits.
-fn insertToken(context: *ui.Frame, ref: TypeRef, notification_type: NotificationType, token: []const u8) void {
-    switch (g_last_text_field.get(notification_type)) {
+fn insertToken(window: *Window, context: *ui.Frame, ref: TypeRef, notification_type: NotificationType, token: []const u8) void {
+    switch (window.kept.event_alerts.last_text_field.get(notification_type)) {
         inline .custom_text, .custom_text_alt => |field| {
             const name = @tagName(field);
             const current = ref.get(name) orelse "";
@@ -559,21 +564,21 @@ fn preview(context: *ui.Frame, notification_type: NotificationType, comptime fie
     try row.close(context);
 }
 
-fn sound(context: *ui.Frame, ref: TypeRef, sound_target: pickers.Target, sound_index: usize) !void {
-    const group = try widgets.openFieldGroup(context, .str("knots.events.sound"), "Sound");
-    try bind.toggle(context, ref, "sound_enabled", "Play Custom Sound");
-    try widgets.hintText(context, .src(@src()), "Plays a sound file of your choice with the alert.");
-    const options = try widgets.openGroup(context, .src(@src()), ref.get("sound_enabled"));
-    const row = try widgets.openBinding(context, .src(@src()), "Sound File");
+fn sound(window: *Window, context: *ui.Frame, ref: TypeRef, sound_target: pickers.Target, sound_index: usize) !void {
+    const group = try window.widgets.openFieldGroup(context, .str("knots.events.sound"), "Sound");
+    try window.bind.toggle(context, ref, "sound_enabled", "Play Custom Sound");
+    try window.widgets.hintText(context, .src(@src()), "Plays a sound file of your choice with the alert.");
+    const options = try window.widgets.openGroup(context, .src(@src()), ref.get("sound_enabled"));
+    const row = try window.widgets.openBinding(context, .src(@src()), "Sound File");
     const path = ref.get("sound_path") orelse "";
     // The file's name only; the full path is what's saved.
     try widgets.boxedText(context, .src(@src()), if (path.len == 0) "None" else std.fs.path.basename(path), &style.path_box, if (path.len == 0) &style.path_text_empty else &style.path_text);
     if (path.len > 0 and (try context.interact(Button{ .key = .src(@src()), .label = "\u{00D7}", .style = &style.icon_button_danger_text })).clicked) ref.set("sound_path", null);
-    if ((try context.interact(Button{ .key = .src(@src()), .label = lang.text("Browse"), .style = &style.plain_button })).clicked) host.browseSoundFile(sound_target, sound_index);
+    if ((try context.interact(Button{ .key = .src(@src()), .label = lang.text("Browse"), .style = &style.plain_button })).clicked) window.host.browseSoundFile(sound_target, sound_index);
     try row.close(context);
-    try widgets.hintText(context, .src(@src()), "A WAV or MP3 file.");
-    try bind.slider(context, ref, "sound_volume", "Volume", .{ .display = .percent });
-    try widgets.hintText(context, .src(@src()), "Only affects this alert's sound.");
+    try window.widgets.hintText(context, .src(@src()), "A WAV or MP3 file.");
+    try window.bind.slider(context, ref, "sound_volume", "Volume", .{ .display = .percent });
+    try window.widgets.hintText(context, .src(@src()), "Only affects this alert's sound.");
     try options.close(context);
     try group.close(context);
 }

@@ -442,6 +442,11 @@ WM_HOTKEY ─> timerWindowProc ─> HotkeyManager.handleHotkeyPress ─> Command
 Immediate-mode (`knots` on Vulkan), main thread, with a nested message loop so the tick and tray keep running. Each frame reads settings and writes them straight back to `store.live`; there's no form state.
 
 - `knots/host.zig`: window lifecycle, nested loop, close prompt, saved position. Every save goes through `saveChanges`, which refuses while `plan.conflicts` finds hotkey conflicts. Anything that replaces documents or touches the app is posted as `WM_KNOTS_COMMAND` and runs between frames.
+- State has three owners, and no dialog file keeps globals but `g_host`:
+  - `Host` (`host.zig`), for the app's run: the session, the picker, price and portrait threads' results, the region overlay, and `Kept`. `g_host` is static rather than allocated, since those threads can outlive the window.
+  - `Kept` (`window.zig`): what the window remembers from one opening to the next, such as the open tab and each roster's selection.
+  - `Window` (`window.zig`): everything a window's frames share, built in place as it opens and freed as it closes, so nothing carries over. Its parts point at one another (`Bind` at `Widgets`, `Widgets` at `Search`).
+  - Tab-level code takes `window: *Window`; `widgets`, `bind`, `session`, `hotkey`, `search` and `status` take only their own struct. `frame` finds its `Window` with `@fieldParentPtr` from knots' `App`, held in `Running` beside it.
 - `knots/session.zig`: edits `store.live` and a draft copy of `GlobalConfig`.
   - Every change goes through `Ref.set` (or a list's `append` / `remove` / `move`), which copies strings, clamps values to their ranges, and asks `App` to restyle through `session.run`.
   - A replaced string is freed one frame later, since the current frame may still be drawing it.
@@ -453,12 +458,12 @@ Immediate-mode (`knots` on Vulkan), main thread, with a nested message loop so t
 - `tabs/panel_preview.zig`: the panel previews' stage, frame, header and clickable parts.
 - `knots/header.zig`: the header's brand and profile menu, and the prompts it opens. `profiles.zig` runs the profile and backup actions (switch, create, copy, rename, delete, reset, back up, restore) between frames, since each can replace the documents. `import_dialog.zig` is the Import Settings dialog. `status.zig` is the footer's status line.
 - `knots/hotkey.zig`: the recording field; pauses live hotkeys while recording, draws its key caps compact when full size would overrun `widgets.controlsRoom`, and marks conflicting combos with their holders' names from `labels.zig`.
-- `tools/`: `region_select.zig` (full-screen overlay for drawing a thumbnail space; math in `region_math.zig`), `esi_prices.zig` (Jita ore prices), `ultra_potato.zig` (patches EVE's graphics YAML).
+- `tools/`: `region_select.zig` (full-screen overlay for drawing a thumbnail space, its state in an `Overlay` its window procedure finds through `GWLP_USERDATA`; math in `region_math.zig`), `esi_prices.zig` (Jita ore prices), `ultra_potato.zig` (patches EVE's graphics YAML).
 
 ## Module dependencies
 
 - Direct calls, no event bus. Code is handed `*App` or just what it needs.
-- Win32 callbacks have no context pointer: window procs and hooks read `app.g_app` (or `app.currentThumbnailSet()`) and pass it down; modules below them never read the global. `Scout` keeps a private pointer for its own hooks so it stays testable.
+- Win32 callbacks have no context pointer: window procs and hooks read `app.g_app` (or `app.currentThumbnailSet()`) and pass it down; modules below them never read the global. `Scout` keeps a private pointer for its own hooks so it stays testable. The dialog does the same with `g_host`, read only in `host.zig`.
 - A panel finds its own struct from the `hwnd`: its owner attaches it with `PanelWindow.attachOwner`, and the window proc reads it back with `panel_window.ownerOf`. Panels reach `App` only through `PANEL_HOST` (the Map Panel through `MapPanel.host`, set by `App.init`).
 - The dialog reaches `App` only through `dialog/dialog_host.zig`: `host.init` takes App's `Context` (allocator, io, store, global settings, Scout, character IDs) and `DIALOG_HOST` (thumbnail set, notifier, timer window, save, requests), and hands back `DialogHooks`. `import_cycles.py` fails if `dialog/` imports `app.zig`.
 - `platform/` depends on nothing app-specific: outside itself it imports only `log.zig` and `util/`. Win32 declarations live in `platform/win32.zig`, which never logs.
@@ -466,7 +471,7 @@ Immediate-mode (`knots` on Vulkan), main thread, with a nested message loop so t
 
 ## Client simulator (`sim.zig`, `sim/`)
 
-A second exe, `eve-maj-sim` (`zig build sim`), that stands in for EVE clients so the app can be tested without the game. It reuses only leaf modules, never `App` or anything that runs the app: the dialog's look (`dialog/knots/style.zig`, `widgets.zig`, `glyphs.zig`, `images.zig`, `color_convert.zig`), `platform/win32.zig` and `gdi_overlay.zig`, `log.zig`, the embedded map (`map/universe.zig`), and the log parsers it writes for (`chatlog/lines.zig`, `notifications/gamelog_events.zig`).
+A second exe, `eve-maj-sim` (`zig build sim`), that stands in for EVE clients so the app can be tested without the game. It reuses only leaf modules, never `App` or anything that runs the app: the dialog's look (`dialog/knots/style.zig`, `widgets.zig` with the `search.zig` it indexes into, `glyphs.zig`, `images.zig`, `color_convert.zig`), `platform/win32.zig` and `gdi_overlay.zig`, `log.zig`, the embedded map (`map/universe.zig`), and the log parsers it writes for (`chatlog/lines.zig`, `notifications/gamelog_events.zig`).
 
 - `sim.zig`: entry point; runs in `%TEMP%\EveMajSimulator`. With `--client <name>` it becomes one client instead.
 - `client_window.zig`: a client. One `trinityWindow` per process, titled `EVE - <name>`; the controller posts `WM_SIM_LOGIN` / `WM_SIM_LOGOUT` to change the title.

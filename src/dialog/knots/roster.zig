@@ -1,7 +1,7 @@
 //! A master list's rows, each clicked to select what the details beside the list show; main thread only.
 const ui = @import("ui");
 const style = @import("style.zig");
-const widgets = @import("widgets.zig");
+const widgets_mod = @import("widgets.zig");
 
 const Button = ui.component.Button;
 const Text = ui.component.Text;
@@ -20,17 +20,19 @@ pub const Badge = struct {
 
 /// Open from `open` until `close`; between them the caller draws what leads the name, e.g. a dot or portrait.
 pub const Row = struct {
+    /// Borrows the window's, which fits the roster to the row's name.
+    widgets: *widgets_mod.Widgets,
     button: Button,
     is_selected: bool,
     /// Clicked while another row was selected; the caller selects this one.
     is_picked: bool,
 
     /// `lifted_style` while it's being dragged, otherwise the roster's own.
-    pub fn open(context: *ui.Frame, key: ui.Key, is_selected: bool, lifted_style: ?*const ui.Style) !Row {
+    pub fn open(widgets: *widgets_mod.Widgets, context: *ui.Frame, key: ui.Key, is_selected: bool, lifted_style: ?*const ui.Style) !Row {
         const button = Button{ .key = key, .style = lifted_style orelse rowStyle(is_selected) };
-        const is_picked = (try widgets.openRosterRow(context, button)).clicked and !is_selected;
+        const is_picked = (try widgets_mod.openRosterRow(context, button)).clicked and !is_selected;
         if (is_picked) context.requestRedraw();
-        return .{ .button = button, .is_selected = is_selected, .is_picked = is_picked };
+        return .{ .widgets = widgets, .button = button, .is_selected = is_selected, .is_picked = is_picked };
     }
 
     /// Draws `name` and `badge`, then closes the row; `lead_width` is what the caller drew before them, 0 for nothing.
@@ -44,7 +46,7 @@ pub const Row = struct {
             .style = if (self.is_selected) &style.roster_name_selected else &style.roster_name,
         });
         if (badge.text.len > 0) try context.e(Text{ .selectable = false, .key = key.indexed(BADGE_INDEX), .content = badge.text, .style = badge.text_style });
-        try widgets.fitRosterRow(context, name, lead_width, badge.text);
+        try self.widgets.fitRosterRow(context, name, lead_width, badge.text);
         try self.button.close(context);
     }
 };

@@ -8,10 +8,12 @@ const pickers = @import("../pickers.zig");
 const style = @import("../style.zig");
 const widgets = @import("../widgets.zig");
 const lang = @import("../../../lang/lang.zig");
+const window_mod = @import("../window.zig");
 
 const Button = ui.component.Button;
 const Tooltip = ui.component.Tooltip;
 const ChatlogRef = session.Ref(config.ChatlogConfig);
+const Window = window_mod.Window;
 
 const DirectoryRow = struct {
     field: []const u8,
@@ -22,17 +24,17 @@ const DirectoryRow = struct {
     hint: []const u8,
 };
 
-pub fn show(context: *ui.Frame) !void {
-    const chatlog = session.global().child("chatlog");
-    try monitoring(context, chatlog);
-    if (session.global().get("advancedMode")) try polling(context, chatlog);
+pub fn show(window: *Window, context: *ui.Frame) !void {
+    const chatlog = window.session.global().child("chatlog");
+    try monitoring(window, context, chatlog);
+    if (window.session.global().get("advancedMode")) try polling(window, context, chatlog);
 }
 
-fn monitoring(context: *ui.Frame, chatlog: ChatlogRef) !void {
-    const section = try widgets.openSharedSection(context, "Log Monitoring", "Reads EVE's logs for systems, alerts, and combat, mining and bounty rates.", &style.section);
-    try bind.toggle(context, chatlog, "enabled", "Enable Log Monitoring");
-    const options = try widgets.openGroup(context, .src(@src()), chatlog.get("enabled"));
-    try directory(context, chatlog, .{
+fn monitoring(window: *Window, context: *ui.Frame, chatlog: ChatlogRef) !void {
+    const section = try window.widgets.openSharedSection(context, "Log Monitoring", "Reads EVE's logs for systems, alerts, and combat, mining and bounty rates.", &style.section);
+    try window.bind.toggle(context, chatlog, "enabled", "Enable Log Monitoring");
+    const options = try window.widgets.openGroup(context, .src(@src()), chatlog.get("enabled"));
+    try directory(window, context, chatlog, .{
         .field = "chatlogDir",
         .label = "Chatlog Directory",
         .placeholder = "C:\\Users\\...\\Chatlogs",
@@ -40,7 +42,7 @@ fn monitoring(context: *ui.Frame, chatlog: ChatlogRef) !void {
         .title = "Select Chatlog Directory",
         .hint = "Usually Documents\\EVE\\logs\\Chatlogs. In EVE, enable Esc > Chat Channel Settings > Log chat to file.",
     });
-    try directory(context, chatlog, .{
+    try directory(window, context, chatlog, .{
         .field = "gamelogDir",
         .label = "Gamelog Directory",
         .placeholder = "C:\\Users\\...\\Gamelogs",
@@ -53,9 +55,9 @@ fn monitoring(context: *ui.Frame, chatlog: ChatlogRef) !void {
 }
 
 /// Browse's picker sets the path once it closes; hovering shows a path too long for the box.
-fn directory(context: *ui.Frame, chatlog: ChatlogRef, comptime row_settings: DirectoryRow) !void {
+fn directory(window: *Window, context: *ui.Frame, chatlog: ChatlogRef, comptime row_settings: DirectoryRow) !void {
     const field = row_settings.field;
-    const row = try widgets.openBinding(context, .str("knots.chatlog.dir:" ++ field), row_settings.label);
+    const row = try window.widgets.openBinding(context, .str("knots.chatlog.dir:" ++ field), row_settings.label);
     // Copied, since the box can replace the path before the tooltip draws it.
     const path = try context.arena().dupe(u8, chatlog.get(field));
     const tip: ?Tooltip = if (path.len > 0) .{
@@ -64,24 +66,24 @@ fn directory(context: *ui.Frame, chatlog: ChatlogRef, comptime row_settings: Dir
         .parts = .{ .popup = &style.path_tooltip },
     } else null;
     if (tip) |t| _ = try t.open(context);
-    try bind.styledTextBox(context, chatlog, field, row_settings.placeholder, &style.path_input);
+    try window.bind.styledTextBox(context, chatlog, field, row_settings.placeholder, &style.path_input);
     if (tip) |t| try t.close(context);
     if ((try context.interact(Button{ .key = .str("knots.chatlog.browse:" ++ field), .label = lang.text("Browse"), .style = &style.plain_button })).clicked) {
-        host.browseFolder(row_settings.target, row_settings.title);
+        window.host.browseFolder(row_settings.target, row_settings.title);
     }
     try row.close(context);
-    try widgets.hintText(context, .str("knots.chatlog.dir.hint:" ++ field), row_settings.hint);
+    try window.widgets.hintText(context, .str("knots.chatlog.dir.hint:" ++ field), row_settings.hint);
 }
 
-fn polling(context: *ui.Frame, chatlog: ChatlogRef) !void {
-    const section = try widgets.openSharedSection(context, "Polling & Performance", "How often the logs are read, and how a quiet log is read less often.", &style.section);
-    const options = try widgets.openGroup(context, .src(@src()), chatlog.get("enabled"));
-    try bind.number(context, chatlog, "pollIntervalMs", "Poll Interval", .{ .shows_seconds = true, .unit = "s" });
-    try widgets.hintText(context, .src(@src()), "How often logs are checked for new lines.");
-    try bind.number(context, chatlog, "idlePollThreshold", "Polls Before Idle", .{ .unit = "polls", .singular_unit = "poll" });
-    try widgets.hintText(context, .src(@src()), "Checks with nothing new before a quiet log is checked less often.");
-    try bind.number(context, chatlog, "maxPollMultiplier", "Max Poll Multiplier", .{ .unit = "\u{00D7}" });
-    try widgets.hintText(context, .src(@src()), "How much less often a quiet log can be checked.");
+fn polling(window: *Window, context: *ui.Frame, chatlog: ChatlogRef) !void {
+    const section = try window.widgets.openSharedSection(context, "Polling & Performance", "How often the logs are read, and how a quiet log is read less often.", &style.section);
+    const options = try window.widgets.openGroup(context, .src(@src()), chatlog.get("enabled"));
+    try window.bind.number(context, chatlog, "pollIntervalMs", "Poll Interval", .{ .shows_seconds = true, .unit = "s" });
+    try window.widgets.hintText(context, .src(@src()), "How often logs are checked for new lines.");
+    try window.bind.number(context, chatlog, "idlePollThreshold", "Polls Before Idle", .{ .unit = "polls", .singular_unit = "poll" });
+    try window.widgets.hintText(context, .src(@src()), "Checks with nothing new before a quiet log is checked less often.");
+    try window.bind.number(context, chatlog, "maxPollMultiplier", "Max Poll Multiplier", .{ .unit = "\u{00D7}" });
+    try window.widgets.hintText(context, .src(@src()), "How much less often a quiet log can be checked.");
     try options.close(context);
     try section.close(context);
 }

@@ -10,7 +10,7 @@ bare-catch update.zig self.mutex.lock(io) catch return;  # UpdateStatus.deinit, 
 bare-catch activity/stat_text.zig catch {}  # write, per row and thumbnail per tick
 bare-catch config/readable.zig writer.print("{s}" ++ text_format, .{separator} ++ args) catch {};  # a setting's path label for messages; a truncated label still reads
 # §4: the callee's doc says it logs its own failures.
-bare-catch dialog/knots/portraits.zig atomic_file.write(g_allocator, io, path, body) catch return;  # atomic_file.write logs every failure itself
+bare-catch dialog/knots/portraits.zig atomic_file.write(self.context.allocator, io, path, body) catch return;  # atomic_file.write logs every failure itself
 bare-catch map/stats_feed.zig atomic_file.write(allocator, io, files.LOGO_COLORS_FILE, json_text) catch return;  # atomic_file.write logs every failure itself
 bare-catch clients/auto_colors.zig atomic_file.write(self.allocator, self.io, AUTO_COLORS_FILE, json) catch return;  # atomic_file.write logs every failure itself
 bare-catch protocol/run.zig const command = url.parse(app.allocator, text) catch return;  # url.parse logs every failure itself
@@ -27,6 +27,8 @@ receiver config/store.zig pub fn previewSection(  # writes self.live through @fi
 receiver clients/scout.zig pub fn listenForEvents(  # stores self as the callbacks' mutable Scout
 receiver clients/auto_colors.zig fn loadEntries(  # fills a store the AutoColorStore owns
 receiver config/import/draft.zig fn put(  # writes into the draft's own object maps
+receiver dialog/knots/hotkey.zig fn manualEditFor(  # returns a mutable pointer into self.manual
+receiver dialog/knots/pickers.zig fn startPicker(  # hands self to the picker thread, which clears is_busy
 
 # §2 booleans: RenderSettings' show_* fields, a bulk rename declined on 2026-10-11.
 bool-name thumbnail/look.zig show_  # declined bulk rename; the fields mirror the thumbnail config's show* settings
@@ -53,8 +55,7 @@ repeated-number activity/ores.zig .volume_m3 = 0.  # each ore's own volume, equa
 repeated-number util/color.zig 0.055  # sRGB transfer function constant, both directions of one formula
 # §1: a constant built from a type above it, which the rule itself allows.
 # §6: unreachable behind a precondition its doc comment states, never a value from the OS, a file or a user.
-orelse-unreachable dialog/knots/session.zig return g_context orelse unreachable;  # set by host.init at startup, before any window opens
-orelse-unreachable dialog/knots/session.zig return g_host orelse unreachable;  # set by host.init at startup, before any window opens
+orelse-unreachable dialog/knots/host.zig const host = hostPtr() orelse unreachable;  # liveGlobal is only reached through the hooks host.init returns, after it sets g_host
 message-quote hotkeys/hook_bindings.zig slog.err("Failed to install low-level {s} hook: error {d}"  # name is the fixed word "keyboard" or "mouse", read as an adjective, never user text
 message-quote panels/panel_lifecycle.zig slog.err("Failed to create the {s} window: {}"  # name is a fixed panel name like "Map Panel", never user text
 message-quote panels/panel_lifecycle.zig slog.err("Failed to link the {s} window to its panel: {}"  # name is a fixed panel name like "Map Panel", never user text

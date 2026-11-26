@@ -201,7 +201,10 @@ def resolve(files, call, by_name):
     """The functions a call may reach, with the offset from its argument index to their parameter index."""
     if call.receiver and call.receiver in files[call.path].aliases:
         target = files.get(files[call.path].aliases[call.receiver])
-        return [(f, 0) for f in (target.functions if target else []) if f.name == call.name and len(f.params) == len(call.args)]
+        named = [f for f in (target.functions if target else []) if f.name == call.name]
+        # A field named like the import, e.g. window.bind, reaches the module's methods.
+        return [(f, 0) for f in named if len(f.params) == len(call.args)] + \
+               [(f, 1) for f in named if len(f.params) == len(call.args) + 1 and f.params[0] == "self"]
     if call.receiver is None:
         return [(f, 0) for f in files[call.path].functions if f.name == call.name and len(f.params) == len(call.args)]
     return [(f, 1) for f in by_name.get(call.name, []) if len(f.params) == len(call.args) + 1 and f.params[0] == "self"] + \

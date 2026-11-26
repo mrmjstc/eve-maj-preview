@@ -5,7 +5,9 @@ const ui = @import("ui");
 const win32 = @import("../platform/win32.zig");
 const gdi_overlay = @import("../platform/gdi_overlay.zig");
 const style = @import("../dialog/knots/style.zig");
-const images = @import("../dialog/knots/images.zig");
+const images_mod = @import("../dialog/knots/images.zig");
+const search_mod = @import("../dialog/knots/search.zig");
+const widgets_mod = @import("../dialog/knots/widgets.zig");
 const color_convert = @import("../dialog/knots/color_convert.zig");
 const fleet_mod = @import("fleet.zig");
 const view = @import("view.zig");
@@ -22,10 +24,19 @@ const TICK_TIMER_ID = 1;
 /// Fine enough for the 1.5s alert storm, cheap enough to idle.
 const TICK_INTERVAL_MS = 100;
 
+/// knots keeps a pointer to `app`, which frame turns back into what it draws with.
+const Running = struct {
+    app: knots.App,
+    /// Borrows run's.
+    controls: *view.Controls,
+    /// Borrows run's.
+    widgets: *widgets_mod.Widgets,
+    /// Borrows run's.
+    images: *images_mod.Images,
+};
+
 /// Set while the window runs, for the frame and window procedure callbacks.
 var g_fleet: ?*Fleet = null;
-/// Set while the window runs, for the frame callback.
-var g_controls: ?*view.Controls = null;
 /// knots' window procedure, which the subclass forwards to.
 var g_knots_proc: isize = 0;
 
@@ -33,10 +44,13 @@ var g_knots_proc: isize = 0;
 pub fn run(allocator: std.mem.Allocator, io: std.Io, fleet: *Fleet) !void {
     var controls: view.Controls = try .init(allocator);
     defer controls.deinit(allocator);
-    images.init(allocator);
+    var images: images_mod.Images = .init(allocator);
     defer images.deinit();
+    var search: search_mod.Search = .init(allocator);
+    defer search.deinit();
+    var widgets: widgets_mod.Widgets = .{ .search = &search };
 
-    var app: knots.App = try .init(io, allocator, .{
+    var running: Running = .{ .controls = &controls, .widgets = &widgets, .images = &images, .app = try .init(io, allocator, .{
         .window = .{ .width = WIDTH, .height = HEIGHT, .title = WINDOW_TITLE },
         .ui = .{
             .theme = style.theme,
@@ -45,18 +59,14 @@ pub fn run(allocator: std.mem.Allocator, io: std.Io, fleet: *Fleet) !void {
                 .{ .name = style.FONT_SEMIBOLD, .data = style.FONT_SEMIBOLD_DATA },
             },
         },
-    });
-    defer app.deinit();
+    }) };
+    defer running.app.deinit();
 
-    const window: win32.HWND = @ptrCast(app.main_viewport.window.getWindowHandle().windows.hwnd);
+    const window: win32.HWND = @ptrCast(running.app.main_viewport.window.getWindowHandle().windows.hwnd);
     setIcon(window);
     styleTitleBar(window);
     g_fleet = fleet;
-    g_controls = &controls;
-    defer {
-        g_fleet = null;
-        g_controls = null;
-    }
+    defer g_fleet = null;
     // Without it nothing scheduled would ever run.
     g_knots_proc = win32.SetWindowLongPtrW(window, win32.GWLP_WNDPROC, @bitCast(@intFromPtr(&windowProc)));
     if (g_knots_proc == 0) {
@@ -70,13 +80,13 @@ pub fn run(allocator: std.mem.Allocator, io: std.Io, fleet: *Fleet) !void {
     defer _ = win32.KillTimer(window, TICK_TIMER_ID);
 
     fleet.note(.info, "Ready. Add clients on the left; the app picks them up like real EVE clients.", .{});
-    try app.start(frame);
+    try running.app.start(frame);
 }
 
-fn frame(_: *knots.View, context: *ui.Frame) !void {
+fn frame(knots_view: *knots.View, context: *ui.Frame) !void {
+    const running: *Running = @fieldParentPtr("app", knots_view.app);
     const fleet = g_fleet orelse return;
-    const controls = g_controls orelse return;
-    try view.frame(context, fleet, controls);
+    try view.frame(context, running.widgets, running.images, fleet, running.controls);
 }
 
 fn windowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {

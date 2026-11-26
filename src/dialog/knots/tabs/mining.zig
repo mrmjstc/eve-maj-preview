@@ -10,37 +10,42 @@ const status = @import("../status.zig");
 const style = @import("../style.zig");
 const widgets = @import("../widgets.zig");
 const lang = @import("../../../lang/lang.zig");
+const window_mod = @import("../window.zig");
 
 const Rect = ui.component.Rect;
 const Button = ui.component.Button;
 const Text = ui.component.Text;
+const Window = window_mod.Window;
 
 /// Ores first, then ice, moon ores and gas.
 const ORE_CATEGORIES = [_][]const u8{ "Ore", "Ice", "Moons", "Gas" };
 
-/// Not saved: the table starts hidden each time the window opens.
-var g_is_table_shown = false;
+/// One window's, reset as each opens.
+pub const State = struct {
+    /// Not saved: the table starts hidden each time the window opens.
+    is_table_shown: bool = false,
+};
 
-pub fn show(context: *ui.Frame) !void {
-    const prices_section = try widgets.openSharedSection(context, "Ore / Ice / Gas Prices", "\"Fetch Prices\" pulls current Jita buy prices from EVE's market.", &style.section);
-    try priceControls(context);
-    if (g_is_table_shown) {
+pub fn show(window: *Window, context: *ui.Frame) !void {
+    const prices_section = try window.widgets.openSharedSection(context, "Ore / Ice / Gas Prices", "\"Fetch Prices\" pulls current Jita buy prices from EVE's market.", &style.section);
+    try priceControls(window, context);
+    if (window.mining.is_table_shown) {
         const inset = Rect{ .key = .src(@src()), .style = &style.inset_column };
         _ = try inset.open(context);
-        try oreTable(context);
+        try oreTable(window, context);
         try inset.close(context);
     }
     try prices_section.close(context);
 }
 
 /// Saved with the fetched prices, so discarding them discards it too.
-pub fn stampPricesFetched() void {
-    session.global().set("orePricesFetchedAtSeconds", std.Io.Timestamp.now(session.appContext().io, .real).toSeconds());
+pub fn stampPricesFetched(window: *Window) void {
+    window.session.global().set("orePricesFetchedAtSeconds", std.Io.Timestamp.now(window.session.appContext().io, .real).toSeconds());
 }
 
 /// Global settings only hold prices that differ from the catalogue's.
-pub fn setOrePrice(name: []const u8, price: f64) void {
-    const global = session.global();
+pub fn setOrePrice(window: *Window, name: []const u8, price: f64) void {
+    const global = window.session.global();
     for (global.ptr.oreTable.items, 0..) |override, index| {
         if (std.mem.eql(u8, override.name, name)) return global.item("oreTable", index).set("price", price);
     }
@@ -53,7 +58,7 @@ pub fn setOrePrice(name: []const u8, price: f64) void {
 }
 
 /// Grouped by category, two ores to a row; names are fixed, since mined-ore log lines are matched against them.
-fn oreTable(context: *ui.Frame) !void {
+fn oreTable(window: *Window, context: *ui.Frame) !void {
     const table = Rect{ .key = .src(@src()), .style = &style.table };
     _ = try table.open(context);
     const header = Rect{ .key = .src(@src()), .style = &style.table_header };
@@ -72,12 +77,12 @@ fn oreTable(context: *ui.Frame) !void {
         _ = try band.open(context);
         try context.e(Text{ .selectable = false, .key = ui.Key.str("knots.ore.category").indexed(category_index), .content = lang.text(category), .style = &style.table_category_label });
         try band.close(context);
-        try oreRows(context, category);
+        try oreRows(window, context, category);
     }
     try table.close(context);
 }
 
-fn oreRows(context: *ui.Frame, category: []const u8) !void {
+fn oreRows(window: *Window, context: *ui.Frame, category: []const u8) !void {
     var catalog_indices: [ores.CATALOG.len]usize = undefined;
     var ore_count: usize = 0;
     for (ores.CATALOG, 0..) |entry, catalog_index| {
@@ -90,9 +95,9 @@ fn oreRows(context: *ui.Frame, category: []const u8) !void {
         const left_catalog_index = catalog_indices[left_index];
         const row = Rect{ .key = ui.Key.str("knots.ore.row").indexed(left_catalog_index), .style = &style.table_row };
         _ = try row.open(context);
-        try oreCell(context, left_catalog_index);
+        try oreCell(window, context, left_catalog_index);
         if (left_index + 1 < ore_count) {
-            try oreCell(context, catalog_indices[left_index + 1]);
+            try oreCell(window, context, catalog_indices[left_index + 1]);
         } else {
             // Holds the lone ore to the left half, in line with the column above.
             try context.e(Rect{ .key = ui.Key.str("knots.ore.filler").indexed(left_catalog_index), .style = &style.table_cell });
@@ -101,36 +106,36 @@ fn oreRows(context: *ui.Frame, category: []const u8) !void {
     }
 }
 
-fn oreCell(context: *ui.Frame, catalog_index: usize) !void {
+fn oreCell(window: *Window, context: *ui.Frame, catalog_index: usize) !void {
     const entry = ores.CATALOG[catalog_index];
     const cell = Rect{ .key = ui.Key.str("knots.ore.cell").indexed(catalog_index), .style = &style.table_cell };
     _ = try cell.open(context);
     try context.e(Text{ .selectable = false, .key = ui.Key.str("knots.ore.name").indexed(catalog_index), .content = entry.name, .style = &style.table_name_cell });
-    if (try bind.valueBox(context, ui.Key.str("knots.ore.price").indexed(catalog_index), orePrice(entry), &style.price_input)) |typed| {
-        setOrePrice(entry.name, typed);
+    if (try window.bind.valueBox(context, ui.Key.str("knots.ore.price").indexed(catalog_index), orePrice(window, entry), &style.price_input)) |typed| {
+        setOrePrice(window, entry.name, typed);
     }
     try cell.close(context);
 }
 
 /// The saved override, or the catalogue's own price.
-fn orePrice(entry: ores.Ore) f64 {
-    for (session.global().ptr.oreTable.items) |override| {
+fn orePrice(window: *Window, entry: ores.Ore) f64 {
+    for (window.session.global().ptr.oreTable.items) |override| {
         if (std.mem.eql(u8, override.name, entry.name)) return override.price;
     }
     return entry.price;
 }
 
-fn priceControls(context: *ui.Frame) !void {
+fn priceControls(window: *Window, context: *ui.Frame) !void {
     const row = Rect{ .key = .src(@src()), .style = &style.button_row };
     _ = try row.open(context);
-    const fetched_at_seconds = session.global().get("orePricesFetchedAtSeconds");
+    const fetched_at_seconds = window.session.global().get("orePricesFetchedAtSeconds");
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = try fetchedLabel(context.arena(), fetched_at_seconds), .style = &style.hint });
-    const toggle_label = if (g_is_table_shown) "Hide Prices" else "Show Prices";
+    const toggle_label = if (window.mining.is_table_shown) "Hide Prices" else "Show Prices";
     if ((try context.interact(Button{ .key = .src(@src()), .label = lang.text(toggle_label), .style = &style.plain_button })).clicked) {
-        g_is_table_shown = !g_is_table_shown;
+        window.mining.is_table_shown = !window.mining.is_table_shown;
     }
-    if (try widgets.glyphButton(context, .src(@src()), .refresh, "Fetch Prices", &style.add_button, prices.isFetching())) {
-        if (host.fetchPrices()) status.show(.info, "Fetching {n} price(s)", .{ .n = prices.NAMES.len });
+    if (try widgets.glyphButton(context, .src(@src()), .refresh, "Fetch Prices", &style.add_button, window.host.prices.isFetching())) {
+        if (window.host.fetchPrices()) window.status.show(.info, "Fetching {n} price(s)", .{ .n = prices.NAMES.len });
     }
     try row.close(context);
 }

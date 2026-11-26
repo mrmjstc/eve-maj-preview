@@ -3,7 +3,7 @@ const std = @import("std");
 const ui = @import("ui");
 const fonts = @import("../../platform/fonts.zig");
 const style = @import("style.zig");
-const widgets = @import("widgets.zig");
+const widgets_mod = @import("widgets.zig");
 const color_convert = @import("color_convert.zig");
 const labels = @import("labels.zig");
 const lang = @import("../../lang/lang.zig");
@@ -47,7 +47,7 @@ const SIZE_TIMES_INDEX = 7;
 
 /// A text or number box's own copy of its text, which follows the setting until the user starts typing.
 const TextState = struct {
-    /// Owned; freed in reset.
+    /// Owned; freed in Bind.deinit.
     text: std.ArrayList(u8) = .empty,
     /// Set while the box has focus, so leaving it applies what was typed.
     is_editing: bool = false,
@@ -55,29 +55,31 @@ const TextState = struct {
 
 /// One frame of a text or number box: apply `left_holding`, then `follow` the value and `draw` the box.
 const Edit = struct {
+    /// Borrows the Bind drawing the box.
+    bind: *Bind,
     key: ui.Key,
     state: *TextState,
     is_focused: bool,
     /// What was typed, on the frame the box lost focus; borrows the box's text, valid until `follow`.
     left_holding: ?[]const u8,
 
-    fn begin(context: *ui.Frame, key: ui.Key) !Edit {
-        const state = try textState(key);
+    fn begin(bind: *Bind, context: *ui.Frame, key: ui.Key) !Edit {
+        const state = try bind.textState(key);
         const is_focused = context.ui().focused(key.hash());
         const was_editing = state.is_editing;
         state.is_editing = is_focused;
-        return .{ .key = key, .state = state, .is_focused = is_focused, .left_holding = if (was_editing and !is_focused) state.text.items else null };
+        return .{ .bind = bind, .key = key, .state = state, .is_focused = is_focused, .left_holding = if (was_editing and !is_focused) state.text.items else null };
     }
 
     /// Typing stays while the box has focus.
     fn follow(self: *const Edit, current: []const u8) !void {
-        if (!self.is_focused) try syncText(self.state, current);
+        if (!self.is_focused) try self.bind.syncText(self.state, current);
     }
 
     fn draw(self: *const Edit, context: *ui.Frame, box_style: *const ui.Style, placeholder: []const u8) !void {
-        try claimRowClick(context, self.key, self.state.text.items.len);
-        try context.e(TextInput{ .key = self.key, .buf = &self.state.text, .allocator = g_allocator, .style = box_style, .placeholder = placeholder });
-        try widgets.nameControl(context, self.key);
+        try self.bind.claimRowClick(context, self.key, self.state.text.items.len);
+        try context.e(TextInput{ .key = self.key, .buf = &self.state.text, .allocator = self.bind.allocator, .style = box_style, .placeholder = placeholder });
+        try self.bind.widgets.nameControl(context, self.key);
     }
 };
 
@@ -115,279 +117,483 @@ pub const Display = enum {
 /// What an optional number box was left holding when it lost focus.
 pub const Typed = union(enum) { unchanged, cleared, value: f64 };
 
-var g_allocator: std.mem.Allocator = undefined;
-/// Keyed by the box's element id; owned, freed in reset.
-var g_text_states: std.AutoHashMapUnmanaged(u64, TextState) = .empty;
+pub const Bind = struct {
+    allocator: std.mem.Allocator,
+    /// Keyed by the box's element id; owned, freed in deinit.
+    text_states: std.AutoHashMapUnmanaged(u64, TextState) = .empty,
+    /// Borrows the window's.
+    widgets: *widgets_mod.Widgets,
 
-pub fn init(allocator: std.mem.Allocator) void {
-    g_allocator = allocator;
-}
+    /// Forgets every box's text.
+    pub fn deinit(self: *Bind) void {
+        var it = self.text_states.valueIterator();
+        while (it.next()) |state| state.text.deinit(self.allocator);
+        self.text_states.deinit(self.allocator);
+    }
 
-/// Forgets every box's text; called once the window has closed.
-pub fn reset() void {
-    var it = g_text_states.valueIterator();
-    while (it.next()) |state| state.text.deinit(g_allocator);
-    g_text_states.deinit(g_allocator);
-    g_text_states = .empty;
-}
+    pub fn toggle(self: *Bind, context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8) !void {
+        var is_checked: bool = ref.get(field);
+        if (try self.widgets.checkbox(context, fieldKey(ref, field), label, &is_checked)) ref.set(field, is_checked);
+    }
 
-pub fn toggle(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8) !void {
-    var is_checked: bool = ref.get(field);
-    if (try widgets.checkbox(context, fieldKey(ref, field), label, &is_checked)) ref.set(field, is_checked);
-}
+    /// For a setting named for what it turns off, e.g. disableUpdateChecks: on while the setting is false.
+    pub fn invertedToggle(self: *Bind, context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8) !void {
+        var is_checked: bool = !ref.get(field);
+        if (try self.widgets.checkbox(context, fieldKey(ref, field), label, &is_checked)) ref.set(field, !is_checked);
+    }
 
-/// For a setting named for what it turns off, e.g. disableUpdateChecks: on while the setting is false.
-pub fn invertedToggle(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8) !void {
-    var is_checked: bool = !ref.get(field);
-    if (try widgets.checkbox(context, fieldKey(ref, field), label, &is_checked)) ref.set(field, !is_checked);
-}
-
-/// In aligned rows the unit sits inside the box.
-pub fn number(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8, options: NumberOptions) !void {
-    const key = fieldKey(ref, field);
-    const row = try widgets.openBinding(context, key, label);
-    if (options.unit) |unit| {
-        if (widgets.isAligned()) {
-            try unitNumberBox(context, ref, field, unit, options);
+    /// In aligned rows the unit sits inside the box.
+    pub fn number(self: *Bind, context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8, options: NumberOptions) !void {
+        const key = fieldKey(ref, field);
+        const row = try self.widgets.openBinding(context, key, label);
+        if (options.unit) |unit| {
+            if (self.widgets.isAligned()) {
+                try self.unitNumberBox(context, ref, field, unit, options);
+            } else {
+                try self.numberBox(context, ref, field, options);
+                try context.e(Text{ .selectable = false, .key = key.indexed(3), .content = shownUnit(ref, field, unit, options), .style = &style.muted_text });
+            }
         } else {
-            try numberBox(context, ref, field, options);
-            try context.e(Text{ .selectable = false, .key = key.indexed(3), .content = shownUnit(ref, field, unit, options), .style = &style.muted_text });
+            try self.numberBox(context, ref, field, options);
         }
-    } else {
-        try numberBox(context, ref, field, options);
+        try row.close(context);
     }
-    try row.close(context);
-}
 
-/// Just the box, with `unit` inside it, e.g. a border's width in "px"; a word unit like "rows" is translated.
-pub fn unitNumberBox(context: *ui.Frame, ref: anytype, comptime field: []const u8, unit: []const u8, options: NumberOptions) !void {
-    const key = fieldKey(ref, field);
-    const shown_unit = shownUnit(ref, field, unit, options);
-    const box = try openUnitField(context, key.indexed(6), key.indexed(2), shown_unit);
-    try styledNumberBox(context, ref, field, options, &style.unit_field_input);
-    try context.e(Text{ .selectable = false, .key = key.indexed(3), .content = shown_unit, .style = &style.muted_text });
-    try box.close(context);
-}
+    /// Just the box, with `unit` inside it, e.g. a border's width in "px"; a word unit like "rows" is translated.
+    pub fn unitNumberBox(self: *Bind, context: *ui.Frame, ref: anytype, comptime field: []const u8, unit: []const u8, options: NumberOptions) !void {
+        const key = fieldKey(ref, field);
+        const shown_unit = shownUnit(ref, field, unit, options);
+        const box = try openUnitField(context, key.indexed(6), key.indexed(2), shown_unit);
+        try self.styledNumberBox(context, ref, field, options, &style.unit_field_input);
+        try context.e(Text{ .selectable = false, .key = key.indexed(3), .content = shown_unit, .style = &style.muted_text });
+        try box.close(context);
+    }
 
-/// Width × height boxes in px, for a row the caller opens.
-pub fn sizeBoxes(context: *ui.Frame, ref: anytype, comptime width_field: []const u8, comptime height_field: []const u8) !void {
-    try unitNumberBox(context, ref, width_field, "px", .{});
-    try context.e(Text{ .selectable = false, .key = fieldKey(ref, width_field).indexed(SIZE_TIMES_INDEX), .content = "\u{00D7}", .style = &style.muted_text });
-    try unitNumberBox(context, ref, height_field, "px", .{});
-}
+    /// Width × height boxes in px, for a row the caller opens.
+    pub fn sizeBoxes(self: *Bind, context: *ui.Frame, ref: anytype, comptime width_field: []const u8, comptime height_field: []const u8) !void {
+        try self.unitNumberBox(context, ref, width_field, "px", .{});
+        try context.e(Text{ .selectable = false, .key = fieldKey(ref, width_field).indexed(SIZE_TIMES_INDEX), .content = "\u{00D7}", .style = &style.muted_text });
+        try self.unitNumberBox(context, ref, height_field, "px", .{});
+    }
 
-/// Font, size in px and weight boxes, for a row the caller opens; narrow enough to share a row beside a preview's parts list.
-pub fn fontBoxes(context: *ui.Frame, ref: anytype, comptime name_field: []const u8, comptime size_field: []const u8, comptime weight_field: []const u8) !void {
-    try fontBox(context, ref, name_field);
-    try unitNumberBox(context, ref, size_field, "px", .{});
-    try choiceBox(context, ref, weight_field);
-}
+    /// Font, size in px and weight boxes, for a row the caller opens; narrow enough to share a row beside a preview's parts list.
+    pub fn fontBoxes(self: *Bind, context: *ui.Frame, ref: anytype, comptime name_field: []const u8, comptime size_field: []const u8, comptime weight_field: []const u8) !void {
+        try self.fontBox(context, ref, name_field);
+        try self.unitNumberBox(context, ref, size_field, "px", .{});
+        try self.choiceBox(context, ref, weight_field);
+    }
 
-/// An optional text field is unset when left empty; its box drops under the label where it doesn't fit beside it.
-pub fn text(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8, placeholder: []const u8) !void {
-    const row = try widgets.openWrappingBinding(context, fieldKey(ref, field), label);
-    try styledTextBox(context, ref, field, placeholder, if (widgets.isAligned()) &style.text_input_aligned else &style.text_input);
-    try row.close(context);
-}
+    /// An optional text field is unset when left empty; its box drops under the label where it doesn't fit beside it.
+    pub fn text(self: *Bind, context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8, placeholder: []const u8) !void {
+        const row = try self.widgets.openWrappingBinding(context, fieldKey(ref, field), label);
+        try self.styledTextBox(context, ref, field, placeholder, if (self.widgets.isAligned()) &style.text_input_aligned else &style.text_input);
+        try row.close(context);
+    }
 
-/// `text` with its own box style, e.g. to share a left edge with the rows around it.
-pub fn styledText(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8, placeholder: []const u8, box_style: *const ui.Style) !void {
-    const row = try widgets.openBinding(context, fieldKey(ref, field), label);
-    try styledTextBox(context, ref, field, placeholder, box_style);
-    try row.close(context);
-}
+    /// `text` with its own box style, e.g. to share a left edge with the rows around it.
+    pub fn styledText(self: *Bind, context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8, placeholder: []const u8, box_style: *const ui.Style) !void {
+        const row = try self.widgets.openBinding(context, fieldKey(ref, field), label);
+        try self.styledTextBox(context, ref, field, placeholder, box_style);
+        try row.close(context);
+    }
 
-/// Just the box, for a row with more in it, e.g. a Browse button.
-pub fn textBox(context: *ui.Frame, ref: anytype, comptime field: []const u8, placeholder: []const u8) !void {
-    try styledTextBox(context, ref, field, placeholder, &style.text_input);
-}
+    /// Just the box, for a row with more in it, e.g. a Browse button.
+    pub fn textBox(self: *Bind, context: *ui.Frame, ref: anytype, comptime field: []const u8, placeholder: []const u8) !void {
+        try self.styledTextBox(context, ref, field, placeholder, &style.text_input);
+    }
 
-/// textBox with its own box style, e.g. a fixed width in an aligned row.
-pub fn styledTextBox(context: *ui.Frame, ref: anytype, comptime field: []const u8, placeholder: []const u8, box_style: *const ui.Style) !void {
-    const F = FieldOf(@TypeOf(ref), field);
-    const edit = try Edit.begin(context, fieldKey(ref, field).indexed(2));
-    if (edit.left_holding) |left| {
-        if (F == ?[]const u8) {
-            ref.set(field, if (left.len == 0) null else left);
-        } else {
-            ref.set(field, left);
+    /// textBox with its own box style, e.g. a fixed width in an aligned row.
+    pub fn styledTextBox(self: *Bind, context: *ui.Frame, ref: anytype, comptime field: []const u8, placeholder: []const u8, box_style: *const ui.Style) !void {
+        const F = FieldOf(@TypeOf(ref), field);
+        const edit = try Edit.begin(self, context, fieldKey(ref, field).indexed(2));
+        if (edit.left_holding) |left| {
+            if (F == ?[]const u8) {
+                ref.set(field, if (left.len == 0) null else left);
+            } else {
+                ref.set(field, left);
+            }
+        }
+        const current: []const u8 = if (F == ?[]const u8) ref.get(field) orelse "" else ref.get(field);
+        try edit.follow(current);
+        const typed_hash = std.hash.Wyhash.hash(0, edit.state.text.items);
+        try edit.draw(context, box_style, lang.text(placeholder));
+        // What shows the typed text above the box, e.g. liveText's list row, catches up on the next frame.
+        if (std.hash.Wyhash.hash(0, edit.state.text.items) != typed_hash) context.requestRedraw();
+    }
+
+    /// Typed text while the box has focus, else saved; copied to the frame arena, since the box can change it mid-frame.
+    pub fn liveText(self: *Bind, context: *ui.Frame, ref: anytype, comptime field: []const u8) ![]const u8 {
+        const key = boxKey(ref, field);
+        const shown = if (context.ui().focused(key.hash())) self.typedText(key) else ref.get(field);
+        return context.arena().dupe(u8, shown);
+    }
+
+    /// For a string that isn't one setting; returns the text once the box loses focus with it changed, borrowed from the frame's arena.
+    pub fn stringBox(self: *Bind, context: *ui.Frame, key: ui.Key, current: []const u8, placeholder: []const u8, box_style: *const ui.Style) !?[]const u8 {
+        const edit = try Edit.begin(self, context, key);
+        var committed: ?[]const u8 = null;
+        if (edit.left_holding) |left| {
+            if (!std.mem.eql(u8, left, current)) committed = try context.arena().dupe(u8, left);
+        }
+        try edit.follow(committed orelse current);
+        try edit.draw(context, box_style, lang.text(placeholder));
+        return committed;
+    }
+
+    /// optionalValueBox with `unit` inside the box, e.g. "px"; draws its frame and unit with `key` indices 5 and 6.
+    pub fn optionalUnitValueBox(self: *Bind, context: *ui.Frame, key: ui.Key, value: ?f64, placeholder: []const u8, unit: []const u8) !Typed {
+        const shown_unit = lang.text(unit);
+        const field_rect = try openUnitField(context, key.indexed(6), key, shown_unit);
+        const typed = try self.optionalValueBox(context, key, value, placeholder, &style.unit_field_input);
+        try context.e(Text{ .selectable = false, .key = key.indexed(5), .content = shown_unit, .style = &style.muted_text });
+        try field_rect.close(context);
+        return typed;
+    }
+
+    /// For a number that isn't one setting, e.g. an ore price; returns what was typed once the box loses focus.
+    pub fn valueBox(self: *Bind, context: *ui.Frame, key: ui.Key, value: f64, box_style: *const ui.Style) !?f64 {
+        const edit = try Edit.begin(self, context, key);
+        var committed: ?f64 = null;
+        if (edit.left_holding) |left| {
+            const trimmed = std.mem.trim(u8, left, " ");
+            // Not a number: following the value below puts it back.
+            committed = std.fmt.parseFloat(f64, trimmed) catch |err| blk: {
+                logNotANumber(trimmed, err);
+                break :blk null;
+            };
+        }
+        try edit.follow(try context.arena().print("{d}", .{committed orelse value}));
+        try edit.draw(context, box_style, "");
+        return committed;
+    }
+
+    /// A string list typed as comma-separated text; empty entries are dropped.
+    pub fn csvBox(self: *Bind, context: *ui.Frame, ref: anytype, comptime field: []const u8, placeholder: []const u8) !void {
+        const edit = try Edit.begin(self, context, fieldKey(ref, field).indexed(2));
+        const arena = context.arena();
+        if (edit.left_holding) |left| {
+            var values: std.ArrayList([]const u8) = .empty;
+            var parts = std.mem.splitScalar(u8, left, ',');
+            while (parts.next()) |part| {
+                const trimmed = std.mem.trim(u8, part, " \t");
+                if (trimmed.len > 0) try values.append(arena, trimmed);
+            }
+            ref.setStrings(field, values.items);
+        }
+        const items: []const []const u8 = ref.get(field).items;
+        try edit.follow(try std.mem.join(arena, ", ", items));
+        try edit.draw(context, &style.text_input, lang.text(placeholder));
+    }
+
+    pub fn slider(self: *Bind, context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8, options: SliderOptions) !void {
+        const Ref = @TypeOf(ref);
+        const F = FieldOf(Ref, field);
+        const bounds = comptime rangeOf(@typeInfo(@FieldType(Ref, "ptr")).pointer.child, field);
+        const min = options.min orelse if (bounds) |b| b[0] else 0;
+        const max = options.max orelse if (bounds) |b| b[1] else 100;
+        const key = fieldKey(ref, field);
+        const row = try self.widgets.openSliderBinding(context, key, label);
+        if (try self.sliderControls(context, key, @floatCast(numberTo(F, ref.get(field))), .{ .min = min, .max = max, .step = options.step }, options.display, null)) |value| {
+            ref.set(field, numberFrom(F, value));
+        }
+        try row.close(context);
+    }
+
+    /// Reset restores the default; aligned, it's a bare swatch saving RGB only, so alpha comes out opaque.
+    pub fn colorBox(self: *Bind, context: *ui.Frame, ref: anytype, comptime field: []const u8) !void {
+        const opaque_mask: u32 = if (self.widgets.isAligned()) 0xFF000000 else 0;
+        const pick = try self.pickColor(context, ref, field, ref.get(field) | opaque_mask, !self.widgets.isAligned()) orelse return;
+        ref.set(field, if (pick.is_reset) pick.argb else pick.argb | opaque_mask);
+    }
+
+    /// An optional colour setting, shown as `fallback` while unset; resetting it clears it.
+    pub fn optionalColor(self: *Bind, context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8, fallback: u32) !void {
+        const row = try self.widgets.openBinding(context, fieldKey(ref, field), label);
+        try self.optionalColorBox(context, ref, field, fallback);
+        try row.close(context);
+    }
+
+    /// Just optionalColor's picker, for a row with more in it.
+    pub fn optionalColorBox(self: *Bind, context: *ui.Frame, ref: anytype, comptime field: []const u8, fallback: u32) !void {
+        const change = try self.widgets.optionalColorBox(context, fieldKey(ref, field), ref.get(field), fallback) orelse return;
+        ref.set(field, switch (change) {
+            .cleared => null,
+            .set => |argb| argb,
+        });
+    }
+
+    /// The RGB of an ARGB setting, keeping its alpha, which alphaSlider sets; its Reset restores the default's RGB.
+    pub fn rgb(self: *Bind, context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8) !void {
+        const row = try self.widgets.openBinding(context, fieldKey(ref, field), label);
+        try self.rgbBox(context, ref, field);
+        try row.close(context);
+    }
+
+    /// Just rgb's picker, for a row with more in it, e.g. a font.
+    pub fn rgbBox(self: *Bind, context: *ui.Frame, ref: anytype, comptime field: []const u8) !void {
+        const argb: u32 = ref.get(field);
+        const pick = try self.pickColor(context, ref, field, argb | 0xFF000000, false) orelse return;
+        ref.set(field, (pick.argb & 0x00FFFFFF) | (argb & 0xFF000000));
+    }
+
+    /// The alpha of an ARGB setting as a slider row with its % box, keeping its RGB.
+    pub fn alphaSlider(self: *Bind, context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8) !void {
+        const key = fieldKey(ref, field).indexed(11);
+        const row = try self.widgets.openBinding(context, key, label);
+        try self.alphaControls(context, ref, field, key, null);
+        try row.close(context);
+    }
+
+    /// alphaSlider with rgb's picker after its % box, on one row; they drop under the label where they don't fit beside it.
+    pub fn rgbAlpha(self: *Bind, context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8) !void {
+        const key = fieldKey(ref, field).indexed(11);
+        const row = try self.widgets.openWrappingBinding(context, key, label);
+        // Fixed even in a field group, to leave room for the swatch.
+        try self.alphaControls(context, ref, field, key, &style.slider_box_aligned);
+        try self.rgbBox(context, ref, field);
+        try row.close(context);
+    }
+
+    /// A 0-255 value's slider and %, in a row the caller opened with `key`; returns the new value if either changed it.
+    pub fn percentSlider(self: *Bind, context: *ui.Frame, key: ui.Key, value: u8, min: f32, max: f32) !?u8 {
+        return self.percentSliderSized(context, key, value, min, max, null);
+    }
+
+    /// An enum setting, offered by its tags spelled as words ("TopLeft" reads "Top Left").
+    pub fn choice(self: *Bind, context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8) !void {
+        const row = try self.widgets.openBinding(context, fieldKey(ref, field), label);
+        try self.dropdown(context, ref, field, true);
+        try row.close(context);
+    }
+
+    /// An enum setting with few options, as a row of buttons; `option_labels` names each tag in declaration order.
+    pub fn segmented(self: *Bind, context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8, comptime option_labels: []const []const u8) !void {
+        const F = FieldOf(@TypeOf(ref), field);
+        const values = comptime std.enums.values(F);
+        comptime std.debug.assert(option_labels.len == values.len);
+        const key = fieldKey(ref, field);
+        const row = try self.widgets.openBinding(context, key, label);
+        const current = std.mem.findScalar(F, values, ref.get(field)) orelse 0;
+        if (try self.widgets.segmented(context, key.indexed(2), option_labels, current)) |picked| ref.set(field, values[picked]);
+        try row.close(context);
+    }
+
+    /// Just the dropdown, for a row or grid of several.
+    pub fn choiceBox(self: *Bind, context: *ui.Frame, ref: anytype, comptime field: []const u8) !void {
+        try self.dropdown(context, ref, field, false);
+    }
+
+    /// Includes text not yet applied; borrows the box's text, valid until it next changes.
+    pub fn typedText(self: *Bind, key: ui.Key) []const u8 {
+        const state = self.text_states.getPtr(key.hash()) orelse return "";
+        return state.text.items;
+    }
+
+    /// Just the box, for a row holding several (e.g. width × height); clearing it unsets an optional setting.
+    fn numberBox(self: *Bind, context: *ui.Frame, ref: anytype, comptime field: []const u8, options: NumberOptions) !void {
+        try self.styledNumberBox(context, ref, field, options, &style.number_input);
+    }
+
+    /// FONT_OPTIONS, plus the current font if set by hand; size and weight sit beside it.
+    fn fontBox(self: *Bind, context: *ui.Frame, ref: anytype, comptime field: []const u8) !void {
+        const current: []const u8 = ref.get(field);
+        const arena = context.arena();
+        const is_listed = for (FONT_OPTIONS) |name| {
+            if (std.mem.eql(u8, name, current)) break true;
+        } else false;
+        const names: []const []const u8 = if (is_listed) &FONT_OPTIONS else try std.mem.concat(arena, []const u8, &.{ &.{current}, &FONT_OPTIONS });
+        const values = try arena.alloc(u32, names.len);
+        var selected_index: u32 = 0;
+        for (names, values, 0..) |name, *value, index| {
+            value.* = @intCast(index);
+            if (std.mem.eql(u8, name, current)) selected_index = @intCast(index);
+        }
+        const box_key = fieldKey(ref, field).indexed(2);
+        self.claimRowClickForSelect(context, box_key);
+        if (context.ui().state.get(.select_input, box_key.hash())) |state| {
+            if (!state.open) state.selected = selected_index;
+        }
+        const response = try context.interact(SelectInput(u32){
+            .key = box_key,
+            .labels = names,
+            .values = values,
+            .initial_selected = selected_index,
+            .style = try widgets_mod.cappedSelect(context, names, FONT_SELECT_MAX_WIDTH),
+            .parts = .{ .popup = &style.select_popup },
+        });
+        try self.widgets.nameSelect(context, box_key, names[selected_index]);
+        if (response.selected) |selected| {
+            if (selected.value != selected_index) ref.set(field, names[selected.value]);
         }
     }
-    const current: []const u8 = if (F == ?[]const u8) ref.get(field) orelse "" else ref.get(field);
-    try edit.follow(current);
-    const typed_hash = std.hash.Wyhash.hash(0, edit.state.text.items);
-    try edit.draw(context, box_style, lang.text(placeholder));
-    // What shows the typed text above the box, e.g. liveText's list row, catches up on the next frame.
-    if (std.hash.Wyhash.hash(0, edit.state.text.items) != typed_hash) context.requestRedraw();
-}
 
-/// Typed text while the box has focus, else saved; copied to the frame arena, since the box can change it mid-frame.
-pub fn liveText(context: *ui.Frame, ref: anytype, comptime field: []const u8) ![]const u8 {
-    const key = boxKey(ref, field);
-    const shown = if (context.ui().focused(key.hash())) typedText(key) else ref.get(field);
-    return context.arena().dupe(u8, shown);
-}
-
-/// For a string that isn't one setting; returns the text once the box loses focus with it changed, borrowed from the frame's arena.
-pub fn stringBox(context: *ui.Frame, key: ui.Key, current: []const u8, placeholder: []const u8, box_style: *const ui.Style) !?[]const u8 {
-    const edit = try Edit.begin(context, key);
-    var committed: ?[]const u8 = null;
-    if (edit.left_holding) |left| {
-        if (!std.mem.eql(u8, left, current)) committed = try context.arena().dupe(u8, left);
-    }
-    try edit.follow(committed orelse current);
-    try edit.draw(context, box_style, lang.text(placeholder));
-    return committed;
-}
-
-/// optionalValueBox with `unit` inside the box, e.g. "px"; draws its frame and unit with `key` indices 5 and 6.
-pub fn optionalUnitValueBox(context: *ui.Frame, key: ui.Key, value: ?f64, placeholder: []const u8, unit: []const u8) !Typed {
-    const shown_unit = lang.text(unit);
-    const field_rect = try openUnitField(context, key.indexed(6), key, shown_unit);
-    const typed = try optionalValueBox(context, key, value, placeholder, &style.unit_field_input);
-    try context.e(Text{ .selectable = false, .key = key.indexed(5), .content = shown_unit, .style = &style.muted_text });
-    try field_rect.close(context);
-    return typed;
-}
-
-/// For a number that isn't one setting, e.g. an ore price; returns what was typed once the box loses focus.
-pub fn valueBox(context: *ui.Frame, key: ui.Key, value: f64, box_style: *const ui.Style) !?f64 {
-    const edit = try Edit.begin(context, key);
-    var committed: ?f64 = null;
-    if (edit.left_holding) |left| {
-        const trimmed = std.mem.trim(u8, left, " ");
-        // Not a number: following the value below puts it back.
-        committed = std.fmt.parseFloat(f64, trimmed) catch |err| blk: {
-            logNotANumber(trimmed, err);
-            break :blk null;
+    /// For an optional number that isn't one setting, e.g. half a size override; empty is unset.
+    fn optionalValueBox(self: *Bind, context: *ui.Frame, key: ui.Key, value: ?f64, placeholder: []const u8, box_style: *const ui.Style) !Typed {
+        const edit = try Edit.begin(self, context, key);
+        var typed: Typed = .unchanged;
+        if (edit.left_holding) |left| {
+            const trimmed = std.mem.trim(u8, left, " ");
+            if (trimmed.len == 0) {
+                typed = .cleared;
+            } else if (std.fmt.parseFloat(f64, trimmed)) |parsed| {
+                typed = .{ .value = parsed };
+            } else |err| {
+                logNotANumber(trimmed, err);
+            }
+        }
+        const shown: ?f64 = switch (typed) {
+            .unchanged => value,
+            .cleared => null,
+            .value => |parsed| parsed,
         };
+        try edit.follow(if (shown) |figure| try context.arena().print("{d}", .{figure}) else "");
+        try edit.draw(context, box_style, lang.text(placeholder));
+        return typed;
     }
-    try edit.follow(try context.arena().print("{d}", .{committed orelse value}));
-    try edit.draw(context, box_style, "");
-    return committed;
-}
 
-/// A string list typed as comma-separated text; empty entries are dropped.
-pub fn csvBox(context: *ui.Frame, ref: anytype, comptime field: []const u8, placeholder: []const u8) !void {
-    const edit = try Edit.begin(context, fieldKey(ref, field).indexed(2));
-    const arena = context.arena();
-    if (edit.left_holding) |left| {
-        var values: std.ArrayList([]const u8) = .empty;
-        var parts = std.mem.splitScalar(u8, left, ',');
-        while (parts.next()) |part| {
-            const trimmed = std.mem.trim(u8, part, " \t");
-            if (trimmed.len > 0) try values.append(arena, trimmed);
+    fn styledNumberBox(self: *Bind, context: *ui.Frame, ref: anytype, comptime field: []const u8, options: NumberOptions, box_style: *const ui.Style) !void {
+        const F = FieldOf(@TypeOf(ref), field);
+        const is_optional = @typeInfo(F) == .optional;
+        const N = if (is_optional) @typeInfo(F).optional.child else F;
+        const scale: f64 = if (options.shows_seconds) 1000 else 1;
+        const edit = try Edit.begin(self, context, fieldKey(ref, field).indexed(2));
+        if (edit.left_holding) |left| {
+            const trimmed = std.mem.trim(u8, left, " ");
+            if (comptime is_optional) {
+                if (trimmed.len == 0) ref.set(field, null);
+            }
+            // Not a number: following the setting below puts it back.
+            if (std.fmt.parseFloat(f64, trimmed)) |parsed| {
+                ref.set(field, numberFrom(N, parsed * scale));
+            } else |err| {
+                // Empty clears an optional setting above, so only text is worth a log.
+                if (trimmed.len > 0) logNotANumber(trimmed, err);
+            }
         }
-        ref.setStrings(field, values.items);
+        const current: ?N = ref.get(field);
+        try edit.follow(if (current) |value| try context.arena().print("{d}", .{numberTo(N, value) / scale}) else "");
+        try edit.draw(context, box_style, options.placeholder);
     }
-    const items: []const []const u8 = ref.get(field).items;
-    try edit.follow(try std.mem.join(arena, ", ", items));
-    try edit.draw(context, &style.text_input, lang.text(placeholder));
-}
 
-pub fn slider(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8, options: SliderOptions) !void {
-    const Ref = @TypeOf(ref);
-    const F = FieldOf(Ref, field);
-    const bounds = comptime rangeOf(@typeInfo(@FieldType(Ref, "ptr")).pointer.child, field);
-    const min = options.min orelse if (bounds) |b| b[0] else 0;
-    const max = options.max orelse if (bounds) |b| b[1] else 100;
-    const key = fieldKey(ref, field);
-    const row = try widgets.openSliderBinding(context, key, label);
-    if (try sliderControls(context, key, @floatCast(numberTo(F, ref.get(field))), .{ .min = min, .max = max, .step = options.step }, options.display, null)) |value| {
-        ref.set(field, numberFrom(F, value));
+    /// For a value that isn't one setting, e.g. a slider's "85 %"; returns it on blur, using `key` indices 4 to 6.
+    fn unitValueBox(self: *Bind, context: *ui.Frame, key: ui.Key, value: f64, unit: []const u8) !?f64 {
+        const box_key = key.indexed(4);
+        const field_rect = try openUnitField(context, key.indexed(6), box_key, unit);
+        const typed = try self.valueBox(context, box_key, value, &style.unit_field_input);
+        if (unit.len > 0) try context.e(Text{ .selectable = false, .key = key.indexed(5), .content = unit, .style = &style.muted_text });
+        try field_rect.close(context);
+        return typed;
     }
-    try row.close(context);
-}
 
-/// Reset restores the default; aligned, it's a bare swatch saving RGB only, so alpha comes out opaque.
-pub fn colorBox(context: *ui.Frame, ref: anytype, comptime field: []const u8) !void {
-    const opaque_mask: u32 = if (widgets.isAligned()) 0xFF000000 else 0;
-    const pick = try pickColor(context, ref, field, ref.get(field) | opaque_mask, !widgets.isAligned()) orelse return;
-    ref.set(field, if (pick.is_reset) pick.argb else pick.argb | opaque_mask);
-}
+    /// percentSlider with its own track width, or null for the row's usual one.
+    fn percentSliderSized(self: *Bind, context: *ui.Frame, key: ui.Key, value: u8, min: f32, max: f32, track_style: ?*const ui.Style) !?u8 {
+        const changed = try self.sliderControls(context, key, @floatFromInt(value), .{ .min = min, .max = max }, .percent_of_255, track_style) orelse return null;
+        return @intFromFloat(@round(changed));
+    }
 
-/// An optional colour setting, shown as `fallback` while unset; resetting it clears it.
-pub fn optionalColor(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8, fallback: u32) !void {
-    const row = try widgets.openBinding(context, fieldKey(ref, field), label);
-    try optionalColorBox(context, ref, field, fallback);
-    try row.close(context);
-}
+    /// The swatch for an ARGB setting showing `shown`; offers Reset only when `field` has a default.
+    fn pickColor(self: *Bind, context: *ui.Frame, ref: anytype, comptime field: []const u8, shown: u32, shows_alpha: bool) !?Pick {
+        const is_aligned = self.widgets.isAligned();
+        const default = defaultOf(@TypeOf(ref), field);
+        var value = color_convert.fromArgb(shown);
+        var is_reset = false;
+        const picker_key = fieldKey(ref, field).indexed(2);
+        const is_changed = (try context.interact(ColorPicker{
+            .key = picker_key,
+            .value = &value,
+            .style = if (is_aligned) &style.color_picker_swatch else &style.color_picker,
+            .parts = widgets_mod.colorParts(is_aligned),
+            .show_hex = !is_aligned,
+            .show_alpha = shows_alpha,
+            .reset = if (default != null) &is_reset else null,
+        })).changed;
+        try self.widgets.nameColor(context, picker_key, shown);
+        if (is_reset) if (default) |reset_argb| return .{ .argb = reset_argb, .is_reset = true };
+        if (is_changed) return .{ .argb = color_convert.toArgb(value), .is_reset = false };
+        return null;
+    }
 
-/// Just optionalColor's picker, for a row with more in it.
-pub fn optionalColorBox(context: *ui.Frame, ref: anytype, comptime field: []const u8, fallback: u32) !void {
-    const change = try widgets.optionalColorBox(context, fieldKey(ref, field), ref.get(field), fallback) orelse return;
-    ref.set(field, switch (change) {
-        .cleared => null,
-        .set => |argb| argb,
-    });
-}
+    /// An ARGB setting's alpha slider and % box, keeping its RGB, in a row the caller opened with `key`.
+    fn alphaControls(self: *Bind, context: *ui.Frame, ref: anytype, comptime field: []const u8, key: ui.Key, track_style: ?*const ui.Style) !void {
+        const argb: u32 = ref.get(field);
+        if (try self.percentSliderSized(context, key, @intCast(argb >> 24), 0, 255, track_style)) |alpha| {
+            ref.set(field, (argb & 0x00FFFFFF) | (@as(u32, alpha) << 24));
+        }
+    }
 
-/// The RGB of an ARGB setting, keeping its alpha, which alphaSlider sets; its Reset restores the default's RGB.
-pub fn rgb(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8) !void {
-    const row = try widgets.openBinding(context, fieldKey(ref, field), label);
-    try rgbBox(context, ref, field);
-    try row.close(context);
-}
+    /// The box takes `display`'s units, in the caller's row; returns the new value if either changed it.
+    fn sliderControls(self: *Bind, context: *ui.Frame, key: ui.Key, value: f32, range: widgets_mod.SliderRange, display: Display, track_style: ?*const ui.Style) !?f64 {
+        var slider_value = value;
+        var changed: ?f64 = null;
+        const moved = if (track_style) |track| try self.widgets.sizedSlider(context, key.indexed(2), &slider_value, range, track) else try self.widgets.slider(context, key.indexed(2), &slider_value, range);
+        if (moved) changed = @round(slider_value);
+        const shown: f64 = switch (display) {
+            .value, .percent => @round(slider_value),
+            .percent_of_255 => @round(slider_value / 255.0 * 100.0),
+        };
+        const unit = switch (display) {
+            .value => "",
+            .percent, .percent_of_255 => "%",
+        };
+        const value_typed = try self.unitValueBox(context, key, shown, unit) orelse return changed;
+        const raw: f64 = switch (display) {
+            .value, .percent => value_typed,
+            .percent_of_255 => value_typed / 100.0 * 255.0,
+        };
+        return std.math.clamp(raw, range.min, range.max);
+    }
 
-/// Just rgb's picker, for a row with more in it, e.g. a font.
-pub fn rgbBox(context: *ui.Frame, ref: anytype, comptime field: []const u8) !void {
-    const argb: u32 = ref.get(field);
-    const pick = try pickColor(context, ref, field, argb | 0xFF000000, false) orelse return;
-    ref.set(field, (pick.argb & 0x00FFFFFF) | (argb & 0xFF000000));
-}
+    /// `is_row_only` widens it to widgets.rowSelect's floor.
+    fn dropdown(self: *Bind, context: *ui.Frame, ref: anytype, comptime field: []const u8, is_row_only: bool) !void {
+        const F = FieldOf(@TypeOf(ref), field);
+        const values = comptime std.enums.values(F);
+        const english_labels = comptime labels.enumLabels(F);
+        const option_labels = try context.arena().alloc([]const u8, english_labels.len);
+        for (english_labels, option_labels) |english, *shown| shown.* = lang.text(english);
+        const box_key = fieldKey(ref, field).indexed(2);
+        self.claimRowClickForSelect(context, box_key);
+        const current: u32 = @intCast(std.mem.findScalar(F, values, ref.get(field)) orelse 0);
+        // The dropdown keeps its own selection; while closed it follows the setting, which may have changed elsewhere.
+        if (context.ui().state.get(.select_input, box_key.hash())) |state| {
+            if (!state.open) state.selected = current;
+        }
+        const response = try context.interact(SelectInput(F){
+            .key = box_key,
+            .labels = option_labels,
+            .values = values,
+            .initial_selected = current,
+            .style = if (is_row_only) try widgets_mod.rowSelect(context, option_labels) else try widgets_mod.fittedSelect(context, option_labels),
+            .parts = .{ .popup = &style.select_popup },
+        });
+        try self.widgets.nameSelect(context, box_key, option_labels[current]);
+        if (response.selected) |selected| ref.set(field, selected.value);
+    }
 
-/// The alpha of an ARGB setting as a slider row with its % box, keeping its RGB.
-pub fn alphaSlider(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8) !void {
-    const key = fieldKey(ref, field).indexed(11);
-    const row = try widgets.openBinding(context, key, label);
-    try alphaControls(context, ref, field, key, null);
-    try row.close(context);
-}
+    /// Focuses the box keyed `key` with its `text_length` bytes selected when its row's label was clicked; call before drawing it.
+    fn claimRowClick(self: *Bind, context: *ui.Frame, key: ui.Key, text_length: usize) !void {
+        if (self.widgets.takeRowClick()) try widgets_mod.focusTextInput(context, key, text_length);
+    }
 
-/// alphaSlider with rgb's picker after its % box, on one row; they drop under the label where they don't fit beside it.
-pub fn rgbAlpha(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8) !void {
-    const key = fieldKey(ref, field).indexed(11);
-    const row = try widgets.openWrappingBinding(context, key, label);
-    // Fixed even in a field group, to leave room for the swatch.
-    try alphaControls(context, ref, field, key, &style.slider_box_aligned);
-    try rgbBox(context, ref, field);
-    try row.close(context);
-}
+    /// Opens the dropdown keyed `key` when its row's label was clicked; call before drawing it.
+    fn claimRowClickForSelect(self: *Bind, context: *ui.Frame, key: ui.Key) void {
+        if (!self.widgets.takeRowClick()) return;
+        // Drawn every frame, so it has a state by the time its label can be clicked; making one here would skip its initial selection.
+        const state = context.ui().state.get(.select_input, key.hash()) orelse return;
+        state.open = true;
+    }
 
-/// A 0-255 value's slider and %, in a row the caller opened with `key`; returns the new value if either changed it.
-pub fn percentSlider(context: *ui.Frame, key: ui.Key, value: u8, min: f32, max: f32) !?u8 {
-    return percentSliderSized(context, key, value, min, max, null);
-}
+    fn textState(self: *Bind, key: ui.Key) !*TextState {
+        const entry = try self.text_states.getOrPut(self.allocator, key.hash());
+        if (!entry.found_existing) entry.value_ptr.* = .{};
+        return entry.value_ptr;
+    }
 
-/// An enum setting, offered by its tags spelled as words ("TopLeft" reads "Top Left").
-pub fn choice(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8) !void {
-    const row = try widgets.openBinding(context, fieldKey(ref, field), label);
-    try dropdown(context, ref, field, true);
-    try row.close(context);
-}
-
-/// An enum setting with few options, as a row of buttons; `option_labels` names each tag in declaration order.
-pub fn segmented(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8, comptime option_labels: []const []const u8) !void {
-    const F = FieldOf(@TypeOf(ref), field);
-    const values = comptime std.enums.values(F);
-    comptime std.debug.assert(option_labels.len == values.len);
-    const key = fieldKey(ref, field);
-    const row = try widgets.openBinding(context, key, label);
-    const current = std.mem.findScalar(F, values, ref.get(field)) orelse 0;
-    if (try widgets.segmented(context, key.indexed(2), option_labels, current)) |picked| ref.set(field, values[picked]);
-    try row.close(context);
-}
-
-/// Just the dropdown, for a row or grid of several.
-pub fn choiceBox(context: *ui.Frame, ref: anytype, comptime field: []const u8) !void {
-    try dropdown(context, ref, field, false);
-}
-
-/// Includes text not yet applied; borrows the box's text, valid until it next changes.
-pub fn typedText(key: ui.Key) []const u8 {
-    const state = g_text_states.getPtr(key.hash()) orelse return "";
-    return state.text.items;
-}
+    fn syncText(self: *const Bind, state: *TextState, current: []const u8) !void {
+        if (std.mem.eql(u8, state.text.items, current)) return;
+        state.text.clearRetainingCapacity();
+        try state.text.appendSlice(self.allocator, current);
+    }
+};
 
 /// The key a field's text or number box is drawn with, e.g. to read its caret.
 pub fn boxKey(ref: anytype, comptime field: []const u8) ui.Key {
@@ -400,207 +606,14 @@ pub fn rangeOf(comptime T: type, comptime field: []const u8) ?[2]f32 {
     return .{ @as(f32, bounds[0]), @as(f32, bounds[1]) };
 }
 
-/// Just the box, for a row holding several (e.g. width × height); clearing it unsets an optional setting.
-fn numberBox(context: *ui.Frame, ref: anytype, comptime field: []const u8, options: NumberOptions) !void {
-    try styledNumberBox(context, ref, field, options, &style.number_input);
-}
-
-/// FONT_OPTIONS, plus the current font if set by hand; size and weight sit beside it.
-fn fontBox(context: *ui.Frame, ref: anytype, comptime field: []const u8) !void {
-    const current: []const u8 = ref.get(field);
-    const arena = context.arena();
-    const is_listed = for (FONT_OPTIONS) |name| {
-        if (std.mem.eql(u8, name, current)) break true;
-    } else false;
-    const names: []const []const u8 = if (is_listed) &FONT_OPTIONS else try std.mem.concat(arena, []const u8, &.{ &.{current}, &FONT_OPTIONS });
-    const values = try arena.alloc(u32, names.len);
-    var selected_index: u32 = 0;
-    for (names, values, 0..) |name, *value, index| {
-        value.* = @intCast(index);
-        if (std.mem.eql(u8, name, current)) selected_index = @intCast(index);
-    }
-    const box_key = fieldKey(ref, field).indexed(2);
-    claimRowClickForSelect(context, box_key);
-    if (context.ui().state.get(.select_input, box_key.hash())) |state| {
-        if (!state.open) state.selected = selected_index;
-    }
-    const response = try context.interact(SelectInput(u32){
-        .key = box_key,
-        .labels = names,
-        .values = values,
-        .initial_selected = selected_index,
-        .style = try widgets.cappedSelect(context, names, FONT_SELECT_MAX_WIDTH),
-        .parts = .{ .popup = &style.select_popup },
-    });
-    try widgets.nameSelect(context, box_key, names[selected_index]);
-    if (response.selected) |selected| {
-        if (selected.value != selected_index) ref.set(field, names[selected.value]);
-    }
-}
-
-/// For an optional number that isn't one setting, e.g. half a size override; empty is unset.
-fn optionalValueBox(context: *ui.Frame, key: ui.Key, value: ?f64, placeholder: []const u8, box_style: *const ui.Style) !Typed {
-    const edit = try Edit.begin(context, key);
-    var typed: Typed = .unchanged;
-    if (edit.left_holding) |left| {
-        const trimmed = std.mem.trim(u8, left, " ");
-        if (trimmed.len == 0) {
-            typed = .cleared;
-        } else if (std.fmt.parseFloat(f64, trimmed)) |parsed| {
-            typed = .{ .value = parsed };
-        } else |err| {
-            logNotANumber(trimmed, err);
-        }
-    }
-    const shown: ?f64 = switch (typed) {
-        .unchanged => value,
-        .cleared => null,
-        .value => |parsed| parsed,
-    };
-    try edit.follow(if (shown) |figure| try context.arena().print("{d}", .{figure}) else "");
-    try edit.draw(context, box_style, lang.text(placeholder));
-    return typed;
-}
-
-fn styledNumberBox(context: *ui.Frame, ref: anytype, comptime field: []const u8, options: NumberOptions, box_style: *const ui.Style) !void {
-    const F = FieldOf(@TypeOf(ref), field);
-    const is_optional = @typeInfo(F) == .optional;
-    const N = if (is_optional) @typeInfo(F).optional.child else F;
-    const scale: f64 = if (options.shows_seconds) 1000 else 1;
-    const edit = try Edit.begin(context, fieldKey(ref, field).indexed(2));
-    if (edit.left_holding) |left| {
-        const trimmed = std.mem.trim(u8, left, " ");
-        if (comptime is_optional) {
-            if (trimmed.len == 0) ref.set(field, null);
-        }
-        // Not a number: following the setting below puts it back.
-        if (std.fmt.parseFloat(f64, trimmed)) |parsed| {
-            ref.set(field, numberFrom(N, parsed * scale));
-        } else |err| {
-            // Empty clears an optional setting above, so only text is worth a log.
-            if (trimmed.len > 0) logNotANumber(trimmed, err);
-        }
-    }
-    const current: ?N = ref.get(field);
-    try edit.follow(if (current) |value| try context.arena().print("{d}", .{numberTo(N, value) / scale}) else "");
-    try edit.draw(context, box_style, options.placeholder);
-}
-
 /// A number input and its unit in one box, outlined while `input_key` has focus and widened to fit `shown_unit`; the caller adds both and closes it.
 fn openUnitField(context: *ui.Frame, key: ui.Key, input_key: ui.Key, shown_unit: []const u8) !ui.component.Rect {
     const is_focused = context.ui().focused(input_key.hash());
-    const unit_width = try widgets.textWidth(context, shown_unit, &style.muted_text);
+    const unit_width = try widgets_mod.textWidth(context, shown_unit, &style.muted_text);
     const width = @max(style.NUMBER_WIDTH, @ceil(style.UNIT_FIELD_NUMBER_ROOM + unit_width));
-    const field_rect = ui.component.Rect{ .key = key, .style = try widgets.withWidth(context, if (is_focused) &style.unit_field_focused else &style.unit_field, width) };
+    const field_rect = ui.component.Rect{ .key = key, .style = try widgets_mod.withWidth(context, if (is_focused) &style.unit_field_focused else &style.unit_field, width) };
     _ = try field_rect.open(context);
     return field_rect;
-}
-
-/// For a value that isn't one setting, e.g. a slider's "85 %"; returns it on blur, using `key` indices 4 to 6.
-fn unitValueBox(context: *ui.Frame, key: ui.Key, value: f64, unit: []const u8) !?f64 {
-    const box_key = key.indexed(4);
-    const field_rect = try openUnitField(context, key.indexed(6), box_key, unit);
-    const typed = try valueBox(context, box_key, value, &style.unit_field_input);
-    if (unit.len > 0) try context.e(Text{ .selectable = false, .key = key.indexed(5), .content = unit, .style = &style.muted_text });
-    try field_rect.close(context);
-    return typed;
-}
-
-/// percentSlider with its own track width, or null for the row's usual one.
-fn percentSliderSized(context: *ui.Frame, key: ui.Key, value: u8, min: f32, max: f32, track_style: ?*const ui.Style) !?u8 {
-    const changed = try sliderControls(context, key, @floatFromInt(value), .{ .min = min, .max = max }, .percent_of_255, track_style) orelse return null;
-    return @intFromFloat(@round(changed));
-}
-
-/// The swatch for an ARGB setting showing `shown`; offers Reset only when `field` has a default.
-fn pickColor(context: *ui.Frame, ref: anytype, comptime field: []const u8, shown: u32, shows_alpha: bool) !?Pick {
-    const is_aligned = widgets.isAligned();
-    const default = defaultOf(@TypeOf(ref), field);
-    var value = color_convert.fromArgb(shown);
-    var is_reset = false;
-    const picker_key = fieldKey(ref, field).indexed(2);
-    const is_changed = (try context.interact(ColorPicker{
-        .key = picker_key,
-        .value = &value,
-        .style = if (is_aligned) &style.color_picker_swatch else &style.color_picker,
-        .parts = widgets.colorParts(is_aligned),
-        .show_hex = !is_aligned,
-        .show_alpha = shows_alpha,
-        .reset = if (default != null) &is_reset else null,
-    })).changed;
-    try widgets.nameColor(context, picker_key, shown);
-    if (is_reset) if (default) |reset_argb| return .{ .argb = reset_argb, .is_reset = true };
-    if (is_changed) return .{ .argb = color_convert.toArgb(value), .is_reset = false };
-    return null;
-}
-
-/// An ARGB setting's alpha slider and % box, keeping its RGB, in a row the caller opened with `key`.
-fn alphaControls(context: *ui.Frame, ref: anytype, comptime field: []const u8, key: ui.Key, track_style: ?*const ui.Style) !void {
-    const argb: u32 = ref.get(field);
-    if (try percentSliderSized(context, key, @intCast(argb >> 24), 0, 255, track_style)) |alpha| {
-        ref.set(field, (argb & 0x00FFFFFF) | (@as(u32, alpha) << 24));
-    }
-}
-
-/// The box takes `display`'s units, in the caller's row; returns the new value if either changed it.
-fn sliderControls(context: *ui.Frame, key: ui.Key, value: f32, range: widgets.SliderRange, display: Display, track_style: ?*const ui.Style) !?f64 {
-    var slider_value = value;
-    var changed: ?f64 = null;
-    const moved = if (track_style) |track| try widgets.sizedSlider(context, key.indexed(2), &slider_value, range, track) else try widgets.slider(context, key.indexed(2), &slider_value, range);
-    if (moved) changed = @round(slider_value);
-    const shown: f64 = switch (display) {
-        .value, .percent => @round(slider_value),
-        .percent_of_255 => @round(slider_value / 255.0 * 100.0),
-    };
-    const unit = switch (display) {
-        .value => "",
-        .percent, .percent_of_255 => "%",
-    };
-    const value_typed = try unitValueBox(context, key, shown, unit) orelse return changed;
-    const raw: f64 = switch (display) {
-        .value, .percent => value_typed,
-        .percent_of_255 => value_typed / 100.0 * 255.0,
-    };
-    return std.math.clamp(raw, range.min, range.max);
-}
-
-/// `is_row_only` widens it to widgets.rowSelect's floor.
-fn dropdown(context: *ui.Frame, ref: anytype, comptime field: []const u8, is_row_only: bool) !void {
-    const F = FieldOf(@TypeOf(ref), field);
-    const values = comptime std.enums.values(F);
-    const english_labels = comptime labels.enumLabels(F);
-    const option_labels = try context.arena().alloc([]const u8, english_labels.len);
-    for (english_labels, option_labels) |english, *shown| shown.* = lang.text(english);
-    const box_key = fieldKey(ref, field).indexed(2);
-    claimRowClickForSelect(context, box_key);
-    const current: u32 = @intCast(std.mem.findScalar(F, values, ref.get(field)) orelse 0);
-    // The dropdown keeps its own selection; while closed it follows the setting, which may have changed elsewhere.
-    if (context.ui().state.get(.select_input, box_key.hash())) |state| {
-        if (!state.open) state.selected = current;
-    }
-    const response = try context.interact(SelectInput(F){
-        .key = box_key,
-        .labels = option_labels,
-        .values = values,
-        .initial_selected = current,
-        .style = if (is_row_only) try widgets.rowSelect(context, option_labels) else try widgets.fittedSelect(context, option_labels),
-        .parts = .{ .popup = &style.select_popup },
-    });
-    try widgets.nameSelect(context, box_key, option_labels[current]);
-    if (response.selected) |selected| ref.set(field, selected.value);
-}
-
-/// Focuses the box keyed `key` with its `text_length` bytes selected when its row's label was clicked; call before drawing it.
-fn claimRowClick(context: *ui.Frame, key: ui.Key, text_length: usize) !void {
-    if (widgets.takeRowClick()) try widgets.focusTextInput(context, key, text_length);
-}
-
-/// Opens the dropdown keyed `key` when its row's label was clicked; call before drawing it.
-fn claimRowClickForSelect(context: *ui.Frame, key: ui.Key) void {
-    if (!widgets.takeRowClick()) return;
-    // Drawn every frame, so it has a state by the time its label can be clicked; making one here would skip its initial selection.
-    const state = context.ui().state.get(.select_input, key.hash()) orelse return;
-    state.open = true;
 }
 
 /// `unit` translated, or `options.singular_unit` while the setting is 1.
@@ -629,21 +642,9 @@ fn fieldKey(ref: anytype, comptime field: []const u8) ui.Key {
     return ui.Key.str("knots.bind:" ++ @typeName(T) ++ "." ++ field).indexed(ref.index);
 }
 
-fn textState(key: ui.Key) !*TextState {
-    const entry = try g_text_states.getOrPut(g_allocator, key.hash());
-    if (!entry.found_existing) entry.value_ptr.* = .{};
-    return entry.value_ptr;
-}
-
 /// Debug only: typing something else is the user's to see, as the box shows the old value again.
 fn logNotANumber(typed: []const u8, err: std.fmt.ParseFloatError) void {
     slog.debug("Kept the previous value: '{s}' isn't a number: {}", .{ typed, err });
-}
-
-fn syncText(state: *TextState, current: []const u8) !void {
-    if (std.mem.eql(u8, state.text.items, current)) return;
-    state.text.clearRetainingCapacity();
-    try state.text.appendSlice(g_allocator, current);
 }
 
 fn numberTo(comptime F: type, value: F) f64 {

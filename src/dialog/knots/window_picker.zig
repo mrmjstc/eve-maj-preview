@@ -2,7 +2,7 @@
 const std = @import("std");
 const ui = @import("ui");
 const win32 = @import("../../platform/win32.zig");
-const status = @import("status.zig");
+const status_mod = @import("status.zig");
 const style = @import("style.zig");
 const lang = @import("../../lang/lang.zig");
 const log = @import("../../log.zig");
@@ -30,7 +30,7 @@ pub const Picker = struct {
 };
 
 /// Replaces `picker`'s earlier scan; leaves it closed when there are none.
-pub fn open(allocator: std.mem.Allocator, picker: *?Picker, index: usize) void {
+pub fn open(status: *status_mod.Status, allocator: std.mem.Allocator, picker: *?Picker, index: usize) void {
     close(picker);
     var arena: std.heap.ArenaAllocator = .init(allocator);
     const windows = runningWindows(arena.allocator()) catch |err| {
@@ -61,8 +61,8 @@ pub fn select(context: *ui.Frame, picker: *const ?Picker, key: ui.Key, index: us
     const values = try arena.alloc(u32, open_picker.windows.len + 1);
     labels[0] = lang.text(PROMPT);
     values[0] = 0;
-    for (open_picker.windows, 1..) |window, option| {
-        labels[option] = try arena.print("{s} \u{2014} {s}", .{ window.title, window.executable });
+    for (open_picker.windows, 1..) |open_window, option| {
+        labels[option] = try arena.print("{s} \u{2014} {s}", .{ open_window.title, open_window.executable });
         values[option] = @intCast(option);
     }
     const response = try context.interact(SelectInput(u32){

@@ -2,9 +2,9 @@
 const std = @import("std");
 const ui = @import("ui");
 const style = @import("../dialog/knots/style.zig");
-const widgets = @import("../dialog/knots/widgets.zig");
+const widgets_mod = @import("../dialog/knots/widgets.zig");
 const glyphs = @import("../dialog/knots/glyphs.zig");
-const images = @import("../dialog/knots/images.zig");
+const images_mod = @import("../dialog/knots/images.zig");
 const universe = @import("../map/universe.zig");
 const fleet_mod = @import("fleet.zig");
 const lines = @import("lines.zig");
@@ -183,7 +183,8 @@ pub const Controls = struct {
     }
 };
 
-pub fn frame(context: *ui.Frame, fleet: *Fleet, controls: *Controls) !void {
+/// `widgets` and `images` are the window's, kept between frames.
+pub fn frame(context: *ui.Frame, widgets: *widgets_mod.Widgets, images: *images_mod.Images, fleet: *Fleet, controls: *Controls) !void {
     widgets.beginFrame();
     const size = context.input().logical_extent;
     const root_style = try context.arena().create(ui.Style);
@@ -197,36 +198,36 @@ pub fn frame(context: *ui.Frame, fleet: *Fleet, controls: *Controls) !void {
 
     const root = Rect{ .key = .src(@src()), .style = root_style };
     _ = try root.open(context);
-    try header(context, fleet, picked.len);
+    try header(context, images, fleet, picked.len);
     const body = Rect{ .key = .src(@src()), .style = &.{ .width = .grow(), .height = .grow(), .direction = .row } };
     _ = try body.open(context);
     try sidebar(context, controls);
-    try clientColumn(context, fleet, controls, picked.len);
+    try clientColumn(context, widgets, fleet, controls, picked.len);
     const content = try widgets.openScrollPane(context, CONTENT_KEY, style.content_scroll);
     const was_aligned = widgets.useAlignedRows(true);
     switch (controls.tab) {
-        .session => try sessionTab(context, fleet, picked),
-        .travel => try travelTab(context, fleet, controls, picked),
-        .events => try eventsTab(context, fleet, controls, picked),
-        .chat => try chatTab(context, fleet, controls, picked),
-        .tests => try testsTab(context, fleet, controls, picked),
-        .setup => try setupTab(context, fleet),
+        .session => try sessionTab(context, widgets, fleet, picked),
+        .travel => try travelTab(context, widgets, fleet, controls, picked),
+        .events => try eventsTab(context, widgets, fleet, controls, picked),
+        .chat => try chatTab(context, widgets, fleet, controls, picked),
+        .tests => try testsTab(context, widgets, fleet, controls, picked),
+        .setup => try setupTab(context, widgets, fleet),
     }
     _ = widgets.useAlignedRows(was_aligned);
     try content.close(context);
     try body.close(context);
-    try journalPane(context, fleet, controls);
+    try journalPane(context, widgets, fleet, controls);
     try root.close(context);
     widgets.endFrame();
 }
 
 /// The brand, as the configuration window shows it, and how many clients are up.
-fn header(context: *ui.Frame, fleet: *const Fleet, picked_count: usize) !void {
+fn header(context: *ui.Frame, images: *images_mod.Images, fleet: *const Fleet, picked_count: usize) !void {
     const bar = Rect{ .key = .src(@src()), .style = &style.header };
     _ = try bar.open(context);
     const lockup = Rect{ .key = .src(@src()), .style = &style.brand };
     _ = try lockup.open(context);
-    if (images.g_app_mark.image(.src(@src()), &style.app_mark)) |mark| try context.e(mark);
+    if (images.image(.app_mark, .src(@src()), &style.app_mark)) |mark| try context.e(mark);
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "EVE-Maj Client Simulator", .style = &style.brand_name });
     try lockup.close(context);
     try context.e(Rect{ .key = .src(@src()), .style = &SPACER });
@@ -284,7 +285,7 @@ fn tabItem(context: *ui.Frame, controls: *Controls, tab: Tab) !void {
 }
 
 /// A card holding the clients as a master list, which every tab's actions work on.
-fn clientColumn(context: *ui.Frame, fleet: *Fleet, controls: *Controls, picked_count: usize) !void {
+fn clientColumn(context: *ui.Frame, widgets: *widgets_mod.Widgets, fleet: *Fleet, controls: *Controls, picked_count: usize) !void {
     const column = Rect{ .key = .src(@src()), .style = &CLIENTS_COLUMN };
     _ = try column.open(context);
     const section = try widgets.openSection(context, "Clients", "Click to pick; each tab acts on the picked ones.", &style.fill_section);
@@ -310,13 +311,13 @@ fn clientColumn(context: *ui.Frame, fleet: *Fleet, controls: *Controls, picked_c
     _ = try list.open(context);
     const rows = try widgets.openScrollPane(context, CLIENTS_KEY.indexed(1), style.roster_scroll);
     if (fleet.clients.items.len == 0) {
-        try widgets.boxedText(context, .src(@src()), "No clients yet. Name one above, or add the test clients below.", &style.roster_empty, &style.roster_empty_text);
+        try widgets_mod.boxedText(context, .src(@src()), "No clients yet. Name one above, or add the test clients below.", &style.roster_empty, &style.roster_empty_text);
     }
     for (fleet.clients.items, 0..) |*client, index| try clientRow(context, fleet, client, index);
     try rows.close(context);
     const footer = Rect{ .key = .src(@src()), .style = &style.roster_footer };
     _ = try footer.open(context);
-    if (try widgets.glyphButton(context, .src(@src()), .add, "Add 10 Test Clients", &style.roster_add, false)) addTestClients(fleet);
+    if (try widgets_mod.glyphButton(context, .src(@src()), .add, "Add 10 Test Clients", &style.roster_add, false)) addTestClients(fleet);
     try footer.close(context);
     try list.close(context);
 
@@ -328,7 +329,7 @@ fn clientColumn(context: *ui.Frame, fleet: *Fleet, controls: *Controls, picked_c
 fn clientRow(context: *ui.Frame, fleet: *const Fleet, client: *fleet_mod.Client, index: usize) !void {
     const key = CLIENTS_KEY.indexed(ROW_KEY_BASE + index);
     const row = Button{ .key = key, .style = if (client.is_picked) &style.roster_row_selected else &style.roster_row };
-    const response = try widgets.openRosterRow(context, row);
+    const response = try widgets_mod.openRosterRow(context, row);
     try context.e(Rect{ .key = key.indexed(1), .style = switch (client.state) {
         .logged_in => &DOT_RUNNING,
         .logged_out => &DOT_IDLE,
@@ -373,8 +374,8 @@ fn addTestClients(fleet: *Fleet) void {
     if (started_count == 0) fleet.note(.info, "Test Client 1 to {d} are already running", .{QUICK_CLIENT_COUNT});
 }
 
-fn sessionTab(context: *ui.Frame, fleet: *Fleet, picked: []const usize) !void {
-    try pickedNotice(context, picked);
+fn sessionTab(context: *ui.Frame, widgets: *widgets_mod.Widgets, fleet: *Fleet, picked: []const usize) !void {
+    try pickedNotice(context, widgets, picked);
     const section = try widgets.openSection(context, "Session", "Logging in starts fresh session logs, as EVE does; logging out only changes the title.", &style.section);
     if (try buttonRow(context, .src(@src()), &.{ "Log in", "Log out", "Start again" }, picked.len > 0)) |choice| {
         for (picked) |index| {
@@ -405,8 +406,8 @@ fn sessionTab(context: *ui.Frame, fleet: *Fleet, picked: []const usize) !void {
     try ending.close(context);
 }
 
-fn travelTab(context: *ui.Frame, fleet: *Fleet, controls: *Controls, picked: []const usize) !void {
-    try pickedNotice(context, picked);
+fn travelTab(context: *ui.Frame, widgets: *widgets_mod.Widgets, fleet: *Fleet, controls: *Controls, picked: []const usize) !void {
+    try pickedNotice(context, widgets, picked);
     const section = try widgets.openSection(context, "Jump", "A gate jump writes the gamelog's jump line and Local's change; the other two write one of them, as a pod or filament move does. Lines stamped in the past read as late, so the character stays put.", &style.section);
     const system = std.mem.trim(u8, controls.system.items, " ");
     const system_row = try widgets.openBinding(context, .src(@src()), "System");
@@ -435,8 +436,8 @@ fn travelTab(context: *ui.Frame, fleet: *Fleet, controls: *Controls, picked: []c
     try random.close(context);
 }
 
-fn eventsTab(context: *ui.Frame, fleet: *Fleet, controls: *Controls, picked: []const usize) !void {
-    try pickedNotice(context, picked);
+fn eventsTab(context: *ui.Frame, widgets: *widgets_mod.Widgets, fleet: *Fleet, controls: *Controls, picked: []const usize) !void {
+    try pickedNotice(context, widgets, picked);
     const section = try widgets.openSection(context, "Game Events", "One gamelog line that raises the named notification; a conduit jump also moves the client.", &style.section);
     const alerts = comptime std.enums.values(lines.Alert);
     var alert_labels: [alerts.len][]const u8 = undefined;
@@ -462,7 +463,7 @@ fn eventsTab(context: *ui.Frame, fleet: *Fleet, controls: *Controls, picked: []c
     try activity.close(context);
 }
 
-fn chatTab(context: *ui.Frame, fleet: *Fleet, controls: *Controls, picked: []const usize) !void {
+fn chatTab(context: *ui.Frame, widgets: *widgets_mod.Widgets, fleet: *Fleet, controls: *Controls, picked: []const usize) !void {
     const section = try widgets.openSection(context, "Message", "Written to every logged-in client listening on the channel, up to a second apart, as real clients log it.", &style.section);
     const channels = try chatChannels(context.arena(), fleet);
     if (controls.channel_index >= channels.len) controls.channel_index = 0;
@@ -493,7 +494,7 @@ fn chatTab(context: *ui.Frame, fleet: *Fleet, controls: *Controls, picked: []con
     try joining.close(context);
 }
 
-fn testsTab(context: *ui.Frame, fleet: *Fleet, controls: *Controls, picked: []const usize) !void {
+fn testsTab(context: *ui.Frame, widgets: *widgets_mod.Widgets, fleet: *Fleet, controls: *Controls, picked: []const usize) !void {
     const pending = fleet.schedule.pendingCount(.scenario);
     const steps_left = fleet.schedule.expectationCount();
     if (pending > 0) {
@@ -531,7 +532,7 @@ fn testsTab(context: *ui.Frame, fleet: *Fleet, controls: *Controls, picked: []co
     }
 }
 
-fn setupTab(context: *ui.Frame, fleet: *Fleet) !void {
+fn setupTab(context: *ui.Frame, widgets: *widgets_mod.Widgets, fleet: *Fleet) !void {
     const folders = try widgets.openSection(context, "Log folders", "The app's defaults, so it watches these with no settings change. Changes apply to sessions started afterwards.", &style.section);
     const chatlog_row = try widgets.openBinding(context, .src(@src()), "Chatlogs");
     try context.e(TextInput{ .key = .src(@src()), .buf = &fleet.chatlog_dir, .allocator = fleet.allocator, .style = &style.path_input });
@@ -551,7 +552,7 @@ fn setupTab(context: *ui.Frame, fleet: *Fleet) !void {
     try files.close(context);
 }
 
-fn journalPane(context: *ui.Frame, fleet: *Fleet, controls: *Controls) !void {
+fn journalPane(context: *ui.Frame, widgets: *widgets_mod.Widgets, fleet: *Fleet, controls: *Controls) !void {
     const pane = Rect{ .key = .src(@src()), .style = &JOURNAL_PANE };
     _ = try pane.open(context);
     const title_row = Rect{ .key = .src(@src()), .style = &ROW };
@@ -585,7 +586,7 @@ fn journalPane(context: *ui.Frame, fleet: *Fleet, controls: *Controls) !void {
 }
 
 /// Above a tab whose actions work on the picked clients.
-fn pickedNotice(context: *ui.Frame, picked: []const usize) !void {
+fn pickedNotice(context: *ui.Frame, widgets: *widgets_mod.Widgets, picked: []const usize) !void {
     if (picked.len > 0) return;
     try widgets.notice(context, .src(@src()), "Pick one or more clients in the list to act on them.");
 }
@@ -626,7 +627,7 @@ fn choose(context: *ui.Frame, key: ui.Key, labels: []const []const u8, selected:
         .labels = labels,
         .values = values,
         .initial_selected = selected.*,
-        .style = select_style orelse try widgets.fittedSelect(context, labels),
+        .style = select_style orelse try widgets_mod.fittedSelect(context, labels),
         .parts = .{ .popup = &style.select_popup },
     });
     if (response.selected) |choice| selected.* = choice.value;

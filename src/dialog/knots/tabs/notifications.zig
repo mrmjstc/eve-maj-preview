@@ -5,8 +5,10 @@ const session = @import("../session.zig");
 const bind = @import("../bind.zig");
 const style = @import("../style.zig");
 const widgets = @import("../widgets.zig");
+const window_mod = @import("../window.zig");
 
 const NotificationRef = session.Ref(config.NotificationConfig);
+const Window = window_mod.Window;
 
 /// TTS Speed's steps as SAPI rates, -10 to 10, where every 10 steps speaks three times as fast.
 const SPEEDS = [_]Speed{
@@ -22,57 +24,57 @@ const SPEED_LABELS = blk: {
 
 const Speed = struct { label: []const u8, rate: i8 };
 
-pub fn show(context: *ui.Frame) !void {
-    if (!session.global().ptr.chatlog.enabled) {
-        try widgets.noticeWithButton(context, .src(@src()), "Without Log Monitoring, only alerts for your own actions, like Profile Switch, are shown.", "Go to Log Monitoring", .log_monitoring);
+pub fn show(window: *Window, context: *ui.Frame) !void {
+    if (!window.session.global().ptr.chatlog.enabled) {
+        try window.widgets.noticeWithButton(context, .src(@src()), "Without Log Monitoring, only alerts for your own actions, like Profile Switch, are shown.", "Go to Log Monitoring", .log_monitoring);
     }
-    try system(context);
-    try speech(context);
+    try system(window, context);
+    try speech(window, context);
 }
 
-fn system(context: *ui.Frame) !void {
-    const ref = session.profile().child("notifications");
-    const section = try widgets.openSection(context, "Alerts", "Alerts for game events like fleet invites. Set each one up on Game Events.", &style.section);
-    try bind.toggle(context, ref, "enabled", "Enable Alerts");
+fn system(window: *Window, context: *ui.Frame) !void {
+    const ref = window.session.profile().child("notifications");
+    const section = try window.widgets.openSection(context, "Alerts", "Alerts for game events like fleet invites. Set each one up on Game Events.", &style.section);
+    try window.bind.toggle(context, ref, "enabled", "Enable Alerts");
     // Its placement and font are edited from its text on the Appearance tab's thumbnail preview.
-    const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
-    try bind.number(context, ref, "suppress_click_duration_ms", "Quiet After Click", .{ .shows_seconds = true, .unit = "s" });
-    try widgets.hintText(context, .src(@src()), "No alerts for a character this long after you click it.");
-    try bind.number(context, ref, "notified_cycle_retention_seconds", "Keep in Notified Cycle For", .{ .unit = "s" });
-    try widgets.hintText(context, .src(@src()), "How long after an alert a character stays in Notified Characters cycling.");
+    const options = try window.widgets.openGroup(context, .src(@src()), ref.get("enabled"));
+    try window.bind.number(context, ref, "suppress_click_duration_ms", "Quiet After Click", .{ .shows_seconds = true, .unit = "s" });
+    try window.widgets.hintText(context, .src(@src()), "No alerts for a character this long after you click it.");
+    try window.bind.number(context, ref, "notified_cycle_retention_seconds", "Keep in Notified Cycle For", .{ .unit = "s" });
+    try window.widgets.hintText(context, .src(@src()), "How long after an alert a character stays in Notified Characters cycling.");
     try options.close(context);
     try section.close(context);
 }
 
-fn speech(context: *ui.Frame) !void {
-    const section = try widgets.openSection(context, "Text-to-Speech", "Reads alerts aloud. Turn it on per event with Speak Aloud on Game Events.", &style.section);
-    const ref = session.profile().child("notifications");
+fn speech(window: *Window, context: *ui.Frame) !void {
+    const section = try window.widgets.openSection(context, "Text-to-Speech", "Reads alerts aloud. Turn it on per event with Speak Aloud on Game Events.", &style.section);
+    const ref = window.session.profile().child("notifications");
     // Speech only means something while alerts fire, so the section dims with them.
-    const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
-    try bind.toggle(context, ref, "tts_speak_character_name", "Prefix Spoken Alerts with the Character Name");
-    try widgets.hintText(context, .src(@src()), "So you know which character an alert is about.");
-    const display_name = try widgets.openGroup(context, .src(@src()), ref.get("tts_speak_character_name"));
-    try bind.toggle(context, ref, "tts_use_display_name", "Speak Display Name Instead of Character Name");
-    try widgets.hintText(context, .src(@src()), "Uses the Display Name set on the Characters tab.");
+    const options = try window.widgets.openGroup(context, .src(@src()), ref.get("enabled"));
+    try window.bind.toggle(context, ref, "tts_speak_character_name", "Prefix Spoken Alerts with the Character Name");
+    try window.widgets.hintText(context, .src(@src()), "So you know which character an alert is about.");
+    const display_name = try window.widgets.openGroup(context, .src(@src()), ref.get("tts_speak_character_name"));
+    try window.bind.toggle(context, ref, "tts_use_display_name", "Speak Display Name Instead of Character Name");
+    try window.widgets.hintText(context, .src(@src()), "Uses the Display Name set on the Characters tab.");
     try display_name.close(context);
-    try bind.slider(context, ref, "tts_volume", "Volume", .{ .display = .percent });
-    try widgets.hintText(context, .src(@src()), "Only affects spoken alerts.");
-    try speed(context, ref);
-    try widgets.hintText(context, .src(@src()), "Slow is about 20% slower than Normal, and Fast about 25% faster.");
-    try bind.number(context, ref, "tts_max_waiting", "Max Alerts Waiting to Speak", .{ .unit = "alerts", .singular_unit = "alert" });
-    try widgets.hintText(context, .src(@src()), "Past this, the oldest waiting alert is skipped so new ones aren't delayed.");
+    try window.bind.slider(context, ref, "tts_volume", "Volume", .{ .display = .percent });
+    try window.widgets.hintText(context, .src(@src()), "Only affects spoken alerts.");
+    try speed(window, context, ref);
+    try window.widgets.hintText(context, .src(@src()), "Slow is about 20% slower than Normal, and Fast about 25% faster.");
+    try window.bind.number(context, ref, "tts_max_waiting", "Max Alerts Waiting to Speak", .{ .unit = "alerts", .singular_unit = "alert" });
+    try window.widgets.hintText(context, .src(@src()), "Past this, the oldest waiting alert is skipped so new ones aren't delayed.");
     try options.close(context);
     try section.close(context);
 }
 
 /// Named steps rather than the raw rate; a rate saved between steps shows the nearest one until another is picked.
-fn speed(context: *ui.Frame, ref: NotificationRef) !void {
-    const row = try widgets.openBinding(context, .str("knots.notifications.tts_speed"), "Speed");
+fn speed(window: *Window, context: *ui.Frame, ref: NotificationRef) !void {
+    const row = try window.widgets.openBinding(context, .str("knots.notifications.tts_speed"), "Speed");
     const current: i8 = ref.get("tts_rate");
     var nearest: usize = 0;
     for (SPEEDS, 0..) |step, index| {
         if (@abs(@as(i16, step.rate) - current) < @abs(@as(i16, SPEEDS[nearest].rate) - current)) nearest = index;
     }
-    if (try widgets.segmented(context, .str("knots.notifications.tts_speed.steps"), &SPEED_LABELS, nearest)) |picked| ref.set("tts_rate", SPEEDS[picked].rate);
+    if (try window.widgets.segmented(context, .str("knots.notifications.tts_speed.steps"), &SPEED_LABELS, nearest)) |picked| ref.set("tts_rate", SPEEDS[picked].rate);
     try row.close(context);
 }

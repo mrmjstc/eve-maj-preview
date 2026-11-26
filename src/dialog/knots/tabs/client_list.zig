@@ -14,11 +14,13 @@ const widgets = @import("../widgets.zig");
 const color_convert = @import("../color_convert.zig");
 const panel_preview = @import("panel_preview.zig");
 const panel_settings = @import("panel_settings.zig");
+const window_mod = @import("../window.zig");
 
 const Rect = ui.component.Rect;
 const Text = ui.component.Text;
 const ListRef = session.Ref(config.ListViewConfig);
 const PART_PADDING = panel_preview.PART_PADDING;
+const Window = window_mod.Window;
 
 const ROW_KEY: ui.Key = .str("knots.client_list.row");
 const LINE_KEY: ui.Key = .str("knots.client_list.line");
@@ -149,33 +151,31 @@ const StatRows = struct {
 
 const INITIAL_PICKER: panel_preview.Picker(Part) = .{ .part_key = .str("knots.client_list.part"), .selected = .panel };
 
-var g_picker: panel_preview.Picker(Part) = INITIAL_PICKER;
+/// One window's, reset as each opens.
+pub const State = struct {
+    picker: panel_preview.Picker(Part) = INITIAL_PICKER,
+};
 
-/// Once the window has closed.
-pub fn reset() void {
-    g_picker = INITIAL_PICKER;
-}
-
-pub fn show(context: *ui.Frame) !void {
-    const list_view = session.profile().child("listView");
-    const profile = session.profile().ptr;
-    const section = try widgets.openSection(context, "Client List", "A compact panel of client names. Click a part to edit it.", &style.bench_section);
+pub fn show(window: *Window, context: *ui.Frame) !void {
+    const list_view = window.session.profile().child("listView");
+    const profile = window.session.profile().ptr;
+    const section = try window.widgets.openSection(context, "Client List", "A compact panel of client names. Click a part to edit it.", &style.bench_section);
     var bench = try panel_preview.Bench.open(context, BENCH_KEY);
     const look = try lookOf(context.arena(), profile, &bench);
-    try bench.openStage(context, look.scale, &g_picker.shows_off);
-    try preview(context, &profile.listView, &look);
+    try bench.openStage(context, look.scale, &window.client_list.picker.shows_off);
+    try preview(window, context, &profile.listView, &look);
     try bench.closeStage(context);
-    try g_picker.partList(context, &partRows(&look), partSwitch);
+    try window.client_list.picker.partList(window, context, &partRows(&look), partSwitch);
     try bench.openInspector(context);
     // The search's index draws every tab with it, and they bind some of the same fields, so the inspector's rows need keys of their own.
     var inspector_ref = list_view;
     inspector_ref.index = 1;
-    try settings(context, inspector_ref, g_picker.selected);
+    try settings(window, context, inspector_ref, window.client_list.picker.selected);
     try bench.close(context);
     try section.close(context);
 
     // Beside thumbnails, the list hides with them.
-    try panel_settings.visibility(context, list_view, .list, .{ .has_auto_hide = !session.showsThumbnails() });
+    try panel_settings.visibility(window, context, list_view, .list, .{ .has_auto_hide = !window.session.showsThumbnails() });
 }
 
 /// Every part's row in the parts list, its dot in the part's colour.
@@ -206,19 +206,19 @@ fn partRows(look: *const Look) [PART_COUNT]panel_preview.Picker(Part).Row {
 }
 
 /// The part's on switch in the parts list, where it has one.
-fn partSwitch(context: *ui.Frame, part: Part) !void {
-    var list_view = session.profile().child("listView");
+fn partSwitch(window: *Window, context: *ui.Frame, part: Part) !void {
+    var list_view = window.session.profile().child("listView");
     // At the inspector's index, as the search draws every tab too.
     list_view.index = 1;
     switch (part) {
         .panel, .active, .names => {},
-        .systems => try bind.toggle(context, list_view, "showSystemName", ""),
-        .notifications => try bind.toggle(context, list_view, "showNotifications", ""),
-        .incoming_dps => try bind.toggle(context, list_view, "showIncomingDps", ""),
-        .outgoing_dps => try bind.toggle(context, list_view, "showOutgoingDps", ""),
-        .mining_rate => try bind.toggle(context, list_view, "showMiningRate", ""),
-        .bounty_rate => try bind.toggle(context, list_view, "showBountyRate", ""),
-        .totals => try bind.toggle(context, list_view, "showTotals", ""),
+        .systems => try window.bind.toggle(context, list_view, "showSystemName", ""),
+        .notifications => try window.bind.toggle(context, list_view, "showNotifications", ""),
+        .incoming_dps => try window.bind.toggle(context, list_view, "showIncomingDps", ""),
+        .outgoing_dps => try window.bind.toggle(context, list_view, "showOutgoingDps", ""),
+        .mining_rate => try window.bind.toggle(context, list_view, "showMiningRate", ""),
+        .bounty_rate => try window.bind.toggle(context, list_view, "showBountyRate", ""),
+        .totals => try window.bind.toggle(context, list_view, "showTotals", ""),
     }
 }
 
@@ -229,25 +229,25 @@ fn statChip(look: *const Look, stat: list_look.Stat) struct { bool, u32 } {
 }
 
 /// The Panel part's settings: how the list orders and arranges its clients, and its font.
-fn layout(context: *ui.Frame, list_view: ListRef) !void {
-    try bind.segmented(context, list_view, "order", "Order", &ORDER_LABELS);
-    try widgets.hintText(context, .src(@src()), "Setup follows the Characters tab; Found is the order clients were found.");
-    try bind.toggle(context, list_view, "groupBySystem", "Group by System");
-    try widgets.hintText(context, .src(@src()), "Lists clients under a heading for each system.");
-    try bind.number(context, list_view, "columns", "Columns", .{ .unit = "columns", .singular_unit = "column" });
-    try widgets.hintText(context, .src(@src()), "Splits the list into this many columns.");
-    try bind.number(context, list_view, "columnWidth", "Column Width", .{ .unit = "px" });
-    try widgets.hintText(context, .src(@src()), "Long names are cut short to fit.");
-    try bind.segmented(context, list_view, "indicatorStyle", "Indicator", &.{ "Dot", "Square", "None" });
-    try widgets.hintText(context, .src(@src()), "The mark beside each client that shows its state.");
-    const font = try widgets.openWrappingBinding(context, .src(@src()), "Font");
-    try bind.fontBoxes(context, list_view, "fontName", "fontSize", "fontWeight");
+fn layout(window: *Window, context: *ui.Frame, list_view: ListRef) !void {
+    try window.bind.segmented(context, list_view, "order", "Order", &ORDER_LABELS);
+    try window.widgets.hintText(context, .src(@src()), "Setup follows the Characters tab; Found is the order clients were found.");
+    try window.bind.toggle(context, list_view, "groupBySystem", "Group by System");
+    try window.widgets.hintText(context, .src(@src()), "Lists clients under a heading for each system.");
+    try window.bind.number(context, list_view, "columns", "Columns", .{ .unit = "columns", .singular_unit = "column" });
+    try window.widgets.hintText(context, .src(@src()), "Splits the list into this many columns.");
+    try window.bind.number(context, list_view, "columnWidth", "Column Width", .{ .unit = "px" });
+    try window.widgets.hintText(context, .src(@src()), "Long names are cut short to fit.");
+    try window.bind.segmented(context, list_view, "indicatorStyle", "Indicator", &.{ "Dot", "Square", "None" });
+    try window.widgets.hintText(context, .src(@src()), "The mark beside each client that shows its state.");
+    const font = try window.widgets.openWrappingBinding(context, .src(@src()), "Font");
+    try window.bind.fontBoxes(context, list_view, "fontName", "fontSize", "fontWeight");
     try font.close(context);
-    try widgets.hintText(context, .src(@src()), "Used for names; other text is drawn a little smaller.");
+    try window.widgets.hintText(context, .src(@src()), "Used for names; other text is drawn a little smaller.");
 }
 
 /// The panel in list_look's look, with sample clients, at `look.scale`.
-fn preview(context: *ui.Frame, list_settings: *const config.ListViewConfig, look: *const Look) !void {
+fn preview(window: *Window, context: *ui.Frame, list_settings: *const config.ListViewConfig, look: *const Look) !void {
     const arena = context.arena();
     const column_count = look.column_count;
     // No bottom padding, as the totals footer is always drawn and pads the bottom itself.
@@ -257,7 +257,7 @@ fn preview(context: *ui.Frame, list_settings: *const config.ListViewConfig, look
     const panel = Rect{ .key = .src(@src()), .style = panel_style };
     _ = try panel.open(context);
     const count_text = list_look.countText(try arena.create([list_look.COUNT_TEXT_MAX]u8), SAMPLES.len);
-    try g_picker.header(context, .panel, .src(@src()), list_look.HEADER_TEXT, count_text, look.scale);
+    try window.client_list.picker.header(context, .panel, .src(@src()), list_look.HEADER_TEXT, count_text, look.scale);
 
     // Row by row across the columns, as the panel lays its rows out; a short last line keeps its cells' width.
     var first: usize = 0;
@@ -270,19 +270,19 @@ fn preview(context: *ui.Frame, list_settings: *const config.ListViewConfig, look
         _ = try line.open(context);
         for (first..first + column_count) |index| {
             if (index < SAMPLES.len) {
-                try sampleRow(context, SAMPLES[index], index, height, look);
+                try sampleRow(window, context, SAMPLES[index], index, height, look);
             } else {
                 try context.e(Rect{ .key = ROW_KEY.indexed(index), .style = empty_cell });
             }
         }
         try line.close(context);
     }
-    try totalsFooter(context, look);
+    try totalsFooter(window, context, look);
     try panel.close(context);
 }
 
 /// A rule over the sample rates added up, as the part that edits the totals line.
-fn totalsFooter(context: *ui.Frame, look: *const Look) !void {
+fn totalsFooter(window: *Window, context: *ui.Frame, look: *const Look) !void {
     const arena = context.arena();
     const footer_style = try arena.create(ui.Style);
     footer_style.* = .{
@@ -296,13 +296,13 @@ fn totalsFooter(context: *ui.Frame, look: *const Look) !void {
     };
     const footer = Rect{ .key = TOTALS_KEY, .style = footer_style };
     _ = try footer.open(context);
-    const part = try openPart(context, look, .{
+    const part = try openPart(window, context, look, .{
         .width = .grow(),
         .direction = .row,
         .@"align" = .center,
         .gap = look.scaled(list_look.STAT_GAP),
     }, list_look.PANEL, .totals, look.shows_totals);
-    const opacity = g_picker.contentOpacity(.totals, look.shows_totals);
+    const opacity = window.client_list.picker.contentOpacity(.totals, look.shows_totals);
     try context.e(Text{ .selectable = false, .key = TOTALS_KEY.indexed(1), .content = list_look.TOTALS_TEXT, .style = try widgets.textStyle(arena, list_look.MUTED, look.small_size, .{ .opacity = opacity, .is_bold = true }) });
     for (look.stat_labels, 2..) |label, index| {
         if (!label.is_shown) continue;
@@ -313,7 +313,7 @@ fn totalsFooter(context: *ui.Frame, look: *const Look) !void {
 }
 
 /// The active row is one part; so are one row's name and system, and each notification and rate.
-fn sampleRow(context: *ui.Frame, sample: Sample, index: usize, height: f32, look: *const Look) !void {
+fn sampleRow(window: *Window, context: *ui.Frame, sample: Sample, index: usize, height: f32, look: *const Look) !void {
     const arena = context.arena();
     const key = ROW_KEY.indexed(index);
     // A part pads its text for its outline, so the space before a name part and after a right-hand part gives that back.
@@ -332,10 +332,10 @@ fn sampleRow(context: *ui.Frame, sample: Sample, index: usize, height: f32, look
     };
     switch (sample.state) {
         .active => {
-            const row = try openPart(context, look, row_style.*, list_look.activeTint(look.active_color), .active, true);
+            const row = try openPart(window, context, look, row_style.*, list_look.activeTint(look.active_color), .active, true);
             try indicator(context, key.indexed(1), look.active_color, true, look);
             try context.e(Text{ .selectable = false, .key = key.indexed(2), .content = sample.name, .style = try widgets.textStyle(arena, look.active_name_color, look.name_size, .{ .is_grown = true, .is_bold = true }) });
-            try systemSlot(context, sample, key.indexed(3), look);
+            try systemSlot(window, context, sample, key.indexed(3), look);
             try row.close(context);
         },
         .inactive => {
@@ -346,17 +346,17 @@ fn sampleRow(context: *ui.Frame, sample: Sample, index: usize, height: f32, look
             _ = try lines.open(context);
             const name = Text{ .selectable = false, .key = key.indexed(2), .content = sample.name, .style = try widgets.textStyle(arena, look.name_color, look.name_size, .{ .is_bold = true }) };
             if (sample.is_name_part) {
-                const part = try openPart(context, look, .{}, list_look.PANEL, .names, true);
+                const part = try openPart(window, context, look, .{}, list_look.PANEL, .names, true);
                 try context.e(name);
                 try part.close(context);
             } else {
                 try context.e(name);
             }
-            if (sample.stats.len > 0) try statsLine(context, sample.stats, key.indexed(5), look);
+            if (sample.stats.len > 0) try statsLine(window, context, sample.stats, key.indexed(5), look);
             try lines.close(context);
             switch (sample.right) {
-                .system => try systemSlot(context, sample, key.indexed(3), look),
-                .notification => try pillPart(context, key.indexed(3), look),
+                .system => try systemSlot(window, context, sample, key.indexed(3), look),
+                .notification => try pillPart(window, context, key.indexed(3), look),
             }
             try row.close(context);
         },
@@ -386,14 +386,14 @@ fn groupStyle(arena: std.mem.Allocator, gap: f32) !*const ui.Style {
 }
 
 /// The system then its security; the system is the part that edits it on the row marked `is_system_part`.
-fn systemSlot(context: *ui.Frame, sample: Sample, key: ui.Key, look: *const Look) !void {
+fn systemSlot(window: *Window, context: *ui.Frame, sample: Sample, key: ui.Key, look: *const Look) !void {
     const arena = context.arena();
     const group = Rect{ .key = key, .style = try groupStyle(arena, look.scaled(list_look.SECURITY_GAP)) };
     _ = try group.open(context);
-    const opacity = g_picker.contentOpacity(.systems, look.shows_systems);
+    const opacity = window.client_list.picker.contentOpacity(.systems, look.shows_systems);
     const system_style = try widgets.textStyle(arena, look.system_color, look.small_size, .{ .opacity = opacity, .is_bold = true });
     if (sample.is_system_part) {
-        try textPart(context, .systems, key.indexed(1), sample.system, system_style, look.shows_systems, look);
+        try textPart(window, context, .systems, key.indexed(1), sample.system, system_style, look.shows_systems, look);
     } else {
         try context.e(Text{ .selectable = false, .key = key.indexed(1), .content = sample.system, .style = system_style });
     }
@@ -403,10 +403,10 @@ fn systemSlot(context: *ui.Frame, sample: Sample, key: ui.Key, look: *const Look
 }
 
 /// The sample notification in its pill, as the part that edits it.
-fn pillPart(context: *ui.Frame, key: ui.Key, look: *const Look) !void {
+fn pillPart(window: *Window, context: *ui.Frame, key: ui.Key, look: *const Look) !void {
     const arena = context.arena();
-    const part = try openPart(context, look, .{}, list_look.PANEL, .notifications, look.shows_notifications);
-    const opacity = g_picker.contentOpacity(.notifications, look.shows_notifications);
+    const part = try openPart(window, context, look, .{}, list_look.PANEL, .notifications, look.shows_notifications);
+    const opacity = window.client_list.picker.contentOpacity(.notifications, look.shows_notifications);
     const pill_style = try arena.create(ui.Style);
     pill_style.* = .{
         .background = color_convert.solid(list_look.pillFill(list_look.BADGE_ALERT)),
@@ -424,21 +424,21 @@ fn pillPart(context: *ui.Frame, key: ui.Key, look: *const Look) !void {
 }
 
 /// A row's rates under its name, each the part that edits it.
-fn statsLine(context: *ui.Frame, stats: []const list_look.Stat, key: ui.Key, look: *const Look) !void {
+fn statsLine(window: *Window, context: *ui.Frame, stats: []const list_look.Stat, key: ui.Key, look: *const Look) !void {
     const arena = context.arena();
     const group = Rect{ .key = key, .style = try groupStyle(arena, look.scaled(list_look.STAT_GAP - 2 * PART_PADDING)) };
     _ = try group.open(context);
     for (stats, 1..) |stat, index| {
         const label = look.stat_labels[@backingInt(stat)];
-        const opacity = g_picker.contentOpacity(.ofStat(stat), label.is_shown);
-        try textPart(context, .ofStat(stat), key.indexed(index), label.text, try widgets.textStyle(arena, label.color, look.small_size, .{ .opacity = opacity }), label.is_shown, look);
+        const opacity = window.client_list.picker.contentOpacity(.ofStat(stat), label.is_shown);
+        try textPart(window, context, .ofStat(stat), key.indexed(index), label.text, try widgets.textStyle(arena, label.color, look.small_size, .{ .opacity = opacity }), label.is_shown, look);
     }
     try group.close(context);
 }
 
 /// `content` as the part that edits it.
-fn textPart(context: *ui.Frame, part: Part, key: ui.Key, content: []const u8, text_style: *const ui.Style, is_shown: bool, look: *const Look) !void {
-    const open = try openPart(context, look, .{}, list_look.PANEL, part, is_shown);
+fn textPart(window: *Window, context: *ui.Frame, part: Part, key: ui.Key, content: []const u8, text_style: *const ui.Style, is_shown: bool, look: *const Look) !void {
+    const open = try openPart(window, context, look, .{}, list_look.PANEL, part, is_shown);
     try context.e(Text{ .selectable = false, .key = key, .content = content, .style = text_style });
     try open.close(context);
 }
@@ -488,7 +488,7 @@ fn lookOf(arena: std.mem.Allocator, profile: *const config.Config, bench: *const
 }
 
 /// `is_shown` is whether the list shows the part's text; the active row's always is.
-fn openPart(context: *ui.Frame, look: *const Look, base: ui.Style, background: u32, part: Part, is_shown: bool) !panel_preview.Part {
+fn openPart(window: *Window, context: *ui.Frame, look: *const Look, base: ui.Style, background: u32, part: Part, is_shown: bool) !panel_preview.Part {
     var part_style = base.with(.{ .background = color_convert.solid(background) });
     var inset = [2]f32{ 0, 0 };
     // The row's own padding already places the active row's content.
@@ -496,7 +496,7 @@ fn openPart(context: *ui.Frame, look: *const Look, base: ui.Style, background: u
         inset = .{ look.scaled(PART_PADDING), 0 };
         part_style.padding = .xy(inset[0], inset[1]);
     }
-    return g_picker.openPart(context, part_style, inset, part, is_shown);
+    return window.client_list.picker.openPart(context, part_style, inset, part, is_shown);
 }
 
 /// The active client's is bigger; every one sits in a slot as wide as that, so names line up.
@@ -519,43 +519,43 @@ fn indicator(context: *ui.Frame, key: ui.Key, color: u32, is_lit: bool, look: *c
 }
 
 /// The selected part's name, then its settings.
-fn settings(context: *ui.Frame, list_view: ListRef, part: Part) !void {
+fn settings(window: *Window, context: *ui.Frame, list_view: ListRef, part: Part) !void {
     try panel_preview.inspectorTitle(context, .src(@src()), part.label());
-    try requirementNotices(context, part);
+    try requirementNotices(window, context, part);
 
-    const follows_thumbnails = session.showsThumbnails();
+    const follows_thumbnails = window.session.showsThumbnails();
     switch (part) {
-        .panel => try layout(context, list_view),
+        .panel => try layout(window, context, list_view),
         .active => {
-            if (follows_thumbnails) return widgets.notice(context, .src(@src()), "Follows the thumbnails' active border color.");
-            try bind.toggle(context, list_view, "useUniqueActiveColors", "Unique Colors");
-            try widgets.hintText(context, .src(@src()), "Each character's mark gets its own color.");
-            const group = try widgets.openGroup(context, .src(@src()), !list_view.get("useUniqueActiveColors"));
-            try bind.optionalColor(context, list_view, "activeColor", "Active Color", session.profile().ptr.accentColor);
-            try widgets.hintText(context, .src(@src()), "Marks the client you're in.");
+            if (follows_thumbnails) return window.widgets.notice(context, .src(@src()), "Follows the thumbnails' active border color.");
+            try window.bind.toggle(context, list_view, "useUniqueActiveColors", "Unique Colors");
+            try window.widgets.hintText(context, .src(@src()), "Each character's mark gets its own color.");
+            const group = try window.widgets.openGroup(context, .src(@src()), !list_view.get("useUniqueActiveColors"));
+            try window.bind.optionalColor(context, list_view, "activeColor", "Active Color", window.session.profile().ptr.accentColor);
+            try window.widgets.hintText(context, .src(@src()), "Marks the client you're in.");
             try group.close(context);
         },
         // The list's own in every view mode, unlike its other colors.
         .names => {
-            try bind.toggle(context, list_view, "useUniqueCharacterNameColors", "Unique Colors");
-            try widgets.hintText(context, .src(@src()), "Each character's name gets its own color.");
+            try window.bind.toggle(context, list_view, "useUniqueCharacterNameColors", "Unique Colors");
+            try window.widgets.hintText(context, .src(@src()), "Each character's name gets its own color.");
         },
         .systems => {
-            try bind.toggle(context, list_view, "showSystemSecurity", "Show Security Status");
-            try widgets.hintText(context, .src(@src()), "Beside the system's name, in the game's colors.");
-            if (follows_thumbnails) return widgets.notice(context, .src(@src()), "Colors follow the thumbnails' system name settings.");
-            try bind.toggle(context, list_view, "useUniqueSystemColors", "Unique Colors");
-            try widgets.hintText(context, .src(@src()), "Each system gets its own color; System Colors overrides it.");
-            const group = try widgets.openGroup(context, .src(@src()), !list_view.get("useUniqueSystemColors"));
-            try bind.rgb(context, list_view, "systemNameColor", "Text Color");
-            try widgets.hintText(context, .src(@src()), "Used while unique colors are off.");
+            try window.bind.toggle(context, list_view, "showSystemSecurity", "Show Security Status");
+            try window.widgets.hintText(context, .src(@src()), "Beside the system's name, in the game's colors.");
+            if (follows_thumbnails) return window.widgets.notice(context, .src(@src()), "Colors follow the thumbnails' system name settings.");
+            try window.bind.toggle(context, list_view, "useUniqueSystemColors", "Unique Colors");
+            try window.widgets.hintText(context, .src(@src()), "Each system gets its own color; System Colors overrides it.");
+            const group = try window.widgets.openGroup(context, .src(@src()), !list_view.get("useUniqueSystemColors"));
+            try window.bind.rgb(context, list_view, "systemNameColor", "Text Color");
+            try window.widgets.hintText(context, .src(@src()), "Used while unique colors are off.");
             try group.close(context);
         },
         .notifications => {
-            try bind.rgb(context, list_view, "notificationColor", "Text Color");
-            try widgets.hintText(context, .src(@src()), "Used when the alert type has no color of its own.");
+            try window.bind.rgb(context, list_view, "notificationColor", "Text Color");
+            try window.widgets.hintText(context, .src(@src()), "Used when the alert type has no color of its own.");
         },
-        .incoming_dps => try statSettings(context, list_view, .{
+        .incoming_dps => try statSettings(window, context, list_view, .{
             .show_field = "showIncomingDps",
             .prefix_field = "showIncomingPrefix",
             .prefix_label = "Show IN: Prefix",
@@ -564,7 +564,7 @@ fn settings(context: *ui.Frame, list_view: ListRef, part: Part) !void {
             .tracker = "combat",
             .has_excluded_weapons = true,
         }),
-        .outgoing_dps => try statSettings(context, list_view, .{
+        .outgoing_dps => try statSettings(window, context, list_view, .{
             .show_field = "showOutgoingDps",
             .prefix_field = "showOutgoingPrefix",
             .prefix_label = "Show OUT: Prefix",
@@ -572,7 +572,7 @@ fn settings(context: *ui.Frame, list_view: ListRef, part: Part) !void {
             .color_field = "outgoingDpsColor",
             .tracker = "combat",
         }),
-        .mining_rate => try statSettings(context, list_view, .{
+        .mining_rate => try statSettings(window, context, list_view, .{
             .show_field = "showMiningRate",
             .prefix_field = "showMiningPrefix",
             .prefix_label = "Show M: Prefix",
@@ -581,7 +581,7 @@ fn settings(context: *ui.Frame, list_view: ListRef, part: Part) !void {
             .tracker = "mining",
             .unit = .{ .field = "m3_rate_unit", .label = "m3 Per", .hint = "Shows m3 mined per minute or per hour." },
         }),
-        .bounty_rate => try statSettings(context, list_view, .{
+        .bounty_rate => try statSettings(window, context, list_view, .{
             .show_field = "showBountyRate",
             .prefix_field = "showBountyPrefix",
             .prefix_label = "Show ISK: Prefix",
@@ -590,48 +590,48 @@ fn settings(context: *ui.Frame, list_view: ListRef, part: Part) !void {
             .tracker = "bounty",
             .unit = .{ .field = "isk_rate_unit", .label = "ISK Per", .hint = "Shows ISK earned per minute or per hour." },
         }),
-        .totals => try widgets.paragraph(context, .src(@src()), "Adds up the rates the rows show."),
+        .totals => try window.widgets.paragraph(context, .src(@src()), "Adds up the rates the rows show."),
     }
 }
 
 /// What else has to be on for the part's text to show, as the Text Overlays preview says.
-fn requirementNotices(context: *ui.Frame, part: Part) !void {
-    const profile = session.profile().ptr;
-    const is_monitoring = session.global().ptr.chatlog.enabled;
+fn requirementNotices(window: *Window, context: *ui.Frame, part: Part) !void {
+    const profile = window.session.profile().ptr;
+    const is_monitoring = window.session.global().ptr.chatlog.enabled;
     const needs_chatlog = switch (part) {
         .panel, .active, .names, .notifications => false,
         .systems, .incoming_dps, .outgoing_dps, .mining_rate, .bounty_rate, .totals => true,
     };
-    if (needs_chatlog and !is_monitoring) try widgets.notice(context, .src(@src()), "Requires Log Monitoring to be enabled.");
+    if (needs_chatlog and !is_monitoring) try window.widgets.notice(context, .src(@src()), "Requires Log Monitoring to be enabled.");
     const stat_settings: list_look.StatSettings = .{ .list_settings = &profile.listView, .mining = &profile.mining, .bounty = &profile.bounty };
-    if (part == .totals and !list_look.showsAnyStat(stat_settings)) try widgets.notice(context, .src(@src()), "Needs at least one rate shown on the rows.");
-    if (part == .notifications and !is_monitoring) try widgets.notice(context, .src(@src()), "Without Log Monitoring, only alerts for your own actions, like Profile Switch, are shown.");
-    if (part == .notifications and !profile.notifications.enabled) try widgets.notice(context, .src(@src()), "Requires alerts switched on in the Alert Options tab.");
+    if (part == .totals and !list_look.showsAnyStat(stat_settings)) try window.widgets.notice(context, .src(@src()), "Needs at least one rate shown on the rows.");
+    if (part == .notifications and !is_monitoring) try window.widgets.notice(context, .src(@src()), "Without Log Monitoring, only alerts for your own actions, like Profile Switch, are shown.");
+    if (part == .notifications and !profile.notifications.enabled) try window.widgets.notice(context, .src(@src()), "Requires alerts switched on in the Alert Options tab.");
 }
 
-fn statSettings(context: *ui.Frame, list_view: ListRef, comptime rows: StatRows) !void {
-    try bind.toggle(context, list_view, rows.prefix_field, rows.prefix_label);
-    try widgets.hintText(context, .str("knots.client_list.prefix.hint:" ++ rows.show_field), rows.prefix_hint);
-    try bind.rgb(context, list_view, rows.color_field, "Text Color");
-    try sharedSettings(context, list_view.index, rows);
+fn statSettings(window: *Window, context: *ui.Frame, list_view: ListRef, comptime rows: StatRows) !void {
+    try window.bind.toggle(context, list_view, rows.prefix_field, rows.prefix_label);
+    try window.widgets.hintText(context, .str("knots.client_list.prefix.hint:" ++ rows.show_field), rows.prefix_hint);
+    try window.bind.rgb(context, list_view, rows.color_field, "Text Color");
+    try sharedSettings(window, context, list_view.index, rows);
 }
 
 /// The same fields the Text Overlays preview edits for the rate.
-fn sharedSettings(context: *ui.Frame, list_index: usize, comptime rows: StatRows) !void {
-    var tracker = session.profile().child(rows.tracker);
+fn sharedSettings(window: *Window, context: *ui.Frame, list_index: usize, comptime rows: StatRows) !void {
+    var tracker = window.session.profile().child(rows.tracker);
     // The Text Overlays preview binds these fields at the list's index.
     tracker.index = list_index + 1;
     const key = "knots.client_list.shared:" ++ rows.show_field;
-    try bind.number(context, tracker, "window_seconds", "Averaging Window", .{ .unit = "s" });
-    try widgets.hintText(context, .str(key ++ ":window"), "The rate is averaged over this time.");
-    try bind.number(context, tracker, "update_interval_ms", "Update Interval", .{ .unit = "s", .shows_seconds = true });
-    try widgets.hintText(context, .str(key ++ ":interval"), "How often the number changes.");
+    try window.bind.number(context, tracker, "window_seconds", "Averaging Window", .{ .unit = "s" });
+    try window.widgets.hintText(context, .str(key ++ ":window"), "The rate is averaged over this time.");
+    try window.bind.number(context, tracker, "update_interval_ms", "Update Interval", .{ .unit = "s", .shows_seconds = true });
+    try window.widgets.hintText(context, .str(key ++ ":interval"), "How often the number changes.");
     if (rows.unit) |unit| {
-        try bind.segmented(context, tracker, unit.field, unit.label, &.{ "Minute", "Hour" });
-        try widgets.hintText(context, .str(key ++ ":unit"), unit.hint);
+        try window.bind.segmented(context, tracker, unit.field, unit.label, &.{ "Minute", "Hour" });
+        try window.widgets.hintText(context, .str(key ++ ":unit"), unit.hint);
     }
     if (rows.has_excluded_weapons) {
-        try bind.text(context, tracker, "damage_alert_excluded_weapons", "Exclude Weapons", "e.g. Smartbomb, Warp Scrambler");
-        try widgets.hintText(context, .str(key ++ ":weapons"), "Weapon names to ignore, separated by commas. Stops only the Taking Damage alert; the damage still counts.");
+        try window.bind.text(context, tracker, "damage_alert_excluded_weapons", "Exclude Weapons", "e.g. Smartbomb, Warp Scrambler");
+        try window.widgets.hintText(context, .str(key ++ ":weapons"), "Weapon names to ignore, separated by commas. Stops only the Taking Damage alert; the damage still counts.");
     }
 }
