@@ -20,7 +20,7 @@ Every place that names the version, as of 0.17.1:
 
 1. `zig build` and `zig build check` (the app and the simulator), then fix compile errors in `src/` first, then in `deps/knots/`. A knots change is a patch: mark it `EVE-Maj patch` and list it in `PATCHES.md`, or update knots instead if upstream already supports the new release.
 2. `zig build test`.
-3. `zig fmt --check src`: a new `zig fmt` can reformat code that was fine before. Commit any reformatting on its own.
+3. `zig fmt --check src build.zig build.zig.zon`: a new `zig fmt` can reformat code that was fine before. Commit any reformatting on its own.
 
 ## 3. Move off newly deprecated std APIs
 
