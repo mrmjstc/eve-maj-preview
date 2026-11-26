@@ -79,6 +79,7 @@
 - ARCHITECTURE.md tick list includes taskbar marking
 
 ### Fixed
+- Profile links and hotkeys refuse unknown profile names instead of switching to the default
 - Profiles: a queued action drops a leftover restore backup
 - Dragged panels stay under the cursor instead of lagging behind
 - Alert types set only in part in a profile keep their own defaults

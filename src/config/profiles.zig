@@ -191,12 +191,20 @@ pub fn listBackups(allocator: std.mem.Allocator, io: std.Io) !std.ArrayList([]co
     return names;
 }
 
-/// Falls back to DEFAULT_PROFILE when invalid or missing and to defaults when malformed; a name differing only in case takes the file's spelling.
+/// For startup: like loadExisting, but falls back to DEFAULT_PROFILE when the name is invalid or missing.
 pub fn load(allocator: std.mem.Allocator, io: std.Io, name: []const u8) !Config {
-    validateName(name) catch {
-        slog.warn("Refused profile name '{s}', falling back to default profile", .{name});
-        return load(allocator, io, files.DEFAULT_PROFILE);
+    return loadExisting(allocator, io, name) catch |err| switch (err) {
+        error.InvalidProfileName, error.MissingProfile, error.FileNotFound => {
+            slog.warn("Failed to load profile '{s}', falling back to default profile: {}", .{ name, err });
+            return loadExisting(allocator, io, files.DEFAULT_PROFILE);
+        },
+        else => return err,
     };
+}
+
+/// Falls back to defaults when malformed; a name differing only in case takes the file's spelling.
+pub fn loadExisting(allocator: std.mem.Allocator, io: std.Io, name: []const u8) !Config {
+    try validateName(name);
     try ensureDir(allocator, io);
 
     var names = try list(allocator, io);
@@ -204,22 +212,13 @@ pub fn load(allocator: std.mem.Allocator, io: std.Io, name: []const u8) !Config 
         for (names.items) |listed| allocator.free(listed);
         names.deinit(allocator);
     }
-    if (listedSpelling(names.items, name)) |listed| {
-        if (!std.mem.eql(u8, listed, name)) return load(allocator, io, listed);
-    }
+    const listed = listedSpelling(names.items, name) orelse return error.MissingProfile;
 
-    const profile_path = try path(allocator, name);
+    const profile_path = try path(allocator, listed);
     defer allocator.free(profile_path);
 
     slog.info("Loading JSON config from: {s}", .{profile_path});
-    return loadFile(allocator, io, profile_path, name) catch |err| {
-        // ensureDir() above guarantees DEFAULT_PROFILE exists, so this can't recurse forever.
-        if (err == error.FileNotFound and !std.mem.eql(u8, name, files.DEFAULT_PROFILE)) {
-            slog.warn("Profile '{s}' not found, falling back to default profile", .{name});
-            return load(allocator, io, files.DEFAULT_PROFILE);
-        }
-        return err;
-    };
+    return loadFile(allocator, io, profile_path, listed);
 }
 
 /// The profile file names in PROFILES_DIR, e.g. "default.json"; caller owns the list and its strings.
@@ -314,7 +313,7 @@ fn copyFrom(allocator: std.mem.Allocator, io: std.Io, source_path: []const u8, t
     };
 
     const color = accent_color orelse return;
-    var config = try load(allocator, io, target);
+    var config = try loadExisting(allocator, io, target);
     defer config.deinit();
     config.accentColor = color;
     try save(&config, allocator, io, target_path);
@@ -414,7 +413,7 @@ test "validateName accepts only a plain <name>.json" {
     try testing.expectError(error.InvalidProfileName, validateName("what?.json"));
 }
 
-test "validateName accepts the default profile, so load's fallback can't recurse" {
+test "validateName accepts the default profile, which load falls back to" {
     try validateName(files.DEFAULT_PROFILE);
 }
 

@@ -33,6 +33,7 @@ pub const DEFAULT_PROFILE = files.DEFAULT_PROFILE;
 pub const migrateLegacyLayout = files.migrateLegacyLayout;
 pub const sweepTempFiles = files.sweepTempFiles;
 pub const loadProfile = profiles.load;
+pub const loadExistingProfile = profiles.loadExisting;
 pub const listProfiles = profiles.list;
 pub const writeDefaultProfile = profiles.writeDefault;
 pub const createProfile = profiles.create;

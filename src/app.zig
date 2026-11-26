@@ -732,14 +732,8 @@ pub const App = struct {
 
         const timer_hwnd = self.timer_hwnd orelse return error.MissingTimerWindow;
 
-        const loaded = config.loadProfile(self.allocator, self.io, new_profile_name) catch |err| blk: {
-            slog.err("Failed to load profile '{s}', reverting to the default: {}", .{ new_profile_name, err });
-            break :blk config.loadProfile(self.allocator, self.io, config.DEFAULT_PROFILE) catch |fallback_err| {
-                slog.err("Failed to load the default profile: {}", .{fallback_err});
-                // Original profile-load error, not the fallback's.
-                return err;
-            };
-        };
+        // Strict, so a mistyped name from a link or hotkey is refused rather than switching to the default.
+        const loaded = try config.loadExistingProfile(self.allocator, self.io, new_profile_name);
         // Built before anything is torn down, so a failure here leaves the running profile intact.
         const new_store = config.ProfileStore.init(loaded, self.io) catch |err| {
             slog.err("Failed to set up profile '{s}': {}", .{ new_profile_name, err });

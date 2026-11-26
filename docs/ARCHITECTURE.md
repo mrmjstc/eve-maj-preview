@@ -433,7 +433,7 @@ WM_HOTKEY ─> timerWindowProc ─> HotkeyManager.handleHotkeyPress ─> Command
   - `types.zig`: types and defaults several sections share. Enum tag names are saved in profiles, so renaming a tag breaks existing profiles.
   - `key_list.zig` (`KeyList`): a binding's key combos, alternates that all trigger the same action.
   - `field_strings.zig` (pure): which string fields still hold their default literal and which hold owned copies, so only the copies are freed.
-  - `profiles.zig`: load with fallbacks, save, create (exclusive), copy, rename, backup and restore. Every name passes `validateName`.
+  - `profiles.zig`: load (strict for user switches; startup falls back to the default profile), save, create (exclusive), copy, rename, backup and restore. Every name passes `validateName`.
   - `import/`: EVE-X / EVE-MultiPreview, EVE-APM (INI), EVE-O and own profiles → `Draft` → patch ops. Untested by design.
   - `global.zig`: `GlobalConfig`, the settings every profile shares: last profile, log level, language, the log folders (`chatlog`), cross-profile hotkeys (profile switching, cycling all clients or apps, app and URL hotkeys), run on startup, update checks, the protocol handler and `protocolLinks`, ore prices, and the Eve Stars token.
 
