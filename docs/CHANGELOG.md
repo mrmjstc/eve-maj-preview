@@ -131,6 +131,7 @@
 - Profiles: a rename whose switch fails is undone
 - Thumbnail drags end when another window takes the mouse mid-drag
 - URL hotkeys open only http and https links
+- Profiles and global settings too large to load again are no longer saved
 
 ## [1.0.9] - 2026-10-29
 

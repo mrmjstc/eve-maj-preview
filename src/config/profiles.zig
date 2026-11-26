@@ -194,7 +194,7 @@ pub fn listBackups(allocator: std.mem.Allocator, io: std.Io) !std.ArrayList([]co
 /// For startup: like loadExisting, but falls back to DEFAULT_PROFILE when the name is invalid or missing.
 pub fn load(allocator: std.mem.Allocator, io: std.Io, name: []const u8) !Config {
     return loadExisting(allocator, io, name) catch |err| switch (err) {
-        error.InvalidProfileName, error.MissingProfile, error.FileNotFound, error.UnreadableProfileKept => {
+        error.InvalidProfileName, error.MissingProfile, error.FileNotFound, error.UnreadableProfileKept, error.StreamTooLong => {
             slog.warn("Failed to load profile '{s}', falling back to default profile: {}", .{ name, err });
             return loadExisting(allocator, io, files.DEFAULT_PROFILE);
         },
@@ -271,6 +271,7 @@ pub fn readBackupAccent(allocator: std.mem.Allocator, io: std.Io, backup: []cons
 pub fn save(config: *const Config, allocator: std.mem.Allocator, io: std.Io, file_path: []const u8) !void {
     const json = try config.toJsonString(allocator);
     defer allocator.free(json);
+    if (json.len >= files.MAX_CONFIG_FILE_SIZE) return error.ProfileTooLarge;
 
     try atomic_file.write(allocator, io, file_path, json);
     slog.info("Saved JSON config to: {s}", .{file_path});

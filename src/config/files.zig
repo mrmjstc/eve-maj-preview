@@ -8,6 +8,7 @@ const slog = log.Scoped("config");
 pub const PROFILES_DIR = "profiles";
 pub const DEFAULT_PROFILE = "default.json";
 pub const GLOBAL_SETTINGS_FILE = "profiles/global.settings.json";
+/// The most readSettingsFile reads, so saves refuse anything this size or more, which wouldn't load again.
 pub const MAX_CONFIG_FILE_SIZE: u64 = 300 * 1024;
 /// A locked file is often freed within moments, e.g. once an antivirus scan or sync lets go of it.
 const READ_ATTEMPTS = 5;

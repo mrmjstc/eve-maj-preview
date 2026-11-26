@@ -304,6 +304,7 @@ pub const GlobalConfig = struct {
         var arena_state: std.heap.ArenaAllocator = .init(self.allocator);
         defer arena_state.deinit();
         const json = try self.savedJson(arena_state.allocator());
+        if (json.len >= files.MAX_CONFIG_FILE_SIZE) return error.SettingsTooLarge;
         try atomic_file.write(self.allocator, io, files.GLOBAL_SETTINGS_FILE, json);
 
         slog.debug("Saved global settings", .{});
