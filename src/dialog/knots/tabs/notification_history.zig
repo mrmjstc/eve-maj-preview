@@ -1,4 +1,4 @@
-//! The configuration window's Alert History section: a preview of the panel of recent alerts whose parts are clicked to edit them beside it, then where the panel shows; main thread only.
+//! The configuration window's Alert History section: a preview of the panel of recent alerts whose parts are clicked to edit them under it, then where the panel shows; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const config = @import("../../../config.zig");
@@ -111,12 +111,12 @@ pub fn show(context: *ui.Frame) !void {
     try intro.close(context);
     const is_shown = are_alerts_on and ref.get("show");
     const shown = try widgets.openGroup(context, .src(@src()), is_shown);
-    var bench = try panel_preview.Bench.open(context, BENCH_KEY, @floatFromInt(profile.historyPanel.width));
+    var bench = try panel_preview.Bench.open(context, BENCH_KEY);
     const look = lookOf(profile, &bench);
     try bench.openStage(context, look.scale, &g_picker.shows_off);
     try panel(context, profile, look);
     try bench.closeStage(context);
-    try g_picker.partBar(context, BENCH_KEY.indexed(10), &partChips(&profile.historyPanel));
+    try g_picker.partList(context, &partRows(&profile.historyPanel), partSwitch);
     try bench.openInspector(context);
     // The search's index draws every tab with it, and they bind some of the same fields, so the inspector's rows need keys of their own.
     var inspector_ref = ref;
@@ -129,17 +129,17 @@ pub fn show(context: *ui.Frame) !void {
     try panel_settings.visibility(context, ref, .history, .{ .is_shown = is_shown });
 }
 
-/// Every part's chip for the part bar.
-fn partChips(history_settings: *const config.HistoryPanelConfig) [PART_COUNT]panel_preview.Picker(Part).Chip {
-    var part_chips: [PART_COUNT]panel_preview.Picker(Part).Chip = undefined;
-    for (std.enums.values(Part), &part_chips) |part, *part_chip| {
+/// Every part's row in the parts list.
+fn partRows(history_settings: *const config.HistoryPanelConfig) [PART_COUNT]panel_preview.Picker(Part).Row {
+    var part_rows: [PART_COUNT]panel_preview.Picker(Part).Row = undefined;
+    for (std.enums.values(Part), &part_rows) |part, *part_row| {
         const is_shown = switch (part) {
             .panel => true,
             .filters => history_settings.showCategoryFilters,
             .timestamp => history_settings.showTimestamp,
             .merged => history_settings.mergeEnabled,
         };
-        part_chip.* = .{
+        part_row.* = .{
             .part = part,
             .label = part.label(),
             .is_shown = is_shown,
@@ -147,37 +147,39 @@ fn partChips(history_settings: *const config.HistoryPanelConfig) [PART_COUNT]pan
             .starts_group = part == .filters,
         };
     }
-    return part_chips;
+    return part_rows;
 }
 
-/// The selected part's name, with its on switch where it has one, then its settings.
-fn settings(context: *ui.Frame, ref: HistoryRef, part: Part) !void {
-    const title = try panel_preview.openInspectorTitle(context, .src(@src()), part.label());
+/// The part's on switch in the parts list, where it has one.
+fn partSwitch(context: *ui.Frame, part: Part) !void {
+    var ref = session.profile().child("historyPanel");
+    // At the inspector's index, as the search draws every tab too.
+    ref.index = 1;
     switch (part) {
         .panel => {},
         .filters => try bind.toggle(context, ref, "showCategoryFilters", ""),
         .timestamp => try bind.toggle(context, ref, "showTimestamp", ""),
         .merged => try bind.toggle(context, ref, "mergeEnabled", ""),
     }
-    try title.close(context);
+}
+
+/// The selected part's name, then its settings.
+fn settings(context: *ui.Frame, ref: HistoryRef, part: Part) !void {
+    try panel_preview.inspectorTitle(context, .src(@src()), part.label());
     switch (part) {
         .panel => {
-            try widgets.subheading(context, .src(@src()), "Layout");
             const size = try widgets.openBinding(context, .src(@src()), "Size");
             try bind.sizeBoxes(context, ref, "width", "height");
             try size.close(context);
             try widgets.hintText(context, .src(@src()), "You can also drag the panel's edges to resize it.");
             try bind.number(context, ref, "maxRows", "Max Rows", .{ .unit = "rows", .singular_unit = "row" });
             try widgets.hintText(context, .src(@src()), "Older alerts drop off past this.");
-            try widgets.subheading(context, .src(@src()), "Style");
             const font = try widgets.openWrappingBinding(context, .src(@src()), "Font");
-            try bind.fontNameSize(context, ref, "fontName", "fontSize");
+            try bind.fontBoxes(context, ref, "fontName", "fontSize", "fontWeight");
             try font.close(context);
             try widgets.hintText(context, .src(@src()), "Used for every row's text.");
-            try bind.choice(context, ref, "fontWeight", "Weight");
         },
         .filters => {
-            try widgets.subheading(context, .src(@src()), "Categories");
             try bind.toggle(context, ref, "showFleet", "Fleet");
             try bind.toggle(context, ref, "showMining", "Mining");
             try bind.toggle(context, ref, "showCombat", "Combat");
@@ -188,7 +190,6 @@ fn settings(context: *ui.Frame, ref: HistoryRef, part: Part) !void {
         },
         .timestamp => try widgets.paragraph(context, .src(@src()), "Shows times like \"5m ago\" instead of a fixed clock time."),
         .merged => {
-            try widgets.subheading(context, .src(@src()), "Content");
             try bind.number(context, ref, "mergeWindowSec", "Merge Window", .{ .unit = "s" });
             try widgets.hintText(context, .src(@src()), "Repeats this close together share a row with a count; click it to expand.");
         },

@@ -1,4 +1,4 @@
-//! The Appearance tab's Client List sections: a preview of the panel whose parts are clicked to edit them beside it, then where the panel shows; main thread only.
+//! The Appearance tab's Client List sections: a preview of the panel whose parts are clicked to edit them under it, then where the panel shows; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const config = @import("../../../config.zig");
@@ -160,14 +160,12 @@ pub fn show(context: *ui.Frame) !void {
     const list_view = session.profile().child("listView");
     const profile = session.profile().ptr;
     const section = try widgets.openSection(context, "Client List", "A compact panel of client names. Click a part to edit it.", &style.bench_section);
-    const sizes = list_look.metrics(&profile.listView);
-    const column_count: i32 = list_look.effectiveColumns(profile.listView.columns, SAMPLES.len);
-    var bench = try panel_preview.Bench.open(context, BENCH_KEY, @floatFromInt(sizes.column_width * column_count));
+    var bench = try panel_preview.Bench.open(context, BENCH_KEY);
     const look = try lookOf(context.arena(), profile, &bench);
     try bench.openStage(context, look.scale, &g_picker.shows_off);
     try preview(context, &profile.listView, &look);
     try bench.closeStage(context);
-    try g_picker.partBar(context, BENCH_KEY.indexed(10), &partChips(&look));
+    try g_picker.partList(context, &partRows(&look), partSwitch);
     try bench.openInspector(context);
     // The search's index draws every tab with it, and they bind some of the same fields, so the inspector's rows need keys of their own.
     var inspector_ref = list_view;
@@ -180,10 +178,10 @@ pub fn show(context: *ui.Frame) !void {
     try panel_settings.visibility(context, list_view, .list, .{ .has_auto_hide = !session.showsThumbnails() });
 }
 
-/// Every part's chip for the part bar, its dot in the part's colour.
-fn partChips(look: *const Look) [PART_COUNT]panel_preview.Picker(Part).Chip {
-    var part_chips: [PART_COUNT]panel_preview.Picker(Part).Chip = undefined;
-    for (std.enums.values(Part), &part_chips) |part, *part_chip| {
+/// Every part's row in the parts list, its dot in the part's colour.
+fn partRows(look: *const Look) [PART_COUNT]panel_preview.Picker(Part).Row {
+    var part_rows: [PART_COUNT]panel_preview.Picker(Part).Row = undefined;
+    for (std.enums.values(Part), &part_rows) |part, *part_row| {
         const is_shown, const color = switch (part) {
             .panel => .{ true, palette.TEXT_SECONDARY },
             .active => .{ true, look.active_color },
@@ -196,7 +194,7 @@ fn partChips(look: *const Look) [PART_COUNT]panel_preview.Picker(Part).Chip {
             .bounty_rate => statChip(look, .bounty_rate),
             .totals => .{ look.shows_totals, list_look.MUTED },
         };
-        part_chip.* = .{
+        part_row.* = .{
             .part = part,
             .label = part.label(),
             .is_shown = is_shown,
@@ -204,7 +202,24 @@ fn partChips(look: *const Look) [PART_COUNT]panel_preview.Picker(Part).Chip {
             .starts_group = part == .active or part == .incoming_dps,
         };
     }
-    return part_chips;
+    return part_rows;
+}
+
+/// The part's on switch in the parts list, where it has one.
+fn partSwitch(context: *ui.Frame, part: Part) !void {
+    var list_view = session.profile().child("listView");
+    // At the inspector's index, as the search draws every tab too.
+    list_view.index = 1;
+    switch (part) {
+        .panel, .active, .names => {},
+        .systems => try bind.toggle(context, list_view, "showSystemName", ""),
+        .notifications => try bind.toggle(context, list_view, "showNotifications", ""),
+        .incoming_dps => try bind.toggle(context, list_view, "showIncomingDps", ""),
+        .outgoing_dps => try bind.toggle(context, list_view, "showOutgoingDps", ""),
+        .mining_rate => try bind.toggle(context, list_view, "showMiningRate", ""),
+        .bounty_rate => try bind.toggle(context, list_view, "showBountyRate", ""),
+        .totals => try bind.toggle(context, list_view, "showTotals", ""),
+    }
 }
 
 /// Whether the rate shows, and its colour.
@@ -215,7 +230,6 @@ fn statChip(look: *const Look, stat: list_look.Stat) struct { bool, u32 } {
 
 /// The Panel part's settings: how the list orders and arranges its clients, and its font.
 fn layout(context: *ui.Frame, list_view: ListRef) !void {
-    try widgets.subheading(context, .src(@src()), "Layout");
     try bind.segmented(context, list_view, "order", "Order", &ORDER_LABELS);
     try widgets.hintText(context, .src(@src()), "Setup follows the Characters tab; Found is the order clients were found.");
     try bind.toggle(context, list_view, "groupBySystem", "Group by System");
@@ -226,12 +240,10 @@ fn layout(context: *ui.Frame, list_view: ListRef) !void {
     try widgets.hintText(context, .src(@src()), "Long names are cut short to fit.");
     try bind.segmented(context, list_view, "indicatorStyle", "Indicator", &.{ "Dot", "Square", "None" });
     try widgets.hintText(context, .src(@src()), "The mark beside each client that shows its state.");
-    try widgets.subheading(context, .src(@src()), "Style");
     const font = try widgets.openWrappingBinding(context, .src(@src()), "Font");
-    try bind.fontNameSize(context, list_view, "fontName", "fontSize");
+    try bind.fontBoxes(context, list_view, "fontName", "fontSize", "fontWeight");
     try font.close(context);
     try widgets.hintText(context, .src(@src()), "Used for names; other text is drawn a little smaller.");
-    try bind.choice(context, list_view, "fontWeight", "Weight");
 }
 
 /// The panel in list_look's look, with sample clients, at `look.scale`.
@@ -506,20 +518,9 @@ fn indicator(context: *ui.Frame, key: ui.Key, color: u32, is_lit: bool, look: *c
     try slot.close(context);
 }
 
-/// The selected part's name, with its on switch where it has one, then its settings.
+/// The selected part's name, then its settings.
 fn settings(context: *ui.Frame, list_view: ListRef, part: Part) !void {
-    const title = try panel_preview.openInspectorTitle(context, .src(@src()), part.label());
-    switch (part) {
-        .panel, .active, .names => {},
-        .systems => try bind.toggle(context, list_view, "showSystemName", ""),
-        .notifications => try bind.toggle(context, list_view, "showNotifications", ""),
-        .incoming_dps => try bind.toggle(context, list_view, "showIncomingDps", ""),
-        .outgoing_dps => try bind.toggle(context, list_view, "showOutgoingDps", ""),
-        .mining_rate => try bind.toggle(context, list_view, "showMiningRate", ""),
-        .bounty_rate => try bind.toggle(context, list_view, "showBountyRate", ""),
-        .totals => try bind.toggle(context, list_view, "showTotals", ""),
-    }
-    try title.close(context);
+    try panel_preview.inspectorTitle(context, .src(@src()), part.label());
     try requirementNotices(context, part);
 
     const follows_thumbnails = session.showsThumbnails();
@@ -527,7 +528,6 @@ fn settings(context: *ui.Frame, list_view: ListRef, part: Part) !void {
         .panel => try layout(context, list_view),
         .active => {
             if (follows_thumbnails) return widgets.notice(context, .src(@src()), "Follows the thumbnails' active border color.");
-            try widgets.subheading(context, .src(@src()), "Color");
             try bind.toggle(context, list_view, "useUniqueActiveColors", "Unique Colors");
             try widgets.hintText(context, .src(@src()), "Each character's mark gets its own color.");
             const group = try widgets.openGroup(context, .src(@src()), !list_view.get("useUniqueActiveColors"));
@@ -537,16 +537,13 @@ fn settings(context: *ui.Frame, list_view: ListRef, part: Part) !void {
         },
         // The list's own in every view mode, unlike its other colors.
         .names => {
-            try widgets.subheading(context, .src(@src()), "Color");
             try bind.toggle(context, list_view, "useUniqueCharacterNameColors", "Unique Colors");
             try widgets.hintText(context, .src(@src()), "Each character's name gets its own color.");
         },
         .systems => {
-            try widgets.subheading(context, .src(@src()), "Content");
             try bind.toggle(context, list_view, "showSystemSecurity", "Show Security Status");
             try widgets.hintText(context, .src(@src()), "Beside the system's name, in the game's colors.");
             if (follows_thumbnails) return widgets.notice(context, .src(@src()), "Colors follow the thumbnails' system name settings.");
-            try widgets.subheading(context, .src(@src()), "Color");
             try bind.toggle(context, list_view, "useUniqueSystemColors", "Unique Colors");
             try widgets.hintText(context, .src(@src()), "Each system gets its own color; System Colors overrides it.");
             const group = try widgets.openGroup(context, .src(@src()), !list_view.get("useUniqueSystemColors"));
@@ -555,7 +552,6 @@ fn settings(context: *ui.Frame, list_view: ListRef, part: Part) !void {
             try group.close(context);
         },
         .notifications => {
-            try widgets.subheading(context, .src(@src()), "Color");
             try bind.rgb(context, list_view, "notificationColor", "Text Color");
             try widgets.hintText(context, .src(@src()), "Used when the alert type has no color of its own.");
         },
@@ -614,11 +610,9 @@ fn requirementNotices(context: *ui.Frame, part: Part) !void {
 }
 
 fn statSettings(context: *ui.Frame, list_view: ListRef, comptime rows: StatRows) !void {
-    try widgets.subheading(context, .str("knots.client_list.content:" ++ rows.show_field), "Content");
     try bind.toggle(context, list_view, rows.prefix_field, rows.prefix_label);
     try widgets.hintText(context, .str("knots.client_list.prefix.hint:" ++ rows.show_field), rows.prefix_hint);
     try bind.rgb(context, list_view, rows.color_field, "Text Color");
-    try widgets.subheading(context, .str("knots.client_list.shared_heading:" ++ rows.show_field), "Shared With Thumbnails");
     try sharedSettings(context, list_view.index, rows);
 }
 

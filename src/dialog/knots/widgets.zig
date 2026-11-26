@@ -544,12 +544,17 @@ pub fn dashedOutline(context: *ui.Frame, key: ui.Key, size: [2]f32, padding: [2]
 
 /// style.select as wide as the longest of `labels`, with SelectInput's padding, arrow and border around it.
 pub fn fittedSelect(context: *ui.Frame, labels: []const []const u8) !*const ui.Style {
-    return selectStyle(context, labels, 0);
+    return selectStyle(context, labels, 0, SELECT_MAX_WIDTH);
+}
+
+/// fittedSelect no wider than `max_width`, cutting a longer label short, e.g. a font beside its size and weight.
+pub fn cappedSelect(context: *ui.Frame, labels: []const []const u8, max_width: f32) !*const ui.Style {
+    return selectStyle(context, labels, 0, max_width);
 }
 
 /// fittedSelect for a row's only control, at least SELECT_MIN_WIDTH so a section's dropdowns line up.
 pub fn rowSelect(context: *ui.Frame, labels: []const []const u8) !*const ui.Style {
-    return selectStyle(context, labels, SELECT_MIN_WIDTH);
+    return selectStyle(context, labels, SELECT_MIN_WIDTH, SELECT_MAX_WIDTH);
 }
 
 /// A label beside a column of aligned rows without dividers, e.g. a set of switches; the caller closes it.
@@ -1317,7 +1322,7 @@ fn describeColor(context: *ui.Frame, key: ui.Key, name: []const u8, argb: u32, i
     });
 }
 
-fn selectStyle(context: *ui.Frame, labels: []const []const u8, min_width: f32) !*const ui.Style {
+fn selectStyle(context: *ui.Frame, labels: []const []const u8, min_width: f32, max_width: f32) !*const ui.Style {
     const ui_state = context.ui();
     const font_size = (style.select.font_size orelse .sm).resolve(&ui_state.theme);
     var widest: f32 = 0;
@@ -1328,7 +1333,7 @@ fn selectStyle(context: *ui.Frame, labels: []const []const u8, min_width: f32) !
     const border = 2;
     const width = padding.left() + widest + SELECT_ARROW_GAP + arrow + padding.right() + border;
     const fitted = try context.arena().create(ui.Style);
-    fitted.* = style.select.with(.{ .width = .fixed(std.math.clamp(@ceil(width), min_width, SELECT_MAX_WIDTH)), .overflow = .hidden });
+    fitted.* = style.select.with(.{ .width = .fixed(std.math.clamp(@ceil(width), min_width, max_width)), .overflow = .hidden });
     return fitted;
 }
 

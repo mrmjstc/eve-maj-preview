@@ -15,6 +15,8 @@ const ColorPicker = ui.component.ColorPicker;
 const SelectInput = ui.component.SelectInput;
 const slog = log.Scoped("dialog_knots");
 
+/// Leaves room on the font's row for its size and weight.
+const FONT_SELECT_MAX_WIDTH: f32 = 140;
 /// The font dropdowns offer these: the bundled faces, then distinct ones every Windows 10 and 11 ships; a font set by hand in the profile is offered too.
 const FONT_OPTIONS = [_][]const u8{
     fonts.UI_FACE,
@@ -174,17 +176,11 @@ pub fn sizeBoxes(context: *ui.Frame, ref: anytype, comptime width_field: []const
     try unitNumberBox(context, ref, height_field, "px", .{});
 }
 
-/// Font, size in px and weight boxes, for a row the caller opens.
+/// Font, size in px and weight boxes, for a row the caller opens; narrow enough to share a row beside a preview's parts list.
 pub fn fontBoxes(context: *ui.Frame, ref: anytype, comptime name_field: []const u8, comptime size_field: []const u8, comptime weight_field: []const u8) !void {
     try fontBox(context, ref, name_field);
     try unitNumberBox(context, ref, size_field, "px", .{});
     try choiceBox(context, ref, weight_field);
-}
-
-/// Font and size in px boxes, for a row the caller opens.
-pub fn fontNameSize(context: *ui.Frame, ref: anytype, comptime name_field: []const u8, comptime size_field: []const u8) !void {
-    try fontBox(context, ref, name_field);
-    try unitNumberBox(context, ref, size_field, "px", .{});
 }
 
 /// An optional text field is unset when left empty; its box drops under the label where it doesn't fit beside it.
@@ -433,7 +429,7 @@ fn fontBox(context: *ui.Frame, ref: anytype, comptime field: []const u8) !void {
         .labels = names,
         .values = values,
         .initial_selected = selected_index,
-        .style = try widgets.fittedSelect(context, names),
+        .style = try widgets.cappedSelect(context, names, FONT_SELECT_MAX_WIDTH),
         .parts = .{ .popup = &style.select_popup },
     });
     try widgets.nameSelect(context, box_key, names[selected_index]);

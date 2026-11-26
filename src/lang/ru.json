@@ -1182,12 +1182,7 @@
   "Drag a text to move it, or click it to edit it.": "Перетащите текст, чтобы переместить, или кликните, чтобы изменить.",
   "Repeats this close together share a row with a count; click it to expand.": "Повторы с таким интервалом объединяются в строку со счётчиком; нажмите, чтобы развернуть.",
   "Used when the alert type has no color of its own.": "Используется, если у типа оповещения нет своего цвета.",
-  "Style": "Стиль",
-  "Weight": "Насыщенность",
   "Unique Colors": "Уникальные цвета",
-  "Content": "Содержимое",
-  "Shared With Thumbnails": "Общее с миниатюрами",
-  "Categories": "Категории",
   "Preview": "Превью",
   "Show Off": "Показывать выключенные",
   "Same for All Texts": "Одинаково для всех текстов"

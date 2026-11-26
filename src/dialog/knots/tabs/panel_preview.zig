@@ -1,4 +1,4 @@
-//! What the previews share: the bench holding a preview, its part bar and the selected part's settings, the parts clicked to select them, and the frame and header every panel draws; main thread only.
+//! What the previews share: the bench holding a preview, its parts list and the selected part's settings, the parts clicked to select them, and the frame and header every panel draws; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const list_look = @import("../../../panels/list_look.zig");
@@ -21,45 +21,32 @@ const HEADER_GAP: i32 = 6;
 /// How much a part's outline pads what it holds, in real pixels.
 pub const PART_PADDING: i32 = 3;
 const PART_RADIUS: f32 = 3;
-/// The inspector goes under the stage when it would be narrower than this beside it.
-const INSPECTOR_MIN_WIDTH: f32 = 300;
-/// Side by side, the stage's column is at least this wide, so the part bar isn't one chip a line.
-const BENCH_MIN_LEFT_WIDTH: f32 = 260;
 /// style.bench_stage's padding either side of the preview.
 const STAGE_PADDING_X: f32 = 12;
-/// style.part_bar's padding either side of its lines.
-const PART_BAR_PADDING_X: f32 = 10;
-/// Under the part keys, so a chip's key can't meet a part's.
-const CHIP_KEY_INDEX = 1000;
+/// Under the part keys, so a row's key can't meet a part's.
+const ROW_KEY_INDEX = 1000;
 
-/// A preview's stage and part bar, then the selected part's settings beside them or under them; the caller fills it in that order and closes it.
+/// A preview's stage across the top, then its parts list beside the selected part's settings; the caller fills it in that order and closes it.
 pub const Bench = struct {
     key: ui.Key,
     outer: Rect,
-    left: Rect,
     stage: ?Rect = null,
     preview_row: ?Rect = null,
+    desk: ?Rect = null,
+    part_list: ?Rect = null,
     inspector: ?Rect = null,
-    is_side: bool,
     /// The room the stage gives its preview; 0 until laid out.
     available_width: f32,
 
-    /// `preview_width` at real size decides whether the inspector fits beside the stage.
-    pub fn open(context: *ui.Frame, key: ui.Key, preview_width: f32) !Bench {
+    pub fn open(context: *ui.Frame, key: ui.Key) !Bench {
         const ui_state = context.ui();
         _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, key.hash());
         const width = widgets.measuredBox(ui_state, key).w();
         // Not laid out yet, so draw once more knowing the room there is.
         if (width == 0) context.requestRedraw();
-        const left_width = @max(BENCH_MIN_LEFT_WIDTH, preview_width + 2 * STAGE_PADDING_X);
-        const is_side = width > 0 and width - left_width >= INSPECTOR_MIN_WIDTH;
-        const outer = Rect{ .key = key, .style = if (is_side) &style.bench_side else &style.bench_stacked };
+        const outer = Rect{ .key = key, .style = &style.bench };
         _ = try outer.open(context);
-        const left_style = if (is_side) try widgets.withWidth(context, &style.bench_left, left_width) else &style.bench_top;
-        const left = Rect{ .key = key.indexed(1), .style = left_style };
-        _ = try left.open(context);
-        const stage_width = if (is_side) left_width else width;
-        return .{ .key = key, .outer = outer, .left = left, .is_side = is_side, .available_width = @max(0, stage_width - 2 * STAGE_PADDING_X) };
+        return .{ .key = key, .outer = outer, .available_width = @max(0, width - 2 * STAGE_PADDING_X) };
     }
 
     /// How much a preview `panel_width` wide shrinks to fit the stage; 1 at real size.
@@ -78,16 +65,24 @@ pub const Bench = struct {
         self.preview_row = row;
     }
 
+    /// Ends the stage, and starts the column the caller fills with Picker.partList.
     pub fn closeStage(self: *Bench, context: *ui.Frame) !void {
         if (self.preview_row) |row| try row.close(context);
         if (self.stage) |stage| try stage.close(context);
         self.preview_row = null;
         self.stage = null;
+        const desk = Rect{ .key = self.key.indexed(6), .style = &style.bench_desk };
+        _ = try desk.open(context);
+        const part_list = Rect{ .key = self.key.indexed(1), .style = &style.part_list };
+        _ = try part_list.open(context);
+        self.desk = desk;
+        self.part_list = part_list;
     }
 
-    /// Ends the stage's column after its part bar, and starts the column the caller fills with the selected part's settings.
+    /// Ends the parts list, and starts the column the caller fills with the selected part's settings.
     pub fn openInspector(self: *Bench, context: *ui.Frame) !void {
-        try self.left.close(context);
+        if (self.part_list) |part_list| try part_list.close(context);
+        self.part_list = null;
         const inspector = Rect{ .key = self.key.indexed(5), .style = &style.bench_inspector };
         _ = try inspector.open(context);
         self.inspector = inspector;
@@ -95,6 +90,7 @@ pub const Bench = struct {
 
     pub fn close(self: *const Bench, context: *ui.Frame) !void {
         if (self.inspector) |inspector| try inspector.close(context);
+        if (self.desk) |desk| try desk.close(context);
         try self.outer.close(context);
     }
 };
@@ -111,7 +107,7 @@ pub const Part = struct {
         /// Whether the panel draws it with the current settings.
         is_shown: bool,
         is_selected: bool,
-        /// Its chip in the part bar is hovered.
+        /// Its row in the parts list is hovered.
         is_lit: bool,
         /// The stage's Show Off is on.
         shows_off: bool,
@@ -165,39 +161,27 @@ pub const Part = struct {
     }
 };
 
-/// What openInspectorTitle returns; closing it ends the row and puts back the control name it replaced.
-pub const InspectorTitle = struct {
-    row: Rect,
-    /// Borrowed for the frame.
-    previous_name: ?[]const u8,
-
-    pub fn close(self: InspectorTitle, context: *ui.Frame) !void {
-        _ = widgets.useControlName(self.previous_name);
-        try self.row.close(context);
-    }
-};
-
-/// Which of a preview's parts is selected, and the part bar that picks one; `Kind` is the tab's enum of parts.
+/// Which of a preview's parts is selected, and the parts list that picks one; `Kind` is the tab's enum of parts.
 pub fn Picker(comptime Kind: type) type {
     return struct {
         part_key: ui.Key,
         selected: Kind,
         /// The stage's Show Off: off parts are drawn as ghosts.
         shows_off: bool = false,
-        /// The part whose chip was hovered last frame, lit on the preview.
+        /// The part whose row was hovered last frame, lit on the preview.
         lit: ?Kind = null,
 
         const Self = @This();
 
-        /// One part's chip in the part bar.
-        pub const Chip = struct {
+        /// One part's row in the parts list.
+        pub const Row = struct {
             part: Kind,
             /// English; translated when drawn.
             label: []const u8,
             is_shown: bool,
             /// The dot's, e.g. the part's text colour.
             color: u32,
-            /// A divider goes before it.
+            /// A rule goes above it.
             starts_group: bool = false,
         };
 
@@ -234,86 +218,57 @@ pub fn Picker(comptime Kind: type) type {
             context.requestRedraw();
         }
 
-        /// `chips` in lines no wider than the bar, by last frame's widths.
-        pub fn partBar(self: *Self, context: *ui.Frame, key: ui.Key, chips: []const Chip) !void {
-            const ui_state = context.ui();
-            _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, key.hash());
-            const room = widgets.measuredBox(ui_state, key).w() - 2 * PART_BAR_PADDING_X;
-            const bar = Rect{ .key = key, .style = &style.part_bar };
-            _ = try bar.open(context);
+        /// One row per part: its dot and name, which select it, then whatever on switch `draw_switch` draws for it, named after the part.
+        pub fn partList(self: *Self, context: *ui.Frame, rows: []const Row, comptime draw_switch: fn (*ui.Frame, Kind) anyerror!void) !void {
             var hovered: ?Kind = null;
-            var first: usize = 0;
-            var line_index: usize = 0;
-            while (first < chips.len) : (line_index += 1) {
-                const end = try self.lineEnd(context, chips, first, room);
-                const line = Rect{ .key = key.indexed(1).indexed(line_index), .style = &style.part_bar_line };
-                _ = try line.open(context);
-                for (chips[first..end], first..) |chip, index| {
-                    if (index > first and chip.starts_group) try context.e(Rect{ .key = key.indexed(2).indexed(index), .style = &style.part_bar_divider });
-                    if (try self.drawChip(context, chip)) hovered = chip.part;
-                }
-                try line.close(context);
-                first = end;
+            for (rows, 0..) |row, index| {
+                if (index > 0 and row.starts_group) try context.e(Rect{ .key = self.rowKey(row.part).indexed(3), .style = &style.part_list_divider });
+                if (try self.partRow(context, row, draw_switch)) hovered = row.part;
             }
-            try bar.close(context);
             if (hovered != self.lit) {
                 self.lit = hovered;
                 context.requestRedraw();
             }
         }
 
-        /// Past the last chip from `first` that fits in `room`; at least one, and every one while unmeasured.
-        fn lineEnd(self: *const Self, context: *ui.Frame, chips: []const Chip, first: usize, room: f32) !usize {
-            const ui_state = context.ui();
-            var width: f32 = 0;
-            var end = first;
-            while (end < chips.len) : (end += 1) {
-                const chip_key = self.chipKey(chips[end].part);
-                _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, chip_key.hash());
-                const chip_width = widgets.measuredBox(ui_state, chip_key).w();
-                if (chip_width == 0) context.requestRedraw();
-                var needed = chip_width;
-                if (end > first) needed += style.PART_CHIP_GAP;
-                if (end > first and chips[end].starts_group) needed += 1 + style.PART_CHIP_GAP;
-                if (end > first and room > 0 and width + needed > room) break;
-                width += needed;
-            }
-            return end;
-        }
-
-        /// Returns whether it's hovered.
-        fn drawChip(self: *Self, context: *ui.Frame, chip: Chip) !bool {
+        /// Returns whether its name is hovered.
+        fn partRow(self: *Self, context: *ui.Frame, row: Row, comptime draw_switch: fn (*ui.Frame, Kind) anyerror!void) !bool {
             const arena = context.arena();
-            const key = self.chipKey(chip.part);
-            const is_selected = self.selected == chip.part;
-            const button = Button{ .key = key, .style = if (is_selected) &style.part_chip_selected else &style.part_chip };
+            const key = self.rowKey(row.part);
+            const is_selected = self.selected == row.part;
+            const line = Rect{ .key = key.indexed(4), .style = if (is_selected) &style.part_row_selected else &style.part_row };
+            _ = try line.open(context);
+            const button = Button{ .key = key, .style = &style.part_row_button };
             const response = try button.openResponse(context);
-            const shown = lang.text(chip.label);
+            const shown = lang.text(row.label);
             try context.ui().setAccessibilityName(response.id, shown);
             if (response.hovered) context.ui().requestCursor(.pointer);
             const dot = try arena.create(ui.Style);
-            dot.* = if (chip.is_shown) style.part_dot.with(.{ .background = color_convert.solid(chip.color) }) else style.part_dot_off;
+            dot.* = if (row.is_shown) style.part_dot.with(.{ .background = color_convert.solid(row.color) }) else style.part_dot_off;
             try context.e(Rect{ .key = key.indexed(1), .style = dot });
-            const label_style = if (is_selected) &style.part_chip_label_selected else if (chip.is_shown) &style.part_chip_label else &style.part_chip_label_off;
+            const label_style = if (is_selected) &style.part_row_label_selected else if (row.is_shown) &style.part_row_label else &style.part_row_label_off;
             try context.e(Text{ .selectable = false, .key = key.indexed(2), .content = shown, .style = label_style });
             try button.close(context);
-            if (response.clicked) self.select(context, chip.part);
+            const previous_name = widgets.useControlName(shown);
+            try draw_switch(context, row.part);
+            _ = widgets.useControlName(previous_name);
+            try line.close(context);
+            if (response.clicked) self.select(context, row.part);
             return response.hovered;
         }
 
-        fn chipKey(self: *const Self, part: Kind) ui.Key {
-            return self.part_key.indexed(CHIP_KEY_INDEX).indexed(@backingInt(part));
+        fn rowKey(self: *const Self, part: Kind) ui.Key {
+            return self.part_key.indexed(ROW_KEY_INDEX).indexed(@backingInt(part));
         }
     };
 }
 
-/// The inspector's heading row with the part's `title`, which names the part's on switch the caller may add; the caller closes it.
-pub fn openInspectorTitle(context: *ui.Frame, key: ui.Key, title: []const u8) !InspectorTitle {
+/// The inspector's heading: the selected part's `title`.
+pub fn inspectorTitle(context: *ui.Frame, key: ui.Key, title: []const u8) !void {
     const row = Rect{ .key = key, .style = &style.inspector_title };
     _ = try row.open(context);
-    const shown = lang.text(title);
-    try context.e(Text{ .selectable = false, .key = key.indexed(1), .content = shown, .style = &style.inspector_title_text });
-    return .{ .row = row, .previous_name = widgets.useControlName(shown) };
+    try context.e(Text{ .selectable = false, .key = key.indexed(1), .content = lang.text(title), .style = &style.inspector_title_text });
+    try row.close(context);
 }
 
 /// `pixels` real pixels at `scale`.

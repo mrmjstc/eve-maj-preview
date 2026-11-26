@@ -1,4 +1,4 @@
-//! The texts a thumbnail can show, as placed on the Text Overlays preview: which settings each one reads, and its settings beside the preview; main thread only.
+//! The texts a thumbnail can show, as placed on the Text Overlays preview: which settings each one reads, and its switch and settings under the preview; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const config = @import("../../../../config.zig");
@@ -13,7 +13,7 @@ const lang = @import("../../../../lang/lang.zig");
 
 const Fields = overlay_text.Fields;
 
-const STYLE_ROWS = [_]Row{ .{ .heading = "Style" }, .sync, .font, .background };
+const STYLE_ROWS = [_]Row{ .sync, .font, .background };
 const WINDOW_HINT = "The rate is averaged over this time.";
 const UPDATE_INTERVAL: Row = .{ .number = .{ .field = "update_interval_ms", .label = "Update Interval", .unit = "s", .shows_seconds = true, .hint = "How often the number changes.", .tracks = true } };
 const RATE_WINDOW: Row = .{ .number = .{ .field = "window_seconds", .label = "Averaging Window", .unit = "s", .hint = WINDOW_HINT, .tracks = true } };
@@ -31,7 +31,6 @@ pub const CHIPS = [_]Chip{
         .needs_show_text = true,
         .unique_field = "useUniqueCharacterNameColors",
         .rows = &([_]Row{
-            .{ .heading = "Style" },
             .sync,
             .{
                 .toggle = .{
@@ -56,7 +55,6 @@ pub const CHIPS = [_]Chip{
         .sub_gate_field = "showSystemConnections",
         .chatlog_notice = NEEDS_LOGS,
         .rows = &([_]Row{
-            .{ .heading = "Style" },
             .sync,
             .{
                 .toggle = .{
@@ -68,7 +66,6 @@ pub const CHIPS = [_]Chip{
             },
             .font,
             .background,
-            .{ .heading = "Connections" },
             .{ .toggle = .{ .field = "showSystemConnections", .label = "Show Connections", .hint = "Replaces the name with a small map of the system and those a few gates out." } },
             .{ .number = .{ .field = "systemConnectionJumps", .label = "Connection Jumps", .unit = "jumps", .singular_unit = "jump", .hint = "How many gates out the map reaches; it stops at the region's edge." } },
             .{ .number = .{ .field = "systemConnectionMapWidth", .label = "Map Width", .unit = "px", .hint = "Names that don't fit are left out, so a bigger map shows more." } },
@@ -116,11 +113,9 @@ pub const CHIPS = [_]Chip{
         .enabled_field = "shown",
         .chatlog_notice = NEEDS_LOGS,
         .rows = &([_]Row{
-            .{ .heading = "Content" },
             .{ .toggle = .{ .field = "shown", .label = "Enable Combat Overlays", .hint = "Turns on both incoming and outgoing damage." } },
             .{ .toggle = .{ .field = "incoming_show_prefix", .label = "Show IN: Prefix", .hint = "Puts IN: before the number so it's easy to tell apart." } },
         } ++ STYLE_ROWS ++ [_]Row{
-            .{ .heading = "Data" },
             RATE_WINDOW,
             UPDATE_INTERVAL,
             .{ .text = .{
@@ -143,11 +138,9 @@ pub const CHIPS = [_]Chip{
         .enabled_field = "shown",
         .chatlog_notice = NEEDS_LOGS,
         .rows = &([_]Row{
-            .{ .heading = "Content" },
             .{ .toggle = .{ .field = "shown", .label = "Enable Combat Overlays", .hint = "Turns on both incoming and outgoing damage." } },
             .{ .toggle = .{ .field = "outgoing_show_prefix", .label = "Show OUT: Prefix", .hint = "Puts OUT: before the number so it's easy to tell apart." } },
         } ++ STYLE_ROWS ++ [_]Row{
-            .{ .heading = "Data" },
             RATE_WINDOW,
             UPDATE_INTERVAL,
         }),
@@ -163,14 +156,11 @@ pub const CHIPS = [_]Chip{
         .sub_gate_field = "show_isk_rate",
         .chatlog_notice = NEEDS_LOGS,
         .rows = &([_]Row{
-            .{ .heading = "Content" },
             .{ .toggle = .{ .field = "show_prefix", .label = "Show M: Prefix", .hint = "Puts M: before the rate so it's easy to tell apart." } },
         } ++ STYLE_ROWS ++ [_]Row{
-            .{ .heading = "Data" },
             RATE_WINDOW,
             UPDATE_INTERVAL,
             .{ .segmented = .{ .field = "m3_rate_unit", .label = "m3 Per", .options = &.{ "Minute", "Hour" }, .hint = "Shows m3 mined per minute or per hour.", .tracks = true } },
-            .{ .heading = "ISK Rate" },
             .{ .toggle = .{ .field = "show_isk_rate", .label = "Show ISK Rate", .hint = "Uses the Mining tab's ore prices; fetch or enter them first." } },
             .{ .segmented = .{ .field = "isk_rate_unit", .label = "ISK Per", .options = &.{ "Minute", "Hour" }, .hint = "Shows ISK earned per minute or per hour.", .tracks = true } },
         }),
@@ -185,10 +175,8 @@ pub const CHIPS = [_]Chip{
         .needs_show_text = true,
         .chatlog_notice = NEEDS_LOGS,
         .rows = &([_]Row{
-            .{ .heading = "Content" },
             .{ .toggle = .{ .field = "show_prefix", .label = "Show ISK: Prefix", .hint = "Puts ISK: before the rate so it's easy to tell apart." } },
         } ++ STYLE_ROWS ++ [_]Row{
-            .{ .heading = "Data" },
             RATE_WINDOW,
             UPDATE_INTERVAL,
             .{
@@ -211,12 +199,10 @@ pub const CHIPS = [_]Chip{
         .show_field = "shown",
         .needs_show_text = true,
         .rows = &([_]Row{
-            .{ .heading = "Content" },
             .{ .toggle = .{ .field = "show_cpu", .label = "Show CPU %", .hint = "Just that client's share, not the whole PC's." } },
             .{ .toggle = .{ .field = "show_ram", .label = "Show RAM", .hint = "Just that client's memory, not the whole PC's." } },
             .{ .toggle = .{ .field = "show_vram", .label = "Show VRAM", .hint = "Just that client's video memory, not the whole graphics card's." } },
         } ++ STYLE_ROWS ++ [_]Row{
-            .{ .heading = "Data" },
             UPDATE_INTERVAL,
         }),
     },
@@ -229,7 +215,6 @@ pub const CHIPS = [_]Chip{
         .show_field = "shown",
         .needs_show_text = true,
         .rows = &(STYLE_ROWS ++ [_]Row{
-            .{ .heading = "Data" },
             UPDATE_INTERVAL,
         }),
     },
@@ -249,7 +234,7 @@ pub const Part = enum(u8) {
     resource_usage,
     ping,
 
-    /// Where the part bar starts a new group: Alerts, Rates, then the client's own.
+    /// Where the parts list starts a new group: Alerts, Rates, then the client's own.
     pub fn startsGroup(self: Part) bool {
         return switch (self) {
             .alert, .incoming_dps, .resource_usage => true,
@@ -263,8 +248,6 @@ pub const Section = enum { thumbnail, notifications, alert_text, combat, combat_
 
 /// One row of a text's settings; a `hint` is a tooltip on the label, and a row that `tracks` binds the chip's tracking_section.
 pub const Row = union(enum) {
-    /// Starts a group of rows.
-    heading: []const u8,
     /// A setting of the chip's section; `disables_color` greys out the colour row while it's on.
     toggle: struct { field: []const u8, label: []const u8, disables_color: bool = false, hint: ?[]const u8 = null },
     number: struct { field: []const u8, label: []const u8, unit: []const u8, singular_unit: ?[]const u8 = null, shows_seconds: bool = false, hint: ?[]const u8 = null, tracks: bool = false },
@@ -273,7 +256,7 @@ pub const Row = union(enum) {
     text: struct { field: []const u8, label: []const u8, placeholder: []const u8, hint: ?[]const u8 = null, tracks: bool = false },
     /// Same for All Texts, which copies font and background changes to every text.
     sync,
-    /// Name and size, then weight, then text colour, each on a row so they fit beside the preview.
+    /// Name, size and weight on a row, then text colour.
     font,
     /// Opacity and colour on one row.
     background,
@@ -289,7 +272,7 @@ pub const Chip = struct {
     /// Where rows marked `tracks` are kept, when not in `section`.
     tracking_section: ?Section = null,
     fields: Fields,
-    /// The switch at the top of its settings.
+    /// Its switch in the parts list.
     show_field: []const u8,
     /// Enable Text Overlays has to be on too.
     needs_show_text: bool,
@@ -373,7 +356,15 @@ pub fn offsetRange(comptime chip: Chip) [2]f32 {
     return bind.rangeOf(SectionType(chip.section), chip.fields.offset_x) orelse .{ -1000, 1000 };
 }
 
-/// A chip's settings under the preview or beside it: its name and on switch, its notice, then its rows.
+/// A chip's on switch, for its row in the parts list.
+pub fn showSwitch(context: *ui.Frame, comptime chip: Chip) !void {
+    // At the settings' index, as the search draws every tab too.
+    var switch_ref = switchRef(chip);
+    switch_ref.index = 1;
+    try bind.toggle(context, switch_ref, chip.show_field, "");
+}
+
+/// A chip's settings beside the parts list: its name, its notice, then its rows.
 pub fn showSettings(context: *ui.Frame, comptime chip: Chip, comptime index: usize) !void {
     // The search's index draws every tab with it, and they bind some of the same fields, so its rows need keys of their own.
     var ref = refFor(chip.section);
@@ -383,9 +374,7 @@ pub fn showSettings(context: *ui.Frame, comptime chip: Chip, comptime index: usi
     var tracking_ref = refFor(chip.tracking_section orelse chip.section);
     tracking_ref.index = 1;
     const fields = chip.fields;
-    const title = try panel_preview.openInspectorTitle(context, .str("knots.chip.title:" ++ chip.label), chip.label);
-    try bind.toggle(context, switch_ref, chip.show_field, "");
-    try title.close(context);
+    try panel_preview.inspectorTitle(context, .str("knots.chip.title:" ++ chip.label), chip.label);
 
     if (chip.chatlog_notice) |notice| {
         if (!session.global().ptr.chatlog.enabled) try widgets.notice(context, .str("knots.chip.chatlog:" ++ chip.label), notice);
@@ -401,7 +390,6 @@ pub fn showSettings(context: *ui.Frame, comptime chip: Chip, comptime index: usi
     var gate: ?widgets.Group = null;
     inline for (chip.rows) |row| {
         switch (row) {
-            .heading => |heading| try widgets.subheading(context, .str("knots.chip.heading:" ++ chip.label ++ ":" ++ heading), heading),
             .toggle => |toggle| {
                 try bind.toggle(context, ref, toggle.field, toggle.label);
                 if (toggle.hint) |hint| try widgets.hintText(context, .str("knots.chip.hint:" ++ chip.label ++ ":" ++ toggle.field), hint);
@@ -432,9 +420,8 @@ pub fn showSettings(context: *ui.Frame, comptime chip: Chip, comptime index: usi
             },
             .font => {
                 const font = try widgets.openWrappingBinding(context, .str("knots.chip.font:" ++ chip.label), "Font");
-                try bind.fontNameSize(context, ref, fields.font_name, fields.font_size);
+                try bind.fontBoxes(context, ref, fields.font_name, fields.font_size, fields.font_weight);
                 try font.close(context);
-                try bind.choice(context, ref, fields.font_weight, "Weight");
                 const color_row = try widgets.openBinding(context, .str("knots.chip.color:" ++ chip.label), "Text Color");
                 const color_group = try widgets.openInlineGroup(context, .str("knots.chip.color_group:" ++ chip.label), !is_color_disabled);
                 // Comptime: a chip listing .font without a colour field fails to compile.
@@ -515,7 +502,7 @@ fn copyStyleToOthers(comptime source_index: usize) void {
 fn toggleLabel(comptime chip: Chip, comptime field: []const u8) []const u8 {
     for (chip.rows) |row| switch (row) {
         .toggle => |toggle| if (std.mem.eql(u8, toggle.field, field)) return toggle.label,
-        .heading, .number, .segmented, .text, .sync, .font, .background => {},
+        .number, .segmented, .text, .sync, .font, .background => {},
     };
     @compileError(chip.label ++ " has no toggle for " ++ field);
 }

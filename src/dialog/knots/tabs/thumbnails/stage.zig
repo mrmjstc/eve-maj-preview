@@ -1,4 +1,4 @@
-//! The Text Overlays section's thumbnail preview: drawn from the edited settings at its real size on a bench, its texts dragged into place and clicked to edit beside it; main thread only.
+//! The Text Overlays section's thumbnail preview: drawn from the edited settings at its real size on a bench, its texts dragged into place and clicked to edit under it; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const config = @import("../../../../config.zig");
@@ -41,15 +41,14 @@ const Drop = struct { anchor: types.TextPosition, offset: [2]i32 };
 var g_drag: ?Drag = null;
 var g_picker: panel_preview.Picker(chips.Part) = .{ .part_key = .str("knots.stage.chip"), .selected = .character_name };
 
-/// At the thumbnail's size, shrunk only to fit the stage, with the selected text's settings beside it or under it.
+/// At the thumbnail's size, shrunk only to fit the stage, over the parts list and the selected text's settings.
 pub fn show(context: *ui.Frame) !void {
     const thumbnail = &session.profile().ptr.thumbnail;
     const width: f32 = @floatFromInt(@max(thumbnail.width, 1));
     const height: f32 = @floatFromInt(@max(thumbnail.height, 1));
     const arena = context.arena();
     const ui_state = context.ui();
-    // The frame's 1px border on each side.
-    var bench = try panel_preview.Bench.open(context, BENCH_KEY, width + 2);
+    var bench = try panel_preview.Bench.open(context, BENCH_KEY);
     const room = bench.available_width;
     const scale = if (room > 2 and width > room - 2) (room - 2) / width else 1;
     const stage_size = [2]f32{ @round(width * scale), @round(height * scale) };
@@ -83,7 +82,7 @@ pub fn show(context: *ui.Frame) !void {
     try stage.close(context);
     try frame.close(context);
     try bench.closeStage(context);
-    try g_picker.partBar(context, BENCH_KEY.indexed(10), &partChips());
+    try g_picker.partList(context, &partRows(), partSwitch);
     try bench.openInspector(context);
     inline for (chips.CHIPS, 0..) |chip, index| {
         if (index == @backingInt(g_picker.selected)) try chips.showSettings(context, chip, index);
@@ -91,13 +90,13 @@ pub fn show(context: *ui.Frame) !void {
     try bench.close(context);
 }
 
-/// Every text's chip for the part bar, its dot in the text's colour.
-fn partChips() [chips.CHIPS.len]panel_preview.Picker(chips.Part).Chip {
-    var part_chips: [chips.CHIPS.len]panel_preview.Picker(chips.Part).Chip = undefined;
+/// Every text's row in the parts list, its dot in the text's colour.
+fn partRows() [chips.CHIPS.len]panel_preview.Picker(chips.Part).Row {
+    var part_rows: [chips.CHIPS.len]panel_preview.Picker(chips.Part).Row = undefined;
     inline for (chips.CHIPS, 0..) |chip, index| {
         const part: chips.Part = @fromBackingInt(index);
         const look = chips.look(chip);
-        part_chips[index] = .{
+        part_rows[index] = .{
             .part = part,
             .label = chip.label,
             .is_shown = look.off_switch == null,
@@ -105,7 +104,13 @@ fn partChips() [chips.CHIPS.len]panel_preview.Picker(chips.Part).Chip {
             .starts_group = part.startsGroup(),
         };
     }
-    return part_chips;
+    return part_rows;
+}
+
+fn partSwitch(context: *ui.Frame, part: chips.Part) !void {
+    inline for (chips.CHIPS, 0..) |chip, index| {
+        if (index == @backingInt(part)) try chips.showSwitch(context, chip);
+    }
 }
 
 /// With its sample text and a tooltip saying how to use it; skipped while hidden, a dashed ghost while otherwise off.

@@ -47,7 +47,8 @@
 - Mining overlay settings moved from the Mining tab into the Mining Rate popovers
 - Thumbnail text popovers no longer hide settings behind Advanced Mode
 - Rate units renamed to m3 Per and ISK Per
-- Config window: Text Overlays, Client List and Alert History previews edit parts beside the preview instead of in popovers
+- Config window: Text Overlays, Client List and Alert History previews edit parts from a list under the preview instead of in popovers
+- Config window: font, size and weight share one row
 - Systems, Travel Mode jumps and activity readings survive a profile switch
 - Intel panel: its own font, timestamp and merge settings, no longer the History panel's
 - Import Settings: Alert Options is its own section, apart from Thumbnail Appearance

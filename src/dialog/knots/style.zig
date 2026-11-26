@@ -407,7 +407,7 @@ pub const aligned_row: Style = .{
 /// widgets.openWrappingBinding's row once its controls don't fit beside the label: they go under it, at the right edge.
 pub const aligned_row_wrapped: Style = aligned_row.with(.{ .direction = .column, .@"align" = .end, .gap = 4 });
 /// Fits its content, so it measures the same beside the label or under it.
-pub const row_controls: Style = .{ .width = .fit(), .direction = .row, .@"align" = .center };
+pub const row_controls: Style = .{ .width = .fit(), .direction = .row, .@"align" = .center, .gap = 8 };
 /// Padding matches the section's gap, so the divider sits midway between rows.
 pub const row_divider: Style = .{
     .width = .grow(),
@@ -895,20 +895,14 @@ pub const bench_intro: Style = .{
     .border_width = .edges(0, 0, 1, 0),
     .border_color = .{ .color = CARD_BORDER },
 };
-/// The stage and part bar beside the inspector; stretched, so the rule between them runs the bench's height.
-pub const bench_side: Style = .{ .width = .grow(), .direction = .row, .@"align" = .stretch };
-/// The stage and part bar over the inspector.
-pub const bench_stacked: Style = .{ .width = .grow(), .direction = .column };
-/// The stage and part bar's column; side by side, panel_preview sets its width.
-pub const bench_left: Style = .{
-    .direction = .column,
-    .border_width = .edges(0, 1, 0, 0),
-    .border_color = .{ .color = CARD_BORDER },
-};
-pub const bench_top: Style = .{
+/// The stage over the parts list and the selected part's settings.
+pub const bench: Style = .{ .width = .grow(), .direction = .column };
+/// The parts list beside the selected part's settings; stretched, so the rule between them runs the bench's height.
+pub const bench_desk: Style = .{
     .width = .grow(),
-    .direction = .column,
-    .border_width = .edges(0, 0, 1, 0),
+    .direction = .row,
+    .@"align" = .stretch,
+    .border_width = .edges(1, 0, 0, 0),
     .border_color = .{ .color = CARD_BORDER },
 };
 /// Recessed in CHROME, so every preview sits on the same ground.
@@ -943,54 +937,64 @@ pub const bench_eye_on: Style = bench_eye.with(.{
     .foreground = .{ .color = TEXT },
 });
 pub const bench_eye_glyph: Style = .{ .width = .fixed(glyphs.TAB_SIZE), .height = .fixed(glyphs.TAB_SIZE) };
-/// The part bar's lines of chips.
-pub const part_bar: Style = .{ .width = .grow(), .direction = .column, .gap = 6, .padding = .xy(10, 10) };
-pub const part_bar_line: Style = .{ .direction = .row, .@"align" = .center, .gap = PART_CHIP_GAP };
-/// Between the chips of two groups of parts.
-pub const part_bar_divider: Style = .{ .width = .fixed(1), .height = .fixed(14), .background = .{ .color = DIVIDER } };
-pub const PART_CHIP_GAP = 6;
-pub const PART_CHIP_HEIGHT = 24;
-/// A part's chip, after the Alert History panel's category chips.
-pub const part_chip: Style = .{
-    .height = .fixed(PART_CHIP_HEIGHT),
+/// Wide enough for the longest part's name and its switch.
+pub const PART_LIST_WIDTH = 196;
+/// A preview's parts, one a row, like a roster.
+pub const part_list: Style = .{
+    .width = .fixed(PART_LIST_WIDTH),
+    .direction = .column,
+    .gap = 2,
+    .padding = .xy(6, 8),
+    .border_width = .edges(0, 1, 0, 0),
+    .border_color = .{ .color = CARD_BORDER },
+};
+/// Between two groups of parts.
+pub const part_list_divider: Style = .{ .width = .grow(), .height = .fixed(1), .background = .{ .color = DIVIDER } };
+/// A part's name and its on switch; the name is part_row_button.
+pub const part_row: Style = .{
+    .width = .grow(),
     .direction = .row,
     .@"align" = .center,
     .gap = 6,
-    .padding = .xy(9, 0),
-    .background = .{ .color = PANEL },
-    .border_width = .all(1),
-    .border_color = .{ .color = CARD_BORDER },
-    .radius = .{ .fixed = PART_CHIP_HEIGHT / 2 },
-    .hover = &.{ .border_color = .{ .color = BORDER_STRONG }, .state_layer = 0 },
+    .padding = .init(0, 6, 0, 0),
+    .radius = .md,
+};
+pub const part_row_selected: Style = part_row.with(.{ .background = .{ .color = SURFACE_ALT } });
+/// After roster_row.
+pub const part_row_button: Style = .{
+    .width = .grow(),
+    .height = .fixed(CONTROL_HEIGHT),
+    .direction = .row,
+    .@"align" = .center,
+    .justify = .start,
+    .gap = 8,
+    .padding = .xy(6, 0),
+    .background = .transparent,
+    .radius = .md,
+    .hover = &.{ .background = .{ .color = SURFACE }, .state_layer = 0 },
     .active = &.{ .state_layer = 0 },
 };
-pub const part_chip_selected: Style = part_chip.with(.{
-    .background = .{ .color = SURFACE },
-    .border_color = .accent,
-    .hover = &.{ .border_color = .accent, .state_layer = 0 },
-});
-pub const part_chip_label: Style = .{ .font_size = .xs, .foreground = .{ .color = TEXT_SECONDARY } };
-pub const part_chip_label_off: Style = part_chip_label.with(.{ .foreground = .{ .color = MUTED } });
-pub const part_chip_label_selected: Style = part_chip_label.with(.{ .foreground = .{ .color = TEXT } });
+pub const part_row_label: Style = .{ .width = .grow(), .foreground = .{ .color = TEXT_SECONDARY } };
+pub const part_row_label_off: Style = part_row_label.with(.{ .foreground = .{ .color = MUTED } });
+pub const part_row_label_selected: Style = part_row_label.with(.{ .font = FONT_SEMIBOLD, .foreground = .{ .color = TEXT } });
 pub const PART_DOT_SIZE = 7;
 /// A shown part's dot; panel_preview fills it with the part's colour.
 pub const part_dot: Style = .{ .width = .fixed(PART_DOT_SIZE), .height = .fixed(PART_DOT_SIZE), .radius = .{ .fixed = @as(f32, PART_DOT_SIZE) / 2 } };
 /// An off part's dot, hollow.
 pub const part_dot_off: Style = part_dot.with(.{ .border_width = .all(1), .border_color = .{ .color = BORDER_STRONG } });
-/// The selected part's settings, beside or under the stage; padded like a section card.
+/// The selected part's settings, beside the parts list; padded like a section card.
 pub const bench_inspector: Style = .{
     .width = .grow(),
     .direction = .column,
     .gap = 8,
     .padding = .init(10, SECTION_EDGE - ROW_INSET, 12, SECTION_EDGE - ROW_INSET),
 };
-/// The inspector's heading: the part's name, and its on switch at the right.
+/// The inspector's heading, the selected part's name.
 pub const inspector_title: Style = .{
     .width = .grow(),
     .height = .{ .kind = .fit, .min = CONTROL_HEIGHT },
     .direction = .row,
     .@"align" = .center,
-    .gap = 8,
     .padding = .xy(ROW_INSET, 0),
 };
 pub const inspector_title_text: Style = heading.with(.{ .width = .grow() });
