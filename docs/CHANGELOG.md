@@ -127,6 +127,7 @@
 - Config window: a profile Save that fails to write stays unsaved instead of looking saved
 - Map Panel no longer flickers while auto-hidden with a menu open
 - Profiles: an action whose profile switch fails reports the failure and stops
+- An unreadable profile that can't be backed up is left untouched instead of saved over with defaults
 
 ## [1.0.9] - 2026-10-29
 

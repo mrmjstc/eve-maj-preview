@@ -194,7 +194,7 @@ pub fn listBackups(allocator: std.mem.Allocator, io: std.Io) !std.ArrayList([]co
 /// For startup: like loadExisting, but falls back to DEFAULT_PROFILE when the name is invalid or missing.
 pub fn load(allocator: std.mem.Allocator, io: std.Io, name: []const u8) !Config {
     return loadExisting(allocator, io, name) catch |err| switch (err) {
-        error.InvalidProfileName, error.MissingProfile, error.FileNotFound => {
+        error.InvalidProfileName, error.MissingProfile, error.FileNotFound, error.UnreadableProfileKept => {
             slog.warn("Failed to load profile '{s}', falling back to default profile: {}", .{ name, err });
             return loadExisting(allocator, io, files.DEFAULT_PROFILE);
         },
@@ -202,7 +202,7 @@ pub fn load(allocator: std.mem.Allocator, io: std.Io, name: []const u8) !Config 
     };
 }
 
-/// Falls back to defaults when malformed; a name differing only in case takes the file's spelling.
+/// Malformed, it's backed up and defaults load, or error.UnreadableProfileKept; a name differing only in case takes the file's spelling.
 pub fn loadExisting(allocator: std.mem.Allocator, io: std.Io, name: []const u8) !Config {
     try validateName(name);
     try ensureDir(allocator, io);
@@ -327,13 +327,13 @@ fn newBackupPath(allocator: std.mem.Allocator, io: std.Io, name: []const u8) ![]
 }
 
 /// Keeps a copy of a profile that couldn't be read, since running on defaults saves over it.
-fn backUpUnreadable(allocator: std.mem.Allocator, io: std.Io, profile_path: []const u8, name: []const u8) void {
+fn backUpUnreadable(allocator: std.mem.Allocator, io: std.Io, profile_path: []const u8, name: []const u8) !void {
     const backup_path = copyToBackup(allocator, io, profile_path, name) catch |err| {
-        slog.err("Failed to back up unreadable profile '{s}': {}", .{ name, err });
-        return;
+        slog.err("Failed to back up unreadable profile '{s}', so it isn't loaded and stays as it is: {}", .{ name, err });
+        return error.UnreadableProfileKept;
     };
     defer allocator.free(backup_path);
-    slog.warn("Backed up unreadable profile '{s}' to '{s}'", .{ name, backup_path });
+    slog.warn("Backed up unreadable profile '{s}' to '{s}', and loading defaults in its place", .{ name, backup_path });
 }
 
 /// Caller owns the returned backup path.
@@ -353,8 +353,8 @@ fn loadFile(allocator: std.mem.Allocator, io: std.Io, profile_path: []const u8, 
     defer allocator.free(content);
 
     return Config.buildConfigFromJson(allocator, content, name) catch |err| {
-        slog.err("Failed to parse config file '{s}', falling back to defaults: {}", .{ profile_path, err });
-        backUpUnreadable(allocator, io, profile_path, name);
+        slog.err("Failed to parse config file '{s}': {}", .{ profile_path, err });
+        try backUpUnreadable(allocator, io, profile_path, name);
         return Config.getDefaultsWithProfile(allocator, name);
     };
 }
