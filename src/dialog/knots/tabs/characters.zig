@@ -42,6 +42,7 @@ const FLAGS = [_]Flag{
     .{ .field = "excludeFromCloseAll", .label = "Exclude from Close All", .hint = "The Close All hotkey leaves this client open." },
     .{ .field = "excludeFromAutoMove", .label = "Exclude from Auto-Move", .hint = "Its window is never moved to its saved position." },
     .{ .field = "excludeFromChatAlerts", .label = "Exclude from Chat Alerts", .hint = "This client never receives chat alerts." },
+    .{ .field = "keepFullSpeed", .label = "Keep at Full Speed", .hint = "Client Speed never slows this client down in the background." },
     .{ .field = "hideThumbnail", .label = "Hide Thumbnail", .hint = "Its row in the client list still shows." },
     .{ .field = "hideFromClientList", .label = "Hide from Client List", .hint = "Its thumbnail still shows." },
     .{ .field = "notificationsMuted", .label = "Mute Alerts", .hint = "No alerts for this character at all." },

@@ -27,6 +27,8 @@
 - Hide Taskbar Over Clients: taskbar goes behind the active client, even one smaller than the screen
 - Unit tests for the settings importers' parsing
 - Unit tests for alert settings parsing and box geometry
+- Performance tab: Client Speed raises the focused client's priority, lowers background clients' and puts them in efficiency mode
+- Per-character Keep at Full Speed setting
 
 ### Changed
 - Intel Map draws system names several times faster, keeping their full outline while panning

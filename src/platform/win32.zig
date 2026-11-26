@@ -142,8 +142,6 @@ pub const IDC_SIZEALL: LPCSTR = @ptrFromInt(32646);
 pub const IDC_HAND: LPCSTR = @ptrFromInt(32649);
 pub const IDC_HELP: LPCSTR = @ptrFromInt(32651);
 
-pub const PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
-
 pub const ERROR_ALREADY_EXISTS = 183;
 
 pub const INFINITE = 0xFFFFFFFF;
@@ -199,7 +197,7 @@ pub const KBDLLHOOKSTRUCT = extern struct {
     dwExtraInfo: usize,
 };
 pub const LLKHF_EXTENDED: DWORD = 0x01;
-/// nCode value meaning a WH_KEYBOARD_LL/WH_MOUSE_LL hook must process the event
+/// nCode value meaning a WH_KEYBOARD_LL/WH_MOUSE_LL hook must process the event.
 pub const HC_ACTION: c_int = 0;
 pub const RECT = extern struct {
     left: LONG,
@@ -735,6 +733,27 @@ pub const GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS: DWORD = 0x4;
 pub extern "kernel32" fn GetModuleHandleExA(dwFlags: DWORD, lpModuleName: ?*const anyopaque, phModule: *?HMODULE) callconv(.c) BOOL;
 pub extern "kernel32" fn OpenProcess(dwDesiredAccess: DWORD, bInheritHandle: BOOL, dwProcessId: DWORD) callconv(.c) ?HANDLE;
 pub extern "kernel32" fn CloseHandle(hObject: HANDLE) callconv(.c) BOOL;
+
+// Process access rights, priority and efficiency mode.
+pub const PROCESS_QUERY_LIMITED_INFORMATION: DWORD = 0x1000;
+pub const PROCESS_SET_INFORMATION: DWORD = 0x0200;
+pub const NORMAL_PRIORITY_CLASS: DWORD = 0x0020;
+pub const BELOW_NORMAL_PRIORITY_CLASS: DWORD = 0x4000;
+pub const ABOVE_NORMAL_PRIORITY_CLASS: DWORD = 0x8000;
+pub extern "kernel32" fn SetPriorityClass(hProcess: HANDLE, dwPriorityClass: DWORD) callconv(.c) BOOL;
+/// 0 on failure.
+pub extern "kernel32" fn GetPriorityClass(hProcess: HANDLE) callconv(.c) DWORD;
+/// SetProcessInformation's class for power throttling.
+pub const PROCESS_POWER_THROTTLING_CLASS: c_int = 4;
+pub const PROCESS_POWER_THROTTLING_CURRENT_VERSION: ULONG = 1;
+pub const PROCESS_POWER_THROTTLING_EXECUTION_SPEED: ULONG = 0x1;
+/// ControlMask says which bits are ours to set, StateMask turns them on; a bit in neither is left to Windows.
+pub const PROCESS_POWER_THROTTLING_STATE = extern struct {
+    Version: ULONG = PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+    ControlMask: ULONG = 0,
+    StateMask: ULONG = 0,
+};
+pub extern "kernel32" fn SetProcessInformation(hProcess: HANDLE, ProcessInformationClass: c_int, ProcessInformation: *const anyopaque, ProcessInformationSize: DWORD) callconv(.c) BOOL;
 
 pub extern "kernel32" fn GetModuleFileNameExA(hProcess: HANDLE, hModule: ?HMODULE, lpFilename: LPSTR, nSize: DWORD) callconv(.c) DWORD;
 pub extern "kernel32" fn GetModuleFileNameA(hModule: ?HMODULE, lpFilename: LPSTR, nSize: DWORD) callconv(.c) DWORD;

@@ -55,6 +55,7 @@ pub const CharacterConfig = struct {
     excludeFromCloseAll: bool = false,
     excludeFromAutoMove: bool = false,
     excludeFromChatAlerts: bool = false,
+    keepFullSpeed: bool = false,
     hideThumbnail: bool = false,
     hideFromClientList: bool = false,
     notificationsMuted: bool = false,

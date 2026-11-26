@@ -1185,5 +1185,17 @@
   "Unique Colors": "Уникальные цвета",
   "Preview": "Превью",
   "Show Off": "Показывать выключенные",
-  "Same for All Texts": "Одинаково для всех текстов"
+  "Same for All Texts": "Одинаково для всех текстов",
+  "Performance": "Производительность",
+  "Client Speed": "Скорость клиентов",
+  "How much of the PC each EVE client gets. Undone when EVE-Maj Preview exits.": "Сколько ресурсов ПК получает каждый клиент EVE. Отменяется при выходе из EVE-Maj Preview.",
+  "Raise the Focused Client's Priority": "Повысить приоритет активного клиента",
+  "Above Normal CPU priority for the client you're in.": "Приоритет ЦП «Выше среднего» для клиента, в котором вы находитесь.",
+  "Lower Background Clients' Priority": "Понизить приоритет фоновых клиентов",
+  "Below Normal CPU priority for the others, once you stop switching.": "Приоритет ЦП «Ниже среднего» для остальных, когда вы перестаёте переключаться.",
+  "Efficiency Mode for Background Clients": "Режим эффективности для фоновых клиентов",
+  "Less power and heat; their thumbnails may update less smoothly.": "Меньше энергии и тепла; их миниатюры могут обновляться менее плавно.",
+  "Characters set to Keep at Full Speed are never slowed down.": "Персонажи с «Сохранять полную скорость» никогда не замедляются.",
+  "Keep at Full Speed": "Сохранять полную скорость",
+  "Client Speed never slows this client down in the background.": "Скорость клиентов никогда не замедляет этого клиента в фоне."
 }

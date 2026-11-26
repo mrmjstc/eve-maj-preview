@@ -1185,5 +1185,17 @@
   "Unique Colors": "Colores únicos",
   "Preview": "Vista previa",
   "Show Off": "Mostrar desactivados",
-  "Same for All Texts": "Igual para todos los textos"
+  "Same for All Texts": "Igual para todos los textos",
+  "Performance": "Rendimiento",
+  "Client Speed": "Velocidad de clientes",
+  "How much of the PC each EVE client gets. Undone when EVE-Maj Preview exits.": "Cuánto del PC recibe cada cliente de EVE. Se deshace al salir de EVE-Maj Preview.",
+  "Raise the Focused Client's Priority": "Subir la prioridad del cliente activo",
+  "Above Normal CPU priority for the client you're in.": "Prioridad de CPU «Superior a la normal» para el cliente en el que estás.",
+  "Lower Background Clients' Priority": "Bajar la prioridad de los clientes en segundo plano",
+  "Below Normal CPU priority for the others, once you stop switching.": "Prioridad de CPU «Inferior a la normal» para los demás, cuando dejas de cambiar.",
+  "Efficiency Mode for Background Clients": "Modo de eficiencia para clientes en segundo plano",
+  "Less power and heat; their thumbnails may update less smoothly.": "Menos consumo y calor; sus miniaturas pueden actualizarse con menos fluidez.",
+  "Characters set to Keep at Full Speed are never slowed down.": "Los personajes con «Mantener a toda velocidad» nunca se ralentizan.",
+  "Keep at Full Speed": "Mantener a toda velocidad",
+  "Client Speed never slows this client down in the background.": "Velocidad de clientes nunca ralentiza este cliente en segundo plano."
 }

@@ -786,6 +786,7 @@ Matched by exact `name`. Positions are saved automatically on drag.
 | `excludeFromCloseAll` | bool | `false` | |
 | `excludeFromAutoMove` | bool | `false` | |
 | `excludeFromChatAlerts` | bool | `false` | This client never receives chat alerts. |
+| `keepFullSpeed` | bool | `false` | Client Speed never slows this client in the background, and Windows' efficiency mode is kept off it. |
 | `hideThumbnail` | bool | `false` | Hide its thumbnail; takes no space cell. |
 | `hideFromClientList` | bool | `false` | Hide its row in the client list. |
 | `notificationsMuted` | bool | `false` | No alerts on this character, from game events or chat. |
@@ -859,6 +860,10 @@ A window must pass both lists; a filter with both empty matches nothing. Non-EVE
 | `protocolLinks.allowCloseActive` | bool | `false` | As above, `hotkey/close_active`. |
 | `protocolLinks.allowCloseGroup` | bool | `false` | As above, `group/close/<group>`. |
 | `protocolLinks.allowExitApp` | bool | `false` | As above, `hotkey/exit_app`. |
+| `clientSpeed` | object | | CPU priority and efficiency mode of EVE clients; each put back to Windows' default when turned off or the app exits. A client running as administrator needs the app to as well. |
+| `clientSpeed.raiseFocusedClient` | bool | `false` | Above Normal priority for the focused client, set before it comes forward. |
+| `clientSpeed.lowerBackgroundClients` | bool | `false` | Below Normal priority for the others, 1.5 s after focus last moved, so cycling never waits on it. |
+| `clientSpeed.backgroundEfficiencyMode` | bool | `false` | Windows' efficiency mode for the others, on the same delay. |
 | `disableUpdateChecks` | bool | `false` | |
 | `hotkeyNextProfile`, `hotkeyPreviousProfile` | keys | | Cycle profiles in directory order, wrapping. |
 | `profileSwitchHotkeys` | `[{hotkey, targetProfile}]` | `[]` | `targetProfile` is a file name, e.g. `"pvp.json"`. |

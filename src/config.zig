@@ -58,6 +58,7 @@ pub const parseHexColor = wire.parseHexColor;
 
 pub const GlobalConfig = global.GlobalConfig;
 pub const ProtocolLinksConfig = global.ProtocolLinksConfig;
+pub const ClientSpeedConfig = global.ClientSpeedConfig;
 pub const Position = characters_mod.Position;
 pub const WindowSize = characters_mod.WindowSize;
 pub const CharacterBorderColorsConfig = characters_mod.CharacterBorderColorsConfig;
@@ -296,6 +297,10 @@ pub const Config = struct {
 
     pub fn isExcludedFromMinimize(self: *const Config, character_name: []const u8) bool {
         return self.characterSetting(character_name, "excludeFromMinimize", false);
+    }
+
+    pub fn keepsFullSpeed(self: *const Config, character_name: []const u8) bool {
+        return self.characterSetting(character_name, "keepFullSpeed", false);
     }
 
     pub fn isExcludedFromCloseAll(self: *const Config, character_name: []const u8) bool {

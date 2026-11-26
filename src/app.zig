@@ -35,6 +35,7 @@ const chatlog = @import("chatlog.zig");
 const character_ids_mod = @import("chatlog/character_ids.zig");
 const runtime = @import("activity/runtime.zig");
 const travel_left_behind = @import("travel/left_behind.zig");
+const client_speed_mod = @import("performance/client_speed.zig");
 const tray = @import("tray.zig");
 const dialog_host = @import("dialog/dialog_host.zig");
 const registry = @import("protocol/registry.zig");
@@ -95,6 +96,7 @@ pub const Persistent = struct {
     map_panel: map_panel_mod.MapPanel,
     /// Reset when another profile is loaded.
     auto_minimizer: auto_minimize.AutoMinimizer,
+    client_speed: client_speed_mod.ClientSpeed,
 };
 
 /// App's parts control/restart.zig rebuilds, so never cached elsewhere: read them from here each time.
@@ -159,6 +161,7 @@ pub const App = struct {
                 .auto_move = .init(allocator),
                 .map_panel = .{ .host = PANEL_HOST },
                 .auto_minimizer = .init(allocator),
+                .client_speed = .init(allocator),
             },
             .trackers = .init(allocator, io),
             .scout = .init(allocator),
@@ -204,6 +207,7 @@ pub const App = struct {
         self.trackers.deinit();
         self.destroyThumbnailSet();
         self.persistent.auto_minimizer.deinit();
+        self.persistent.client_speed.deinit();
         self.cycle.deinit(self.allocator);
         self.persistent.auto_move.deinit();
         self.persistent.exclusions.deinit();
@@ -388,6 +392,7 @@ pub const App = struct {
     /// First, since every later phase reads the roster it syncs.
     fn discoverWindows(self: *App, scout_result: *const scout_mod.UpdateResult) void {
         self.syncRoster(scout_result.windows);
+        self.persistent.client_speed.update(&self.global_settings.clientSpeed, &self.store.live, scout_result.windows, win32.Ticks.now());
         self.followNewClients();
         self.syncTaskbarMarks();
         if (self.persistent.roster.clients.items.len == 0) self.persistent.auto_colors.flush();
@@ -494,6 +499,7 @@ pub const App = struct {
     /// Writes what only teardown would, for an exit that skips it: Windows ending the session, or a background thread outlasting the wait at exit.
     pub fn saveBeforeAbruptExit(self: *App) void {
         self.persistent.auto_colors.flush();
+        self.persistent.client_speed.restoreAll();
         log.flush();
     }
 

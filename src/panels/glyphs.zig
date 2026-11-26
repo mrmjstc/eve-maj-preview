@@ -249,6 +249,9 @@ const EYE = [_]Stroke{
     line(&.{ .{ 1.5, 8 }, .{ 4, 5 }, .{ 8, 3.75 }, .{ 12, 5 }, .{ 14.5, 8 }, .{ 12, 11 }, .{ 8, 12.25 }, .{ 4, 11 }, .{ 1.5, 8 } }),
     line(&arc(CENTER, 2, 0, 360)),
 };
+const BOLT = [_]Stroke{
+    line(&.{ .{ 9.5, 2 }, .{ 4, 9 }, .{ 8, 9 }, .{ 6.5, 14 }, .{ 12, 7 }, .{ 8, 7 }, .{ 9.5, 2 } }),
+};
 
 /// Ships by their overview bracket, then actions and controls, then what a row is.
 pub const Glyph = enum {
@@ -304,6 +307,7 @@ pub const Glyph = enum {
     check,
     info,
     eye,
+    bolt,
 };
 
 /// A point on the 16-unit grid, x then y, from its corner.
@@ -398,6 +402,7 @@ fn strokesOf(glyph: Glyph) []const Stroke {
         .check => &CHECK,
         .info => &INFO,
         .eye => &EYE,
+        .bolt => &BOLT,
     };
 }
 

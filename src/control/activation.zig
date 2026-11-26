@@ -22,6 +22,7 @@ pub fn activate(app: *App, source_hwnd: win32.HWND) void {
     }
     const was_minimized = placement.showCmd == win32.SW_SHOWMINIMIZED;
 
+    app.persistent.client_speed.focusClient(&app.global_settings.clientSpeed, app.scout.getWindows(), source_hwnd, win32.Ticks.now());
     focus_grant.forceSetForegroundWindow(source_hwnd);
 
     // SW_RESTORE returns a maximized window to maximized, so no need to track was_maximized separately.

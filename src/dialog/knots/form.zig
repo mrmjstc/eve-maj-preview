@@ -17,6 +17,7 @@ const lang = @import("../../lang/lang.zig");
 const about = @import("tabs/about.zig");
 const backups = @import("tabs/backups.zig");
 const general = @import("tabs/general.zig");
+const performance = @import("tabs/performance.zig");
 const hotkeys = @import("tabs/hotkeys.zig");
 const hotkey_groups = @import("tabs/hotkey_groups.zig");
 const display = @import("tabs/display.zig");
@@ -73,6 +74,7 @@ const Tab = enum {
     chat_alerts,
     notification_history,
     general,
+    performance,
     backups,
     about,
 
@@ -92,6 +94,7 @@ const Tab = enum {
             .event_alerts => "Game Events",
             .chat_alerts => "Chat Events",
             .general => "General",
+            .performance => "Performance",
             .about => "About",
             .backups => "Backups",
         };
@@ -103,7 +106,7 @@ const Tab = enum {
             .appearance, .placement, .mining, .map_panel => .display,
             .hotkeys, .mouse => .input,
             .notifications, .event_alerts, .chat_alerts, .notification_history => .alerts,
-            .about, .backups, .general => .app,
+            .about, .backups, .general, .performance => .app,
         };
     }
 
@@ -123,6 +126,7 @@ const Tab = enum {
             .event_alerts => .bell,
             .chat_alerts => .speech,
             .general => .gear,
+            .performance => .bolt,
             .about => .info,
             .backups => .reset,
         };
@@ -131,7 +135,7 @@ const Tab = enum {
     fn isAdvanced(self: Tab) bool {
         return switch (self) {
             .mining => true,
-            .characters, .hotkey_groups, .client_windows, .appearance, .placement, .notification_history, .map_panel, .hotkeys, .mouse, .notifications, .event_alerts, .chat_alerts, .general, .about, .backups => false,
+            .characters, .hotkey_groups, .client_windows, .appearance, .placement, .notification_history, .map_panel, .hotkeys, .mouse, .notifications, .event_alerts, .chat_alerts, .general, .performance, .about, .backups => false,
         };
     }
 
@@ -139,7 +143,7 @@ const Tab = enum {
     fn fills(self: Tab) bool {
         return switch (self) {
             .characters, .hotkey_groups, .event_alerts, .chat_alerts => true,
-            .placement, .client_windows, .appearance, .mining, .notification_history, .map_panel, .hotkeys, .mouse, .notifications, .general, .about, .backups => false,
+            .placement, .client_windows, .appearance, .mining, .notification_history, .map_panel, .hotkeys, .mouse, .notifications, .general, .performance, .about, .backups => false,
         };
     }
 
@@ -260,6 +264,7 @@ fn showTab(window: *Window, context: *ui.Frame, tab: Tab) !void {
         .notification_history => try notification_history.show(window, context),
         .mining => try mining.show(window, context),
         .general => try general.show(window, context),
+        .performance => try performance.show(window, context),
         .hotkeys => try hotkeys.show(window, context),
         .hotkey_groups => try hotkey_groups.show(window, context),
     }

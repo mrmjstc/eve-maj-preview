@@ -57,6 +57,7 @@ pub fn onClientFocused(app: *App, hwnd: win32.HWND) bool {
     }
 
     app.persistent.roster.setActive(hwnd);
+    app.persistent.client_speed.focusClient(&app.global_settings.clientSpeed, app.scout.getWindows(), hwnd, win32.Ticks.now());
     if (app.rebuilt.thumbnail_set) |thumbnail_set| thumbnail_set.reconcileThumbnailStates();
     if (app.persistent.roster.isEveClient(hwnd)) app.persistent.auto_minimizer.recordFocus(hwnd);
     syncCycles(app, hwnd);

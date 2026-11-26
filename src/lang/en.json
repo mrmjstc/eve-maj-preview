@@ -1185,5 +1185,17 @@
   "Unique Colors": "Unique Colors",
   "Preview": "Preview",
   "Show Off": "Show Off",
-  "Same for All Texts": "Same for All Texts"
+  "Same for All Texts": "Same for All Texts",
+  "Performance": "Performance",
+  "Client Speed": "Client Speed",
+  "How much of the PC each EVE client gets. Undone when EVE-Maj Preview exits.": "How much of the PC each EVE client gets. Undone when EVE-Maj Preview exits.",
+  "Raise the Focused Client's Priority": "Raise the Focused Client's Priority",
+  "Above Normal CPU priority for the client you're in.": "Above Normal CPU priority for the client you're in.",
+  "Lower Background Clients' Priority": "Lower Background Clients' Priority",
+  "Below Normal CPU priority for the others, once you stop switching.": "Below Normal CPU priority for the others, once you stop switching.",
+  "Efficiency Mode for Background Clients": "Efficiency Mode for Background Clients",
+  "Less power and heat; their thumbnails may update less smoothly.": "Less power and heat; their thumbnails may update less smoothly.",
+  "Characters set to Keep at Full Speed are never slowed down.": "Characters set to Keep at Full Speed are never slowed down.",
+  "Keep at Full Speed": "Keep at Full Speed",
+  "Client Speed never slows this client down in the background.": "Client Speed never slows this client down in the background."
 }

@@ -74,6 +74,15 @@ pub const ProtocolLinksConfig = struct {
     pub const Wire = wire.Wire(ProtocolLinksConfig);
 };
 
+/// Here rather than in a profile, since it's about the PC; each off by default.
+pub const ClientSpeedConfig = struct {
+    raiseFocusedClient: bool = false,
+    lowerBackgroundClients: bool = false,
+    backgroundEfficiencyMode: bool = false,
+
+    pub const Wire = wire.Wire(ClientSpeedConfig);
+};
+
 const LoadOutcome = enum { loaded, missing, unreadable, malformed };
 
 /// What GlobalConfig.load found, which finishLoading reports once the log level is set.
@@ -118,6 +127,7 @@ pub const GlobalConfig = struct {
     runOnStartup: bool = false,
     autoRegisterProtocol: bool = true,
     protocolLinks: ProtocolLinksConfig = .{},
+    clientSpeed: ClientSpeedConfig = .{},
     alwaysOnTop: bool = true,
     advancedMode: bool = false,
     moveOnProfileSwitch: bool = false,

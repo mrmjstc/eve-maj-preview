@@ -118,6 +118,7 @@ test {
     _ = @import("panels/panel_menu_look.zig");
     _ = @import("panels/popup_look.zig");
     _ = @import("panels/segmented.zig");
+    _ = @import("performance/plan.zig");
     _ = @import("platform/virtual_keys.zig");
     _ = @import("platform/win32.zig");
     _ = @import("protocol/url.zig");

@@ -95,3 +95,4 @@ receiver clients/roster.zig fn rename(  # replaces the name a client in self own
 receiver clients/roster.zig fn clearSystem(  # frees a system name a client in self owns
 receiver clients/roster.zig fn refreshClientConfig(  # replaces the display name a client in self owns
 receiver hotkeys/manager.zig pub fn syncCharacterCursors(  # moves cursors stored in the hotkey map it owns
+receiver performance/client_speed.zig pub fn restoreAll(  # writes each process's applied speed through the map's value iterator
