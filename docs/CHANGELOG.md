@@ -132,6 +132,7 @@
 - Thumbnail drags end when another window takes the mouse mid-drag
 - URL hotkeys open only http and https links
 - Profiles and global settings too large to load again are no longer saved
+- Thumbnails recover from a failed window setup on the next try
 
 ## [1.0.9] - 2026-10-29
 

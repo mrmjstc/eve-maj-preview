@@ -230,22 +230,28 @@ pub const WindowProcs = struct {
     text: win32.WNDPROC,
 };
 
-var g_has_registered_classes: bool = false;
+/// Kept apart from the text class's, so a retry after that one failed doesn't register this twice.
+var g_has_registered_thumbnail_class: bool = false;
+/// Set once TEXT_WINDOW_CLASS_NAME registers.
+var g_has_registered_text_class: bool = false;
 
 /// Once per process, since window classes outlive any one ThumbnailSet.
 pub fn registerClasses(instance: win32.HINSTANCE, window_procedures: WindowProcs) !void {
-    if (g_has_registered_classes) return;
-
-    // Black, not white COLOR_WINDOW: shows through whenever DWM has no live thumbnail frame to composite.
-    const thumbnail_background_brush = win32.CreateSolidBrush(0x00000000) orelse return error.CreateBrushFailed;
-    // Owned by the class once registered.
-    gdi_overlay.registerWindowClass(instance, window_procedures.thumbnail, WINDOW_CLASS_NAME, thumbnail_background_brush) catch |err| {
-        _ = win32.DeleteObject(thumbnail_background_brush);
-        return err;
-    };
-    // No background brush for a layered window.
-    try gdi_overlay.registerWindowClass(instance, window_procedures.text, TEXT_WINDOW_CLASS_NAME, null);
-    g_has_registered_classes = true;
+    if (!g_has_registered_thumbnail_class) {
+        // Black, not white COLOR_WINDOW: shows through whenever DWM has no live thumbnail frame to composite.
+        const thumbnail_background_brush = win32.CreateSolidBrush(0x00000000) orelse return error.CreateBrushFailed;
+        // Owned by the class once registered.
+        gdi_overlay.registerWindowClass(instance, window_procedures.thumbnail, WINDOW_CLASS_NAME, thumbnail_background_brush) catch |err| {
+            _ = win32.DeleteObject(thumbnail_background_brush);
+            return err;
+        };
+        g_has_registered_thumbnail_class = true;
+    }
+    if (!g_has_registered_text_class) {
+        // No background brush for a layered window.
+        try gdi_overlay.registerWindowClass(instance, window_procedures.text, TEXT_WINDOW_CLASS_NAME, null);
+        g_has_registered_text_class = true;
+    }
 }
 
 /// Both windows stay hidden until the first render shows them; applyLivePreview adds the DWM preview.
