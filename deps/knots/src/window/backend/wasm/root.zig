@@ -4,6 +4,8 @@ const gpu = @import("gpu");
 const js = @import("js-bridge");
 const window = @import("window");
 
+const State = window.TextInputState;
+
 pub const Backend = struct {
     allocator: std.mem.Allocator,
     selector: [:0]const u8,
@@ -19,15 +21,14 @@ pub const Backend = struct {
     cursor_shape: input_types.CursorShape = .default,
     owner_addr: usize = 0,
     capture: ?Capture = null,
-    clipboard_text: std.ArrayList(u8) = .empty,
-    clipboard_valid: bool = false,
+    /// Skips frames that changed nothing for the browser.
+    text_input_digest: u64 = 0,
 
     const Self = @This();
 
     pub fn deinit(self: *Self) void {
         self.stopCapture();
         self.canvas.release();
-        self.clipboard_text.deinit(self.allocator);
     }
 
     pub fn startCapture(self: *Self, owner: *window.Window) void {
@@ -45,6 +46,52 @@ pub const Backend = struct {
         const host = webHost() catch return;
         defer host.release();
         host.callVoid("preparePaste", &.{js.Arg.value(capture.catcher)}) catch {};
+    }
+
+    pub fn updateTextInput(self: *Self, owner: *window.Window, change: window.TextInputState.Change) void {
+        const capture = if (self.capture) |*value| value else return;
+        const state = &owner.text_input;
+        const text = state.text.items;
+        const selection = State.utf16Range(text, state.selection);
+        const comp: input_types.TextRect = if (state.composition_rects.items.len > 0)
+            state.composition_rects.items[0]
+        else
+            .{ .x = 0, .y = 0, .w = 0, .h = 0 };
+        const reset = change.started or change.composition_dropped;
+        var hasher = std.hash.Wyhash.init(0);
+        hasher.update(std.mem.asBytes(&state.active));
+        if (state.active) {
+            hasher.update(std.mem.asBytes(&state.id));
+            hasher.update(std.mem.asBytes(&state.revision));
+            hasher.update(std.mem.asBytes(&selection));
+            hasher.update(std.mem.asBytes(&state.caret));
+            hasher.update(std.mem.asBytes(&comp));
+        }
+        const digest = hasher.final();
+        if (!reset and digest == self.text_input_digest) {
+            // Focus can leave without the field changing (a paste, a click on the page).
+            if (state.active) capture.text_input.callVoid("focus", &.{}) catch {};
+            return;
+        }
+        self.text_input_digest = digest;
+
+        const sync = capture.text_input.get("sync") catch return;
+        defer sync.release();
+        sync.callFunctionVoid(capture.text_input, &.{
+            js.Arg.boolean(state.active),
+            js.Arg.boolean(reset),
+            js.Arg.string(if (state.active) text else ""),
+            js.Arg.u32(selection.start),
+            js.Arg.u32(selection.end),
+            js.Arg.f64(state.caret.x),
+            js.Arg.f64(state.caret.y),
+            js.Arg.f64(state.caret.w),
+            js.Arg.f64(state.caret.h),
+            js.Arg.f64(comp.x),
+            js.Arg.f64(comp.y),
+            js.Arg.f64(comp.w),
+            js.Arg.f64(comp.h),
+        }) catch {};
     }
 
     pub fn pollEvents(_: *const Self, _: std.Io) void {}
@@ -123,6 +170,10 @@ pub const Backend = struct {
     }
 
     pub fn setDisplayMode(self: *Self, mode: window.DisplayMode) bool {
+        // A page cannot resize the browser window.
+        if (mode == .maximized) {
+            return false;
+        }
         self.desired_display_mode = mode;
         return self.reconcileDisplayMode();
     }
@@ -141,6 +192,7 @@ pub const Backend = struct {
         const result = switch (self.desired_display_mode) {
             .windowed => self.exitFullscreen(),
             .fullscreen => self.requestFullscreen(),
+            .maximized => false,
         };
         if (!result) return false;
         self.display_mode_transition = true;
@@ -148,7 +200,16 @@ pub const Backend = struct {
     }
 
     pub fn getDisplayMode(self: *const Self) window.DisplayMode {
-        return if (self.is_fullscreen) .fullscreen else .windowed;
+        if (self.is_fullscreen) {
+            return .fullscreen;
+        }
+        return .windowed;
+    }
+
+    pub fn minimize(_: *Self) void {}
+
+    pub fn nativeControlsWidth(_: *const Self) f32 {
+        return 0;
     }
 
     pub fn refreshCanvas(self: *Self) void {
@@ -169,12 +230,7 @@ pub const Backend = struct {
         return &[_][]const u8{};
     }
 
-    pub fn getClipboardText(self: *Self, allocator: std.mem.Allocator) !?[]u8 {
-        if (!self.clipboard_valid) return null;
-        self.clipboard_valid = false;
-        defer self.clipboard_text.clearRetainingCapacity();
-        return try allocator.dupe(u8, self.clipboard_text.items);
-    }
+    pub fn requestPaste(_: *Self, _: *window.Window) !void {}
 
     pub fn setClipboardText(_: *Self, _: std.mem.Allocator, text: []const u8) !bool {
         const host = try webHost();
@@ -217,11 +273,14 @@ pub const Backend = struct {
 
 const Capture = struct {
     catcher: js.Value,
+    text_input: js.Value,
+    text_edit: js.Callback,
     keydown: js.Callback,
     keyup: js.Callback,
     mousedown: js.Callback,
     mouseup: js.Callback,
     mousemove: js.Callback,
+    mouseleave: js.Callback,
     wheel: js.Callback,
     resize: js.Callback,
     focus: js.Callback,
@@ -244,6 +303,8 @@ const Capture = struct {
             errdefer mouseup.deinit();
             var mousemove = try js.Callback.init(backend, onMouseMove);
             errdefer mousemove.deinit();
+            var mouseleave = try js.Callback.init(backend, onMouseLeave);
+            errdefer mouseleave.deinit();
             var wheel = try js.Callback.init(backend, onWheel);
             errdefer wheel.deinit();
             var resize = try js.Callback.init(backend, onResize);
@@ -262,19 +323,26 @@ const Capture = struct {
             errdefer contextmenu.deinit();
             var frame = try js.Callback.init(backend, onAnimationFrame);
             errdefer frame.deinit();
+            var text_edit = try js.Callback.init(backend, onTextInput);
+            errdefer text_edit.deinit();
 
             const host = try webHost();
             defer host.release();
             const catcher = try host.call("createPasteCatcher", &.{});
             errdefer catcher.release();
+            const text_input = try host.call("createTextInput", &.{ js.Arg.value(backend.canvas), js.Arg.value(text_edit.function) });
+            errdefer text_input.release();
 
             break :blk .{
                 .catcher = catcher,
+                .text_input = text_input,
+                .text_edit = text_edit,
                 .keydown = keydown,
                 .keyup = keyup,
                 .mousedown = mousedown,
                 .mouseup = mouseup,
                 .mousemove = mousemove,
+                .mouseleave = mouseleave,
                 .wheel = wheel,
                 .resize = resize,
                 .focus = focus,
@@ -305,6 +373,7 @@ const Capture = struct {
         try addListener(backend.canvas, "mousedown", capture.mousedown, false);
         try addListener(backend.canvas, "mouseup", capture.mouseup, false);
         try addListener(backend.canvas, "mousemove", capture.mousemove, false);
+        try addListener(backend.canvas, "mouseleave", capture.mouseleave, false);
         try addWheelListener(backend.canvas, capture.wheel);
         try addListener(backend.canvas, "contextmenu", capture.contextmenu, false);
 
@@ -346,17 +415,25 @@ const Capture = struct {
         removeListener(backend.canvas, "mousedown", self.mousedown, false);
         removeListener(backend.canvas, "mouseup", self.mouseup, false);
         removeListener(backend.canvas, "mousemove", self.mousemove, false);
+        removeListener(backend.canvas, "mouseleave", self.mouseleave, false);
         removeListener(backend.canvas, "wheel", self.wheel, false);
         removeListener(backend.canvas, "contextmenu", self.contextmenu, false);
         endMouseCapture(backend);
         self.catcher.callVoid("remove", &.{}) catch {};
         self.catcher.release();
+        if (self.text_input.get("remove")) |remove| {
+            defer remove.release();
+            remove.callFunctionVoid(self.text_input, &.{}) catch {};
+        } else |_| {}
+        self.text_input.release();
+        self.text_edit.deinit();
 
         self.keydown.deinit();
         self.keyup.deinit();
         self.mousedown.deinit();
         self.mouseup.deinit();
         self.mousemove.deinit();
+        self.mouseleave.deinit();
         self.wheel.deinit();
         self.resize.deinit();
         self.focus.deinit();
@@ -503,6 +580,7 @@ fn shouldHandleEvent(backend: *Backend, event: js.Value) bool {
     const result = host.call("shouldHandleEvent", &.{
         js.Arg.value(event),
         js.Arg.value(capture.catcher),
+        js.Arg.value(capture.text_input),
     }) catch return true;
     defer result.release();
     return result.tryBool() catch true;
@@ -556,7 +634,35 @@ fn eventKeyCode(event: js.Value) ?i32 {
     defer host.release();
     const key = host.call("keyCode", &.{js.Arg.value(code)}) catch return null;
     defer key.release();
-    return key.tryI32() catch return null;
+
+    const physical = key.tryI32() catch return null;
+    if (physical < 0)
+        return physical;
+
+    const cp = host.call("layoutCodepoint", &.{js.Arg.value(event)}) catch return physical;
+    defer cp.release();
+
+    const ch = cp.tryU32() catch return physical;
+    const unshifted: ?u21 = if (ch == 0 or ch > std.math.maxInt(u21))
+        null
+    else
+        @intCast(ch);
+
+    return @backingInt(input_types.layoutKey(@fromBackingInt(physical), unshifted));
+}
+
+fn eventTypedCodepoint(event: js.Value) ?u21 {
+    const host = webHost() catch return null;
+    defer host.release();
+
+    const codepoint = host.call("typedCodepoint", &.{js.Arg.value(event)}) catch return null;
+    defer codepoint.release();
+
+    const value = codepoint.tryU32() catch return null;
+    if (value < 0x20 or value == 0x7F or value > std.math.maxInt(u21))
+        return null;
+
+    return @intCast(value);
 }
 
 fn eventTextCodepoint(event: js.Value) ?u32 {
@@ -605,6 +711,12 @@ fn onMouseMove(context: ?*anyopaque, args: js.Value, args_len: u32) void {
     defer event.release();
     const pos = eventPosition(backend, event) orelse return;
     owner.setCursorPos(pos);
+}
+
+fn onMouseLeave(context: ?*anyopaque, _: js.Value, _: u32) void {
+    const backend = backendFromContext(context) orelse return;
+    const owner = ownerFromBackend(backend) orelse return;
+    owner.pointerLeft();
 }
 
 fn onMouseDown(context: ?*anyopaque, args: js.Value, args_len: u32) void {
@@ -675,19 +787,28 @@ fn onKeyDown(context: ?*anyopaque, args: js.Value, args_len: u32) void {
     const event = firstEvent(args, args_len) orelse return;
     defer event.release();
     if (!shouldHandleEvent(backend, event)) return;
+    // A composition, or a dead key starting one, belongs to the input method.
+    if (isImeKey(event)) return;
+    // With a field focused, text arrives through the browser's text input so the
+    // input method sees it; with focus elsewhere (the paste catcher) it is typed here.
+    const codepoint: ?u21 = if (eventTextCodepoint(event)) |cp|
+        if (cp >= 0x20 and cp != 0x7F and cp <= std.math.maxInt(u21)) @intCast(cp) else null
+    else
+        null;
+    const typed_by_browser = codepoint != null and owner.text_input.active and isTextInputTarget(backend, event);
     if (eventKeyCode(event)) |key| {
         if (key >= 0) {
             const key_action: input_types.KeyAction = if (eventBool(event, "repeat")) .repeat else .press;
             const mods = eventMods(event) orelse input_types.Mods{};
-            if (((mods.ctrl and !mods.alt) or mods.super) and key == @intFromEnum(input_types.Key.v) and key_action == .press) {
+            if (((mods.ctrl and !mods.alt) or mods.super) and key == @backingInt(input_types.Key.v) and key_action == .press) {
                 backend.preparePaste();
                 return;
             }
-            owner.pushKey(key, key_action, mods);
+            owner.pushKeyText(key, key_action, mods, eventTypedCodepoint(event) orelse 0);
             const maybe_host: ?js.Value = webHost() catch null;
             if (maybe_host) |host| {
                 defer host.release();
-                const should_prevent: ?js.Value = host.call("shouldPreventKeyDefault", &.{
+                const should_prevent: ?js.Value = if (typed_by_browser) null else host.call("shouldPreventKeyDefault", &.{
                     js.Arg.value(event),
                     js.Arg.i32(key),
                 }) catch null;
@@ -698,12 +819,118 @@ fn onKeyDown(context: ?*anyopaque, args: js.Value, args_len: u32) void {
             }
         }
     }
-    if (eventTextCodepoint(event)) |codepoint| {
-        if (codepoint >= 0x20 and codepoint != 0x7F and codepoint <= std.math.maxInt(u21)) {
-            owner.pushChar(@intCast(codepoint));
+    if (codepoint) |cp| {
+        if (!typed_by_browser) {
+            var encoded: [4]u8 = undefined;
+            const n = std.unicode.utf8Encode(cp, &encoded) catch return;
+            owner.pushText(encoded[0..n]);
             preventDefault(event);
         }
     }
+}
+
+fn isTextInputTarget(backend: *Backend, event: js.Value) bool {
+    const capture = if (backend.capture) |*value| value else return false;
+    const target = event.get("target") catch return false;
+    defer target.release();
+    const result = capture.text_input.call("isTarget", &.{js.Arg.value(target)}) catch return false;
+    defer result.release();
+    return result.tryBool() catch false;
+}
+
+fn isImeKey(event: js.Value) bool {
+    const host = webHost() catch return false;
+    defer host.release();
+    const result = host.call("isImeKey", &.{js.Arg.value(event)}) catch return false;
+    defer result.release();
+    return result.tryBool() catch false;
+}
+
+/// Edits from the browser's text input; see `createTextInput` in host.js.
+fn onTextInput(context: ?*anyopaque, args: js.Value, args_len: u32) void {
+    const backend = backendFromContext(context) orelse return;
+    const owner = ownerFromBackend(backend) orelse return;
+    if (args_len < 7 or !owner.text_input.active) return;
+    const kind = args.getIndex(0) catch return;
+    defer kind.release();
+    const start = argI32(args, 1) orelse return;
+    const end = argI32(args, 2) orelse return;
+    const a = argI32(args, 4) orelse return;
+    const b = argI32(args, 5) orelse return;
+    const text_value = args.getIndex(3) catch return;
+    defer text_value.release();
+    const text = text_value.toOwnedString(backend.allocator) catch return;
+    defer backend.allocator.free(text);
+
+    const state = &owner.text_input;
+    const replace: ?input_types.TextRange = if (start < 0)
+        null
+    else
+        State.byteRange(state.text.items, .{ .start = @intCast(start), .end = @intCast(@max(start, end)) });
+
+    if (kind.eqlString("compose")) {
+        const caret: input_types.TextRange = if (a < 0)
+            .at(@intCast(text.len))
+        else
+            State.byteRange(text, .{ .start = @intCast(a), .end = @intCast(@max(a, b)) });
+        owner.pushTextEdit(.{ .session = state.id, .replace = replace, .text = text, .compose = .{ .caret = caret } });
+    } else if (kind.eqlString("commit")) {
+        var selection: ?input_types.TextRange = null;
+        if (a >= 0) {
+            // The selection is in the edited text, which only exists once applied.
+            const r = replace orelse state.target();
+            const edited = std.mem.concat(backend.allocator, u8, &.{ state.text.items[0..r.start], text, state.text.items[r.end..] }) catch return;
+            defer backend.allocator.free(edited);
+            selection = State.byteRange(edited, .{ .start = @intCast(a), .end = @intCast(@max(a, b)) });
+        }
+        owner.pushTextEdit(.{ .session = state.id, .replace = replace, .text = text, .selection = selection });
+    } else if (kind.eqlString("end")) {
+        const composition = state.composition orelse return;
+        const committed = backend.allocator.dupe(u8, state.text.items[composition.start..composition.end]) catch return;
+        defer backend.allocator.free(committed);
+        owner.pushTextEdit(.{ .session = state.id, .replace = composition, .text = committed });
+    } else if (kind.eqlString("format")) {
+        const composition = state.composition orelse return;
+        const formats = args.getIndex(6) catch return;
+        defer formats.release();
+        const count = getU32(formats, "length") catch return;
+        var segments: [32]input_types.CompositionSegment = undefined;
+        var n: usize = 0;
+        var i: u32 = 0;
+        while (i + 2 < count and n < segments.len) : (i += 3) {
+            const f_start = indexU32(formats, i) orelse break;
+            const f_end = indexU32(formats, i + 1) orelse break;
+            const active = (indexU32(formats, i + 2) orelse 0) != 0;
+            const r = State.byteRange(state.text.items, .{ .start = f_start, .end = @max(f_start, f_end) });
+            if (r.start < composition.start or r.end > composition.end or r.start >= r.end) continue;
+            segments[n] = .{ .start = r.start - composition.start, .end = r.end - composition.start, .active = active };
+            n += 1;
+        }
+        const composed = backend.allocator.dupe(u8, state.text.items[composition.start..composition.end]) catch return;
+        defer backend.allocator.free(composed);
+        const caret: input_types.TextRange = .{
+            .start = std.math.clamp(state.selection.start, composition.start, composition.end) - composition.start,
+            .end = std.math.clamp(state.selection.end, composition.start, composition.end) - composition.start,
+        };
+        owner.pushTextEdit(.{
+            .session = state.id,
+            .replace = composition,
+            .text = composed,
+            .compose = .{ .caret = caret, .segments = segments[0..n] },
+        });
+    }
+}
+
+fn argI32(args: js.Value, index: u32) ?i32 {
+    const value = args.getIndex(index) catch return null;
+    defer value.release();
+    return @intFromFloat(value.tryF64() catch return null);
+}
+
+fn indexU32(array: js.Value, index: u32) ?u32 {
+    const value = array.getIndex(index) catch return null;
+    defer value.release();
+    return value.tryU32() catch null;
 }
 
 fn onKeyUp(context: ?*anyopaque, args: js.Value, args_len: u32) void {
@@ -732,15 +959,13 @@ fn onPaste(context: ?*anyopaque, args: js.Value, args_len: u32) void {
     const text = text_value.toOwnedString(backend.allocator) catch return;
     defer backend.allocator.free(text);
 
-    backend.clipboard_text.clearRetainingCapacity();
-    backend.clipboard_text.appendSlice(backend.allocator, text) catch {
-        backend.clipboard_valid = false;
-        return;
-    };
-    backend.clipboard_valid = true;
-    owner.pushKey(@intFromEnum(input_types.Key.v), .press, .{ .ctrl = true });
-    owner.pushKey(@intFromEnum(input_types.Key.v), .release, .{ .ctrl = true });
+    owner.pushPaste(text);
     preventDefault(event);
+    // Give focus back to the field's text input.
+    if (backend.capture) |*capture| {
+        capture.catcher.callVoid("blur", &.{}) catch {};
+        if (owner.text_input.active) capture.text_input.callVoid("focus", &.{}) catch {};
+    }
 }
 
 fn onFullscreen(context: ?*anyopaque, _: js.Value, _: u32) void {

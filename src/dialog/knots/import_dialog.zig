@@ -209,7 +209,7 @@ fn optionsStep(context: *ui.Frame, analysis: *Analysis) !void {
             try widgets.focusTextInput(context, NEW_NAME_KEY, g_new_name.items.len);
             g_should_focus_name = false;
         }
-        try context.e(TextInput{ .key = NEW_NAME_KEY, .buf = &g_new_name, .style = &style.text_input_aligned, .placeholder = lang.text("Profile name") });
+        try context.e(TextInput{ .key = NEW_NAME_KEY, .buf = &g_new_name, .allocator = g_allocator, .style = &style.text_input_aligned, .placeholder = lang.text("Profile name") });
         try name_row.close(context);
         try widgets.hintText(context, .src(@src()), "Use " ++ profiles.NAME_RULES ++ ".");
         if (profiles.nameProblem(context.arena(), newName())) |message| try widgets.boxedText(context, .src(@src()), message, &style.modal_hint_box, &style.field_error);

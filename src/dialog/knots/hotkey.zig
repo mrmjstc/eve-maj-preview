@@ -519,7 +519,7 @@ fn manualBox(context: *ui.Frame, edit: *ManualEdit, ref: anytype, comptime field
         return;
     }
     edit.was_focused = is_focused;
-    try context.e(TextInput{ .key = box_key, .buf = &edit.text, .style = try sized(context, &style.text_input, width) });
+    try context.e(TextInput{ .key = box_key, .buf = &edit.text, .allocator = g_allocator, .style = try sized(context, &style.text_input, width) });
     try widgets.nameControl(context, box_key);
 }
 

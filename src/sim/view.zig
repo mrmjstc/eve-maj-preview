@@ -291,7 +291,7 @@ fn clientColumn(context: *ui.Frame, fleet: *Fleet, controls: *Controls, picked_c
 
     const add_row = Rect{ .key = .src(@src()), .style = &ROW };
     _ = try add_row.open(context);
-    try context.e(TextInput{ .key = .src(@src()), .buf = &controls.new_name, .style = &style.text_input, .placeholder = "Character name" });
+    try context.e(TextInput{ .key = .src(@src()), .buf = &controls.new_name, .allocator = context.ui().allocator, .style = &style.text_input, .placeholder = "Character name" });
     if (try button(context, .src(@src()), "Add", std.mem.trim(u8, controls.new_name.items, " ").len > 0)) {
         fleet.start(controls.new_name.items);
         controls.new_name.clearRetainingCapacity();
@@ -410,11 +410,11 @@ fn travelTab(context: *ui.Frame, fleet: *Fleet, controls: *Controls, picked: []c
     const section = try widgets.openSection(context, "Jump", "A gate jump writes the gamelog's jump line and Local's change; the other two write one of them, as a pod or filament move does. Lines stamped in the past read as late, so the character stays put.", &style.section);
     const system = std.mem.trim(u8, controls.system.items, " ");
     const system_row = try widgets.openBinding(context, .src(@src()), "System");
-    try context.e(TextInput{ .key = .src(@src()), .buf = &controls.system, .style = &style.text_input_aligned, .placeholder = "e.g. Amarr" });
+    try context.e(TextInput{ .key = .src(@src()), .buf = &controls.system, .allocator = context.ui().allocator, .style = &style.text_input_aligned, .placeholder = "e.g. Amarr" });
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = if (system.len == 0) "" else if (universe.findSystem(system) != null) "on the gate map" else "not on the gate map", .style = &ROW_NOTE });
     try system_row.close(context);
     const age_row = try widgets.openBinding(context, .src(@src()), "Stamped");
-    try context.e(TextInput{ .key = .src(@src()), .buf = &controls.age_seconds, .style = &NUMBER_INPUT });
+    try context.e(TextInput{ .key = .src(@src()), .buf = &controls.age_seconds, .allocator = context.ui().allocator, .style = &NUMBER_INPUT });
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "seconds ago", .style = &ROW_NOTE });
     try age_row.close(context);
     if (try buttonRow(context, .src(@src()), &.{ "Gate jump", "Gamelog only", "Local only" }, picked.len > 0 and system.len > 0)) |choice| {
@@ -470,10 +470,10 @@ fn chatTab(context: *ui.Frame, fleet: *Fleet, controls: *Controls, picked: []con
     try choose(context, .src(@src()), channels, &controls.channel_index, &style.select);
     try channel_row.close(context);
     const speaker_row = try widgets.openBinding(context, .src(@src()), "Speaker");
-    try context.e(TextInput{ .key = .src(@src()), .buf = &controls.speaker, .style = &style.text_input_aligned });
+    try context.e(TextInput{ .key = .src(@src()), .buf = &controls.speaker, .allocator = context.ui().allocator, .style = &style.text_input_aligned });
     try speaker_row.close(context);
     const message_row = try widgets.openBinding(context, .src(@src()), "Message");
-    try context.e(TextInput{ .key = .src(@src()), .buf = &controls.message, .style = &style.text_input, .placeholder = "e.g. Perimeter 3 hostiles on gate" });
+    try context.e(TextInput{ .key = .src(@src()), .buf = &controls.message, .allocator = context.ui().allocator, .style = &style.text_input, .placeholder = "e.g. Perimeter 3 hostiles on gate" });
     try message_row.close(context);
     const speaker = std.mem.trim(u8, controls.speaker.items, " ");
     const message = std.mem.trim(u8, controls.message.items, " ");
@@ -484,7 +484,7 @@ fn chatTab(context: *ui.Frame, fleet: *Fleet, controls: *Controls, picked: []con
 
     const joining = try widgets.openSection(context, "Join a channel", "Opens the channel's log on each picked client mid-session, as joining it in game does.", &style.section);
     const join_row = try widgets.openBinding(context, .src(@src()), "Channel");
-    try context.e(TextInput{ .key = .src(@src()), .buf = &controls.join_channel, .style = &style.text_input_aligned, .placeholder = "e.g. Alliance" });
+    try context.e(TextInput{ .key = .src(@src()), .buf = &controls.join_channel, .allocator = context.ui().allocator, .style = &style.text_input_aligned, .placeholder = "e.g. Alliance" });
     const join_name = std.mem.trim(u8, controls.join_channel.items, " ");
     if (try button(context, .src(@src()), "Join", picked.len > 0 and join_name.len > 0)) {
         for (picked) |index| fleet.join(index, join_name);
@@ -534,13 +534,13 @@ fn testsTab(context: *ui.Frame, fleet: *Fleet, controls: *Controls, picked: []co
 fn setupTab(context: *ui.Frame, fleet: *Fleet) !void {
     const folders = try widgets.openSection(context, "Log folders", "The app's defaults, so it watches these with no settings change. Changes apply to sessions started afterwards.", &style.section);
     const chatlog_row = try widgets.openBinding(context, .src(@src()), "Chatlogs");
-    try context.e(TextInput{ .key = .src(@src()), .buf = &fleet.chatlog_dir, .style = &style.path_input });
+    try context.e(TextInput{ .key = .src(@src()), .buf = &fleet.chatlog_dir, .allocator = fleet.allocator, .style = &style.path_input });
     try chatlog_row.close(context);
     const gamelog_row = try widgets.openBinding(context, .src(@src()), "Gamelogs");
-    try context.e(TextInput{ .key = .src(@src()), .buf = &fleet.gamelog_dir, .style = &style.path_input });
+    try context.e(TextInput{ .key = .src(@src()), .buf = &fleet.gamelog_dir, .allocator = fleet.allocator, .style = &style.path_input });
     try gamelog_row.close(context);
     const channel_row = try widgets.openBinding(context, .src(@src()), "Channels joined");
-    try context.e(TextInput{ .key = .src(@src()), .buf = &fleet.channel_list, .style = &style.path_input });
+    try context.e(TextInput{ .key = .src(@src()), .buf = &fleet.channel_list, .allocator = fleet.allocator, .style = &style.path_input });
     try channel_row.close(context);
     try widgets.paragraph(context, .src(@src()), "Fixture files are named after their character's ID, e.g. Local_*_1480182092.txt, so they never overwrite real EVE logs and can be deleted any time.");
     try folders.close(context);

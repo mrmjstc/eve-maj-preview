@@ -1,8 +1,8 @@
 diff --git a/src/ui/component/TextInput.zig b/src/ui/component/TextInput.zig
-index 0c05113..34c343c 100644
+index 75eba32..4e8f5f0 100644
 --- a/src/ui/component/TextInput.zig
 +++ b/src/ui/component/TextInput.zig
-@@ -36,7 +36,8 @@ pub const base = struct {
+@@ -39,7 +39,8 @@ pub const base = struct {
          .width = .grow(),
          .@"align" = .center,
          .padding = .init(6, 10, 6, 10),
@@ -12,8 +12,8 @@ index 0c05113..34c343c 100644
          .background = .elevated,
          .border_width = .all(1),
          .border_color = .toned,
-@@ -92,9 +93,12 @@ pub fn close(self: *const TextInput, frame: *Frame) !void {
-         const line_h = shaped.line_height / scale;
+@@ -94,9 +95,12 @@ pub fn close(self: *const TextInput, frame: *Frame) !void {
+         const line_h = text_layout.line_height / scale;
          const measured = try ui.state.getOrCreate(.measured, ui.allocator, id);
          const scroll = try ui.state.getOrCreate(.scroll, ui.allocator, id);
 +        // EVE-Maj patch: the root centres its line, so the caret and selection are offset to match it.
@@ -25,13 +25,13 @@ index 0c05113..34c343c 100644
 +            measured.box.y() + padding.top() + line_y,
          };
  
-         edit.processMouse(ui, id, items, s, shaped, content_origin, scroll.offset, scale);
-@@ -123,23 +127,25 @@ pub fn close(self: *const TextInput, frame: *Frame) !void {
-             const spans = try util.lineSpansForRange(ui.allocator, shaped, sel_lo, sel_hi, scale);
-             defer ui.allocator.free(spans);
-             for (spans, 0..) |sp, i| {
--                _ = try ui.open(self.key.indexed(SELECTION_BASE + i), .at(sp.x - scroll_x, sp.y, sp.w, line_h), .{ .rect = selection.surface });
-+                _ = try ui.open(self.key.indexed(SELECTION_BASE + i), .at(sp.x - scroll_x, sp.y + line_y, sp.w, line_h), .{ .rect = selection.surface });
+         edit.processMouse(ui, id, self.buf.items, s, text_layout, content_origin, scroll.offset, scale);
+@@ -125,12 +129,12 @@ pub fn close(self: *const TextInput, frame: *Frame) !void {
+             defer spans.deinit(ui.allocator);
+             try text_layout.selectionRects(ui.allocator, sel_lo, sel_hi, &spans);
+             for (spans.items, 0..) |sp, i| {
+-                _ = try ui.open(self.key.indexed(SELECTION_BASE + i), .at(sp.x / scale - scroll_x, sp.y / scale, sp.w / scale, line_h), .{ .rect = selection.surface });
++                _ = try ui.open(self.key.indexed(SELECTION_BASE + i), .at(sp.x / scale - scroll_x, sp.y / scale + line_y, sp.w / scale, line_h), .{ .rect = selection.surface });
                  ui.close();
              }
          } else {
@@ -41,19 +41,3 @@ index 0c05113..34c343c 100644
              ui.close();
          }
  
-         if (has_sel) ui.state.selection_text = items[sel_lo..sel_hi];
-     }
- 
--    if (!is_focused and items.len == 0) {
-+    // EVE-Maj patch: drawn from a copy, which lives to the end of the frame, so the caller can clear or refill its buffer later in the frame.
-+    const text = try frame.arena().dupe(u8, self.buf.items);
-+    if (!is_focused and text.len == 0) {
-         if (self.placeholder.len > 0)
-             _ = try ui.styledText(self.key.indexed(BODY_INDEX), self.placeholder, .{ .base = &base.placeholder, .user = self.parts.placeholder }, .{});
--    } else if (items.len > 0) {
--        var deco = try ui.textDecoration(items, content.font_size, content.font, false);
-+    } else if (text.len > 0) {
-+        var deco = try ui.textDecoration(text, content.font_size, content.font, false);
-         deco.text.color = content.foreground;
-         _ = try ui.open(self.key.indexed(BODY_INDEX), .{ .width = .fit(), .height = .fit() }, deco);
-         ui.close();

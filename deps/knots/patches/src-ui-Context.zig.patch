@@ -1,8 +1,8 @@
 diff --git a/src/ui/Context.zig b/src/ui/Context.zig
-index 327d532..27c54d5 100644
+index 7aa5c1f..1d69486 100644
 --- a/src/ui/Context.zig
 +++ b/src/ui/Context.zig
-@@ -29,7 +29,8 @@ const BorderWidth = style.BorderWidth;
+@@ -27,7 +27,8 @@ const BorderWidth = style.BorderWidth;
  const Allocator = std.mem.Allocator;
  const HitRecord = UI.HitRecord;
  
@@ -10,9 +10,9 @@ index 327d532..27c54d5 100644
 +// EVE-Maj patch: 8px of slack, not 3, so a click made while the mouse is still moving still counts.
 +const press_drag_threshold_sq: f64 = 64.0;
  
- const theme_state_key = StateBridge.key("knots.ui.theme");
- 
-@@ -580,6 +581,11 @@ fn captureHitAncestors(allocator: Allocator, layout_ctx: *layout.Context, id: El
+ pub const Config = struct {
+     ui: UI.Config = .{},
+@@ -489,6 +490,11 @@ fn captureHitAncestors(allocator: Allocator, layout_ctx: *layout.Context, id: El
      }
  }
  
@@ -24,7 +24,7 @@ index 327d532..27c54d5 100644
  fn resolveWindow(ui: *UI, input: input_types.Input, now_ms: i64, content_scale: f32) !void {
      ui.content_scale = content_scale;
      ui.state.selection_text = &.{};
-@@ -913,6 +919,16 @@ fn childClip(ui: *UI, slot: Element.Slot, parent_clip: Clip.State) !Clip.State {
+@@ -805,6 +811,16 @@ fn childClip(ui: *UI, slot: Element.Slot, parent_clip: Clip.State) !Clip.State {
          has_rounding = !math.isZero(radii);
      }
  
@@ -41,7 +41,16 @@ index 327d532..27c54d5 100644
      var out = parent_clip;
      out.scissor = if (parent_clip.scissor) |scissor| scissor.intersect(clip_rect) else clip_rect;
  
-@@ -951,15 +967,24 @@ fn tessellateLayer(ui: *UI, allocator: Allocator, draw_list: *DrawList, slots: [
+@@ -979,6 +995,8 @@ fn paintUnderlines(draw_list: *DrawList, el: *const Element, t: Decoration.Text,
+ 
+ fn tessellateLayer(ui: *UI, allocator: Allocator, draw_list: *DrawList, slots: []const Element.Slot, layer: Layer) !void {
+     const elements = ui.layout_ctx.pool.elements.items;
++    // EVE-Maj patch: for snapToPixel.
++    const content_scale = ui.content_scale;
+ 
+     for (slots) |slot| {
+         const el = &elements[slot];
+@@ -996,29 +1014,42 @@ fn tessellateLayer(ui: *UI, allocator: Allocator, draw_list: *DrawList, slots: [
              .rect => |r| {
                  // The backdrop filters what is already drawn; the fill then tints it.
                  if (r.backdrop.isActive() and r.backdrop.isValid()) try draw_list.pushBackdrop(el.box, r.corner_radius.value, r.backdrop, clip);
@@ -54,7 +63,7 @@ index 327d532..27c54d5 100644
 +                for (&border_width) |*width| {
 +                    if (width.* > 0) width.* = @max(1, @round(width.* * content_scale)) / content_scale;
 +                }
-                 const inst = types.Instance{
+                 const inst = render.Instance{
 -                    .pos = .{ el.box.x(), el.box.y() },
 -                    .size = .{ el.box.w(), el.box.h() },
 +                    .pos = .{ x0, y0 },
@@ -68,11 +77,9 @@ index 327d532..27c54d5 100644
 +                    .border_width = border_width,
                      .prim_type = 0.0,
                  };
-                 try draw_list.pushInstances(&[_]types.Instance{inst}, .atlas, clip);
-@@ -1023,15 +1048,19 @@ fn tessellateLayer(ui: *UI, allocator: Allocator, draw_list: *DrawList, slots: [
-                     }
-                 }
+                 try draw_list.pushInstances(&[_]render.Instance{inst}, .atlas, clip);
              },
+             .text => |t| if (t.content.len > 0) try paintText(ui, draw_list, el, t, clip),
 -            .canvas => |c| try canvas_tessellator.tessellate(allocator, draw_list, c.cmds, .{ el.box.x(), el.box.y() }, clip),
 +            // EVE-Maj patch: snapped like a rect's edges, so a canvas inside a bordered box stays centred in it.
 +            .canvas => |c| try canvas_tessellator.tessellate(allocator, draw_list, c.cmds, .{ snapToPixel(el.box.x(), content_scale), snapToPixel(el.box.y(), content_scale) }, clip),
@@ -84,7 +91,7 @@ index 327d532..27c54d5 100644
 +                // EVE-Maj patch: edges snapped like a rect's, so an image filling a snapped box covers it exactly.
 +                const x0 = snapToPixel(el.box.x(), content_scale);
 +                const y0 = snapToPixel(el.box.y(), content_scale);
-                 const inst = types.Instance{
+                 const inst = render.Instance{
 -                    .pos = .{ el.box.x(), el.box.y() },
 -                    .size = .{ el.box.w(), el.box.h() },
 +                    .pos = .{ x0, y0 },
@@ -92,16 +99,16 @@ index 327d532..27c54d5 100644
                      .uv0 = .{ 0, 0 },
                      .uv1 = .{ 1, 1 },
                      .color = img.tint,
-@@ -1042,7 +1071,7 @@ fn tessellateLayer(ui: *UI, allocator: Allocator, draw_list: *DrawList, slots: [
+@@ -1029,7 +1060,7 @@ fn tessellateLayer(ui: *UI, allocator: Allocator, draw_list: *DrawList, slots: [
                  };
-                 try draw_list.pushInstances(&[_]types.Instance{inst}, img.source, clip);
+                 try draw_list.pushInstances(&[_]render.Instance{inst}, img.source, clip);
              },
 -            .range => |r| try renderRange(draw_list, el.box, r, clip),
 +            .range => |r| try renderRange(draw_list, el.box, r, clip, content_scale),
          }
      }
  
-@@ -1058,11 +1087,12 @@ fn tessellateLayer(ui: *UI, allocator: Allocator, draw_list: *DrawList, slots: [
+@@ -1045,11 +1076,12 @@ fn tessellateLayer(ui: *UI, allocator: Allocator, draw_list: *DrawList, slots: [
      }
  }
  

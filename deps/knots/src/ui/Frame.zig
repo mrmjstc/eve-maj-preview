@@ -1,20 +1,7 @@
 const input_types = @import("input");
 const std = @import("std");
 const render = @import("render");
-const signal = @import("signal");
 const UI = @import("UI.zig");
-const StateBridge = @import("StateBridge.zig");
-
-const state_bindings_max: u32 = 128;
-pub const modules_max: u32 = 30;
-pub const host_overlay_layer_min: u8 = 240;
-
-const StateBinding = struct {
-    key: u64,
-    schema: u64,
-    pointer: *anyopaque,
-    commit: *const fn (*StateBridge, u64, *const anyopaque) anyerror!void,
-};
 
 pub const State = struct {
     ui: *UI,
@@ -24,14 +11,13 @@ pub const State = struct {
     effects: Effects,
     active: bool,
     generation: u64,
-    contribution_calls: std.ArrayList(ContributionCall) = .empty,
-    state_bridge: *StateBridge,
-    state_bindings: std.ArrayList(StateBinding) = .empty,
 
     pub const Effects = struct {
         redraw: bool = false,
         close: bool = false,
         clipboard_write: ?[]const u8 = null,
+        display_mode: ?input_types.DisplayMode = null,
+        minimize: bool = false,
     };
 
     pub fn init(
@@ -40,7 +26,6 @@ pub const State = struct {
         arena_capacity: usize,
         input_value: *const input_types.FrameInput,
         generation: u64,
-        state_bridge: *StateBridge,
     ) State {
         std.debug.assert(generation > 0);
         std.debug.assert(input_value.content_scale > 0);
@@ -52,52 +37,27 @@ pub const State = struct {
             .effects = .{},
             .active = true,
             .generation = generation,
-            .state_bridge = state_bridge,
         };
     }
 };
 
 pub const RenderFn = *const fn (*Frame) anyerror!void;
 
-pub const Contribution = struct {
-    identity: u64,
-    packet: render.Packet,
-};
-
-pub const ContributionCall = struct {
-    slot: @import("layout").Element.Slot,
-    identity: u64,
-    subscriber: signal.Subscriber,
-    context: *anyopaque,
-    render: *const fn (*anyopaque, *const input_types.FrameInput, []const StateBridge.Value, @import("math").Rect, std.mem.Allocator) anyerror!ModuleOutput,
-};
-
-pub const ModuleOutput = struct {
-    packet: render.Packet,
-    cursor_shape: input_types.CursorShape = .default,
-    capture_pointer: bool = false,
-    capture_keyboard: bool = false,
-    text_input: bool = false,
-    redraw: bool = false,
-    close: bool = false,
-    clipboard_write: ?[]const u8 = null,
-    state: []const StateBridge.Value = &.{},
-    dependencies: []const StateBridge.Dependency = &.{},
-};
-
 pub const Output = struct {
     accessibility: @import("Accessibility.zig").Snapshot = .{},
-    contributions: []const Contribution = &.{},
     packet: render.Packet,
-    host_overlay: ?render.Packet = null,
     cursor_shape: input_types.CursorShape,
     capture_pointer: bool,
     capture_keyboard: bool,
-    text_input: bool,
+    /// Pass to `Window.setTextInput` every frame, including null.
+    text_input: ?input_types.TextInputSession,
     redraw: bool,
     close: bool,
     clipboard_write: ?[]const u8,
-    state: []const StateBridge.Value = &.{},
+    display_mode: ?input_types.DisplayMode,
+    minimize: bool,
+    /// Back to front, for `Window.setHitRegions`.
+    hit_regions: []const input_types.HitRegion,
 };
 
 _state: *State,
@@ -141,6 +101,23 @@ pub fn requestClose(self: *Frame) void {
     self.state().effects.close = true;
 }
 
+pub fn displayMode(self: *const Frame) input_types.DisplayMode {
+    return self.input().input.display_mode;
+}
+
+pub fn setDisplayMode(self: *Frame, mode: input_types.DisplayMode) void {
+    self.state().effects.display_mode = mode;
+}
+
+pub fn minimizeWindow(self: *Frame) void {
+    self.state().effects.minimize = true;
+}
+
+/// Width of the platform's own window buttons in an undecorated window, zero when the app draws them.
+pub fn nativeControlsWidth(self: *const Frame) f32 {
+    return self.input().input.native_controls_width;
+}
+
 pub fn writeClipboard(self: *Frame, value: []const u8) !void {
     const frame_state = self.state();
     frame_state.effects.clipboard_write = try frame_state.arena.dupe(u8, value);
@@ -152,64 +129,6 @@ pub fn pasteText(self: *const Frame) ?[]const u8 {
 
 pub fn droppedPaths(self: *const Frame) []const []const u8 {
     return self.input().dropped_paths;
-}
-
-/// Bind reloadable module state to the host-owned frame store. The value is
-/// restored before use and committed once, at the frame boundary.
-pub fn bindState(self: *Frame, comptime T: type, name: []const u8, initial: T) !*T {
-    comptime if (@sizeOf(T) > 16) @compileError("state initial values larger than 16 bytes must be wrapped in a smaller fixed-size value");
-    const active = self.state();
-    const key = StateBridge.key(name);
-    const schema = StateBridge.schemaFor(T);
-    for (active.state_bindings.items) |binding| {
-        if (binding.key == key) {
-            if (binding.schema != schema) return error.StateSchemaMismatch;
-            return @ptrCast(@alignCast(binding.pointer));
-        }
-    }
-    if (active.state_bindings.items.len == state_bindings_max) return error.TooManyStateBindings;
-
-    const pointer = try active.arena.create(T);
-    pointer.* = (try active.state_bridge.read(T, key)) orelse initial;
-    try active.state_bindings.append(active.arena, .{
-        .key = key,
-        .schema = schema,
-        .pointer = pointer,
-        .commit = struct {
-            fn commit(bridge: *StateBridge, key_value: u64, erased: *const anyopaque) !void {
-                const value: *const T = @ptrCast(@alignCast(erased));
-                try bridge.write(T, key_value, value.*);
-            }
-        }.commit,
-    });
-    return pointer;
-}
-
-pub fn commitState(self: *Frame) !void {
-    const active = self.state();
-    std.debug.assert(active.state_bindings.items.len <= state_bindings_max);
-    for (active.state_bindings.items) |binding| {
-        try binding.commit(active.state_bridge, binding.key, binding.pointer);
-    }
-}
-
-/// Reserve a bounded region for a module contribution. The host invokes the
-/// module after layout and owns final input routing and composition.
-pub fn contribute(self: *Frame, key: @import("Key.zig"), identity: u64, context: *anyopaque, callback: @FieldType(ContributionCall, "render")) !void {
-    const active = self.state();
-    std.debug.assert(identity != 0);
-    std.debug.assert(active.active);
-    if (active.contribution_calls.items.len == modules_max) return error.TooManyModules;
-    for (active.contribution_calls.items) |entry| {
-        if (entry.identity == identity) return error.RepeatedModule;
-    }
-    _ = try active.ui.open(key, .{ .width = .grow(), .height = .grow(), .overflow = .hidden, .interactive = true }, .none);
-    const slot = active.ui.currentSlot();
-    const layer = active.ui.currentLayer();
-    active.ui.close();
-    if (layer.index() >= host_overlay_layer_min) return error.InvalidModuleLayer;
-    const subscriber = try active.state_bridge.ensureSubscriber(identity);
-    try active.contribution_calls.append(active.arena, .{ .slot = slot, .identity = identity, .subscriber = subscriber, .context = context, .render = callback });
 }
 
 /// Register a component tree to be rendered in the UI.

@@ -1,21 +1,9 @@
 diff --git a/src/layout/Context.zig b/src/layout/Context.zig
-index cba44d0..f45a884 100644
+index 5b1aa39..a240fd3 100644
 --- a/src/layout/Context.zig
 +++ b/src/layout/Context.zig
-@@ -410,9 +410,9 @@ fn computeLayoutNode(self: *Context, root_slot: Element.Slot, x: f32, y: f32, sc
-     const static_count = countStaticChildren(self, el);
-     resolvePercentChildren(self, el, axis, static_count);
-     const m = self.measureChildren(el, axis);
--    const gap = gapTotal(el, m.static_count);
-     const avail = axis.available();
--    const justify_free = @max(0, avail - (m.fixed_used - gap));
-+    // EVE-Maj patch: fixed_used already counts the gaps; leaving them out of the free space centred a row with a gap half a gap right.
-+    const justify_free = @max(0, avail - m.fixed_used);
-     const remaining_free = @max(0, avail - m.used);
- 
-     self.distributeGrow(el, axis, remaining_free, m.grow_count);
-@@ -640,12 +640,13 @@ fn measureChildren(self: *Context, el: *const Element, axis: AxisInfo) Measureme
-     return .{ .used = used, .fixed_used = fixed_used, .grow_count = grow_count, .static_count = static_count };
+@@ -633,12 +633,13 @@ fn measureChildren(self: *Context, el: *const Element, axis: AxisInfo) Measureme
+     return .{ .used = used, .grow_count = grow_count, .static_count = static_count };
  }
  
 -fn distributeGrow(self: *Context, el: *const Element, axis: AxisInfo, initial_free: f32, initial_grow_count: f32) void {
@@ -33,7 +21,7 @@ index cba44d0..f45a884 100644
          var clamped_space: f32 = 0;
          var still_growing: f32 = 0;
  
-@@ -654,27 +655,23 @@ fn distributeGrow(self: *Context, el: *const Element, axis: AxisInfo, initial_fr
+@@ -647,27 +648,23 @@ fn distributeGrow(self: *Context, el: *const Element, axis: AxisInfo, initial_fr
              const child = self.pool.get(child_slot);
              if (child.position != .absolute and axis.childMainKind(child) == .grow) {
                  const clamped = std.math.clamp(grow_unit, axis.childMainMin(child), axis.childMainMax(child));
@@ -68,7 +56,7 @@ index cba44d0..f45a884 100644
              if (axis.childCrossKind(child) == .grow)
                  axis.setChildCrossSize(child, axis.cross_size);
          }
-@@ -726,7 +723,7 @@ fn positionChildren(self: *Context, el: *Element, axis: AxisInfo, fixed_used: f3
+@@ -722,7 +719,7 @@ fn positionChildren(self: *Context, el: *Element, axis: AxisInfo, scroll: Scroll
      const scroll_offset: [2]f32 = if (el.overflow.isScroll()) blk: {
          const raw = scroll.get(el.id);
          break :blk switch (el.overflow) {

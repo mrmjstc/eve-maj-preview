@@ -213,7 +213,7 @@ fn addMemberRow(context: *ui.Frame, group: GroupRef) !void {
     const add_row = Rect{ .key = .src(@src()), .style = &style.member_add_row };
     _ = try add_row.open(context);
     const is_focused = context.ui().focused(ADD_MEMBER_KEY.hash());
-    try context.e(TextInput{ .key = ADD_MEMBER_KEY, .buf = &g_new_member, .style = &style.text_input, .placeholder = lang.text("Add character name\u{2026}") });
+    try context.e(TextInput{ .key = ADD_MEMBER_KEY, .buf = &g_new_member, .allocator = g_allocator, .style = &style.text_input, .placeholder = lang.text("Add character name\u{2026}") });
     const is_add_clicked = try widgets.glyphButton(context, .str("knots.groups.member.add"), .add, "Add", &style.add_button, false);
     if (is_add_clicked or (is_focused and context.ui().input.containsKey(.enter))) addMember(group);
     if (try widgets.addOpenClientsButton(context, .src(@src()), &style.plain_button)) fillFromClients(context, group);

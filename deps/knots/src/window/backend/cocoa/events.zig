@@ -11,6 +11,7 @@ const Window = @import("window").Window;
 pub const view_misc_methods = .{
     .{ "acceptsFirstResponder", acceptsFirstResponder },
     .{ "isFlipped", isFlipped },
+    .{ "mouseDownCanMoveWindow", mouseDownCanMoveWindow },
 };
 
 pub const mouse_methods = .{
@@ -25,6 +26,7 @@ pub const mouse_methods = .{
     .{ "otherMouseUp:", otherMouseUp },
     .{ "otherMouseDragged:", otherMouseDragged },
     .{ "scrollWheel:", scrollWheel },
+    .{ "mouseExited:", mouseExited },
 };
 
 pub const keyboard_methods = .{
@@ -57,6 +59,10 @@ fn isFlipped(_: c.id, _: c.SEL) callconv(.c) c.BOOL {
     return ak.boolParam(true);
 }
 
+fn mouseDownCanMoveWindow(_: c.id, _: c.SEL) callconv(.c) c.BOOL {
+    return ak.boolParam(false);
+}
+
 fn eventPos(self: c.id, event_id: c.id) [2]f64 {
     const view = objc.Object.fromId(self);
     const event = objc.Object.fromId(event_id);
@@ -67,7 +73,37 @@ fn eventPos(self: c.id, event_id: c.id) [2]f64 {
 
 fn mouseLeftDown(self: c.id, _: c.SEL, event_id: c.id) callconv(.c) void {
     const owner = ak.unwrapOwner(self) orelse return;
-    owner.setMouseButton(.left, true, eventPos(self, event_id));
+    const pos = eventPos(self, event_id);
+    if (owner.hitRegionAt(pos) == .caption) {
+        return captionMouseDown(owner, objc.Object.fromId(event_id));
+    }
+    owner.setMouseButton(.left, true, pos);
+}
+
+fn captionMouseDown(owner: *Window, event: objc.Object) void {
+    const ns_window = owner.backend.ns_window;
+    if (event.msgSend(c_long, "clickCount", .{}) != 2) {
+        ns_window.msgSend(void, "performWindowDragWithEvent:", .{event});
+        return;
+    }
+    const NSUserDefaults = objc.getClass("NSUserDefaults").?;
+    const defaults = NSUserDefaults.msgSend(objc.Object, "standardUserDefaults", .{});
+    const action = defaults.msgSend(objc.Object, "stringForKey:", .{ak.nsstring("AppleActionOnDoubleClick")});
+    if (action.value != null) {
+        if (action.msgSend(bool, "isEqualToString:", .{ak.nsstring("None")})) {
+            return;
+        }
+        if (action.msgSend(bool, "isEqualToString:", .{ak.nsstring("Minimize")})) {
+            ns_window.msgSend(void, "miniaturize:", .{@as(c.id, null)});
+            return;
+        }
+    }
+    ns_window.msgSend(void, "zoom:", .{@as(c.id, null)});
+}
+
+fn mouseExited(self: c.id, _: c.SEL, _: c.id) callconv(.c) void {
+    const owner = ak.unwrapOwner(self) orelse return;
+    owner.pointerLeft();
 }
 
 fn mouseLeftUp(self: c.id, _: c.SEL, event_id: c.id) callconv(.c) void {
@@ -149,17 +185,27 @@ fn keyDown(self: c.id, _: c.SEL, event_id: c.id) callconv(.c) void {
     const event = objc.Object.fromId(event_id);
     const kc = event.msgSend(u16, "keyCode", .{});
     const flags = event.msgSend(c_ulong, "modifierFlags", .{});
-    const key = keymap.translateKeyCode(kc);
+    const key = shortcutKey(event, kc);
     const mods = modsFromFlags(flags);
-    owner.pushKey(@backingInt(key), .press, mods);
+    const typed = eventChar(event, flags & (ak.NSEventModifierFlagShift | ak.NSEventModifierFlagOption)) orelse 0;
 
     const skip_chars = (flags & ak.NSEventModifierFlagCommand) != 0 or
         (flags & ak.NSEventModifierFlagControl) != 0;
-    if (skip_chars) return;
+    if (skip_chars) {
+        owner.pushKeyText(@backingInt(key), .press, mods, typed);
+        return;
+    }
 
+    // Keys the input method composes with (Return to convert, Backspace inside the
+    // composition) belong to it, not to the field.
+    const was_composing = owner.text_input.composition != null;
     const view = objc.Object.fromId(self);
     const input_context = view.msgSend(objc.Object, "inputContext", .{});
-    if (input_context.value != null and input_context.msgSend(bool, "handleEvent:", .{event})) return;
+    const handled = input_context.value != null and input_context.msgSend(bool, "handleEvent:", .{event});
+    if (!was_composing and owner.text_input.composition == null) {
+        owner.pushKeyText(@backingInt(key), .press, mods, typed);
+    }
+    if (handled) return;
 
     const characters = event.msgSend(objc.Object, "characters", .{});
     if (characters.value == null) return;
@@ -173,8 +219,24 @@ fn keyUp(self: c.id, _: c.SEL, event_id: c.id) callconv(.c) void {
     const event = objc.Object.fromId(event_id);
     const kc = event.msgSend(u16, "keyCode", .{});
     const flags = event.msgSend(c_ulong, "modifierFlags", .{});
-    const key = keymap.translateKeyCode(kc);
+    const key = shortcutKey(event, kc);
     owner.pushKey(@backingInt(key), .release, modsFromFlags(flags));
+}
+
+fn shortcutKey(event: objc.Object, kc: u16) input_types.Key {
+    return input_types.layoutKey(keymap.translateKeyCode(kc), eventChar(event, 0));
+}
+
+fn eventChar(event: objc.Object, flags: c_ulong) ?u21 {
+    const chars = event.msgSend(objc.Object, "charactersByApplyingModifiers:", .{flags});
+    if (chars.value == null) return null;
+    const utf8: [*:0]const u8 = chars.msgSend([*:0]const u8, "UTF8String", .{});
+    const s = std.mem.sliceTo(utf8, 0);
+    const len = std.unicode.utf8ByteSequenceLength(if (s.len > 0) s[0] else 0) catch return null;
+    if (s.len != len) return null;
+    const cp = std.unicode.utf8Decode(s) catch return null;
+    if (cp < 0x20 or cp == 0x7F or (cp >= 0xF700 and cp <= 0xF8FF)) return null; // control, function keys
+    return cp;
 }
 
 fn flagsChanged(self: c.id, _: c.SEL, event_id: c.id) callconv(.c) void {
@@ -256,7 +318,7 @@ fn windowDidChangeOcclusionState(self: c.id, _: c.SEL, _: c.id) callconv(.c) voi
 
 fn windowDidEnterFullScreen(self: c.id, _: c.SEL, _: c.id) callconv(.c) void {
     const owner = ak.unwrapOwner(self) orelse return;
-    owner.backend.display_mode = .fullscreen;
+    owner.backend.fullscreen = true;
     if (!owner.backend.display_mode_transition) owner.backend.desired_display_mode = .fullscreen;
     owner.backend.display_mode_transition = false;
     owner.requestFrame();
@@ -265,8 +327,10 @@ fn windowDidEnterFullScreen(self: c.id, _: c.SEL, _: c.id) callconv(.c) void {
 
 fn windowDidExitFullScreen(self: c.id, _: c.SEL, _: c.id) callconv(.c) void {
     const owner = ak.unwrapOwner(self) orelse return;
-    owner.backend.display_mode = .windowed;
-    if (!owner.backend.display_mode_transition) owner.backend.desired_display_mode = .windowed;
+    owner.backend.fullscreen = false;
+    if (!owner.backend.display_mode_transition) {
+        owner.backend.desired_display_mode = owner.backend.getDisplayMode();
+    }
     owner.backend.display_mode_transition = false;
     owner.requestFrame();
     owner.backend.reconcileDisplayMode();

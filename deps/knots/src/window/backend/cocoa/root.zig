@@ -6,6 +6,7 @@ const window = @import("window");
 const drop_paths = @import("window_drop_paths");
 const ak = @import("appkit.zig");
 const classes = @import("classes.zig");
+const text_input = @import("text_input.zig");
 
 const c = ak.c;
 
@@ -20,7 +21,8 @@ pub const Backend = struct {
     should_close: bool = false,
     cursor_visible: bool = true,
     cursor_shape: input_types.CursorShape = .default,
-    display_mode: window.DisplayMode = .windowed,
+    undecorated: bool,
+    fullscreen: bool = false,
     desired_display_mode: window.DisplayMode = .windowed,
     display_mode_transition: bool = false,
     frame_source: ?ak.CFRunLoopSourceRef = null,
@@ -171,6 +173,10 @@ pub const Backend = struct {
         self.cursor_visible = visible;
     }
 
+    pub fn updateTextInput(self: *Self, owner: *window.Window, change: window.TextInputState.Change) void {
+        text_input.update(self.ns_view, owner, change);
+    }
+
     pub fn setCursorShape(self: *Self, shape: input_types.CursorShape) void {
         if (self.cursor_shape == shape) return;
         self.cursor_shape = shape;
@@ -201,13 +207,50 @@ pub const Backend = struct {
     }
 
     pub fn reconcileDisplayMode(self: *Self) void {
-        if (self.display_mode_transition or self.display_mode == self.desired_display_mode) return;
-        self.display_mode_transition = true;
-        self.ns_window.msgSend(void, "toggleFullScreen:", .{@as(c.id, null)});
+        if (self.display_mode_transition) {
+            return;
+        }
+        const want_fullscreen = self.desired_display_mode == .fullscreen;
+        if (want_fullscreen != self.fullscreen) {
+            self.display_mode_transition = true;
+            self.ns_window.msgSend(void, "toggleFullScreen:", .{@as(c.id, null)});
+            return;
+        }
+        if (want_fullscreen) {
+            return;
+        }
+        const zoomed = self.ns_window.msgSend(bool, "isZoomed", .{});
+        if (zoomed != (self.desired_display_mode == .maximized)) {
+            self.ns_window.msgSend(void, "zoom:", .{@as(c.id, null)});
+        }
     }
 
     pub fn getDisplayMode(self: *const Self) window.DisplayMode {
-        return self.display_mode;
+        if (self.fullscreen) {
+            return .fullscreen;
+        }
+        if (self.ns_window.msgSend(bool, "isZoomed", .{})) {
+            return .maximized;
+        }
+        return .windowed;
+    }
+
+    pub fn minimize(self: *Self) void {
+        self.ns_window.msgSend(void, "miniaturize:", .{@as(c.id, null)});
+    }
+
+    pub fn nativeControlsWidth(self: *const Self) f32 {
+        if (!self.undecorated or self.fullscreen) {
+            return 0;
+        }
+        const close_button = self.ns_window.msgSend(objc.Object, "standardWindowButton:", .{ak.NSWindowCloseButton});
+        const zoom_button = self.ns_window.msgSend(objc.Object, "standardWindowButton:", .{ak.NSWindowZoomButton});
+        if (close_button.value == null or zoom_button.value == null) {
+            return 0;
+        }
+        const close_frame = close_button.msgSend(ak.NSRect, "frame", .{});
+        const zoom_frame = zoom_button.msgSend(ak.NSRect, "frame", .{});
+        return @floatCast(zoom_frame.origin.x + zoom_frame.size.width + close_frame.origin.x);
     }
 
     pub fn consumeResize(self: *Self, owner: *window.Window) ?window.ResizeEvent {
@@ -222,6 +265,12 @@ pub const Backend = struct {
 
     pub fn consumeDrops(self: *Self, _: *window.Window, allocator: std.mem.Allocator, n: usize) ![][]const u8 {
         return drop_paths.copy(allocator, self.drop_slices[0..n]);
+    }
+
+    pub fn requestPaste(self: *Self, owner: *window.Window) !void {
+        const text = try self.getClipboardText(owner.allocator) orelse return;
+        defer owner.allocator.free(text);
+        owner.pushPaste(text);
     }
 
     pub fn getClipboardText(_: *Self, allocator: std.mem.Allocator) !?[]u8 {
@@ -284,8 +333,13 @@ pub fn init(_: std.Io, _: std.mem.Allocator, cfg: window.Config) !Backend {
 
 fn initWindow(cfg: window.Config) !Backend {
     const NSWindowClass = objc.getClass("NSWindow").?;
-    const style: c_ulong = ak.NSWindowStyleMaskTitled | ak.NSWindowStyleMaskClosable |
-        ak.NSWindowStyleMaskMiniaturizable | (if (cfg.resizable) ak.NSWindowStyleMaskResizable else 0);
+    var style: c_ulong = ak.NSWindowStyleMaskTitled | ak.NSWindowStyleMaskClosable | ak.NSWindowStyleMaskMiniaturizable;
+    if (cfg.resizable) {
+        style |= ak.NSWindowStyleMaskResizable;
+    }
+    if (cfg.decorations == .none) {
+        style |= ak.NSWindowStyleMaskFullSizeContentView;
+    }
     const frame = ak.NSRect{
         .origin = .{ .x = 0, .y = 0 },
         .size = .{ .width = @floatFromInt(cfg.width), .height = @floatFromInt(cfg.height) },
@@ -298,6 +352,10 @@ fn initWindow(cfg: window.Config) !Backend {
         .{ frame, style, ak.NSBackingStoreBuffered, ak.boolParam(false) },
     );
     ns_window.msgSend(void, "setTitle:", .{ak.nsstring(cfg.title)});
+    if (cfg.decorations == .none) {
+        ns_window.msgSend(void, "setTitlebarAppearsTransparent:", .{ak.boolParam(true)});
+        ns_window.msgSend(void, "setTitleVisibility:", .{ak.NSWindowTitleHidden});
+    }
     if (cfg.min_size) |size| ns_window.msgSend(void, "setContentMinSize:", .{ak.NSSize{
         .width = @floatFromInt(size.width),
         .height = @floatFromInt(size.height),
@@ -306,6 +364,16 @@ fn initWindow(cfg: window.Config) !Backend {
         .width = @floatFromInt(size.width),
         .height = @floatFromInt(size.height),
     }});
+    if (cfg.background) |rgb| {
+        const NSColor = objc.getClass("NSColor").?;
+        const color = NSColor.msgSend(objc.Object, "colorWithSRGBRed:green:blue:alpha:", .{
+            @as(f64, @floatFromInt(rgb[0])) / 255.0,
+            @as(f64, @floatFromInt(rgb[1])) / 255.0,
+            @as(f64, @floatFromInt(rgb[2])) / 255.0,
+            @as(f64, 1.0),
+        });
+        ns_window.msgSend(void, "setBackgroundColor:", .{color});
+    }
     ns_window.msgSend(void, "setReleasedWhenClosed:", .{ak.boolParam(false)});
     ns_window.msgSend(void, "setAcceptsMouseMovedEvents:", .{ak.boolParam(true)});
     ns_window.msgSend(void, "center", .{});
@@ -314,6 +382,18 @@ fn initWindow(cfg: window.Config) !Backend {
         .msgSend(objc.Object, "alloc", .{})
         .msgSend(objc.Object, "initWithFrame:", .{frame});
     ns_window.msgSend(void, "setContentView:", .{view});
+
+    const NSTrackingArea = objc.getClass("NSTrackingArea").?;
+    const tracking_area = NSTrackingArea
+        .msgSend(objc.Object, "alloc", .{})
+        .msgSend(objc.Object, "initWithRect:options:owner:userInfo:", .{
+        frame,
+        ak.NSTrackingMouseEnteredAndExited | ak.NSTrackingActiveAlways | ak.NSTrackingInVisibleRect,
+        view,
+        @as(c.id, null),
+    });
+    view.msgSend(void, "addTrackingArea:", .{tracking_area});
+    tracking_area.msgSend(void, "release", .{});
 
     const NSArray = objc.getClass("NSArray").?;
     const drag_types = NSArray.msgSend(objc.Object, "arrayWithObject:", .{objc.Object{ .value = ak.NSPasteboardTypeFileURL }});
@@ -330,6 +410,7 @@ fn initWindow(cfg: window.Config) !Backend {
         .ns_window = ns_window,
         .ns_view = view,
         .delegate = delegate,
+        .undecorated = cfg.decorations == .none,
     };
 }
 
@@ -359,4 +440,80 @@ fn drainEventQueue(NSApp: objc.Object) void {
         if (event.value == null) break;
         NSApp.msgSend(void, "sendEvent:", .{event});
     }
+}
+
+test "the input method's marked text and commits become text edits" {
+    const testing = std.testing;
+    if (!classes_registered) {
+        const registered = try classes.registerClasses();
+        KnotsView = registered.view;
+        KnotsDelegate = registered.delegate;
+        classes_registered = true;
+    }
+    const view = KnotsView.msgSend(objc.Object, "alloc", .{}).msgSend(objc.Object, "init", .{});
+    defer view.msgSend(void, "release", .{});
+    try testing.expect(view.msgSend(objc.Object, "inputContext", .{}).value != null);
+
+    var owner: window.Window = .{ .backend = undefined, .allocator = testing.allocator, .canvas_selector = null };
+    defer {
+        owner.events.deinit(testing.allocator);
+        owner.frame_events.deinit(testing.allocator);
+        owner.text_input.deinit(testing.allocator);
+    }
+    ak.setOwner(view, &owner);
+    _ = try owner.text_input.set(testing.allocator, &.{
+        .id = 9,
+        .text = "ab",
+        .selection = .at(2),
+        .composition = null,
+        .purpose = .text,
+        .bytes_max = 1024,
+        .caret = .{ .x = 0, .y = 0, .w = 1, .h = 10 },
+    });
+
+    // "にほ" with the first clause being converted (thick underline).
+    const NSMutableAttributedString = objc.getClass("NSMutableAttributedString").?;
+    const NSNumber = objc.getClass("NSNumber").?;
+    const marked = NSMutableAttributedString.msgSend(objc.Object, "alloc", .{})
+        .msgSend(objc.Object, "initWithString:", .{ak.nsstring("にほ")});
+    defer marked.msgSend(void, "release", .{});
+    const underline = ak.nsstring("NSUnderline");
+    marked.msgSend(void, "addAttribute:value:range:", .{ underline, NSNumber.msgSend(objc.Object, "numberWithInteger:", .{@as(c_long, 2)}), ak.NSRange{ .location = 0, .length = 1 } });
+    marked.msgSend(void, "addAttribute:value:range:", .{ underline, NSNumber.msgSend(objc.Object, "numberWithInteger:", .{@as(c_long, 1)}), ak.NSRange{ .location = 1, .length = 1 } });
+
+    const not_found: c_ulong = std.math.maxInt(c_long);
+    view.msgSend(void, "setMarkedText:selectedRange:replacementRange:", .{ marked, ak.NSRange{ .location = 2, .length = 0 }, ak.NSRange{ .location = not_found, .length = 0 } });
+    var events = try owner.events.resolve(testing.allocator);
+    try testing.expectEqual(@as(usize, 1), events.len);
+    const compose = events[0].text;
+    try testing.expectEqualStrings("にほ", compose.text);
+    try testing.expectEqual(null, compose.replace);
+    try testing.expectEqual(input_types.TextRange.at(6), compose.compose.?.caret);
+    try testing.expectEqual(@as(usize, 2), compose.compose.?.segments.len);
+    try testing.expect(compose.compose.?.segments[0].active);
+    try testing.expect(!compose.compose.?.segments[1].active);
+
+    try testing.expect(view.msgSend(bool, "hasMarkedText", .{}));
+    const marked_range = view.msgSend(ak.NSRange, "markedRange", .{});
+    try testing.expectEqual(@as(c_ulong, 2), marked_range.location);
+    try testing.expectEqual(@as(c_ulong, 2), marked_range.length);
+    try testing.expectEqual(@as(c_ulong, 4), view.msgSend(ak.NSRange, "selectedRange", .{}).location);
+
+    view.msgSend(void, "insertText:replacementRange:", .{ ak.nsstring("日本"), ak.NSRange{ .location = not_found, .length = 0 } });
+    events = try owner.events.resolve(testing.allocator);
+    try testing.expectEqual(@as(usize, 2), events.len);
+    try testing.expectEqual(null, events[1].text.replace);
+    try testing.expectEqual(null, events[1].text.compose);
+    try testing.expectEqualStrings("ab日本", owner.text_input.text.items);
+    try testing.expect(!view.msgSend(bool, "hasMarkedText", .{}));
+
+    // Press and hold `b`, pick `ḃ`: the input method replaces the typed letter.
+    view.msgSend(void, "insertText:replacementRange:", .{ ak.nsstring("ḃ"), ak.NSRange{ .location = 1, .length = 1 } });
+    events = try owner.events.resolve(testing.allocator);
+    try testing.expectEqual(input_types.TextRange{ .start = 1, .end = 2 }, events[2].text.replace.?);
+    try testing.expectEqualStrings("aḃ日本", owner.text_input.text.items);
+
+    const substring = view.msgSend(objc.Object, "attributedSubstringForProposedRange:actualRange:", .{ ak.NSRange{ .location = 2, .length = 2 }, @as(?*ak.NSRange, null) });
+    const plain = substring.msgSend(objc.Object, "string", .{});
+    try testing.expectEqualStrings("日本", std.mem.sliceTo(plain.msgSend([*:0]const u8, "UTF8String", .{}), 0));
 }

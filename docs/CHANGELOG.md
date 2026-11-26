@@ -75,6 +75,7 @@
 - Releases built in CI from tags, with a SHA256SUMS.txt; release scripts share one module
 - Zig upgrade checklist and a weekly build against Zig nightly; knots patches marked against upstream 0.7.0
 - knots kept as upstream plus exported patches; update script and a source check keep them in step
+- Config window built on knots 0.7.0: text boxes take IME and dead-key input
 
 ### Fixed
 - Profiles: a queued action drops a leftover restore backup

@@ -1,7 +1,9 @@
 const std = @import("std");
 const gpu = @import("gpu");
+const render_mod = @import("render");
+const Instance = render_mod.Instance;
 const gpu_impl = @import("gpu_impl");
-const Packet = @import("render").Packet;
+const Packet = render_mod.Packet;
 
 const FrameUploads = @import("FrameUploads.zig");
 const Context = @import("Context.zig");
@@ -153,53 +155,6 @@ const RenderFailure = union(enum) {
     callback: anyerror,
     renderer: anyerror,
 };
-
-pub const CompositionNode = struct {
-    painter: *Painter,
-    packet: *const Packet,
-};
-
-/// Create one painter per independent UI context. The caller owns the painter.
-pub fn createLayerPainter(self: *Renderer) !*Painter {
-    return Painter.create(self.allocator, self.context, self.frame.uploadSlotCount());
-}
-
-/// Compose the host-owned graph in order, preserving each contribution's atlas.
-/// All painters must belong to this renderer's context and be distinct.
-pub fn renderGraph(self: *Renderer, graph: []const CompositionNode, content_scale: f32) !void {
-    if (graph.len == 0) return error.EmptyCompositionGraph;
-    if (graph.len > 32) return error.CompositionGraphTooLarge;
-    std.debug.assert(content_scale > 0);
-    std.debug.assert(std.math.isFinite(content_scale));
-    for (graph, 0..) |node, index| {
-        std.debug.assert(node.painter.context == self.context);
-        for (graph[0..index]) |previous| std.debug.assert(previous.painter != node.painter);
-    }
-    const linear = self.context.linear_pipeline != null;
-    // Backdrops sample what is drawn, so they need the offscreen target.
-    var offscreen = linear;
-    for (graph) |node| offscreen = offscreen or node.packet.hasBackdrop();
-    if (offscreen) try self.ensureSceneTarget(self.context.device, self.context);
-    try self.syncDepthTarget(self.context.device);
-    var frame_context = try self.frame.begin();
-    var prepared: [32]Painter.Prepared = undefined;
-    for (graph, 0..) |node, index| {
-        prepared[index] = try node.painter.prepare(node.packet, &.{
-            .width = self.surface.cfg.window_width,
-            .height = self.surface.cfg.window_height,
-            .content_scale = content_scale,
-            .upload_slot = frame_context.upload_slot,
-            .linear_target = linear,
-            .backdrops = offscreen,
-        });
-    }
-    var nodes: [32]EncodeNode = undefined;
-    for (graph, 0..) |node, index| nodes[index] = .{ .painter = node.painter, .prepared = &prepared[index] };
-    if (self.encodeFrame(&frame_context, nodes[0..graph.len], offscreen)) |failure| switch (failure) {
-        .callback, .renderer => |err| return err,
-    };
-    try self.finishFrame(&frame_context, &graph[0].painter.frame_uploads[frame_context.upload_slot], content_scale, offscreen);
-}
 
 /// Upload resources, encode, submit, and present to this renderer's owned surface.
 /// The packet is borrowed for this call; texture handles must outlive GPU work.
@@ -463,7 +418,7 @@ fn compositeSceneTarget(self: *Renderer, context: *Context, frame_ctx: *gpu_impl
     const height = self.surface.cfg.window_height;
     const logical_w: f32 = @as(f32, @floatFromInt(width)) / content_scale;
     const logical_h: f32 = @as(f32, @floatFromInt(height)) / content_scale;
-    const inst = gpu.Instance{
+    const inst = Instance{
         .pos = .{ 0, 0 },
         .size = .{ logical_w, logical_h },
         .uv0 = .{ 0, 0 },
@@ -474,7 +429,7 @@ fn compositeSceneTarget(self: *Renderer, context: *Context, frame_ctx: *gpu_impl
         .border_width = .{ 0, 0, 0, 0 },
         .prim_type = 2.0,
     };
-    uploads.composite_instance_buf.load(gpu.Instance, &.{inst});
+    uploads.composite_instance_buf.load(Instance, &.{inst});
 
     var pass = try frame_ctx.beginRenderPass(.{
         .label = "ui_composite",
@@ -488,7 +443,7 @@ fn compositeSceneTarget(self: *Renderer, context: *Context, frame_ctx: *gpu_impl
     pass.setBindGroup(0, &uploads.instance_uniform_bg);
     pass.setBindGroup(1, &self.scene_target_bg.?);
     pass.setBindGroup(2, &uploads.instance_clip_bg);
-    pass.setVertexBuffer(0, &uploads.composite_instance_buf, 0, @sizeOf(gpu.Instance));
+    pass.setVertexBuffer(0, &uploads.composite_instance_buf, 0, @sizeOf(Instance));
     pass.setIndexBuffer(&context.unit_index_buf, 0, 6 * @sizeOf(u32));
     pass.setScissorRect(0, 0, width, height);
     pass.drawIndexed(6, 1, 0, 0, 0);

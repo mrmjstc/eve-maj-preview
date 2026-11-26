@@ -1,8 +1,8 @@
 diff --git a/src/ui/UI.zig b/src/ui/UI.zig
-index 1894509..e2a44fa 100644
+index 55bcd16..12e7d0d 100644
 --- a/src/ui/UI.zig
 +++ b/src/ui/UI.zig
-@@ -95,6 +95,8 @@ cull_ancestors: std.ArrayList(Element.Slot) = .empty,
+@@ -103,6 +103,8 @@ cull_ancestors: std.ArrayList(Element.Slot) = .empty,
  /// 1 inside a culled element, plus one per nested open, which creates no element.
  cull_depth: u32 = 0,
  culled_count: u32 = 0,
@@ -11,7 +11,7 @@ index 1894509..e2a44fa 100644
  content_scale: f32,
  scroll_line_size: FontSize.Input,
  anim_active: bool,
-@@ -180,6 +182,11 @@ pub fn openWith(self: *UI, key: Key, element: Element.Config, decoration: Decora
+@@ -196,6 +198,11 @@ pub fn openWith(self: *UI, key: Key, element: Element.Config, decoration: Decora
      }
      var cfg = element;
      var decoration_used = decoration;
@@ -23,7 +23,7 @@ index 1894509..e2a44fa 100644
      if (options.root == null) {
          if (self.cullRecord(key.hash())) |record| {
              if (cfg.width.kind == .fit) cfg.width = .fixed(record.size[0]);
-@@ -590,6 +597,20 @@ pub fn setAccessibility(self: *UI, id: Element.Id, meta: Accessibility.Metadata)
+@@ -676,6 +683,20 @@ pub fn setAccessibility(self: *UI, id: Element.Id, meta: Accessibility.Metadata)
      self.accessibility_node_indices.putAssumeCapacity(id, index);
  }
  

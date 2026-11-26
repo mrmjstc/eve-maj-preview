@@ -1,5 +1,5 @@
 diff --git a/lib/accesskit/build.zig.zon b/lib/accesskit/build.zig.zon
-index 1c92676..09d6e53 100644
+index 8d6b4fd..86ce292 100644
 --- a/lib/accesskit/build.zig.zon
 +++ b/lib/accesskit/build.zig.zon
 @@ -1,7 +1,8 @@

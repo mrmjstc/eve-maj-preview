@@ -76,7 +76,7 @@ const Edit = struct {
 
     fn draw(self: *const Edit, context: *ui.Frame, box_style: *const ui.Style, placeholder: []const u8) !void {
         try claimRowClick(context, self.key, self.state.text.items.len);
-        try context.e(TextInput{ .key = self.key, .buf = &self.state.text, .style = box_style, .placeholder = placeholder });
+        try context.e(TextInput{ .key = self.key, .buf = &self.state.text, .allocator = g_allocator, .style = box_style, .placeholder = placeholder });
         try widgets.nameControl(context, self.key);
     }
 };

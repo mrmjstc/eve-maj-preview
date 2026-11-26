@@ -591,9 +591,8 @@ pub fn textWidth(context: *ui.Frame, text: []const u8, text_style: *const ui.Sty
     const ui_state = context.ui();
     // Unset, text takes the theme's base size, as knots' own style resolution does.
     const font_size = if (text_style.font_size) |size| size.resolve(&ui_state.theme) else ui_state.theme.font_size[1];
-    const face = try ui_state.font.getFace(text_style.font);
-    const scale = ui_state.content_scale;
-    return (try face.measure(text, font_size * scale)).width / scale;
+    const layout = try ui_state.textLayout(text, font_size, text_style.font, 0);
+    return layout.width / ui_state.content_scale;
 }
 
 /// Ends in "..." to fit `max_width`, as knots only clips; `text` itself if it fits or the width's unknown, else in the frame's arena.
@@ -642,7 +641,7 @@ pub fn openRoster(context: *ui.Frame, key: ui.Key, frame_style: *const ui.Style,
 pub fn searchBox(context: *ui.Frame, key: ui.Key, query: *std.ArrayList(u8), placeholder: []const u8) !void {
     const row = Rect{ .key = key, .style = &style.search_row };
     _ = try row.open(context);
-    try context.e(TextInput{ .key = key.indexed(1), .buf = query, .style = &style.text_input, .placeholder = lang.text(placeholder) });
+    try context.e(TextInput{ .key = key.indexed(1), .buf = query, .allocator = context.ui().allocator, .style = &style.text_input, .placeholder = lang.text(placeholder) });
     if (query.items.len > 0) {
         if ((try context.interact(Button{ .key = key.indexed(2), .label = "\u{00D7}", .style = &style.icon_button_danger_text })).clicked) {
             query.clearRetainingCapacity();
@@ -792,8 +791,7 @@ pub fn focusTextInput(context: *ui.Frame, key: ui.Key, text_length: usize) !void
     const id = key.hash();
     ui_state.state.focused = id;
     const edit_state = try ui_state.state.getOrCreate(.text_input, ui_state.allocator, id);
-    edit_state.sel_anchor = 0;
-    edit_state.cursor = @intCast(text_length);
+    edit_state.selection = .{ .anchor = 0, .caret = @intCast(text_length) };
 }
 
 /// openRow for a modal, flush with its text and buttons; the caller closes it.

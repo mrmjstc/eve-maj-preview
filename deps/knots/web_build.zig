@@ -30,14 +30,20 @@ pub const Options = struct {
 pub fn configureExecutable(b: *std.Build, root_module: *std.Build.Module, executable: *std.Build.Step.Compile, threads: bool, options: Options) void {
     std.debug.assert(root_module.resolved_target != null);
     std.debug.assert(executable.root_module.resolved_target != null);
-    configureTarget(&root_module.resolved_target.?, threads);
-    configureTarget(&executable.root_module.resolved_target.?, threads);
+    const optimize = executable.root_module.optimize orelse .debug;
+    configureWasmTarget(&root_module.resolved_target.?, threads, optimize);
+    configureWasmTarget(&executable.root_module.resolved_target.?, threads, optimize);
     executable.import_memory = threads;
     executable.export_memory = true;
     executable.export_table = threads;
     executable.shared_memory = threads;
     executable.initial_memory = memory_initial;
     executable.max_memory = memory_max;
+
+    // Zig's own wasm backend rebuilds a debug app in a fraction of a second
+    // under `zig build --watch -fincremental`; LLVM takes seconds.
+    if (executable.use_llvm == null and optimize == .debug and executable.root_module.resolved_target.?.result.os.tag == .freestanding)
+        executable.use_llvm = false;
 
     // wasm32-wasi otherwise gets a 16 MiB stack, larger than the initial memory.
     if (executable.stack_size == null)
@@ -62,9 +68,17 @@ pub fn configureExecutable(b: *std.Build, root_module: *std.Build.Module, execut
     root_module.export_symbol_names = names;
 }
 
-pub fn configureTarget(target: *std.Build.ResolvedTarget, threads: bool) void {
+pub fn configureWasmTarget(target: *std.Build.ResolvedTarget, threads: bool, optimize: std.builtin.OptimizeMode) void {
     if (!target.result.cpu.arch.isWasm())
         return;
+    // Text shaping and layout use @Vector, which lowers to scalar code without simd128.
+    // Debug builds use Zig's own wasm backend (see configureExecutable), which miscompiles
+    // vector code, so only optimized builds get it.
+    if (optimize != .debug) {
+        const simd = std.Target.wasm.Feature.simd128;
+        target.query.cpu_features_add.addFeature(@backingInt(simd));
+        target.result.cpu.features.addFeature(@backingInt(simd));
+    }
     if (!threads) {
         const feature = std.Target.wasm.Feature.atomics;
         target.query.cpu_features_add.removeFeature(@backingInt(feature));

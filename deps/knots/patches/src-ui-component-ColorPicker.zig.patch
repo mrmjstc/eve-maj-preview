@@ -1,5 +1,5 @@
 diff --git a/src/ui/component/ColorPicker.zig b/src/ui/component/ColorPicker.zig
-index 48364b3..db2dfaf 100644
+index afd7936..3e07ca7 100644
 --- a/src/ui/component/ColorPicker.zig
 +++ b/src/ui/component/ColorPicker.zig
 @@ -1,5 +1,6 @@
@@ -9,7 +9,7 @@ index 48364b3..db2dfaf 100644
  const Frame = @import("../root.zig").Frame;
  const Element = @import("layout").Element;
  const ui_mod = @import("../root.zig");
-@@ -7,6 +8,7 @@ const ui_mod = @import("../root.zig");
+@@ -8,6 +9,7 @@ const placePopup = @import("popup.zig").place;
  const Color = ui_mod.Color;
  const Decoration = ui_mod.Decoration;
  const Key = ui_mod.Key;
@@ -17,7 +17,7 @@ index 48364b3..db2dfaf 100644
  const State = ui_mod.State;
  const Style = ui_mod.Style;
  const UI = ui_mod.UI;
-@@ -16,6 +18,16 @@ key: Key,
+@@ -17,6 +19,16 @@ key: Key,
  /// The trigger; also styles the hex field in the popup.
  style: *const Style = &.{},
  parts: Parts = .{},
@@ -34,7 +34,7 @@ index 48364b3..db2dfaf 100644
  
  pub const Parts = struct {
      /// Fixed `width` / `height` size the color swatch.
-@@ -26,6 +38,9 @@ pub const Parts = struct {
+@@ -27,6 +39,9 @@ pub const Parts = struct {
      area: *const Style = &.{},
      /// Hue and alpha strips; a fixed `height` sizes them.
      strip: *const Style = &.{},
@@ -44,7 +44,7 @@ index 48364b3..db2dfaf 100644
  };
  
  pub const base = struct {
-@@ -42,7 +57,8 @@ pub const base = struct {
+@@ -43,7 +58,8 @@ pub const base = struct {
          .focus = &.{ .background = .elevated, .border_color = .accent },
          .open = &.{ .background = .elevated, .border_color = .accent },
      };
@@ -54,7 +54,16 @@ index 48364b3..db2dfaf 100644
      pub const popup: Style = .{
          .width = .fixed(240),
          .direction = .column,
-@@ -63,6 +79,7 @@ pub const base = struct {
+@@ -58,12 +74,16 @@ pub const base = struct {
+     };
+     pub const area: Style = .{ .width = .grow(), .height = .fixed(150) };
+     pub const strip: Style = .{ .width = .grow(), .height = .fixed(16) };
++    /// EVE-Maj patch: empty, since the Reset button takes Button's look and `parts.reset`/`parts.reset_label` only layer over it.
++    pub const reset: Style = .{};
++    pub const reset_label: Style = .{};
+ };
+ 
+ /// Resolved geometry shared by the trigger and the popup.
  const Metrics = struct {
      swatch_w: f32,
      swatch_h: f32,
@@ -62,7 +71,7 @@ index 48364b3..db2dfaf 100644
      popup_w: f32,
      inner_w: f32,
      area_h: f32,
-@@ -84,6 +101,7 @@ fn metrics(self: *const ColorPicker, ui: *UI) Metrics {
+@@ -85,6 +105,7 @@ fn metrics(self: *const ColorPicker, ui: *UI) Metrics {
      return .{
          .swatch_w = fixedOr(swatch.layout.width, 18),
          .swatch_h = fixedOr(swatch.layout.height, 18),
@@ -70,7 +79,7 @@ index 48364b3..db2dfaf 100644
          .popup_w = popup_w,
          .inner_w = @max(0, popup_w - popup.layout.padding.left() - popup.layout.padding.right()),
          .area_h = fixedOr(area.layout.height, 150),
-@@ -106,6 +124,7 @@ const HUE_INDEX: usize = 5;
+@@ -107,6 +128,7 @@ const HUE_INDEX: usize = 5;
  const ALPHA_INDEX: usize = 6;
  const PREVIEW_INDEX: usize = 7;
  const HEX_INDEX: usize = 8;
@@ -78,7 +87,7 @@ index 48364b3..db2dfaf 100644
  
  pub fn open(self: *const ColorPicker, frame: *Frame) !Element.Id {
      const ui = frame.ui();
-@@ -137,7 +156,11 @@ pub fn open(self: *const ColorPicker, frame: *Frame) !Element.Id {
+@@ -138,7 +160,11 @@ pub fn open(self: *const ColorPicker, frame: *Frame) !Element.Id {
      const m = self.metrics(ui);
      const root = ui.resolveStyle(id, .{ .base = &base.root, .user = self.style }, ui.states(id, .{ .open = s.open }), null);
      var config = root.element(.{ .interactive = true });
@@ -91,7 +100,7 @@ index 48364b3..db2dfaf 100644
      return try ui.openResolved(self.key, &root, config, null);
  }
  
-@@ -160,32 +183,46 @@ pub fn close(self: *const ColorPicker, frame: *Frame) !void {
+@@ -161,32 +187,46 @@ pub fn close(self: *const ColorPicker, frame: *Frame) !void {
  
      var swatch_cmds: std.ArrayList(Decoration.DrawCmd) = .empty;
      const arena = frame.arena();
@@ -151,26 +160,19 @@ index 48364b3..db2dfaf 100644
          var deco = try ui.textDecoration(hex, content.font_size, content.font, false);
          deco.text.color = content.foreground;
          _ = try ui.open(self.key.indexed(TEXT_INDEX), .{ .width = .fit(), .height = .fit() }, deco);
-@@ -312,7 +349,10 @@ fn renderPopover(self: *const ColorPicker, frame: *Frame, s: *State.ColorPicker,
+@@ -316,7 +356,10 @@ fn renderPopover(self: *const ColorPicker, frame: *Frame, s: *State.ColorPicker,
      const popup_id = self.key.indexed(POPUP_INDEX).hash();
  
      const line_h = try ui.lineHeight(parent.font_size, parent.font);
 -    const popup_h = m.area_h + m.strip_h * 2 + line_h + 76;
++    // EVE-Maj patch: one strip without alpha, and the Reset button adds a line and its padding.
 +    const strip_count: f32 = if (self.show_alpha) 2 else 1;
-+    // EVE-Maj patch: the Reset button adds a line and its padding.
 +    const reset_h: f32 = if (self.reset != null) line_h + 20 else 0;
 +    const popup_h = m.area_h + m.strip_h * strip_count + line_h + 76 + reset_h;
-     const viewport_bottom = viewport.y() + viewport.h();
-     const space_below = viewport_bottom - (anchor.y() + anchor.h());
-     const space_above = anchor.y() - viewport.y();
-@@ -325,13 +365,30 @@ fn renderPopover(self: *const ColorPicker, frame: *Frame, s: *State.ColorPicker,
-     var config = popup.element(.{ .interactive = true });
-     config.width = .fixed(m.popup_w);
-     config.height = .{ .kind = .fit, .max = max_h };
--    _ = try ui.openResolved(self.key.indexed(POPUP_INDEX), &popup, config, .{ anchor.x(), popup_y });
-+    // EVE-Maj patch: shifted left, as far as the viewport allows, so a trigger near the right edge doesn't push the popup off it.
-+    const popup_x = @max(viewport.x(), @min(anchor.x(), viewport.x() + viewport.w() - m.popup_w));
-+    _ = try ui.openResolved(self.key.indexed(POPUP_INDEX), &popup, config, .{ popup_x, popup_y });
+     const p = placePopup(s.viewport_box, s.anchor_box, m.popup_w, popup_h);
+ 
+     _ = try ui.state.getOrCreate(.measured, ui.allocator, popup_id);
+@@ -328,9 +371,24 @@ fn renderPopover(self: *const ColorPicker, frame: *Frame, s: *State.ColorPicker,
  
      try self.renderSvControl(frame, s, m);
      try self.renderHueControl(frame, s, m);
@@ -196,7 +198,7 @@ index 48364b3..db2dfaf 100644
  
      ui.close();
  }
-@@ -408,6 +465,25 @@ fn renderSvControl(self: *const ColorPicker, frame: *Frame, s: *State.ColorPicke
+@@ -407,6 +465,25 @@ fn renderSvControl(self: *const ColorPicker, frame: *Frame, s: *State.ColorPicke
      ui.close();
  }
  
@@ -222,7 +224,7 @@ index 48364b3..db2dfaf 100644
  fn renderHueControl(self: *const ColorPicker, frame: *Frame, s: *State.ColorPicker, m: Metrics) !void {
      const ui = frame.ui();
      const id = self.key.indexed(HUE_INDEX).hash();
-@@ -455,7 +531,7 @@ fn renderAlphaControl(self: *const ColorPicker, frame: *Frame, s: *State.ColorPi
+@@ -454,7 +531,7 @@ fn renderAlphaControl(self: *const ColorPicker, frame: *Frame, s: *State.ColorPi
      const arena = frame.arena();
      const w = m.inner_w;
      const h = m.strip_h;
@@ -231,7 +233,7 @@ index 48364b3..db2dfaf 100644
  
      const solid = hsvToLinearColor(s.hue, s.saturation, s.value, 1).value;
      const transparent = .{ solid[0], solid[1], solid[2], 0 };
-@@ -489,9 +565,10 @@ fn renderPreview(self: *const ColorPicker, frame: *Frame, s: *State.ColorPicker,
+@@ -488,9 +565,10 @@ fn renderPreview(self: *const ColorPicker, frame: *Frame, s: *State.ColorPicker,
      const half = w * 0.5;
      const original = if (s.has_original) s.original_color else self.value.value;
  
@@ -245,7 +247,7 @@ index 48364b3..db2dfaf 100644
      try cmds.append(arena, .{ .line = .{ .from = .{ half, 0 }, .to = .{ half, h }, .color = .{ 0, 0, 0, 0.35 }, .thickness = 1 } });
      try cmds.append(arena, .{ .stroke_rect = .{ .x = 0.5, .y = 0.5, .w = w - 1, .h = h - 1, .color = .{ 0, 0, 0, 0.35 }, .corner_radius = .all(3.5) } });
  
-@@ -517,7 +594,7 @@ fn renderHexField(self: *const ColorPicker, frame: *Frame, s: *State.ColorPicker
+@@ -516,7 +594,7 @@ fn renderHexField(self: *const ColorPicker, frame: *Frame, s: *State.ColorPicker
      const display = if (s.editing_hex)
          s.hex_buf[0..s.hex_len]
      else
@@ -254,7 +256,7 @@ index 48364b3..db2dfaf 100644
      var deco = try ui.textDecoration(display, field.content.font_size, field.content.font, false);
      deco.text.color = field.content.foreground;
      _ = try ui.open(self.key.indexed(HEX_INDEX + 100), .{ .width = .fit(), .height = .fit() }, deco);
-@@ -539,7 +616,9 @@ fn setColorFromState(self: *const ColorPicker, frame: *Frame, s: *State.ColorPic
+@@ -538,7 +616,9 @@ fn setColorFromState(self: *const ColorPicker, frame: *Frame, s: *State.ColorPic
      try setColor(self, frame, s, hsvToLinearColor(s.hue, s.saturation, s.value, s.alpha));
  }
  
@@ -265,7 +267,7 @@ index 48364b3..db2dfaf 100644
      if (std.meta.eql(self.value.value, color.value)) return;
      self.value.* = color;
      syncStateFromColor(s, color);
-@@ -552,7 +631,8 @@ fn pointInBox(m: *const State.Measured, mouse_pos: [2]f64) [2]f32 {
+@@ -551,7 +631,8 @@ fn pointInBox(m: *const State.Measured, mouse_pos: [2]f64) [2]f32 {
      return .{ x, y };
  }
  
@@ -275,7 +277,7 @@ index 48364b3..db2dfaf 100644
      var y: f32 = 0;
      var row: usize = 0;
      while (y < h) : ({
-@@ -565,12 +645,22 @@ fn appendCheckerboard(cmds: *std.ArrayList(Decoration.DrawCmd), allocator: std.m
+@@ -564,12 +645,22 @@ fn appendCheckerboard(cmds: *std.ArrayList(Decoration.DrawCmd), allocator: std.m
              x += cell;
              col += 1;
          }) {

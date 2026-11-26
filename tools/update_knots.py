@@ -81,10 +81,10 @@ def fresh_worktree(commit):
 
 
 def tracked_knots_files():
-    """deps/knots's tracked files that came from upstream, as paths inside it."""
-    listed = git("ls-files", "-z", "--", "deps/knots").stdout.split("\0")
-    paths = [os.path.relpath(os.path.join(REPO, p), KNOTS).replace(os.sep, "/") for p in listed if p]
-    return [p for p in paths if not is_local(p)]
+    """deps/knots's files from upstream, as paths inside it: tracked or new, not ignored, and on disk, so it's right mid-update too."""
+    listed = git("ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "deps/knots").stdout.split("\0")
+    paths = {os.path.relpath(os.path.join(REPO, p), KNOTS).replace(os.sep, "/") for p in listed if p}
+    return sorted(p for p in paths if not is_local(p) and os.path.isfile(os.path.join(KNOTS, p)))
 
 
 def worktree_files():

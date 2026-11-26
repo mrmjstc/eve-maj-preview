@@ -1,5 +1,10 @@
+const std = @import("std");
 const gpu = @import("gpu");
-const shaders = @import("render").shaders;
+const render = @import("render");
+const Vertex = render.Vertex;
+const Instance = render.Instance;
+const SlugInstance = render.SlugInstance;
+const shaders = @import("shaders.zig");
 
 pub const SlugUniforms = extern struct {
     mvp_row0: [4]f32,
@@ -13,34 +18,49 @@ pub const ViewportUniform = [2]f32;
 
 pub const PrimitivesKind = enum { vertex, instance };
 
-const standard_blend = gpu.Pipeline.BlendState{
-    .color = .{ .src_factor = .src_alpha, .dst_factor = .one_minus_src_alpha, .op = .add },
-    .alpha = .{ .src_factor = .one, .dst_factor = .one_minus_src_alpha, .op = .add },
-};
+const standard_blend = blendState(render.contract.blending.primitives);
+const premultiplied_blend = blendState(render.contract.blending.text);
 
-const premultiplied_blend = gpu.Pipeline.BlendState{
-    .color = .{ .src_factor = .one, .dst_factor = .one_minus_src_alpha, .op = .add },
-    .alpha = .{ .src_factor = .one, .dst_factor = .one_minus_src_alpha, .op = .add },
-};
+comptime {
+    std.debug.assert(@sizeOf(SlugUniforms) == @sizeOf(render.contract.TextUniform));
+    std.debug.assert(@sizeOf(ViewportUniform) == @sizeOf(render.contract.PrimitiveUniform));
+}
 
-const vertex_attrs = gpu.Pipeline.attrsFromStruct(gpu.Vertex);
-const instance_attrs = gpu.Pipeline.attrsFromStruct(gpu.Instance);
-const slug_attrs = gpu.Pipeline.attrsFromStruct(gpu.SlugInstance);
+/// The packet contract states blending without a graphics API; this maps it to `gpu`.
+fn blendState(comptime blend: render.contract.Blend) gpu.Pipeline.BlendState {
+    return .{
+        .color = .{ .src_factor = blendFactor(blend.color.source), .dst_factor = blendFactor(blend.color.target), .op = .add },
+        .alpha = .{ .src_factor = blendFactor(blend.alpha.source), .dst_factor = blendFactor(blend.alpha.target), .op = .add },
+    };
+}
+
+fn blendFactor(comptime factor: render.contract.BlendFactor) gpu.Pipeline.BlendFactor {
+    return switch (factor) {
+        .zero => .zero,
+        .one => .one,
+        .source_alpha => .src_alpha,
+        .one_minus_source_alpha => .one_minus_src_alpha,
+    };
+}
+
+const vertex_attrs = gpu.Pipeline.attrsFromStruct(Vertex);
+const instance_attrs = gpu.Pipeline.attrsFromStruct(Instance);
+const slug_attrs = gpu.Pipeline.attrsFromStruct(SlugInstance);
 
 const vertex_buffers = [_]gpu.Pipeline.VertexBufferLayout{.{
-    .stride = @sizeOf(gpu.Vertex),
+    .stride = @sizeOf(Vertex),
     .step_mode = .vertex,
     .attributes = &vertex_attrs,
 }};
 
 const instance_buffers = [_]gpu.Pipeline.VertexBufferLayout{.{
-    .stride = @sizeOf(gpu.Instance),
+    .stride = @sizeOf(Instance),
     .step_mode = .instance,
     .attributes = &instance_attrs,
 }};
 
 const slug_buffers = [_]gpu.Pipeline.VertexBufferLayout{.{
-    .stride = @sizeOf(gpu.SlugInstance),
+    .stride = @sizeOf(SlugInstance),
     .step_mode = .instance,
     .attributes = &slug_attrs,
 }};
@@ -76,15 +96,15 @@ const slug_uniform_bgl = gpu.Pipeline.BindGroupLayoutDesc{
     },
 };
 
-const slug_curveband_bgl = gpu.Pipeline.BindGroupLayoutDesc{
-    .label = "slug_curveband_bgl",
+const slug_glyph_bgl = gpu.Pipeline.BindGroupLayoutDesc{
+    .label = "slug_glyph_bgl",
     .entries = &.{
-        .{ .binding = 0, .visibility = .{ .fragment = true }, .type = .{ .sampled_texture = .unfilterable_float } },
-        .{ .binding = 1, .visibility = .{ .fragment = true }, .type = .{ .sampled_texture = .uint } },
+        .{ .binding = 0, .visibility = .{ .vertex = true }, .type = .read_only_storage_buffer },
+        .{ .binding = 1, .visibility = .{ .fragment = true }, .type = .read_only_storage_buffer },
     },
 };
 
-const slug_bgls = [_]gpu.Pipeline.BindGroupLayoutDesc{ slug_uniform_bgl, slug_curveband_bgl, clip_bgl };
+const slug_bgls = [_]gpu.Pipeline.BindGroupLayoutDesc{ slug_uniform_bgl, slug_glyph_bgl, clip_bgl };
 
 pub fn primitivesDesc(kind: PrimitivesKind, srgb_surface: bool) gpu.Pipeline.Desc {
     return primitivesDescForTarget(kind, null, !srgb_surface);
@@ -105,7 +125,7 @@ fn primitivesDescForTarget(kind: PrimitivesKind, target_format: ?gpu.Texture.For
     };
     const fs_entry: []const u8 = if (encode_srgb) "fs_main_srgb_encode" else "fs_main";
 
-    const shader: gpu.Pipeline.ShaderSource = switch (gpu.Backend) {
+    const shader: gpu.Pipeline.ShaderSource = switch (gpu.backend) {
         .webgpu => .{ .wgsl = shaders.primitives_wgsl },
         .vulkan => .{ .spirv = .{
             .vs = switch (kind) {
@@ -139,7 +159,7 @@ pub fn linearTargetSlugDesc() gpu.Pipeline.Desc {
 fn slugDescForTarget(target_format: ?gpu.Texture.Format, encode_srgb: bool) gpu.Pipeline.Desc {
     const fs_entry: []const u8 = if (encode_srgb) "fs_main_srgb_encode" else "fs_main";
 
-    const shader: gpu.Pipeline.ShaderSource = switch (gpu.Backend) {
+    const shader: gpu.Pipeline.ShaderSource = switch (gpu.backend) {
         .webgpu => .{ .wgsl = shaders.text_wgsl },
         .vulkan => .{ .spirv = .{ .vs = shaders.slug_vert_spv, .fs = shaders.slug_frag_spv, .fs_entry = fs_entry } },
     };
@@ -216,7 +236,7 @@ pub fn blurDesc(step: BlurStep, target_format: ?gpu.Texture.Format) gpu.Pipeline
         .down => "fs_blur_down",
         .up => "fs_blur_up",
     };
-    const shader: gpu.Pipeline.ShaderSource = switch (gpu.Backend) {
+    const shader: gpu.Pipeline.ShaderSource = switch (gpu.backend) {
         .webgpu => .{ .wgsl = shaders.backdrop_wgsl },
         .vulkan => .{ .spirv = .{ .vs = shaders.backdrop_blur_vert_spv, .fs = shaders.backdrop_blur_frag_spv, .fs_entry = fs_entry } },
     };
@@ -233,7 +253,7 @@ pub fn blurDesc(step: BlurStep, target_format: ?gpu.Texture.Format) gpu.Pipeline
 
 /// Draws filtered backdrop into the scene target, which stores display encoding.
 pub fn glassDesc(target_format: ?gpu.Texture.Format) gpu.Pipeline.Desc {
-    const shader: gpu.Pipeline.ShaderSource = switch (gpu.Backend) {
+    const shader: gpu.Pipeline.ShaderSource = switch (gpu.backend) {
         .webgpu => .{ .wgsl = shaders.backdrop_wgsl },
         .vulkan => .{ .spirv = .{ .vs = shaders.backdrop_glass_vert_spv, .fs = shaders.backdrop_glass_frag_spv, .fs_entry = "fs_glass" } },
     };

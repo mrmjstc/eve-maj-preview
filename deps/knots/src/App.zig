@@ -2,7 +2,7 @@ const std = @import("std");
 const gpu = @import("gpu");
 
 const input_types = @import("input");
-const browser_exports = @import("browser_exports");
+const wasm = @import("platform_impl");
 const renderer = @import("renderer");
 const window = @import("window");
 const platform = @import("platform.zig");
@@ -11,6 +11,8 @@ const Window = window.Window;
 const WindowConfig = window.Config;
 const UI = @import("ui").UI;
 const Frame = @import("ui").Frame;
+const Theme = @import("ui").Theme;
+const Color = @import("ui").Color;
 
 const CompletionQueue = @import("CompletionQueue.zig");
 const ReturnType = @import("util.zig").ReturnType;
@@ -57,7 +59,7 @@ pub fn init(io: std.Io, allocator: std.mem.Allocator, cfg: Config) !App {
     var main_window = try Window.init(
         io,
         allocator,
-        cfg.window,
+        themedWindowConfig(cfg.window, &cfg.ui.theme),
     );
     var main_window_owned = true;
     errdefer if (main_window_owned) main_window.deinit();
@@ -147,7 +149,7 @@ pub fn start(self: *App, frame_cb: RenderFn) !void {
 
     self.main_viewport.window.pollEvents(self.io);
 
-    if (platform.is_browser_wasm)
+    if (platform.is_wasm)
         return;
 
     defer {
@@ -179,7 +181,7 @@ pub fn openWindow(self: *App, source_id: Viewport.Id, cfg: OpenWindowConfig, fra
     if (!self.running)
         return error.AppNotStarted;
 
-    if (platform.is_browser_wasm)
+    if (!platform.secondary_windows)
         return error.UnsupportedPlatform;
 
     const source = self.viewportForId(source_id) orelse
@@ -191,6 +193,7 @@ pub fn openWindow(self: *App, source_id: Viewport.Id, cfg: OpenWindowConfig, fra
     );
 
     const id = try self.allocateViewportId();
+    const ui_cfg = cfg.ui orelse source.ui_cfg;
 
     const viewport = try Viewport.createSecondary(
         self.allocator,
@@ -198,10 +201,10 @@ pub fn openWindow(self: *App, source_id: Viewport.Id, cfg: OpenWindowConfig, fra
         self.render_context,
         &self.main_viewport.window,
         id,
-        cfg.window,
+        themedWindowConfig(cfg.window, &ui_cfg.theme),
         cfg.renderer orelse source.renderer.cfg,
         .{
-            .ui = cfg.ui orelse source.ui_cfg,
+            .ui = ui_cfg,
             .arena_reset_mode = self.cfg.arena_reset_mode,
             .timer_clock = self.cfg.timer_clock,
             .accessibility = self.cfg.accessibility,
@@ -333,29 +336,29 @@ fn renderFrame(
     self: *App,
     viewport: *Viewport,
 ) !void {
-    if (comptime !platform.is_browser_wasm) {
+    if (comptime !platform.is_wasm) {
         if (viewport.accessibility) |adapter| try adapter.drain(&viewport.ui_ctx);
     }
     viewport.timer.tick(self.io);
 
     if (viewport.window.consumeResize()) |event| {
-        if (event.physical.width == 0 or
-            event.physical.height == 0)
-        {
-            return;
+        if (event.physical.width != 0 and event.physical.height != 0) {
+            try viewport.renderer.resize(
+                event.physical.width,
+                event.physical.height,
+            );
         }
-
-        try viewport.renderer.resize(
-            event.physical.width,
-            event.physical.height,
-        );
     }
 
-    // EVE-Maj patch: a minimized window stays zero-sized after its resize event, and frames requested meanwhile can't be built.
-    const physical_extent = viewport.window.getFramebufferSize();
-    if (physical_extent.width == 0 or physical_extent.height == 0) return;
+    // A minimized window reports a zero extent on every frame, not only on the
+    // one that consumes its resize.
     const logical_extent = viewport.window.getSize();
-    if (logical_extent.width == 0 or logical_extent.height == 0) return;
+    const physical_extent = viewport.window.getFramebufferSize();
+    if (logical_extent.width == 0 or logical_extent.height == 0 or
+        physical_extent.width == 0 or physical_extent.height == 0)
+    {
+        return;
+    }
 
     viewport.applyRendererReconfigure();
 
@@ -370,11 +373,11 @@ fn renderFrame(
         dropped_paths,
     );
 
-    const paste_text = if (input_types.pasteRequested(input.key_events))
-        try viewport.window.getClipboardText(self.allocator)
-    else
-        null;
-    defer if (paste_text) |text| self.allocator.free(text);
+    if (input_types.pasteRequested(input.events)) {
+        try viewport.window.requestPaste();
+    }
+    const paste_text = viewport.window.takePaste();
+    defer if (paste_text) |text| viewport.window.allocator.free(text);
 
     var frame = try viewport.ui_ctx.beginFrame(.{
         .input = input,
@@ -411,13 +414,24 @@ fn renderFrame(
     }
 
     const output = try viewport.ui_ctx.endFrame(&frame);
-    if (comptime !platform.is_browser_wasm) {
+    if (comptime !platform.is_wasm) {
         if (viewport.accessibility) |adapter| try adapter.publish(output.accessibility, viewport.window.isFocused());
     }
 
     viewport.window.setCursorShape(
         output.cursor_shape,
     );
+    try viewport.window.setTextInput(output.text_input);
+
+    try viewport.window.setHitRegions(output.hit_regions);
+
+    if (output.display_mode) |mode| {
+        _ = viewport.window.setDisplayMode(mode);
+    }
+
+    if (output.minimize) {
+        viewport.window.minimize();
+    }
 
     if (output.clipboard_write) |text| {
         _ = try viewport.window.setClipboardText(
@@ -431,51 +445,7 @@ fn renderFrame(
         return;
     }
 
-    // Release painters for removed contributions at a safe GPU boundary.
-    var obsolete: [Frame.modules_max]u64 = undefined;
-    var obsolete_count: u32 = 0;
-    var iterator = viewport.contribution_painters.keyIterator();
-    while (iterator.next()) |identity| {
-        var present = false;
-        for (output.contributions) |contribution| {
-            if (contribution.identity == identity.*) present = true;
-        }
-        if (!present) {
-            std.debug.assert(obsolete_count < obsolete.len);
-            obsolete[obsolete_count] = identity.*;
-            obsolete_count += 1;
-        }
-    }
-    if (obsolete_count > 0) try self.render_context.device.waitIdle();
-    for (obsolete[0..obsolete_count]) |identity| {
-        const removed = viewport.contribution_painters.fetchRemove(identity).?;
-        removed.value.destroyAfterWait();
-    }
-
-    if (output.contributions.len > 0 or output.host_overlay != null) {
-        var graph: [32]renderer.Renderer.CompositionNode = undefined;
-        graph[0] = .{ .painter = viewport.renderer.painter, .packet = &output.packet };
-        for (output.contributions, 0..) |*contribution, index| {
-            const entry = try viewport.contribution_painters.getOrPut(self.allocator, contribution.identity);
-            if (!entry.found_existing) {
-                entry.value_ptr.* = viewport.renderer.createLayerPainter() catch |err| {
-                    _ = viewport.contribution_painters.remove(contribution.identity);
-                    return err;
-                };
-            }
-            graph[index + 1] = .{ .painter = entry.value_ptr.*, .packet = &contribution.packet };
-        }
-        var graph_count: u32 = @intCast(output.contributions.len + 1);
-        if (output.host_overlay) |*packet| {
-            std.debug.assert(graph_count < graph.len);
-            graph[graph_count] = .{ .painter = viewport.overlay_painter, .packet = packet };
-            graph_count += 1;
-        }
-        viewport.renderer.renderGraph(graph[0..graph_count], viewport.window.getContentScale()) catch |err| switch (err) {
-            error.SurfaceUnavailable => return,
-            else => return err,
-        };
-    } else switch (viewport.renderer.render(
+    switch (viewport.renderer.render(
         &output.packet,
         viewport.window.getContentScale(),
     )) {
@@ -661,9 +631,9 @@ fn stepFrameHook(context: *anyopaque) void {
 fn reportFrameHookError(self: *App, err: anyerror) void {
     self.frame_event_error = err;
 
-    if (platform.is_browser_wasm) {
+    if (platform.is_wasm) {
         self.main_viewport.window.clearFrameHandler();
-        browser_exports.reportFatalError(err);
+        wasm.reportFatalError(err);
         return;
     }
 
@@ -676,6 +646,18 @@ fn wakeCompletion(context: *anyopaque) void {
     );
 
     main_window.postEmptyEvent();
+}
+
+fn themedWindowConfig(cfg: WindowConfig, theme: *const Theme) WindowConfig {
+    var themed = cfg;
+    if (themed.background == null) {
+        var rgb: [3]u8 = undefined;
+        for (&rgb, theme.bg.value[0..3]) |*out, linear| {
+            out.* = @intFromFloat(@round(std.math.clamp(Color.linearToSrgb(linear), 0, 1) * 255));
+        }
+        themed.background = rgb;
+    }
+    return themed;
 }
 
 fn freeDroppedPaths(allocator: std.mem.Allocator, paths: []const []const u8) void {

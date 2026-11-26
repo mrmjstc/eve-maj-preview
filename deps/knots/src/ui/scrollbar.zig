@@ -2,9 +2,10 @@ const input_types = @import("input");
 const std = @import("std");
 const math = @import("math");
 const layout = @import("layout");
-const types = @import("render_types");
-const DrawList = @import("render").DrawList;
-const Clip = @import("render").Clip;
+const render_mod = @import("render");
+const Instance = render_mod.Instance;
+const DrawList = render_mod.DrawList;
+const Clip = render_mod.Clip;
 
 const Element = layout.Element;
 const State = @import("State.zig");
@@ -168,12 +169,24 @@ pub fn compute(el: *const Element, offset: math.Vec2, theme: *const Theme) ?Geom
     return Geom{ .bars = .{ x_geom, y_geom } };
 }
 
+/// The highest `z_index` of the elements whose box contains `p`, or 0.
+fn topLayerAt(elements: []const Element, p: math.Vec2) u8 {
+    var top: u8 = 0;
+    for (elements) |*el| {
+        if (el.z_index <= top) continue;
+        if (el.box.contains(p)) top = el.z_index;
+    }
+    return top;
+}
+
 pub fn route(ui: *UI) !void {
     const elements = ui.layout_ctx.pool.elements.items;
     const p: math.Vec2 = .{ @floatCast(ui.input.mouse_pos[0]), @floatCast(ui.input.mouse_pos[1]) };
     const has_wheel = !ui.input.scroll.isZero();
 
     var wheel_target: ?struct { slot: Element.Slot } = null;
+    // A popup over a scroll container takes the wheel, as it takes the clicks.
+    const wheel_layer: u8 = if (has_wheel) topLayerAt(elements, p) else 0;
     var press_target: ?struct { slot: Element.Slot, bar: Geom.Bar } = null;
 
     for (ui.layout_ctx.scroll_slots.items) |slot| {
@@ -183,7 +196,7 @@ pub fn route(ui: *UI) !void {
         const offset = ui.state.getScroll(el.id);
         const geom = compute(el, .{ offset[0], offset[1] }, &ui.theme) orelse continue;
 
-        if (has_wheel and el.box.contains(p)) wheel_target = .{ .slot = slot };
+        if (has_wheel and el.z_index == wheel_layer and el.box.contains(p)) wheel_target = .{ .slot = slot };
 
         for (geom.bars) |maybe_bar| {
             const bar = maybe_bar orelse continue;
@@ -281,7 +294,7 @@ pub fn render(ui: *UI, draw_list: *DrawList, layer: Layer) !void {
         for (sg.geom.bars) |maybe_bar| {
             const bar = maybe_bar orelse continue;
 
-            const track_inst = types.Instance{
+            const track_inst = Instance{
                 .pos = .{ bar.track.x(), bar.track.y() },
                 .size = .{ bar.track.w(), bar.track.h() },
                 .uv0 = .{ 0, 0 },
@@ -292,14 +305,14 @@ pub fn render(ui: *UI, draw_list: *DrawList, layer: Layer) !void {
                 .border_width = BorderWidth.zero.value,
                 .prim_type = 0.0,
             };
-            try draw_list.pushInstances(&[_]types.Instance{track_inst}, .atlas, sg.parent_clip);
+            try draw_list.pushInstances(&[_]Instance{track_inst}, .atlas, sg.parent_clip);
 
             const dragging = if (ui.state.get(.scroll, el.id)) |s| s.drag_axis == bar.axis else false;
             const hovered = ui.state.hovered == sb_id or dragging;
             const hover_t = ui.anim(sb_id, "sb_hover", if (hovered) 1.0 else 0.0, .{ .duration_ms = 100 });
             const thumb_color: [4]f32 = math.lerp(base, hi, hover_t);
 
-            const thumb_inst = types.Instance{
+            const thumb_inst = Instance{
                 .pos = .{ bar.thumb.x(), bar.thumb.y() },
                 .size = .{ bar.thumb.w(), bar.thumb.h() },
                 .uv0 = .{ 0, 0 },
@@ -310,14 +323,13 @@ pub fn render(ui: *UI, draw_list: *DrawList, layer: Layer) !void {
                 .border_width = BorderWidth.zero.value,
                 .prim_type = 0.0,
             };
-            try draw_list.pushInstances(&[_]types.Instance{thumb_inst}, .atlas, sg.parent_clip);
-
+            try draw_list.pushInstances(&[_]Instance{thumb_inst}, .atlas, sg.parent_clip);
         }
 
         // Corner fill when both bars are present.
         if (sg.geom.bars[0] != null and sg.geom.bars[1] != null) {
             const thickness = ui.theme.scrollbar_thickness;
-            const corner_inst = types.Instance{
+            const corner_inst = Instance{
                 .pos = .{ el.box.x() + el.box.w() - thickness, el.box.y() + el.box.h() - thickness },
                 .size = .{ thickness, thickness },
                 .uv0 = .{ 0, 0 },
@@ -328,7 +340,7 @@ pub fn render(ui: *UI, draw_list: *DrawList, layer: Layer) !void {
                 .border_width = BorderWidth.zero.value,
                 .prim_type = 0.0,
             };
-            try draw_list.pushInstances(&[_]types.Instance{corner_inst}, .atlas, sg.parent_clip);
+            try draw_list.pushInstances(&[_]Instance{corner_inst}, .atlas, sg.parent_clip);
         }
     }
 }

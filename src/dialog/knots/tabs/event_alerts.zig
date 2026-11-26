@@ -526,13 +526,13 @@ fn insertToken(context: *ui.Frame, ref: TypeRef, notification_type: Notification
             const current = ref.get(name) orelse "";
             if (current.len + token.len > CUSTOM_TEXT_MAX_LENGTH) return;
             const caret_state = context.ui().state.get(.text_input, bind.boxKey(ref, name).hash());
-            const caret = @min(if (caret_state) |state| state.cursor else current.len, current.len);
+            const caret = @min(if (caret_state) |state| state.selection.caret else current.len, current.len);
             const inserted = std.mem.concat(context.arena(), u8, &.{ current[0..caret], token, current[caret..] }) catch |err| {
                 slog.err("Failed to insert '{s}' into the custom text: {}", .{ token, err });
                 return;
             };
             ref.set(name, inserted);
-            if (caret_state) |state| state.cursor = @intCast(caret + token.len);
+            if (caret_state) |state| state.selection = .at(@intCast(caret + token.len));
         },
     }
 }

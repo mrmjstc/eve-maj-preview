@@ -369,7 +369,7 @@ fn namePrompt(context: *ui.Frame) !void {
         try widgets.focusTextInput(context, NAME_INPUT_KEY, g_name_text.items.len);
         g_should_focus_name = false;
     }
-    try context.e(TextInput{ .key = NAME_INPUT_KEY, .buf = &g_name_text, .placeholder = lang.text("Profile name"), .style = &style.text_input_aligned });
+    try context.e(TextInput{ .key = NAME_INPUT_KEY, .buf = &g_name_text, .allocator = g_allocator, .placeholder = lang.text("Profile name"), .style = &style.text_input_aligned });
     try name_row.close(context);
     try widgets.hintText(context, .src(@src()), "Use " ++ profiles.NAME_RULES ++ ".");
     const typed = std.mem.trim(u8, g_name_text.items, " ");
