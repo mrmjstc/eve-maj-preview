@@ -1,0 +1,119 @@
+diff --git a/src/ui/Context.zig b/src/ui/Context.zig
+index 327d532..27c54d5 100644
+--- a/src/ui/Context.zig
++++ b/src/ui/Context.zig
+@@ -29,7 +29,8 @@ const BorderWidth = style.BorderWidth;
+ const Allocator = std.mem.Allocator;
+ const HitRecord = UI.HitRecord;
+ 
+-const press_drag_threshold_sq: f64 = 9.0;
++// EVE-Maj patch: 8px of slack, not 3, so a click made while the mouse is still moving still counts.
++const press_drag_threshold_sq: f64 = 64.0;
+ 
+ const theme_state_key = StateBridge.key("knots.ui.theme");
+ 
+@@ -580,6 +581,11 @@ fn captureHitAncestors(allocator: Allocator, layout_ctx: *layout.Context, id: El
+     }
+ }
+ 
++/// EVE-Maj patch: a logical coordinate rounded to the nearest device pixel.
++fn snapToPixel(value: f32, content_scale: f32) f32 {
++    return @round(value * content_scale) / content_scale;
++}
++
+ fn resolveWindow(ui: *UI, input: input_types.Input, now_ms: i64, content_scale: f32) !void {
+     ui.content_scale = content_scale;
+     ui.state.selection_text = &.{};
+@@ -913,6 +919,16 @@ fn childClip(ui: *UI, slot: Element.Slot, parent_clip: Clip.State) !Clip.State {
+         has_rounding = !math.isZero(radii);
+     }
+ 
++    // EVE-Maj patch: a text input's line is clipped at its padding, so long text doesn't run into the border.
++    if (el.overflow == .scroll_x_bare) {
++        clip_rect = .init(
++            el.box.x() + el.padding.left(),
++            clip_rect.y(),
++            @max(0, el.box.w() - el.padding.left() - el.padding.right()),
++            clip_rect.h(),
++        );
++    }
++
+     var out = parent_clip;
+     out.scissor = if (parent_clip.scissor) |scissor| scissor.intersect(clip_rect) else clip_rect;
+ 
+@@ -951,15 +967,24 @@ fn tessellateLayer(ui: *UI, allocator: Allocator, draw_list: *DrawList, slots: [
+             .rect => |r| {
+                 // The backdrop filters what is already drawn; the fill then tints it.
+                 if (r.backdrop.isActive() and r.backdrop.isValid()) try draw_list.pushBackdrop(el.box, r.corner_radius.value, r.backdrop, clip);
++                // EVE-Maj patch: edges and borders on whole device pixels; a box centred onto a half pixel otherwise smears its 1px border over two.
++                const x0 = snapToPixel(el.box.x(), content_scale);
++                const y0 = snapToPixel(el.box.y(), content_scale);
++                const x1 = snapToPixel(el.box.x() + el.box.w(), content_scale);
++                const y1 = snapToPixel(el.box.y() + el.box.h(), content_scale);
++                var border_width = r.border_width.value;
++                for (&border_width) |*width| {
++                    if (width.* > 0) width.* = @max(1, @round(width.* * content_scale)) / content_scale;
++                }
+                 const inst = types.Instance{
+-                    .pos = .{ el.box.x(), el.box.y() },
+-                    .size = .{ el.box.w(), el.box.h() },
++                    .pos = .{ x0, y0 },
++                    .size = .{ x1 - x0, y1 - y0 },
+                     .uv0 = .{ 0, 0 },
+                     .uv1 = .{ 0, 0 },
+                     .color = r.color,
+                     .border_color = r.border_color,
+                     .corner_radius = r.corner_radius.value,
+-                    .border_width = r.border_width.value,
++                    .border_width = border_width,
+                     .prim_type = 0.0,
+                 };
+                 try draw_list.pushInstances(&[_]types.Instance{inst}, .atlas, clip);
+@@ -1023,15 +1048,19 @@ fn tessellateLayer(ui: *UI, allocator: Allocator, draw_list: *DrawList, slots: [
+                     }
+                 }
+             },
+-            .canvas => |c| try canvas_tessellator.tessellate(allocator, draw_list, c.cmds, .{ el.box.x(), el.box.y() }, clip),
++            // EVE-Maj patch: snapped like a rect's edges, so a canvas inside a bordered box stays centred in it.
++            .canvas => |c| try canvas_tessellator.tessellate(allocator, draw_list, c.cmds, .{ snapToPixel(el.box.x(), content_scale), snapToPixel(el.box.y(), content_scale) }, clip),
+             .gpu_canvas => |canvas| {
+                 try draw_list.pushCustomDraw(&canvas, el.box, clip);
+             },
+             .image => |img| {
+                 const zero4 = [4]f32{ 0, 0, 0, 0 };
++                // EVE-Maj patch: edges snapped like a rect's, so an image filling a snapped box covers it exactly.
++                const x0 = snapToPixel(el.box.x(), content_scale);
++                const y0 = snapToPixel(el.box.y(), content_scale);
+                 const inst = types.Instance{
+-                    .pos = .{ el.box.x(), el.box.y() },
+-                    .size = .{ el.box.w(), el.box.h() },
++                    .pos = .{ x0, y0 },
++                    .size = .{ snapToPixel(el.box.x() + el.box.w(), content_scale) - x0, snapToPixel(el.box.y() + el.box.h(), content_scale) - y0 },
+                     .uv0 = .{ 0, 0 },
+                     .uv1 = .{ 1, 1 },
+                     .color = img.tint,
+@@ -1042,7 +1071,7 @@ fn tessellateLayer(ui: *UI, allocator: Allocator, draw_list: *DrawList, slots: [
+                 };
+                 try draw_list.pushInstances(&[_]types.Instance{inst}, img.source, clip);
+             },
+-            .range => |r| try renderRange(draw_list, el.box, r, clip),
++            .range => |r| try renderRange(draw_list, el.box, r, clip, content_scale),
+         }
+     }
+ 
+@@ -1058,11 +1087,12 @@ fn tessellateLayer(ui: *UI, allocator: Allocator, draw_list: *DrawList, slots: [
+     }
+ }
+ 
+-fn renderRange(draw_list: *DrawList, box: math.Rect, r: Decoration.Range, clip: Clip.State) !void {
++fn renderRange(draw_list: *DrawList, box: math.Rect, r: Decoration.Range, clip: Clip.State, content_scale: f32) !void {
+     const bx = box.x();
+-    const by = box.y();
++    // EVE-Maj patch: top and bottom on whole device pixels; a knob centred on a half pixel otherwise loses its lower edge's antialiasing, which falls outside its quad.
++    const by = snapToPixel(box.y(), content_scale);
+     const bw = box.w();
+-    const bh = box.h();
++    const bh = snapToPixel(box.y() + box.h(), content_scale) - by;
+     const th = @max(0, @min(r.track_height orelse bh, bh));
+     const ty = by + (bh - th) * 0.5;
+     const progress = std.math.clamp(r.progress, 0.0, 1.0);

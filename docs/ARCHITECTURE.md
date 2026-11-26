@@ -515,6 +515,7 @@ Python (stdlib only) checks that a script can decide and the compiler doesn't. `
 | `stale_refs.py` | Comments, and this file's backticked code, naming identifiers or files that no longer exist. |
 | `lang_keys.py` | Translated strings missing from `src/lang/en.json`, unused keys, and keys a language lacks. |
 | `config_docs.py` | Settings missing from [CONFIGURATION.md](CONFIGURATION.md), and rows naming fields that are gone. |
+| `knots_patches.py` | `deps/knots/patches/` out of step with the vendored files, their `EVE-Maj patch` markers or `PATCHES.md`; `tools/update_knots.py export` rewrites the patches. |
 | `duplicates.py` | Copied runs of code; for review, not a gate. |
 
 ## Other modules

@@ -1,0 +1,26 @@
+diff --git a/src/ui/component/Tooltip.zig b/src/ui/component/Tooltip.zig
+index 792c0a8..9e04360 100644
+--- a/src/ui/component/Tooltip.zig
++++ b/src/ui/component/Tooltip.zig
+@@ -27,6 +27,8 @@ key: Key,
+ content: []const u8,
+ delay_ms: u32 = 450,
+ placement: PlacementKind = .top,
++/// EVE-Maj patch: above or below the trigger, start at its left edge instead of centring on it.
++align_start: bool = false,
+ /// The trigger: wraps the children.
+ style: *const Style = &.{},
+ parts: Parts = .{},
+@@ -135,7 +137,11 @@ fn renderPopup(self: *const Tooltip, frame: *Frame, s: *State.Tooltip, parent: *
+     else
+         fallback_size;
+ 
+-    const p = placePopup(s.viewport_box, s.anchor_box, measured_size, self.placement, popup_offset);
++    var p = placePopup(s.viewport_box, s.anchor_box, measured_size, self.placement, popup_offset);
++    // EVE-Maj patch: see align_start.
++    if (self.align_start and (self.placement == .top or self.placement == .bottom)) {
++        p.x = clampAxis(s.anchor_box.x(), s.viewport_box.x(), s.viewport_box.x() + s.viewport_box.w() - p.width);
++    }
+ 
+     var config = popup.element(.{});
+     config.width = .fixed(p.width);

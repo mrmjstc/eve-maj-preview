@@ -1,0 +1,48 @@
+diff --git a/src/layout/Element.zig b/src/layout/Element.zig
+index d7d1e0c..6beea1a 100644
+--- a/src/layout/Element.zig
++++ b/src/layout/Element.zig
+@@ -110,9 +110,11 @@ pub const Overflow = enum {
+     scroll_x,
+     scroll_y,
+     hidden,
++    /// EVE-Maj patch: scrolls horizontally like scroll_x, but draws no scrollbar.
++    scroll_x_bare,
+ 
+     pub fn isScroll(self: Overflow) bool {
+-        return self == .scroll or self == .scroll_x or self == .scroll_y;
++        return self == .scroll or self == .scroll_x or self == .scroll_y or self == .scroll_x_bare;
+     }
+ };
+ 
+@@ -124,6 +126,9 @@ pub const ScrollMetrics = struct {
+     max_offset: math.Vec2 = .{ 0, 0 },
+ };
+ 
++/// EVE-Maj patch: content past its box by less than this doesn't scroll, since wrapped text in a fitted box can measure a fraction over it.
++const SCROLL_SLACK: f32 = 1;
++
+ pub fn scrollMetrics(overflow: Overflow, box: math.Rect, content_w: f32, content_h: f32, thickness: f32) ScrollMetrics {
+     const box_w = box.w();
+     const box_h = box.h();
+@@ -131,13 +136,16 @@ pub fn scrollMetrics(overflow: Overflow, box: math.Rect, content_w: f32, content
+     var viewport_h = box_h;
+     var has_x = false;
+     var has_y = false;
++    // EVE-Maj patch: a sub-pixel overflow shows no scrollbar.
++    const overflows_x = content_w > box_w + SCROLL_SLACK;
++    const overflows_y = content_h > box_h + SCROLL_SLACK;
+ 
+     switch (overflow) {
+-        .scroll_x => has_x = content_w > box_w and box_w > thickness,
+-        .scroll_y => has_y = content_h > box_h and box_h > thickness,
++        .scroll_x, .scroll_x_bare => has_x = overflows_x and box_w > thickness,
++        .scroll_y => has_y = overflows_y and box_h > thickness,
+         .scroll => {
+-            has_x = content_w > box_w and box_w > thickness;
+-            has_y = content_h > box_h and box_h > thickness;
++            has_x = overflows_x and box_w > thickness;
++            has_y = overflows_y and box_h > thickness;
+ 
+             if (has_y) viewport_w = @max(0, box_w - thickness);
+             if (has_x) viewport_h = @max(0, box_h - thickness);

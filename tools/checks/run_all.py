@@ -11,7 +11,7 @@ import sys
 
 from shared import CHECKS
 
-GATES = ("style_check", "config_docs", "dead_code", "import_cycles", "lang_keys", "stale_refs")
+GATES = ("style_check", "config_docs", "dead_code", "import_cycles", "lang_keys", "stale_refs", "knots_patches")
 
 
 def main():

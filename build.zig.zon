@@ -3,7 +3,7 @@
     .version = "1.0.9",
     .minimum_zig_version = "0.17.1",
     .dependencies = .{
-        // Vendored from knots-ui/knots@9cd60181892ef12d9cb3e0d87f5461e928140a92, with deps/knots/PATCHES.md's changes.
+        // Vendored from knots-ui/knots at deps/knots/patches/BASE's commit, with deps/knots/PATCHES.md's changes.
         .knots = .{ .path = "deps/knots" },
     },
     .paths = .{""},

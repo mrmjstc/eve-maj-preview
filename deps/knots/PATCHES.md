@@ -1,6 +1,6 @@
 # Local patches to knots
 
-Vendored from [knots-ui/knots](https://github.com/knots-ui/knots) at commit `9cd60181892ef12d9cb3e0d87f5461e928140a92` (0.3.0). Every change is marked `EVE-Maj patch` in the source; re-apply these after updating the copy.
+Vendored from [knots-ui/knots](https://github.com/knots-ui/knots) at the commit in `patches/BASE`. Every change is marked `EVE-Maj patch` in the source and saved as one patch per file in `patches/`. After changing a vendored file, run `python tools/update_knots.py export`; to move to a newer upstream, `python tools/update_knots.py update <commit>` applies the patches to it. `tools/checks/knots_patches.py` (part of `run_all.py`) fails when the patches, the markers and this file disagree.
 
 Each section's **Upstream** line says where it stood against upstream `80d6396` (0.7.0, checked 2026-11-26): *fixed upstream* (drop it on the next update), *still needed*, or *local* (a preference upstream wouldn't want).
 

@@ -1,0 +1,14 @@
+diff --git a/lib/wasmtime/build.zig.zon b/lib/wasmtime/build.zig.zon
+index 0f6fbba..7dc4f19 100644
+--- a/lib/wasmtime/build.zig.zon
++++ b/lib/wasmtime/build.zig.zon
+@@ -1,7 +1,8 @@
+ .{
+     .name = .wasmtime,
+     .version = "0.0.1",
+-    .minimum_zig_version = "0.17.0",
++    // EVE-Maj patch: matches the app's minimum.
++    .minimum_zig_version = "0.17.1",
+     .dependencies = .{
+         .wasmtime_linux_x86_64 = .{
+             .url = "https://github.com/bytecodealliance/wasmtime/releases/download/v48.0.2/wasmtime-v48.0.2-x86_64-linux-c-api.tar.xz",

@@ -1,0 +1,300 @@
+diff --git a/src/ui/component/ColorPicker.zig b/src/ui/component/ColorPicker.zig
+index 48364b3..db2dfaf 100644
+--- a/src/ui/component/ColorPicker.zig
++++ b/src/ui/component/ColorPicker.zig
+@@ -1,5 +1,6 @@
+ const std = @import("std");
+ 
++const Button = @import("Button.zig");
+ const Frame = @import("../root.zig").Frame;
+ const Element = @import("layout").Element;
+ const ui_mod = @import("../root.zig");
+@@ -7,6 +8,7 @@ const ui_mod = @import("../root.zig");
+ const Color = ui_mod.Color;
+ const Decoration = ui_mod.Decoration;
+ const Key = ui_mod.Key;
++const Radius = ui_mod.Radius;
+ const State = ui_mod.State;
+ const Style = ui_mod.Style;
+ const UI = ui_mod.UI;
+@@ -16,6 +18,16 @@ key: Key,
+ /// The trigger; also styles the hex field in the popup.
+ style: *const Style = &.{},
+ parts: Parts = .{},
++/// EVE-Maj patch: off, the trigger is just the swatch, with no hex beside it.
++show_hex: bool = true,
++/// EVE-Maj patch: off, the popup has no alpha strip, the hex has no alpha, and picked colours are opaque.
++show_alpha: bool = true,
++/// EVE-Maj patch: on, the swatch is struck through, showing `value` is only a fallback.
++is_unset: bool = false,
++/// EVE-Maj patch: on, the swatch shows a hue sweep instead of `value`, marking a picker for any colour.
++show_rainbow: bool = false,
++/// EVE-Maj patch: set, the popup ends with a Reset button, disabled while `is_unset`; clicking it sets this true and closes the popup.
++reset: ?*bool = null,
+ 
+ pub const Parts = struct {
+     /// Fixed `width` / `height` size the color swatch.
+@@ -26,6 +38,9 @@ pub const Parts = struct {
+     area: *const Style = &.{},
+     /// Hue and alpha strips; a fixed `height` sizes them.
+     strip: *const Style = &.{},
++    /// EVE-Maj patch: the Reset button and its label.
++    reset: *const Style = &.{},
++    reset_label: *const Style = &.{},
+ };
+ 
+ pub const base = struct {
+@@ -42,7 +57,8 @@ pub const base = struct {
+         .focus = &.{ .background = .elevated, .border_color = .accent },
+         .open = &.{ .background = .elevated, .border_color = .accent },
+     };
+-    pub const swatch: Style = .{ .width = .fixed(18), .height = .fixed(18) };
++    /// EVE-Maj patch: the radius is the swatch's own, so a `parts.swatch` can set it.
++    pub const swatch: Style = .{ .width = .fixed(18), .height = .fixed(18), .radius = .{ .fixed = 3 } };
+     pub const popup: Style = .{
+         .width = .fixed(240),
+         .direction = .column,
+@@ -63,6 +79,7 @@ pub const base = struct {
+ const Metrics = struct {
+     swatch_w: f32,
+     swatch_h: f32,
++    swatch_radius: Radius,
+     popup_w: f32,
+     inner_w: f32,
+     area_h: f32,
+@@ -84,6 +101,7 @@ fn metrics(self: *const ColorPicker, ui: *UI) Metrics {
+     return .{
+         .swatch_w = fixedOr(swatch.layout.width, 18),
+         .swatch_h = fixedOr(swatch.layout.height, 18),
++        .swatch_radius = swatch.surface.corner_radius,
+         .popup_w = popup_w,
+         .inner_w = @max(0, popup_w - popup.layout.padding.left() - popup.layout.padding.right()),
+         .area_h = fixedOr(area.layout.height, 150),
+@@ -106,6 +124,7 @@ const HUE_INDEX: usize = 5;
+ const ALPHA_INDEX: usize = 6;
+ const PREVIEW_INDEX: usize = 7;
+ const HEX_INDEX: usize = 8;
++const RESET_INDEX: usize = 9;
+ 
+ pub fn open(self: *const ColorPicker, frame: *Frame) !Element.Id {
+     const ui = frame.ui();
+@@ -137,7 +156,11 @@ pub fn open(self: *const ColorPicker, frame: *Frame) !Element.Id {
+     const m = self.metrics(ui);
+     const root = ui.resolveStyle(id, .{ .base = &base.root, .user = self.style }, ui.states(id, .{ .open = s.open }), null);
+     var config = root.element(.{ .interactive = true });
+-    config.height.min = @max(config.height.min, @max(m.swatch_h + 8, try ui.lineHeight(root.content.font_size, root.content.font) + 8));
++    // EVE-Maj patch: with no hex, the trigger only needs room for the swatch inside its own padding.
++    config.height.min = if (self.show_hex)
++        @max(config.height.min, @max(m.swatch_h + 8, try ui.lineHeight(root.content.font_size, root.content.font) + 8))
++    else
++        @max(config.height.min, m.swatch_h + config.padding.top() + config.padding.bottom());
+     return try ui.openResolved(self.key, &root, config, null);
+ }
+ 
+@@ -160,32 +183,46 @@ pub fn close(self: *const ColorPicker, frame: *Frame) !void {
+ 
+     var swatch_cmds: std.ArrayList(Decoration.DrawCmd) = .empty;
+     const arena = frame.arena();
+-    try appendCheckerboard(&swatch_cmds, arena, m.swatch_w, m.swatch_h, 6);
+-    try swatch_cmds.append(arena, .{ .fill_rect = .{
+-        .x = 0,
+-        .y = 0,
+-        .w = m.swatch_w,
+-        .h = m.swatch_h,
+-        .color = self.value.value,
+-        .corner_radius = .all(3),
+-    } });
+-    try swatch_cmds.append(arena, .{ .stroke_rect = .{
++    if (self.show_rainbow) {
++        try appendHueSweep(&swatch_cmds, arena, m.swatch_w, m.swatch_h, m.swatch_radius.value[0]);
++    } else {
++        // EVE-Maj patch: an opaque colour covers the board, so it's only drawn under a translucent one.
++        if (self.value.value[3] < 1) try appendCheckerboard(&swatch_cmds, arena, m.swatch_w, m.swatch_h, 6, m.swatch_radius.value[0]);
++        try swatch_cmds.append(arena, .{ .fill_rect = .{
++            .x = 0,
++            .y = 0,
++            .w = m.swatch_w,
++            .h = m.swatch_h,
++            .color = self.value.value,
++            .corner_radius = m.swatch_radius,
++        } });
++    }
++    // EVE-Maj patch: with no hex, the trigger's own border frames the swatch, so it has no outline of its own.
++    if (self.show_hex) try swatch_cmds.append(arena, .{ .stroke_rect = .{
+         .x = 0.5,
+         .y = 0.5,
+         .w = m.swatch_w - 1,
+         .h = m.swatch_h - 1,
+         .color = .{ 0, 0, 0, 0.35 },
+-        .corner_radius = .all(2.5),
++        .corner_radius = m.swatch_radius.shrink(0.5),
+         .thickness = 1,
+     } });
++    // EVE-Maj patch: an unset colour is struck through in grey, dark under light so it shows on any fallback.
++    if (self.is_unset) {
++        const inset: f32 = 4;
++        const from: [2]f32 = .{ inset, m.swatch_h - inset };
++        const to: [2]f32 = .{ m.swatch_w - inset, inset };
++        try swatch_cmds.append(arena, .{ .line = .{ .from = from, .to = to, .color = .{ 0, 0, 0, 0.6 }, .thickness = 3 } });
++        try swatch_cmds.append(arena, .{ .line = .{ .from = from, .to = to, .color = .{ 0.85, 0.86, 0.88, 1 }, .thickness = 1.5 } });
++    }
+     _ = try ui.open(self.key.indexed(SWATCH_INDEX), .{
+         .width = .fixed(m.swatch_w),
+         .height = .fixed(m.swatch_h),
+     }, .{ .canvas = .{ .cmds = swatch_cmds.items } });
+     ui.close();
+ 
+-    {
+-        const hex = try formatHexAlloc(frame.arena(), self.value.*, true);
++    if (self.show_hex) {
++        const hex = try formatHexAlloc(frame.arena(), self.value.*, self.show_alpha);
+         var deco = try ui.textDecoration(hex, content.font_size, content.font, false);
+         deco.text.color = content.foreground;
+         _ = try ui.open(self.key.indexed(TEXT_INDEX), .{ .width = .fit(), .height = .fit() }, deco);
+@@ -312,7 +349,10 @@ fn renderPopover(self: *const ColorPicker, frame: *Frame, s: *State.ColorPicker,
+     const popup_id = self.key.indexed(POPUP_INDEX).hash();
+ 
+     const line_h = try ui.lineHeight(parent.font_size, parent.font);
+-    const popup_h = m.area_h + m.strip_h * 2 + line_h + 76;
++    const strip_count: f32 = if (self.show_alpha) 2 else 1;
++    // EVE-Maj patch: the Reset button adds a line and its padding.
++    const reset_h: f32 = if (self.reset != null) line_h + 20 else 0;
++    const popup_h = m.area_h + m.strip_h * strip_count + line_h + 76 + reset_h;
+     const viewport_bottom = viewport.y() + viewport.h();
+     const space_below = viewport_bottom - (anchor.y() + anchor.h());
+     const space_above = anchor.y() - viewport.y();
+@@ -325,13 +365,30 @@ fn renderPopover(self: *const ColorPicker, frame: *Frame, s: *State.ColorPicker,
+     var config = popup.element(.{ .interactive = true });
+     config.width = .fixed(m.popup_w);
+     config.height = .{ .kind = .fit, .max = max_h };
+-    _ = try ui.openResolved(self.key.indexed(POPUP_INDEX), &popup, config, .{ anchor.x(), popup_y });
++    // EVE-Maj patch: shifted left, as far as the viewport allows, so a trigger near the right edge doesn't push the popup off it.
++    const popup_x = @max(viewport.x(), @min(anchor.x(), viewport.x() + viewport.w() - m.popup_w));
++    _ = try ui.openResolved(self.key.indexed(POPUP_INDEX), &popup, config, .{ popup_x, popup_y });
+ 
+     try self.renderSvControl(frame, s, m);
+     try self.renderHueControl(frame, s, m);
+-    try self.renderAlphaControl(frame, s, m);
++    if (self.show_alpha) try self.renderAlphaControl(frame, s, m);
+     try self.renderPreview(frame, s, m);
+     try self.renderHexField(frame, s);
++    // EVE-Maj patch: a Reset button that hands the click back through `reset`.
++    if (self.reset) |reset| {
++        if ((try (Button{
++            .key = self.key.indexed(RESET_INDEX),
++            .label = "Reset",
++            .disabled = self.is_unset,
++            .style = self.parts.reset,
++            .parts = .{ .label = self.parts.reset_label },
++        }).interact(frame)).clicked) {
++            reset.* = true;
++            s.open = false;
++            s.editing_hex = false;
++            s.has_original = false;
++        }
++    }
+ 
+     ui.close();
+ }
+@@ -408,6 +465,25 @@ fn renderSvControl(self: *const ColorPicker, frame: *Frame, s: *State.ColorPicke
+     ui.close();
+ }
+ 
++/// EVE-Maj patch: the hue strip's six bands across a `w` by `h` swatch, its outer corners rounded by up to `radius`.
++fn appendHueSweep(cmds: *std.ArrayList(Decoration.DrawCmd), arena: std.mem.Allocator, w: f32, h: f32, radius: f32) !void {
++    const segment_w = w / 6.0;
++    const r = @min(radius, segment_w / 2);
++    for (0..6) |i| {
++        const x = @as(f32, @floatFromInt(i)) * segment_w;
++        const c0 = hsvToLinearColor(@as(f32, @floatFromInt(i)) / 6.0, 1, 1, 1).value;
++        const c1 = hsvToLinearColor(@as(f32, @floatFromInt(i + 1)) / 6.0, 1, 1, 1).value;
++        try cmds.append(arena, .{ .fill_rect_gradient = .{
++            .x = x,
++            .y = 0,
++            .w = if (i == 5) w - x else segment_w,
++            .h = h,
++            .colors = .{ c0, c1, c1, c0 },
++            .corner_radius = if (i == 0) Radius.corners(r, 0, 0, r) else if (i == 5) Radius.corners(0, r, r, 0) else .zero,
++        } });
++    }
++}
++
+ fn renderHueControl(self: *const ColorPicker, frame: *Frame, s: *State.ColorPicker, m: Metrics) !void {
+     const ui = frame.ui();
+     const id = self.key.indexed(HUE_INDEX).hash();
+@@ -455,7 +531,7 @@ fn renderAlphaControl(self: *const ColorPicker, frame: *Frame, s: *State.ColorPi
+     const arena = frame.arena();
+     const w = m.inner_w;
+     const h = m.strip_h;
+-    try appendCheckerboard(&cmds, arena, w, h, 8);
++    try appendCheckerboard(&cmds, arena, w, h, 8, 3);
+ 
+     const solid = hsvToLinearColor(s.hue, s.saturation, s.value, 1).value;
+     const transparent = .{ solid[0], solid[1], solid[2], 0 };
+@@ -489,9 +565,10 @@ fn renderPreview(self: *const ColorPicker, frame: *Frame, s: *State.ColorPicker,
+     const half = w * 0.5;
+     const original = if (s.has_original) s.original_color else self.value.value;
+ 
+-    try appendCheckerboard(&cmds, arena, w, h, 7);
+-    try cmds.append(arena, .{ .fill_rect = .{ .x = 0, .y = 0, .w = half, .h = h, .color = original, .corner_radius = .all(4) } });
+-    try cmds.append(arena, .{ .fill_rect = .{ .x = half, .y = 0, .w = half, .h = h, .color = self.value.value, .corner_radius = .all(4) } });
++    try appendCheckerboard(&cmds, arena, w, h, 7, 4);
++    // EVE-Maj patch: only the outer corners are rounded, so the board doesn't show at the seam between the halves.
++    try cmds.append(arena, .{ .fill_rect = .{ .x = 0, .y = 0, .w = half, .h = h, .color = original, .corner_radius = .corners(4, 0, 0, 4) } });
++    try cmds.append(arena, .{ .fill_rect = .{ .x = half, .y = 0, .w = half, .h = h, .color = self.value.value, .corner_radius = .corners(0, 4, 4, 0) } });
+     try cmds.append(arena, .{ .line = .{ .from = .{ half, 0 }, .to = .{ half, h }, .color = .{ 0, 0, 0, 0.35 }, .thickness = 1 } });
+     try cmds.append(arena, .{ .stroke_rect = .{ .x = 0.5, .y = 0.5, .w = w - 1, .h = h - 1, .color = .{ 0, 0, 0, 0.35 }, .corner_radius = .all(3.5) } });
+ 
+@@ -517,7 +594,7 @@ fn renderHexField(self: *const ColorPicker, frame: *Frame, s: *State.ColorPicker
+     const display = if (s.editing_hex)
+         s.hex_buf[0..s.hex_len]
+     else
+-        try formatHexAlloc(frame.arena(), self.value.*, true);
++        try formatHexAlloc(frame.arena(), self.value.*, self.show_alpha);
+     var deco = try ui.textDecoration(display, field.content.font_size, field.content.font, false);
+     deco.text.color = field.content.foreground;
+     _ = try ui.open(self.key.indexed(HEX_INDEX + 100), .{ .width = .fit(), .height = .fit() }, deco);
+@@ -539,7 +616,9 @@ fn setColorFromState(self: *const ColorPicker, frame: *Frame, s: *State.ColorPic
+     try setColor(self, frame, s, hsvToLinearColor(s.hue, s.saturation, s.value, s.alpha));
+ }
+ 
+-fn setColor(self: *const ColorPicker, frame: *Frame, s: *State.ColorPicker, color: Color) !void {
++fn setColor(self: *const ColorPicker, frame: *Frame, s: *State.ColorPicker, picked: Color) !void {
++    var color = picked;
++    if (!self.show_alpha) color.value[3] = 1;
+     if (std.meta.eql(self.value.value, color.value)) return;
+     self.value.* = color;
+     syncStateFromColor(s, color);
+@@ -552,7 +631,8 @@ fn pointInBox(m: *const State.Measured, mouse_pos: [2]f64) [2]f32 {
+     return .{ x, y };
+ }
+ 
+-fn appendCheckerboard(cmds: *std.ArrayList(Decoration.DrawCmd), allocator: std.mem.Allocator, w: f32, h: f32, cell: f32) !void {
++/// EVE-Maj patch: `radius` rounds the outer corner of each corner cell, so the board doesn't show past a rounded fill drawn over it.
++fn appendCheckerboard(cmds: *std.ArrayList(Decoration.DrawCmd), allocator: std.mem.Allocator, w: f32, h: f32, cell: f32, radius: f32) !void {
+     var y: f32 = 0;
+     var row: usize = 0;
+     while (y < h) : ({
+@@ -565,12 +645,22 @@ fn appendCheckerboard(cmds: *std.ArrayList(Decoration.DrawCmd), allocator: std.m
+             x += cell;
+             col += 1;
+         }) {
++            const is_top = y == 0;
++            const is_left = x == 0;
++            const is_bottom = y + cell >= h;
++            const is_right = x + cell >= w;
+             try cmds.append(allocator, .{ .fill_rect = .{
+                 .x = x,
+                 .y = y,
+                 .w = @min(cell, w - x),
+                 .h = @min(cell, h - y),
+                 .color = checkerColor((row + col) & 1),
++                .corner_radius = .corners(
++                    if (is_top and is_left) radius else 0,
++                    if (is_top and is_right) radius else 0,
++                    if (is_bottom and is_right) radius else 0,
++                    if (is_bottom and is_left) radius else 0,
++                ),
+             } });
+         }
+     }
