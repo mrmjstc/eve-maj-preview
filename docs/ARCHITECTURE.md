@@ -229,7 +229,7 @@ The dialog helpers and map feeds all hand results over through `util/handoff.zig
   - In `ClientList` and `Nothing` modes the set holds no thumbnails.
   - Whether thumbnails are shown (the visibility hotkey, auto-hide when focus leaves EVE) applies to the whole set, through `ThumbnailSet.visibility`. Only the region tool hides individual thumbnails.
   - A thumbnail's render state (active, inactive, alert, minimized, dragging) isn't stored; `effectiveRenderState()` works it out on each render.
-- Two `ThumbnailWindow` fields belong to other modules, which alone write them: `render_cache` to `thumbnail/overlay.zig`, and `is_dragged` to `drag/thumbnail.zig`.
+- Two `ThumbnailWindow` fields belong to other modules, which alone write them: `render_cache` to `thumbnail/overlay.zig`, and `is_dragged` to `drag/thumbnail.zig`, which also alone writes `ThumbnailSet.drag_grab`.
 - **Rendering:**
   - `thumbnail/renderer.zig`: owns `FontCache` and `HoverZoom`; skips a redraw when `RenderSettings` are unchanged.
   - `thumbnail/look.zig` (pure, tested): decides `RenderSettings`, everything the overlay shows, from the profile and a `Subject` (the thumbnail's state as plain values). Settings are compared by walking their fields at comptime, so a newly added field is never left out of the comparison.
@@ -404,9 +404,9 @@ WM_HOTKEY ─> timerWindowProc ─> HotkeyManager.handleHotkeyPress ─> Command
 - `notifications/notification.zig`: types, categories, placeholders, default text. `template.zig` (pure) fills `{name}` placeholders in custom text.
 - `notifications/notifier.zig` (`Notifier`): how anything raises an alert (trackers, Travel Mode, hotkeys, the dialog's Test button, `App` itself), obtained from `App.notifier()`. It holds only pointers into `App`, not into the `ThumbnailSet`, so alerts still work while thumbnails are being rebuilt or are turned off.
 - `notifications/dispatch.zig`: shows a notification on a roster client if `rules.zig` (pure) allows it, and adds sound, speech, history and notified-queue entries. `stack.zig` holds a client's on-screen alerts and throttle timestamps, kept on the roster.
-- `notifications/alert_effects.zig`: speech and sound, plus the session-only audio mute.
+- `notifications/alert_effects.zig` (`AlertEffects`, kept on `NotificationCenter`): speech and sound, plus the session-only audio mute.
 - The chatlog worker queues `Notification` payloads; text is rendered on the main thread.
-- `notifications/center.zig` (`NotificationCenter` on `App`): what outlives a notification on its client, and so survives `ThumbnailSet` rebuilds. That's the history (`history.zig`, a ring buffer of the last 30), the queue the cycle-to-notified hotkey walks (`notified_queue.zig`), and the History and Intel panels (`panels/history_panel.zig`, `panels/intel_panel.zig`).
+- `notifications/center.zig` (`NotificationCenter` on `App`): what outlives a notification on its client, and so survives `ThumbnailSet` rebuilds. That's the history (`history.zig`, a ring buffer of the last 30), the queue the cycle-to-notified hotkey walks (`notified_queue.zig`), the History and Intel panels (`panels/history_panel.zig`, `panels/intel_panel.zig`), and `AlertEffects`.
 - `travel/`: Travel Mode's left-behind check, which alerts characters still in a system the rest of their group has moved on from. `left_behind.zig` runs it every 2 s from the tick; `stragglers.zig` (pure) works out the group's system and who's behind.
 
 ## Configuration model (`config.zig`, `config/`)
@@ -429,7 +429,7 @@ WM_HOTKEY ─> timerWindowProc ─> HotkeyManager.handleHotkeyPress ─> Command
   - Runtime changes (drags, tray toggles, group membership) apply to both and save immediately. `update` takes a struct literal mirroring `Config`'s nesting, e.g. `.{ .display = .{ .startX = 10 } }`; `updateSection` takes one for a single named section. (These aren't `patch.zig` ops.)
   - `commit` (Save) clones `live` → `saved`; `discard` clones `saved` → `live`.
 - **Other modules:**
-  - `patch.zig`: path-addressed `set` / `insert` / `remove` / `move` ops; keyed lists (`characters`, `hotkeyGroups`, `thumbnailSpaces`) are addressed by a runtime `id`, which `assignIds` gives each item. Imports are applied as these ops.
+  - `patch.zig`: path-addressed `set` / `insert` / `remove` / `move` ops; keyed lists (`characters`, `hotkeyGroups`, `thumbnailSpaces`) are addressed by a runtime `id`, which `assignIds` gives each item from the `ProfileStore`'s `Ids` counter. Imports are applied as these ops.
   - `types.zig`: types and defaults several sections share. Enum tag names are saved in profiles, so renaming a tag breaks existing profiles.
   - `key_list.zig` (`KeyList`): a binding's key combos, alternates that all trigger the same action.
   - `field_strings.zig` (pure): which string fields still hold their default literal and which hold owned copies, so only the copies are freed.

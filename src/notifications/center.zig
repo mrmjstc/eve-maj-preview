@@ -1,9 +1,10 @@
-//! What outlives a notification on its client: the history, the cycle-to-notified queue, and the History and Intel panels.
+//! What outlives a notification on its client: the history, the cycle-to-notified queue, the History and Intel panels, and the alert mute.
 const std = @import("std");
 const config_mod = @import("../config.zig");
 const history_mod = @import("history.zig");
 const notified_queue_mod = @import("notified_queue.zig");
 const dispatch = @import("dispatch.zig");
+const alert_effects_mod = @import("alert_effects.zig");
 const history_panel = @import("../panels/history_panel.zig");
 const intel_panel_mod = @import("../panels/intel_panel.zig");
 const panel_host = @import("../panels/panel_host.zig");
@@ -21,6 +22,8 @@ pub const NotificationCenter = struct {
     shown_alert_group: ?u64 = null,
     /// The latest alert group History listed, so its other copies aren't listed again.
     recorded_alert_group: ?u64 = null,
+    /// The sound and speech alerts play, and whether they're muted.
+    alert_effects: alert_effects_mod.AlertEffects = .{},
 
     /// Creates the panels' windows if the context's profile shows them; in place, as the panels borrow the histories. `intel_history` is App's.
     pub fn start(self: *NotificationCenter, context: panel_host.Context, host: panel_host.Host, intel_history: *const history_mod.NotificationHistory) void {

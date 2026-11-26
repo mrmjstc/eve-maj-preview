@@ -221,15 +221,18 @@ pub const App = struct {
     }
 
     fn startRecorders(self: *App) void {
-        self.recorders = Recorders.create(self.allocator) catch |err| {
+        const recorders = Recorders.create(self.allocator) catch |err| {
             slog.warn("Failed to start recording renders for the state file: {}", .{err});
             return;
         };
+        self.recorders = recorders;
+        self.persistent.notifications.alert_effects.play_counts = &recorders.plays;
     }
 
     fn stopRecorders(self: *App) void {
         const recorders = self.recorders orelse return;
         self.recorders = null;
+        self.persistent.notifications.alert_effects.play_counts = null;
         recorders.destroy(self.allocator);
     }
 
@@ -240,6 +243,7 @@ pub const App = struct {
             .config = &self.store.live,
             .auto_colors = &self.persistent.auto_colors,
             .records = self.persistent.notifications.records(),
+            .alert_effects = &self.persistent.notifications.alert_effects,
             .roster = &self.persistent.roster,
             .intel = &self.persistent.intel,
         };
@@ -481,6 +485,7 @@ pub const App = struct {
                 .intel = if (self.persistent.notifications.intel_panel.window) |*window| window.panel.hwnd else null,
                 .map = if (self.persistent.map_panel.window) |*window| window.panel.hwnd else null,
             }),
+            .are_alerts_muted = self.persistent.notifications.alert_effects.is_muted,
             .recorders = self.recorders,
         };
     }

@@ -8,7 +8,6 @@ const roster_mod = @import("../clients/roster.zig");
 const config_mod = @import("../config.zig");
 const url = @import("../protocol/url.zig");
 const set = @import("../thumbnail/set.zig");
-const alert_effects = @import("../notifications/alert_effects.zig");
 const notified_queue_mod = @import("../notifications/notified_queue.zig");
 const notifier_mod = @import("../notifications/notifier.zig");
 const bindings = @import("bindings.zig");
@@ -67,7 +66,7 @@ pub const Commands = struct {
     exclusions: *exclusions_mod.Exclusions,
     /// Borrowed from App.
     notified_queue: *const notified_queue_mod.NotifiedQueue,
-    /// Shows the alerts for membership changes and saved-position moves.
+    /// Shows the alerts for membership changes and saved-position moves, and holds the alert mute.
     notifier: notifier_mod.Notifier,
     /// Borrowed from App.
     roster: *roster_mod.Roster,
@@ -158,7 +157,7 @@ pub const Commands = struct {
                 slog.info("Toggle auto-minimize hotkey pressed", .{});
                 return .{ .app = .toggle_auto_minimize };
             },
-            .toggle_alert_mute => alert_effects.toggleMuted(),
+            .toggle_alert_mute => self.notifier.alert_effects.toggleMuted(),
             .cycle_notified => return activating(cycling.cycleNotified(self, true)),
             .previous_notified => return activating(cycling.cycleNotified(self, false)),
             .next_all_clients => return activating(cycling.cycleAllClients(self, true)),

@@ -19,20 +19,18 @@ pub const Recorders = struct {
     panel_texts: panel_chrome.TextRecorder,
     plays: alert_effects.PlayCounts = .{},
 
-    /// Installs itself where the overlays, panels and alert effects record into; destroy uninstalls it.
+    /// Installs itself where the overlays and panels record into, and destroy uninstalls it; App points the alert effects at `plays`.
     pub fn create(allocator: std.mem.Allocator) !*Recorders {
         const recorders = try allocator.create(Recorders);
         recorders.* = .{ .overlays = .init(allocator), .panel_texts = .init(allocator) };
         overlay.setRecorder(&recorders.overlays);
         panel_chrome.setRecorder(&recorders.panel_texts);
-        alert_effects.setPlayCounts(&recorders.plays);
         return recorders;
     }
 
     pub fn destroy(self: *Recorders, allocator: std.mem.Allocator) void {
         overlay.setRecorder(null);
         panel_chrome.setRecorder(null);
-        alert_effects.setPlayCounts(null);
         self.overlays.deinit();
         self.panel_texts.deinit();
         allocator.destroy(self);
@@ -58,6 +56,7 @@ pub const Sources = struct {
     intel_history: *const history_mod.NotificationHistory,
     /// Null for a panel whose window is closed.
     panel_hwnds: std.enums.EnumArray(Snapshot.PanelKind, ?win32.HWND),
+    are_alerts_muted: bool,
     /// Borrowed for one capture; null when they couldn't be made, so no overlay, panel text or play counts are reported.
     recorders: ?*const Recorders,
 };
@@ -113,7 +112,7 @@ pub fn capture(arena: std.mem.Allocator, sources: Sources) !Snapshot {
         .groups = groups,
         .thumbnails = thumbnails,
         .clients = clients,
-        .are_alerts_muted = alert_effects.isMuted(),
+        .are_alerts_muted = sources.are_alerts_muted,
         .sounds_played = play_counts.sounds,
         .speeches_started = play_counts.speeches,
         .history = try historyEntries(arena, sources.history),

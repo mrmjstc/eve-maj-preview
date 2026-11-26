@@ -6,6 +6,7 @@ const auto_colors_mod = @import("../clients/auto_colors.zig");
 const roster_mod = @import("../clients/roster.zig");
 const intel_mod = @import("../map/intel.zig");
 const dispatch = @import("dispatch.zig");
+const alert_effects_mod = @import("alert_effects.zig");
 const notification_mod = @import("notification.zig");
 const universe = @import("../map/universe.zig");
 const log = @import("../log.zig");
@@ -22,6 +23,8 @@ pub const Notifier = struct {
     /// Borrowed from App.
     auto_colors: *AutoColorStore,
     records: dispatch.Records,
+    /// Borrowed from App's NotificationCenter.
+    alert_effects: *alert_effects_mod.AlertEffects,
     /// Borrowed from App.
     roster: *Roster,
     /// Borrowed from App; listIntel lists reports in its history.
@@ -56,6 +59,7 @@ pub const Notifier = struct {
             .config = self.config,
             .auto_colors = self.auto_colors,
             .records = self.records,
+            .alert_effects = self.alert_effects,
             .active_source_hwnd = self.roster.active_hwnd,
         };
     }

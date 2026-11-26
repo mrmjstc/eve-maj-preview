@@ -9,20 +9,11 @@ const log = @import("../log.zig");
 const ThumbnailSet = set.ThumbnailSet;
 const slog = log.Scoped("drag");
 
-const DragState = struct {
-    /// Null when no drag is in progress.
-    hwnd: ?win32.HWND = null,
-    offset_x: i32 = 0,
-    offset_y: i32 = 0,
-};
-
-var g_drag_state: DragState = .{};
-
 pub fn start(thumbnail_set: *ThumbnailSet, hwnd: win32.HWND, lParam: win32.LPARAM) void {
     if (!thumbnail_set.config.interaction.enableDragging or grabbedThumbnailIsPlaced(thumbnail_set, hwnd)) return;
 
     thumbnail_set.hideHoverZoom();
-    g_drag_state = .{
+    thumbnail_set.drag_grab = .{
         .hwnd = hwnd,
         .offset_x = win32.lparamX(lParam),
         .offset_y = win32.lparamY(lParam),
@@ -41,7 +32,7 @@ pub fn start(thumbnail_set: *ThumbnailSet, hwnd: win32.HWND, lParam: win32.LPARA
 
 /// Saves `thumbnail_hwnd`'s position, whichever of its two windows (`hwnd`) was grabbed.
 pub fn end(thumbnail_set: *ThumbnailSet, hwnd: win32.HWND, thumbnail_hwnd: win32.HWND) void {
-    if (g_drag_state.hwnd != hwnd) return;
+    if ((thumbnail_set.drag_grab orelse return).hwnd != hwnd) return;
     stop(thumbnail_set);
 
     if (thumbnail_set.getThumbnailByOverlayHwnd(hwnd)) |thumbnail| {
@@ -58,7 +49,8 @@ pub fn end(thumbnail_set: *ThumbnailSet, hwnd: win32.HWND, thumbnail_hwnd: win32
 }
 
 pub fn move(thumbnail_set: *ThumbnailSet, hwnd: win32.HWND) void {
-    if (g_drag_state.hwnd != hwnd) return;
+    const grab = thumbnail_set.drag_grab orelse return;
+    if (grab.hwnd != hwnd) return;
 
     if (!win32.isWindow(hwnd)) {
         slog.warn("Window {*} became invalid during drag operation, canceling drag", .{hwnd});
@@ -79,8 +71,8 @@ pub fn move(thumbnail_set: *ThumbnailSet, hwnd: win32.HWND) void {
         slog.debug("Failed to get the cursor position while dragging a thumbnail", .{});
         return;
     }
-    const new_x = cursor.x - g_drag_state.offset_x;
-    const new_y = cursor.y - g_drag_state.offset_y;
+    const new_x = cursor.x - grab.offset_x;
+    const new_y = cursor.y - grab.offset_y;
 
     const width = win32.rectWidth(rect);
     const height = win32.rectHeight(rect);
@@ -128,10 +120,10 @@ fn grabbedThumbnailIsPlaced(thumbnail_set: *ThumbnailSet, hwnd: win32.HWND) bool
 
 /// Cleared before any re-render, so effectiveRenderState already sees the drag as over.
 fn stop(thumbnail_set: *ThumbnailSet) void {
-    if (g_drag_state.hwnd) |hwnd| {
-        if (thumbnail_set.getThumbnailByOverlayHwnd(hwnd)) |thumbnail| thumbnail.is_dragged = false;
+    if (thumbnail_set.drag_grab) |grab| {
+        if (thumbnail_set.getThumbnailByOverlayHwnd(grab.hwnd)) |thumbnail| thumbnail.is_dragged = false;
     }
-    g_drag_state = .{};
+    thumbnail_set.drag_grab = null;
     _ = win32.ReleaseCapture();
     thumbnail_set.hideDragOverlays();
 }

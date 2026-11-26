@@ -9,11 +9,12 @@ const notified_queue_mod = @import("notified_queue.zig");
 const notification_mod = @import("notification.zig");
 const stack = @import("stack.zig");
 const rules = @import("rules.zig");
-const alert_effects = @import("alert_effects.zig");
+const alert_effects_mod = @import("alert_effects.zig");
 const universe = @import("../map/universe.zig");
 const nearest_mod = @import("../map/nearest.zig");
 const log = @import("../log.zig");
 
+const AlertEffects = alert_effects_mod.AlertEffects;
 const AutoColorStore = auto_colors_mod.AutoColorStore;
 const Client = roster.Client;
 const slog = log.Scoped("notification");
@@ -46,6 +47,7 @@ pub const Context = struct {
     config: *const config_mod.Config,
     auto_colors: *AutoColorStore,
     records: Records,
+    alert_effects: *const AlertEffects,
     active_source_hwnd: ?win32.HWND,
 };
 
@@ -73,7 +75,7 @@ pub fn notify(context: Context, client: *Client, notification: notification_mod.
         (if (settings.tts_use_display_name) client.display_name else client.character_name)
     else
         null;
-    alert_effects.play(settings, type_config, text, spoken_name, notification_mod.notificationCategory(notification.notification_type) == .Chat);
+    context.alert_effects.play(settings, type_config, text, spoken_name, notification_mod.notificationCategory(notification.notification_type) == .Chat);
 }
 
 /// Lists intel in `intel_history`, shown or not, measured from the nearest client; dropped with no client running.
@@ -135,7 +137,7 @@ pub fn notifyAll(context: Context, clients: []Client, notification: notification
         };
         has_shown_any = true;
     }
-    if (has_shown_any) alert_effects.play(settings, type_config, text, null, false);
+    if (has_shown_any) context.alert_effects.play(settings, type_config, text, null, false);
 }
 
 /// Bypasses every suppression, shows hidden thumbnails and skips history and cycle tracking; alerts play once, not per client.
@@ -163,7 +165,7 @@ pub fn showTest(context: Context, clients: []Client, notification_type: notifica
     }
 
     const speech = spoken orelse notification_mod.text(example, type_config.customText(), notification_mod.SAMPLE_CHARACTER, &spoken_buf);
-    alert_effects.playUnmuted(&context.config.notifications, type_config, speech, null, false);
+    context.alert_effects.playUnmuted(&context.config.notifications, type_config, speech, null, false);
 }
 
 /// Null when the text doesn't start with a system.

@@ -14,13 +14,16 @@ pub const ProfileStore = struct {
     live: Config,
     saved: Config,
     io: std.Io,
+    /// Shared by both copies, so a character takes the same id in each.
+    ids: patch_mod.Ids = .{},
 
     /// Takes ownership of `config`, freeing it on failure.
     pub fn init(config: Config, io: std.Io) !ProfileStore {
         var live = config;
         errdefer live.deinit();
-        patch_mod.assignIds(Config, &live);
-        return .{ .live = live, .saved = try live.clone(live.allocator), .io = io };
+        var ids: patch_mod.Ids = .{};
+        patch_mod.assignIds(Config, &live, &ids);
+        return .{ .live = live, .saved = try live.clone(live.allocator), .io = io, .ids = ids };
     }
 
     pub fn deinit(self: *ProfileStore) void {
@@ -52,13 +55,13 @@ pub const ProfileStore = struct {
 
     /// Saved once for the whole batch, so a group drag writes the profile once rather than per thumbnail.
     pub fn setCharacterPositions(self: *ProfileStore, entries: []const CharacterPosition) void {
-        setCharacterPositionsInBoth(&self.live, &self.saved, entries);
+        setCharacterPositionsInBoth(&self.live, &self.saved, &self.ids, entries);
         self.persist();
     }
 
     /// A null name sets every character's; clearing a missing character is a no-op.
     pub fn setWindowPosition(self: *ProfileStore, character_name: ?[]const u8, position: ?config_mod.Position, size: ?config_mod.WindowSize) !void {
-        try setWindowPositionInBoth(&self.live, &self.saved, character_name, position, size);
+        try setWindowPositionInBoth(&self.live, &self.saved, &self.ids, character_name, position, size);
         self.persist();
     }
 
@@ -79,7 +82,7 @@ pub const ProfileStore = struct {
     /// Makes `live` what was last saved, dropping unsaved dialog edits; callers refresh whatever borrowed from the old `live`.
     pub fn discard(self: *ProfileStore) !void {
         var fresh = try self.saved.clone(self.saved.allocator);
-        patch_mod.assignIds(Config, &fresh);
+        patch_mod.assignIds(Config, &fresh, &self.ids);
         self.live.deinit();
         self.live = fresh;
     }
@@ -119,7 +122,7 @@ const GroupToggle = struct {
     should_save: bool,
 };
 
-fn setCharacterPositionsInBoth(live: *Config, saved: *Config, entries: []const ProfileStore.CharacterPosition) void {
+fn setCharacterPositionsInBoth(live: *Config, saved: *Config, ids: *patch_mod.Ids, entries: []const ProfileStore.CharacterPosition) void {
     for (entries) |entry| {
         setPosition(live, entry) catch |err| {
             slog.err("Failed to add '{s}' to profile '{s}' for its position: {}", .{ entry.name, live.profile_name, err });
@@ -130,7 +133,7 @@ fn setCharacterPositionsInBoth(live: *Config, saved: *Config, entries: []const P
             continue;
         };
     }
-    giveNewCharactersIds(live, saved);
+    giveNewCharactersIds(live, saved, ids);
 }
 
 fn setPosition(config: *Config, entry: ProfileStore.CharacterPosition) !void {
@@ -138,10 +141,10 @@ fn setPosition(config: *Config, entry: ProfileStore.CharacterPosition) !void {
     character.position = entry.position;
 }
 
-fn setWindowPositionInBoth(live: *Config, saved: *Config, character_name: ?[]const u8, position: ?config_mod.Position, size: ?config_mod.WindowSize) !void {
+fn setWindowPositionInBoth(live: *Config, saved: *Config, ids: *patch_mod.Ids, character_name: ?[]const u8, position: ?config_mod.Position, size: ?config_mod.WindowSize) !void {
     try applyWindowPosition(live, character_name, position, size);
     try applyWindowPosition(saved, character_name, position, size);
-    giveNewCharactersIds(live, saved);
+    giveNewCharactersIds(live, saved, ids);
 }
 
 fn applyWindowPosition(config: *Config, character_name: ?[]const u8, position: ?config_mod.Position, size: ?config_mod.WindowSize) !void {
@@ -159,8 +162,8 @@ fn applyWindowPosition(config: *Config, character_name: ?[]const u8, position: ?
 }
 
 /// The config dialog tracks characters by id, so a character created in both copies takes the same one in each, which a later discard keeps.
-fn giveNewCharactersIds(live: *Config, saved: *Config) void {
-    patch_mod.assignIds(Config, live);
+fn giveNewCharactersIds(live: *Config, saved: *Config, ids: *patch_mod.Ids) void {
+    patch_mod.assignIds(Config, live, ids);
     for (saved.characters.items) |*character| {
         if (character.id != 0) continue;
         const live_character = live.findCharacterConst(character.name) orelse continue;
@@ -284,7 +287,7 @@ test "clearing a missing character's window position adds no character" {
     var store = try testStore("{}");
     defer store.deinit();
 
-    try setWindowPositionInBoth(&store.live, &store.saved, "Alpha", null, null);
+    try setWindowPositionInBoth(&store.live, &store.saved, &store.ids, "Alpha", null, null);
     try testing.expectEqual(@as(usize, 0), store.live.characters.items.len);
     try testing.expectEqual(@as(usize, 0), store.saved.characters.items.len);
 }
@@ -296,7 +299,7 @@ test "a window position without a name sets every character's" {
     defer store.deinit();
     const position: config_mod.Position = .{ .x = 10, .y = 20 };
 
-    try setWindowPositionInBoth(&store.live, &store.saved, null, position, .{ .width = 800, .height = 600 });
+    try setWindowPositionInBoth(&store.live, &store.saved, &store.ids, null, position, .{ .width = 800, .height = 600 });
     for ([_]*const Config{ &store.live, &store.saved }) |config| {
         for (config.characters.items) |character| try testing.expectEqual(@as(?config_mod.Position, position), character.windowPosition);
     }
@@ -306,8 +309,8 @@ test "a character created by a position has the same id in both copies" {
     var store = try testStore("{}");
     defer store.deinit();
 
-    setCharacterPositionsInBoth(&store.live, &store.saved, &.{.{ .name = "Alpha", .position = .{ .x = 1, .y = 2 } }});
-    try setWindowPositionInBoth(&store.live, &store.saved, "Beta", .{ .x = 3, .y = 4 }, null);
+    setCharacterPositionsInBoth(&store.live, &store.saved, &store.ids, &.{.{ .name = "Alpha", .position = .{ .x = 1, .y = 2 } }});
+    try setWindowPositionInBoth(&store.live, &store.saved, &store.ids, "Beta", .{ .x = 3, .y = 4 }, null);
     for ([_][]const u8{ "Alpha", "Beta" }) |name| {
         const live_id = (store.live.findCharacterConst(name) orelse return error.MissingCharacter).id;
         const saved_id = (store.saved.findCharacterConst(name) orelse return error.MissingCharacter).id;
@@ -319,7 +322,7 @@ test "a character created by a position has the same id in both copies" {
 test "discard keeps the id of a character a position created" {
     var store = try testStore("{}");
     defer store.deinit();
-    setCharacterPositionsInBoth(&store.live, &store.saved, &.{.{ .name = "Alpha", .position = .{ .x = 1, .y = 2 } }});
+    setCharacterPositionsInBoth(&store.live, &store.saved, &store.ids, &.{.{ .name = "Alpha", .position = .{ .x = 1, .y = 2 } }});
     const id = (store.live.findCharacterConst("Alpha") orelse return error.MissingCharacter).id;
 
     try store.discard();

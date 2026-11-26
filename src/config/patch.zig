@@ -16,15 +16,25 @@ pub const Op = struct {
 
 const Kind = enum { set, insert, remove, move };
 
+/// Hands out the ids keyed list items are addressed by, never the same one twice.
+pub const Ids = struct {
+    next: u32 = 1,
+
+    fn take(self: *Ids) u32 {
+        const id = self.next;
+        self.next += 1;
+        return id;
+    }
+};
+
 pub const Context = struct {
     /// Parsing scratch, freed after the call.
     arena: std.mem.Allocator,
     /// The document's own allocator, which owns everything an edit stores.
     allocator: std.mem.Allocator,
+    /// Borrowed from whoever owns the document; what an `insert` gives its item.
+    ids: *Ids,
 };
-
-/// Main thread only, like everything that edits a document.
-var g_next_id: u32 = 1;
 
 /// Whether `path` names a section (or keyed map child) whose fields can be set one by one, rather than a value set whole.
 pub fn isSection(comptime T: type, path: []const []const u8) bool {
@@ -38,16 +48,16 @@ pub fn isSection(comptime T: type, path: []const []const u8) bool {
 }
 
 /// Gives every keyed list item still at id 0 a fresh one.
-pub fn assignIds(comptime T: type, value: *T) void {
+pub fn assignIds(comptime T: type, value: *T, ids: *Ids) void {
     inline for (comptime wire.savedFields(T)) |f| {
         if (comptime wire.ListItem(f.type)) |Item| {
             if (comptime hasId(Item)) {
                 for (@field(value, f.name).items) |*item| {
-                    if (item.id == 0) item.id = nextId();
+                    if (item.id == 0) item.id = ids.take();
                 }
             }
         } else if (comptime isStruct(f.type)) {
-            assignIds(f.type, &@field(value, f.name));
+            assignIds(f.type, &@field(value, f.name), ids);
         }
     }
 }
@@ -100,12 +110,6 @@ fn OptionalStruct(comptime T: type) ?type {
     const info = @typeInfo(T);
     if (info != .optional or !isStruct(info.optional.child)) return null;
     return info.optional.child;
-}
-
-fn nextId() u32 {
-    const id = g_next_id;
-    g_next_id += 1;
-    return id;
 }
 
 fn writeValue(json_writer: anytype, comptime T: type, comptime name: []const u8, value: *const T) !void {
@@ -228,7 +232,7 @@ fn insertItem(comptime Item: type, list: *std.ArrayList(Item), op: Op, context: 
     const saved = std.json.parseFromValueLeaky(wire.WireOf(Item), context.arena, json, .{ .ignore_unknown_fields = true }) catch return error.InvalidValue;
     var fresh = try wire.decode(Item, saved, context.allocator);
     errdefer wire.free(Item, &fresh, context.allocator);
-    fresh.id = nextId();
+    fresh.id = context.ids.take();
     try list.insert(context.allocator, @min(op.index orelse list.items.len, list.items.len), fresh);
     return fresh.id;
 }
@@ -288,6 +292,7 @@ const TestDocument = struct {
 const Fixture = struct {
     arena_state: std.heap.ArenaAllocator,
     document: TestDocument = .{},
+    ids: Ids = .{},
 
     fn init() Fixture {
         return .{ .arena_state = .init(testing.allocator) };
@@ -302,7 +307,7 @@ const Fixture = struct {
     fn edit(self: *Fixture, comptime op_format: []const u8, args: anytype) !?u32 {
         const arena = self.arena_state.allocator();
         const op = try std.json.parseFromSliceLeaky(Op, arena, try arena.print(op_format, args), .{});
-        return apply(TestDocument, &self.document, op, .{ .arena = arena, .allocator = testing.allocator });
+        return apply(TestDocument, &self.document, op, .{ .arena = arena, .allocator = testing.allocator, .ids = &self.ids });
     }
 
     /// The value at the path in `path_format`, a JSON array, as writeAt gives it.
@@ -475,7 +480,7 @@ test "assignIds gives only the items still at 0 an id" {
     defer fixture.deinit();
     try fixture.document.items.append(testing.allocator, .{ .id = 7 });
     try fixture.document.items.append(testing.allocator, .{});
-    assignIds(TestDocument, &fixture.document);
+    assignIds(TestDocument, &fixture.document, &fixture.ids);
     try testing.expectEqual(7, fixture.document.items.items[0].id);
     try testing.expect(fixture.document.items.items[1].id != 0);
 }

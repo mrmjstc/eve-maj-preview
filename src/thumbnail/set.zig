@@ -26,6 +26,14 @@ const slog = log.Scoped("thumbnail_set");
 
 pub const ThumbnailWindow = window.ThumbnailWindow;
 
+/// A right-button drag in progress.
+pub const DragGrab = struct {
+    /// Whichever of a thumbnail's two windows was grabbed.
+    hwnd: win32.HWND,
+    offset_x: i32,
+    offset_y: i32,
+};
+
 pub const ThumbnailSet = struct {
     allocator: std.mem.Allocator,
     /// Searched linearly: there are only ever a few dozen.
@@ -40,6 +48,8 @@ pub const ThumbnailSet = struct {
     destroy_event_hook: ?win32.HANDLE = null,
     renderer: renderer_mod.Renderer,
     drag_overlays: drag_overlays_mod.DragOverlays,
+    /// Set by drag/thumbnail.zig from the press to the drop, so a rebuild drops a drag in progress.
+    drag_grab: ?DragGrab = null,
     /// The roster's active window as the thumbnails last showed it; only reconcileThumbnailStates writes it.
     drawn_active_hwnd: ?win32.HWND = null,
     /// Borrowed from App, which keeps it across a thumbnail set rebuild.

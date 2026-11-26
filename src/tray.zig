@@ -6,7 +6,6 @@ const update = @import("update.zig");
 const app_mod = @import("app.zig");
 const knots_host = @import("dialog/knots/host.zig");
 const scout = @import("clients/scout.zig");
-const alert_effects = @import("notifications/alert_effects.zig");
 const url = @import("protocol/url.zig");
 const messages = @import("messages.zig");
 const log = @import("log.zig");
@@ -242,7 +241,7 @@ pub const TrayIcon = struct {
         _ = win32.AppendMenuA(menu, win32.MF_STRING, IDM_CLEAR_NOTIFICATION_HISTORY, "Clear Alert History");
         appendChecked(menu, app.persistent.map_panel.isVisible(config, scout.anyCharacterLoggedIn(app.scout.getWindows())), IDM_TOGGLE_MAP_PANEL, "Show Map");
         appendChecked(menu, app.isIntelPanelVisible(), IDM_TOGGLE_INTEL_PANEL, "Show Intel Panel");
-        appendChecked(menu, alert_effects.isMuted(), IDM_TOGGLE_ALERT_MUTE, "Mute Audio Alerts");
+        appendChecked(menu, app.persistent.notifications.alert_effects.is_muted, IDM_TOGGLE_ALERT_MUTE, "Mute Audio Alerts");
         _ = win32.AppendMenuA(menu, win32.MF_SEPARATOR, 0, null);
 
         if (app.rebuilt.hotkey_manager) |manager| {

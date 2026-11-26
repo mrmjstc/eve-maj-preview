@@ -157,11 +157,12 @@ pub const Session = struct {
     /// Patch ops on the edited profile, e.g. an import's; `arena` holds what they allocate.
     pub fn applyOps(self: *Session, arena: std.mem.Allocator, ops: []const patch.Op) !void {
         const target = self.profile().ptr;
-        const patch_context: patch.Context = .{ .arena = arena, .allocator = target.allocator };
+        const ids = &self.appContext().store.ids;
+        const patch_context: patch.Context = .{ .arena = arena, .allocator = target.allocator, .ids = ids };
         // Even after a failed op, since those before it were applied.
         defer {
             // A list set whole comes in without ids.
-            patch.assignIds(config.Config, target);
+            patch.assignIds(config.Config, target, ids);
             self.edited(.profile, .all, .none);
         }
         for (ops) |op| _ = try patch.apply(config.Config, target, op, patch_context);
@@ -171,7 +172,7 @@ pub const Session = struct {
     pub fn applyGlobalOps(self: *Session, arena: std.mem.Allocator, ops: []const patch.Op) !void {
         if (ops.len == 0) return;
         const target = self.global().ptr;
-        const patch_context: patch.Context = .{ .arena = arena, .allocator = target.allocator };
+        const patch_context: patch.Context = .{ .arena = arena, .allocator = target.allocator, .ids = &self.appContext().store.ids };
         // Even after a failed op, since those before it were applied.
         defer self.edited(.global, .none, .none);
         for (ops) |op| _ = try patch.apply(GlobalConfig, target, op, patch_context);
@@ -368,7 +369,7 @@ pub fn Ref(comptime T: type) type {
                 return null;
             };
             // Characters and hotkey groups are tracked by id, e.g. to keep a selection across a reorder.
-            if (self.doc == .profile) patch.assignIds(config.Config, self.session.profile().ptr);
+            if (self.doc == .profile) patch.assignIds(config.Config, self.session.profile().ptr, &self.session.appContext().store.ids);
             self.session.edited(self.doc, comptime layoutFor(T, field, .none), self.layout);
             return self.item(field, list.items.len - 1);
         }
