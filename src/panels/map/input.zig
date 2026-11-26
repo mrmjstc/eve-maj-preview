@@ -103,12 +103,13 @@ pub fn finishChoosingRegions(window: *MapPanelWindow) void {
     window.chooseRegions(chosen);
 }
 
-fn closePopup(window: *MapPanelWindow, context: Context) void {
+/// Closes the menus and the search, which `ending` ends.
+pub fn closePopup(window: *MapPanelWindow, context: Context, ending: SearchEnding) void {
     window.state.menu = null;
     window.state.region_menu = null;
     window.state.layers_menu = null;
     window.state.popup.clear();
-    closeSearch(window, context, .hand_back);
+    closeSearch(window, context, ending);
 }
 
 /// Whether the hover changed, and so the panel needs a redraw.
@@ -224,7 +225,7 @@ fn handleClick(window: *MapPanelWindow, context: Context, x: i32, y: i32) void {
     switch (hit.kind) {
         .none => {
             if (window.state.isPopupOpen()) {
-                closePopup(window, context);
+                closePopup(window, context, .hand_back);
                 return;
             }
             // New Eden stays until a region is picked, or its title closes it.
@@ -375,7 +376,7 @@ fn openKillRow(window: *MapPanelWindow, context: Context, row_index: usize) void
 fn handleRightClick(window: *MapPanelWindow, context: Context, x: i32, y: i32) void {
     const hit = window.state.hitTest(window.currentAreas(), x, y);
     if (window.state.isPopupOpen()) {
-        closePopup(window, context);
+        closePopup(window, context, .hand_back);
         return;
     }
     // A listed system may be off the map, so its menu opens at the cursor.
@@ -460,7 +461,7 @@ fn toggleLayer(window: *MapPanelWindow, layer: look.Layer) void {
 
 fn pressRegionRow(window: *MapPanelWindow, context: Context, region_menu: menu_mod.RegionMenu, row_index: usize) void {
     const site = region_menu.siteAt(row_index) orelse return;
-    closePopup(window, context);
+    closePopup(window, context, .hand_back);
     openUrl(context.destinations, site, system_links.regionUrl(site, region_menu.region));
 }
 
@@ -478,7 +479,7 @@ fn pressCharacterRow(window: *MapPanelWindow, context: Context, row_index: usize
 
 fn runMenuAction(window: *MapPanelWindow, context: Context, action: menu_mod.Action) void {
     const menu = window.state.menu orelse return;
-    if (action.closesMenu()) closePopup(window, context);
+    if (action.closesMenu()) closePopup(window, context, .hand_back);
     const destinations = context.destinations;
     const map_settings = &window.config.mapPanel;
     const now_ms = win32.Ticks.now().ms;
@@ -590,7 +591,7 @@ fn endSelecting(window: *MapPanelWindow) void {
 fn pickHit(window: *MapPanelWindow, context: Context, index: usize) void {
     const open = window.state.search orelse return;
     const hit = open.hitAt(index) orelse return;
-    closePopup(window, context);
+    closePopup(window, context, .hand_back);
     switch (hit) {
         .system => |system| window.pingSystem(system),
         .region => |region| window.chooseRegion(region),
@@ -611,7 +612,7 @@ fn onSearchKey(window: *MapPanelWindow, context: Context, wParam: win32.WPARAM) 
     const is_ctrl_down = win32.isCtrlPressed();
     const extent: search.Extent = if (win32.isShiftPressed()) .extend else .move;
     switch (wParam) {
-        vk.VK_ESCAPE => closePopup(window, context),
+        vk.VK_ESCAPE => closePopup(window, context, .hand_back),
         vk.VK_RETURN => pickHit(window, context, open.picked_index),
         vk.VK_UP => open.pickPrevious(),
         vk.VK_DOWN => open.pickNext(),

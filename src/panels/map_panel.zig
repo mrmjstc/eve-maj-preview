@@ -156,7 +156,7 @@ pub const MapPanel = struct {
 
         const window = if (self.window) |*w| w else return;
         if (!self.isVisible(config, presence.any_character_logged_in)) {
-            window.hide();
+            self.hideWindow(window);
             return;
         }
         if (config.mapPanel.liveStats) self.feed.poll(allocator, io, win32.Ticks.now());
@@ -260,6 +260,16 @@ pub const MapPanel = struct {
         setRippling(window, window.hasRipple(scene, win32.Ticks.now().ms));
     }
 
+    /// Closes the popups and stops the timers, whose redraws would re-show the hidden panel.
+    fn hideWindow(self: *MapPanel, window: *MapPanelWindow) void {
+        if (!win32.isWindowVisible(window.panel.hwnd)) return;
+        input.closePopup(window, self.inputContext(), .keyboard_gone);
+        setPumping(window, false);
+        setRippling(window, false);
+        _ = win32.KillTimer(window.panel.hwnd, FRAME_TIMER_ID);
+        window.hide();
+    }
+
     fn redrawAfterInput(self: *MapPanel) void {
         self.redraw();
     }
@@ -349,7 +359,8 @@ fn mapPanelWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, l
                 PUMP_TIMER_ID => map_panel.pump(window.panel.allocator),
                 else => {},
             }
-            map_panel.redrawAfterInput();
+            // One already queued when hideWindow stopped the timers mustn't re-show the panel.
+            if (win32.isWindowVisible(hwnd)) map_panel.redrawAfterInput();
         },
         else => {
             const response = input.handleMessage(window, map_panel.inputContext(), msg, wParam, lParam) orelse return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
