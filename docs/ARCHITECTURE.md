@@ -371,7 +371,7 @@ WM_HOTKEY ─> timerWindowProc ─> HotkeyManager.handleHotkeyPress ─> Command
 - `protocol/`:
   - `url.zig` (pure, tested): parses `evemajpreview://` URLs into a `Command`.
   - `ipc.zig`: sends the URL to the running instance over `WM_COPYDATA`, giving up after 5 s on a hung one. The timer window lets the message through UIPI, so an elevated instance still receives it.
-  - `run.zig`: runs the command through the same code as its hotkey or tray item (group actions via `HotkeyManager.runGroupAction`), refusing one that closes clients or the app (`Command.closeAction`) unless that action is allowed in `protocolLinks` (`allowCloseAll`, `allowCloseActive`, `allowCloseGroup`, `allowExitApp`), so a web page can't close your clients.
+  - `run.zig`: runs the command through the same code as its hotkey or tray item (group actions via `Commands.runGroup`), refusing one that closes clients or the app (`Command.closeAction`) unless that action is allowed in `protocolLinks` (`allowCloseAll`, `allowCloseActive`, `allowCloseGroup`, `allowExitApp`), so a web page can't close your clients.
   - `registry.zig`: registers the handler, again whenever the exe path changes.
 
 ## Log monitoring and trackers
@@ -503,14 +503,14 @@ Python (stdlib and ctypes only) that drives the built app against simulated clie
 
 ## Source checks (`tools/checks/`)
 
-Python (stdlib only) checks that a script can decide and the compiler doesn't. `run_all.py` runs the ones that gate a push, as CI and the `pre-push` hook do (install the hook with `cp tools/checks/pre-push .git/hooks/pre-push`). Each takes `--help`, and reads any deliberate exceptions from `allow/<checker>.txt`.
+Python (stdlib only) checks that a script can decide and the compiler doesn't. `run_all.py` runs the ones that gate a push, as CI and the `pre-push` hook do (install the hook with `cp tools/checks/pre-push .git/hooks/pre-push`). Each takes `--help`, and reads any deliberate exceptions from `allow/<checker>.txt`; a full run fails on an entry that no longer matches anything.
 
 | Checker | Finds |
 |---|---|
 | `style_check.py` | Breaks of [STYLE.md](STYLE.md)'s mechanical rules; `--advisory` adds the heuristics a reviewer judges. |
 | `dead_code.py` | Declarations, fields and enum tags nothing references, which Zig's lazy analysis never warns about. |
 | `import_cycles.py` | Import cycles between features, outside the top layer that reaches back up to `App`. |
-| `stale_refs.py` | Comments naming identifiers or `.zig` paths that no longer exist. |
+| `stale_refs.py` | Comments, and this file's backticked code, naming identifiers or files that no longer exist. |
 | `lang_keys.py` | Translated strings missing from `src/lang/en.json`, unused keys, and keys a language lacks. |
 | `config_docs.py` | Settings missing from [CONFIGURATION.md](CONFIGURATION.md), and rows naming fields that are gone. |
 | `duplicates.py` | Copied runs of code; for review, not a gate. |

@@ -13,6 +13,9 @@ IO_STATUS_BLOCK  # NT structure
 IDI_ICON1  # the icon id in app.rc
 HWND_TOP  # named to explain why it isn't used
 HKEY_CLASSES_ROOT  # registry hive
+LowLevelHooksTimeout  # the registry value capping a low-level hook's time
+XxxConfig  # ARCHITECTURE.md's placeholder for a settings type's name
+XxxTextStyle  # ARCHITECTURE.md's placeholder for a text style's name
 GET_X_LPARAM  # the Win32 macro lparamX stands in for
 GET_Y_LPARAM  # the Win32 macro lparamY stands in for
 CS_DBLCLKS  # window class style

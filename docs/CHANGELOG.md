@@ -68,6 +68,9 @@
 - Struct literals typed on the left; style check enforces it
 - Speech and sound alerts use the app allocator instead of a memory page per alert
 - Region overlay resets all of its state each time it opens
+- Source checks fail on allow-list entries that match nothing
+- Source checks catch stale names and files in ARCHITECTURE.md
+- Receiver style rule sees teardown helpers and writes through captures
 
 ### Fixed
 - Profiles: a queued action drops a leftover restore backup

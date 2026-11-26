@@ -8,7 +8,7 @@ A profile section is a Config field holding a struct, or a list of them, and is 
 `## Global settings`. A `### a.b` heading documents a.b's struct, and a `**`a.<Type>`**` line inside a
 section starts rows for the struct field a holds (a map's MapValue). Rows name keys in backticks in their
 first cell. Errors make the exit code 1. A deliberate exception goes in tools/checks/allow/config_docs.txt
-as `<rule> <key path, e.g. thumbnail.width, or *>  # reason`.
+as `<rule> <key path, e.g. thumbnail.width, or *>  # reason`. An entry that no longer matches anything is an error too.
 
 Rules:
     undocumented-section  a Config field holding a struct with no `### field` heading
@@ -27,7 +27,7 @@ import re
 import sys
 
 from lang_keys import matching, tokenize
-from shared import REPO, SRC, Finding, allowlist, read_text, report
+from shared import REPO, SRC, Finding, allowlist, read_text, report, stale_allowlist
 
 DOC = os.path.join(REPO, "docs", "CONFIGURATION.md")
 
@@ -166,12 +166,15 @@ def main():
     for struct in parse_structs("config.zig", read_text(os.path.join(SRC, "config.zig"))):
         structs.setdefault(struct.name, struct)
 
-    allowed = [entry.partition(" ")[::2] for entry in allowlist("config_docs")]
-    findings = []
+    allowed = [(entry, *entry.partition(" ")[::2]) for entry in allowlist("config_docs")]
+    findings, used = [], set()
 
     def add(rule, where, key, message):
-        if not any(r == rule and (k == "*" or k == key) for r, k in allowed):
+        allowing = next((entry for entry, r, k in allowed if r == rule and (k == "*" or k == key)), None)
+        if allowing is None:
             findings.append(Finding(f"docs/CONFIGURATION.md:{where}", rule, message))
+        else:
+            used.add(allowing)
 
     def saved_fields(struct):
         return {name: t for name, t in struct.fields.items() if name not in struct.runtime_fields}
@@ -242,6 +245,7 @@ def main():
     if "GlobalConfig" in structs:
         compare(structs["GlobalConfig"], "global", "", global_line)
 
+    findings += stale_allowlist("config_docs", used)
     return report(findings)
 
 

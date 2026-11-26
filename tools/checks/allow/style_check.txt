@@ -19,37 +19,25 @@ bare-catch protocol/run.zig const command = url.parse(app.allocator, text) catch
 slog notifications/worker.zig const slog = log.Scoped(scope);  # scope is the type function's comptime parameter
 slog notifications/worker.zig //!  # the file-level check, satisfied by the generic slog above
 
-# §6 receivers judged in the 2026-10-11 sweep: these change state the struct owns, or tear it down like deinit.
+# §6 receivers that change state the struct owns in a way the check can't see (an aliased capture, a slot or client passed in, an iterator).
 receiver activity/runtime.zig fn reconcile(  # writes the tracker slot it's handed, a field of self
-receiver activity/runtime.zig fn destroy(  # teardown, like deinit
-receiver app.zig fn publishState(  # updates state_report's last written snapshot, a field of self
 receiver activity/runtime.zig fn setupSampler(  # writes the tracker slot it's handed, a field of self
 receiver activity/ping.zig pub fn poll(  # updates the echoes it owns
 receiver config/store.zig pub fn previewSection(  # writes self.live through @field, which the check can't see
-receiver activity/ping.zig fn destroyEcho(  # frees an echo it owns, like deinit
 receiver clients/scout.zig pub fn listenForEvents(  # stores self as the callbacks' mutable Scout
-receiver chatlog/discovery.zig fn close(  # teardown of the find handle, like deinit
 receiver clients/auto_colors.zig fn loadEntries(  # fills a store the AutoColorStore owns
 receiver config/import/draft.zig fn put(  # writes into the draft's own object maps
-receiver thumbnail/set.zig fn destroyThumbnail(  # teardown, like deinit
-receiver thumbnail/set.zig fn freeThumbnailData(  # teardown, like deinit
-receiver map/layout.zig fn placePortals(  # writes each portal through its pointer capture
-receiver update.zig fn freeLocked(  # teardown under the mutex, like deinit
 
 # §2 booleans: RenderSettings' show_* fields, a bulk rename declined on 2026-10-11.
 bool-name thumbnail/look.zig show_  # declined bulk rename; the fields mirror the thumbnail config's show* settings
-# §2 booleans that copy the notification config's profile JSON names.
-bool-name notifications/stack.zig _border: bool  # copies NotificationTypeConfig's show_border/flash_border
 
 # §4: a parse miss on a ?T path is the expected "no value", not a failure to log.
 catch-fallback * std.fmt.parseInt(  # unparsable text is a normal miss
 catch-fallback * std.fmt.parseFloat(  # unparsable text is a normal miss
 catch-fallback * std.math.add(  # overflow means the digits aren't a value
-catch-fallback update.zig std.SemanticVersion.parse(  # both callers log when it's null
 # §4 exception, bounded formatting whose fallback text is visible.
 catch-fallback * catch "---";  # overlay text
 catch-fallback * catch "?";  # format.zig's short labels
-catch-fallback hotkeys/manager.zig catch "VK?";  # a key's display name
 # §4 exception, the logger's own code.
 catch-fallback log.zig catch  # the logger's timestamp and file paths
 # §8: win32.zig doesn't log; its helpers report failure through their return value.
@@ -57,9 +45,6 @@ catch-fallback platform/win32.zig catch null;  # the caller logs
 
 # §6 anytype: bind.zig's header documents its `ref`, always a session.Ref.
 anytype-doc dialog/knots/bind.zig ref: anytype  # documented once in the file header
-
-# §2: single letters that are a published formula's terms (sRGB transfer function's c).
-single-letter util/color.zig const c =  # sRGB channel value in the transfer function
 
 # §4 quoting: a hook's name is its kind ("keyboard", "mouse"), not a value that could be empty or padded.
 
@@ -73,7 +58,6 @@ orelse-unreachable dialog/knots/session.zig return g_host orelse unreachable;  #
 message-quote hotkeys/hook_bindings.zig slog.err("Failed to install low-level {s} hook: error {d}"  # name is the fixed word "keyboard" or "mouse", read as an adjective, never user text
 message-quote panels/panel_lifecycle.zig slog.err("Failed to create the {s} window: {}"  # name is a fixed panel name like "Map Panel", never user text
 message-quote panels/panel_lifecycle.zig slog.err("Failed to link the {s} window to its panel: {}"  # name is a fixed panel name like "Map Panel", never user text
-catch-fallback dialog/knots/text_case.zig utf8ByteSequenceLength(  # an invalid lead byte is kept as it is, one byte at a time
 
 # Built from the Button enum above it, so it can't sit with the constants.
 
@@ -89,13 +73,7 @@ bare-catch map/zkill_feed.zig http_client.Session.init() catch return;  # Sessio
 bare-catch panels/map/text.zig writer.print(  # high-frequency formatting exception
 bare-catch util/fixed_text.zig writer.print(format, args) catch {};  # FixedText.print, per popup row per render; a cut line is visible
 receiver map/evestars_feed.zig fn spawnCall(  # hands self to the thread as the mutable slot it delivers into
-receiver map/layout.zig fn placeNodes(self: *Layout, fit: Fit) void {  # writes nodes through its capture, which the script misses
-receiver map/layout.zig fn labelExits(self: *Layout,  # writes exits through its capture, which the script misses
-receiver map/layout.zig pub fn placeRegionLabels(self: *Layout,  # writes region_labels through its capture, which the script misses
 receiver platform/panel_window.zig pub fn followSize(  # writes `native` through a pointer capture, which the script reads as no write
-receiver platform/panel_window.zig pub fn followTopmost(  # writes `native` through a pointer capture, which the script reads as no write
-receiver map/layout.zig fn placeExits(  # writes `exits` through a pointer capture, which the script reads as no write
-receiver thumbnail/set.zig fn shareSystemColor(  # writes the thumbnails self owns
 
 # Mirrors Win32 structs and an extern parameter, which keep their names.
 abbreviation platform/win32.zig pt: POINT  # MSG, MSLLHOOKSTRUCT and MonitorFromPoint spell it this way
@@ -110,20 +88,9 @@ comparator-pair util/color.zig const b = chroma  # OKLab b
 extern sim/win32_sim.zig pub extern  # process creation, file copy and FillRect, used by the simulator alone
 decl-order sim/win32_sim.zig pub extern  # declarations grouped by API area, as win32.zig's are (§8)
 field-case sim/win32_sim.zig :  # STARTUPINFOA, PROCESS_INFORMATION and CreateProcessA mirror Win32's names
-# Not a window procedure: the Map Panel subclass calls it to pass a message on to knots own procedure.
-callconv panels/map/knots_window.zig pub fn forward(  # a plain Zig call carrying a message through
-# Two unrelated 0.55s: a chip fill alpha and the accent luminance threshold.
-repeated-number dialog/knots/style.zig CHIP_OFF_FILL  # alpha, not form.zig's accent luminance threshold
 bare-catch map/activity_feed.zig const last_hour = fetch(allocator, urls[0], header) catch return;  # fetch is Session.fetch, which logs every failure itself
 bare-catch map/activity_feed.zig const two_hours = fetch(allocator, urls[1], header) catch return;  # fetch is Session.fetch, which logs every failure itself
 receiver clients/roster.zig fn rename(  # replaces the name a client in self owns
-receiver clients/roster.zig pub fn clearLogReadings(  # clears the systems, alerts and rates the roster's clients own
 receiver clients/roster.zig fn clearSystem(  # frees a system name a client in self owns
-receiver clients/roster.zig pub fn refreshConfig(  # rewrites the clients the roster owns
 receiver clients/roster.zig fn refreshClientConfig(  # replaces the display name a client in self owns
-receiver clients/roster.zig pub fn expireAlerts(  # removes alerts the roster's clients own
-receiver clients/roster.zig pub fn clearAlerts(  # frees the alerts the roster's clients own
-receiver clients/roster.zig pub fn refreshMinimized(  # updates the clients the roster owns
-receiver clients/roster.zig pub fn restartMinimizeDelays(  # updates the clients the roster owns
-receiver clients/roster.zig pub fn bumpByName(  # bumps the revisions of clients the roster owns
 receiver hotkeys/manager.zig pub fn syncCharacterCursors(  # moves cursors stored in the hotkey map it owns

@@ -6,6 +6,7 @@ Usage, from the repo root:
 English text is the key: lang.text("Save") looks "Save" up in the chosen language's file, and a string
 missing there shows in English. Errors make the exit code 1. A deliberate exception goes in
 tools/checks/allow/lang_keys.txt as `<rule> <the whole text, part of the src/ path, or *>  # reason`.
+An entry that no longer matches anything is an error too.
 
 Rules:
     missing-key     a literal the code translates that en.json lacks, so no language can translate it
@@ -25,7 +26,7 @@ import re
 import sys
 
 import dead_code
-from shared import SRC, Finding, allowlist, read_text, report, zig_files
+from shared import SRC, Finding, allowlist, read_text, report, stale_allowlist, zig_files
 
 LANG = os.path.join(SRC, "lang")
 UI_FOLDERS = ("dialog/", "drag/")
@@ -344,7 +345,7 @@ def main():
         sources[path] = dead_code.Source(path, text)
 
     english = json.loads(read_text(os.path.join(LANG, "en.json")))
-    entries = [entry.partition(" ")[::2] for entry in allowlist("lang_keys")]
+    entries = [(entry, *entry.partition(" ")[::2]) for entry in allowlist("lang_keys")]
     findings = []  # (rule, location, message, text matched by the allowlist, is_advisory)
 
     translated = translated_literals(files)
@@ -375,8 +376,14 @@ def main():
                 if re.search(r"[A-Za-z]{2}", text):
                     findings.append(("raw-text", f"src/{file.path}:{tokens[k].line}", f"'{text}' is drawn without lang.text", text, True))
 
-    kept = [Finding(location, rule, message, is_advisory) for rule, location, message, text, is_advisory in findings
-            if not any(r == rule and (t == "*" or t == text or t in location) for r, t in entries)]
+    kept, used = [], set()
+    for rule, location, message, text, is_advisory in findings:
+        allowing = next((entry for entry, r, t in entries if r == rule and (t == "*" or t == text or t in location)), None)
+        if allowing is None:
+            kept.append(Finding(location, rule, message, is_advisory))
+        else:
+            used.add(allowing)
+    kept += stale_allowlist("lang_keys", used)
     return report(kept, args.advisory)
 
 

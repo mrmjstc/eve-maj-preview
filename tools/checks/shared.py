@@ -64,16 +64,27 @@ def selected(paths, known):
 
 def allowlist(name):
     """The entries of allow/<name>.txt, each with its `  # reason` cut off; comment and blank lines skipped."""
+    return [entry for _, entry in numbered_allowlist(name)]
+
+
+def numbered_allowlist(name):
+    """allowlist(name) as (line number, entry) pairs."""
     path = os.path.join(ALLOW_DIR, name + ".txt")
     if not os.path.exists(path):
         return []
     entries = []
     with open(path, encoding="utf-8") as file:
-        for raw in file:
+        for number, raw in enumerate(file, 1):
             entry = raw.split("  #", 1)[0].strip()
             if entry and not entry.startswith("#"):
-                entries.append(entry)
+                entries.append((number, entry))
     return entries
+
+
+def stale_allowlist(name, used):
+    """A stale-allow error for each entry of allow/<name>.txt not in `used`; only meaningful after a run over all of src/."""
+    return [Finding(f"tools/checks/allow/{name}.txt:{number}", "stale-allow", f"'{entry}' no longer matches anything; remove it")
+            for number, entry in numbered_allowlist(name) if entry not in used]
 
 
 def report(findings, show_advisories=False):

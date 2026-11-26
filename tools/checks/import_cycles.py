@@ -8,6 +8,7 @@ features is an error for each member not matched by tools/checks/allow/import_cy
 lists the top layer: app.zig, and the tray and window procs that reach back up to it.
 Each error shows one cycle through the file, so the import to cut is visible. --list prints every
 cycle, allowed or not. A root file counts as its folder's feature (config.zig with config/).
+An allowlist pattern that matches no file in a cross-feature cycle is an error too.
 """
 import argparse
 import fnmatch
@@ -15,7 +16,7 @@ import os
 import re
 import sys
 
-from shared import SRC, Finding, allowlist, report, src_path, zig_files
+from shared import SRC, Finding, allowlist, report, src_path, stale_allowlist, zig_files
 
 IMPORT = re.compile(r'@import\("([^"]+\.zig)"\)')
 
@@ -110,7 +111,7 @@ def main():
 
     graph = build_graph()
     patterns = allowlist("import_cycles")
-    findings = []
+    findings, used = [], set()
     for component in strongly_connected(graph):
         members = set(component)
         features = sorted({feature(path) for path in component})
@@ -121,9 +122,12 @@ def main():
         if len(features) == 1:
             continue
         for path in component:
-            if any(fnmatch.fnmatch(path, pattern) for pattern in patterns):
+            allowing = [pattern for pattern in patterns if fnmatch.fnmatch(path, pattern)]
+            if allowing:
+                used.update(allowing)
                 continue
             findings.append(Finding(f"src/{path}", "cross-feature-cycle", " -> ".join(cycle_through(graph, path, members))))
+    findings += stale_allowlist("import_cycles", used)
     return report(findings)
 
 

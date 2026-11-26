@@ -6,7 +6,8 @@ Usage, from the repo root:
 Paths only limit what is reported; references are always counted across all of src/.
 Errors are declarations with no reference anywhere and make the exit code 1. Advisories (--advisory)
 are heuristics a reviewer has to judge. A deliberate exception goes in tools/checks/allow/dead_code.txt
-as `<rule> <path> <text on the line>  # reason`, where a text of `*` matches any line in that file.
+as `<rule> <path> <text on the line>  # reason`, where a text of `*` matches any line in that file;
+a run over all of src/ also fails on an entry that no longer matches anything.
 
 Rules:
     unused-import   an @import or alias line nothing in its file names
@@ -30,7 +31,7 @@ import re
 import sys
 from dataclasses import dataclass
 
-from shared import Finding, allowlist, code_only, report, selected, zig_files
+from shared import Finding, allowlist, code_only, report, selected, stale_allowlist, zig_files
 
 # Names the compiler or std reaches without a reference in our code.
 STD_HOOKS = {"main", "panic", "std_options", "format", "jsonStringify", "jsonParse", "jsonParseFromValue", "hash", "eql", "_"}
@@ -50,8 +51,13 @@ class Candidate:
     span: tuple  # (path, first line index, last line index) of the declaration
     is_advisory: bool = False
 
-    def is_allowed(self, entries):
-        return any(rule == self.rule and path in (self.path, "*") and (text == "*" or text in self.line_text) for rule, path, text in entries)
+    def is_allowed(self, entries, used):
+        """Adds the entry that allows it, if any, to `used`."""
+        for rule, path, text in entries:
+            if rule == self.rule and path in (self.path, "*") and (text == "*" or text in self.line_text):
+                used.add(f"{rule} {path} {text}")
+                return True
+        return False
 
     def finding(self):
         return Finding(f"src/{self.path}:{self.line_no}", self.rule, self.message, self.is_advisory)
@@ -317,10 +323,10 @@ def main():
     string_refs = string_references(sources)
     reflected = reflected_types(sources)
     # Repeat with references from dead code dropped, until nothing new dies; allowlisted code stays live.
-    dead, first_dead = set(), None
+    dead, first_dead, used = set(), None, set()
     while True:
         refs = {name: [r for r in at if not any(p == r[0] and s <= r[1] <= e for p, s, e in dead)] for name, at in all_refs.items()}
-        candidates = [c for c in check(sources, refs, string_refs, reflected) if not c.is_allowed(entries)]
+        candidates = [c for c in check(sources, refs, string_refs, reflected) if not c.is_allowed(entries, used)]
         now_dead = {c.span for c in candidates if not c.is_advisory}
         if first_dead is None:
             first_dead = now_dead
@@ -335,6 +341,8 @@ def main():
         if not candidate.is_advisory and candidate.span not in first_dead:
             candidate.message += " except dead code"
         findings.append(candidate.finding())
+    if not args.paths:
+        findings += stale_allowlist("dead_code", used)
     return report(findings, args.advisory)
 
 

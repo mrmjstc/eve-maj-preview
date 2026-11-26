@@ -5,7 +5,8 @@ Usage, from the repo root:
 
 Errors are rule violations and make the exit code 1. Advisories (--advisory) are
 heuristics a reviewer has to judge. A deliberate exception goes in
-tools/checks/allow/style_check.txt as `<rule> <path under src/ or *> <text on the line>  # reason`.
+tools/checks/allow/style_check.txt as `<rule> <path under src/ or *> <text on the line>  # reason`;
+a run over all of src/ also fails on an entry that no longer matches anything.
 Each check names the STYLE.md section it enforces.
 
 Left to the reviewer, since a script can't decide them: whether a comment restates the code, stale or
@@ -19,7 +20,7 @@ import os
 import re
 import sys
 
-from shared import SRC, Finding, allowlist, code_only, read_text, report, src_path
+from shared import SRC, Finding, allowlist, code_only, read_text, report, src_path, stale_allowlist
 
 # §8: modules allowed their own externs, for a library only they use.
 EXTERN_FILES = {"platform/win32.zig", "notifications/sound.zig", "notifications/tts.zig", "util/http_client.zig"}
@@ -77,7 +78,7 @@ SELF_EXPLAINING_ANYTYPE = {"args", "writer", "value", "self", "json_writer", "jw
 class Source:
     """One file under check: its lines, what the checks share about them, and what they found."""
 
-    def __init__(self, path, text, allowed):
+    def __init__(self, path, text, allowed, used):
         self.path = path
         self.text = text
         self.lines = text.split("\n")
@@ -88,11 +89,13 @@ class Source:
         self.imports = set(re.findall(r"^(?:pub\s+)?const\s+(\w+)\s*=\s*@import\(", text, re.M))
         self.findings = []
         self._allowed = allowed
+        self._used = used
 
     def add(self, i, rule, message, is_advisory=False):
         line_text = self.lines[i] if i < len(self.lines) else ""
         for allowed_rule, allowed_path, text in self._allowed:
             if allowed_rule == rule and allowed_path in (self.path, "*") and text in line_text:
+                self._used.add(f"{allowed_rule} {allowed_path} {text}")
                 return
         self.findings.append((i + 1, Finding(f"src/{self.path}:{i + 1}", rule, message, is_advisory)))
 
@@ -662,13 +665,14 @@ def check_receivers(s):
                     continue
                 body = "\n".join(s.codes[start + 1:end + 1])
                 field_calls = re.findall(r"self\.\w+(?:\.\w+)*\.(\w+)\(", body)
-                direct = any(p.search(body) for p in writes) or any(c not in READ_ONLY_CALLS for c in field_calls)
+                direct = any(p.search(body) for p in writes) or any(c not in READ_ONLY_CALLS for c in field_calls) or writes_through_capture(body)
                 calls_mutating = any(c in mutating or c not in method_names for c in re.findall(r"\bself\.(\w+)\(", body))
                 if direct or calls_mutating:
                     mutating.add(name)
                     changed = True
         for name, start, end, is_mutable in methods:
-            if is_mutable and name not in mutating and name not in ("deinit", "init", "run", "setGlobalInstance"):
+            is_teardown = name.startswith(("deinit", "destroy", "free")) or name == "close"
+            if is_mutable and name not in mutating and not is_teardown and name not in ("init", "run", "setGlobalInstance"):
                 s.add(start, "receiver", f"{type_name}.{name} only reads self; take *const {type_name}", True)
 
     receivers = {}
@@ -679,6 +683,17 @@ def check_receivers(s):
     for type_name, kinds in receivers.items():
         if len(kinds) > 1:
             s.add(max(kinds.values()), "receiver-mix", f"{type_name}'s read-only methods mix self: {type_name} and self: *const {type_name}", True)
+
+
+def writes_through_capture(body):
+    """Whether `body` writes through a pointer capture of something reached from self, e.g. `for (self.items) |*item| item.x = 1`."""
+    for line in body.split("\n"):
+        if "self" not in line:
+            continue
+        for name in re.findall(r"[|,]\s*\*(\w+)", line):
+            if re.search(rf"\b{name}\.[\w.\[\]]+\s*(=|\+=|-=|\|=|&=|\*=|\+%=|-\|=)(?!=)|\b{name}\.\*\s*=(?!=)|&{name}\.\w+|[(,]\s*{name}\s*[,)]", body):
+                return True
+    return False
 
 
 def check_win32(s):
@@ -713,9 +728,9 @@ def check_tests(s, tests_imports):
             s.add(start, "test-io", "test code doesn't touch Win32, the filesystem or globals")
 
 
-def check_file(path, text, tests_imports, allowed):
-    """The findings for one file, in line order."""
-    s = Source(path, text, allowed)
+def check_file(path, text, tests_imports, allowed, used):
+    """The findings for one file, in line order; adds the allowlist entries that hid one to `used`."""
+    s = Source(path, text, allowed, used)
     check_layout(s)
     check_names(s)
     check_comments(s)
@@ -744,9 +759,11 @@ def main():
     allowed = [tuple(entry.split(" ", 2)) for entry in allowlist("style_check")]
     allowed = [entry for entry in allowed if len(entry) == 3]
 
-    findings = []
+    findings, used = [], set()
     for target in sorted(targets):
-        findings += check_file(src_path(target), read_text(target), tests_imports, allowed)
+        findings += check_file(src_path(target), read_text(target), tests_imports, allowed, used)
+    if not args.paths:
+        findings += stale_allowlist("style_check", used)
     return report(findings, args.advisory)
 
 

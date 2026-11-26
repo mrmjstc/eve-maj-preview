@@ -1,4 +1,4 @@
-"""Finds comments that name code no longer in src/: identifiers, and .zig paths.
+"""Finds comments, and docs/ARCHITECTURE.md, naming code no longer in src/: identifiers, and file paths.
 
 Usage, from the repo root:
     python tools/checks/stale_refs.py [path ...]
@@ -9,7 +9,10 @@ such name must appear somewhere in src/ code (a declaration, a field, a tag, a l
 stem of a file, and a `x/y.zig` path must exist. Paths only limit what is reported. Findings make the exit
 code 1. A deliberate exception goes in tools/checks/allow/stale_refs.txt as
 `<name, or a path under src/ ending in .zig>  # reason` for a name that is right but isn't ours (a Win32
-or std name, a product).
+or std name, a product). A run over all of src/ also fails on an entry that no longer matches anything.
+
+A run over all of src/ also checks ARCHITECTURE.md's backticked code: each span without spaces must name
+code as above, and a .zig, .py or .ps1 file in it must exist somewhere in the repo.
 
 A name that still exists but now means something else, or moved to where the comment no longer points,
 isn't caught.
@@ -19,14 +22,16 @@ import os
 import re
 import sys
 
-from shared import REPO, Finding, allowlist, code_only, read_text, report, selected, zig_files
+from shared import REPO, Finding, allowlist, code_only, read_text, report, selected, stale_allowlist, zig_files
 
 COMMENT = re.compile(r"//[/!]?(.*)$")
 BACKTICKED = re.compile(r"`([^`]+)`")
 CALLED = re.compile(r"\b([A-Za-z_]\w*)\(\)")
 CODE_SHAPED = re.compile(r"\b(?:[a-z]+[A-Z]\w*|[A-Za-z]\w*_\w+|[A-Z][a-z]+[A-Z]\w*)\b")
 PATH = re.compile(r"\b([\w./-]+\.zig)\b")
-FILE_TYPES = "jpg|png|ico|json|txt|yaml|yml|wav|mp3|dmp|log|old|exe|dll|pdb|md|py|ps1|rc|bak|ttf|otf|html|csv|ini|xml|settings"
+FILE_TYPES = "jpg|png|ico|json|txt|yaml|yml|wav|mp3|dmp|log|old|exe|dll|pdb|md|py|ps1|rc|bak|tmp|ttf|otf|html|csv|ini|xml|settings"
+DOCS = ("docs/ARCHITECTURE.md",)
+DOC_FILE = re.compile(r"[\w./-]+\.(?:zig|py|ps1)")
 IGNORED = {"null", "true", "false", "undefined", "unreachable", "error", "anytype", "comptime", "orelse", "catch", "try", "self"}
 
 
@@ -59,6 +64,46 @@ def named(text):
     return [name for name in dict.fromkeys(found) if name not in IGNORED and not name.isdigit()]
 
 
+def repo_files():
+    """Every file's path in the repo, with forward slashes, leaving out .git and build output."""
+    found = set()
+    for directory, folders, names in os.walk(REPO):
+        folders[:] = [f for f in folders if f not in (".git", ".zig-cache", "zig-out", "__pycache__")]
+        found |= {os.path.relpath(os.path.join(directory, n), REPO).replace(os.sep, "/") for n in names}
+    return found
+
+
+def doc_findings(doc, known, allowed, used):
+    """The stale names and missing files `doc`'s backticked spans write, outside fenced blocks."""
+    files = repo_files()
+    findings, is_fenced = [], False
+    for number, line in enumerate(read_text(os.path.join(REPO, doc)).split("\n"), 1):
+        if line.startswith("```"):
+            is_fenced = not is_fenced
+        if is_fenced or line.startswith("```"):
+            continue
+        for span in BACKTICKED.findall(line):
+            # Commands, flags, decorators and Windows object names aren't code in src/.
+            if " " in span or "\\" in span or span.startswith(("-", "@")):
+                continue
+            if any(f == span or f.endswith("/" + span) for f in files):
+                continue
+            if DOC_FILE.fullmatch(span):
+                if span in allowed:
+                    used.add(span)
+                else:
+                    findings.append(Finding(f"{doc}:{number}", "missing-path", f"'{span}' doesn't exist"))
+                continue
+            for name in named(f"`{span}`"):
+                if name in known:
+                    continue
+                if name in allowed:
+                    used.add(name)
+                else:
+                    findings.append(Finding(f"{doc}:{number}", "stale-name", f"'{name}' names nothing in src/"))
+    return findings
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("paths", nargs="*", help="files or folders under src/ to report on (default: all of src/)")
@@ -78,7 +123,7 @@ def main():
             known |= set(re.findall(r"[A-Za-z_]\w*", code_only(line)))
     allowed = set(allowlist("stale_refs"))
 
-    findings = []
+    findings, used = [], set()
     for path in sorted(selected(args.paths, files)):
         for number, line in enumerate(files[path].split("\n"), 1):
             text = comment_text(line)
@@ -87,11 +132,19 @@ def main():
             for target in PATH.findall(text):
                 candidates = {os.path.normpath(os.path.join(os.path.dirname(path), target)).replace(os.sep, "/"), target.lstrip("./")}
                 exists = candidates & set(files) or any(p.endswith("/" + target) or p == target for p in files) or os.path.exists(os.path.join(REPO, target))
-                if not exists and target not in allowed:
+                if not exists and target in allowed:
+                    used.add(target)
+                elif not exists:
                     findings.append(Finding(f"src/{path}:{number}", "missing-path", f"'{target}' doesn't exist"))
             for name in named(text):
-                if name not in known and name not in allowed:
+                if name not in known and name in allowed:
+                    used.add(name)
+                elif name not in known:
                     findings.append(Finding(f"src/{path}:{number}", "stale-name", f"'{name}' names nothing in src/"))
+    if not args.paths:
+        for doc in DOCS:
+            findings += doc_findings(doc, known, allowed, used)
+        findings += stale_allowlist("stale_refs", used)
     return report(findings)
 
 
