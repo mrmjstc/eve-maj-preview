@@ -100,7 +100,7 @@ pub const ChatlogMonitor = struct {
         }
     };
 
-    pub fn init(allocator: std.mem.Allocator, io: std.Io, chatlog_config: *const config.ChatlogConfig, global_settings: ?*config.GlobalConfig, character_ids: ?*CharacterIds) !*ChatlogMonitor {
+    pub fn create(allocator: std.mem.Allocator, io: std.Io, chatlog_config: *const config.ChatlogConfig, global_settings: ?*config.GlobalConfig, character_ids: ?*CharacterIds) !*ChatlogMonitor {
         const monitor = try allocator.create(ChatlogMonitor);
         errdefer allocator.destroy(monitor);
         const stop_event = win32.CreateEventA(null, win32.TRUE, win32.FALSE, null) orelse return error.CreateEventFailed;
@@ -134,7 +134,7 @@ pub const ChatlogMonitor = struct {
         return monitor;
     }
 
-    pub fn deinit(self: *ChatlogMonitor) void {
+    pub fn destroy(self: *ChatlogMonitor) void {
         self.stopWorkerThread();
         _ = win32.CloseHandle(self.stop_event);
         self.commands.deinit();
@@ -151,6 +151,7 @@ pub const ChatlogMonitor = struct {
         for (self.log_files.items) |*file| file.deinit(self.allocator, self.io);
         self.log_files.deinit(self.allocator);
         self.interpreter.deinit();
+        self.allocator.destroy(self);
     }
 
     fn freeKeys(allocator: std.mem.Allocator, map: *std.StringHashMap(void)) void {

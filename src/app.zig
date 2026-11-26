@@ -729,8 +729,7 @@ pub const App = struct {
     pub fn destroyChatlogMonitor(self: *App) void {
         const monitor = self.rebuilt.chatlog_monitor orelse return;
         self.rebuilt.chatlog_monitor = null;
-        monitor.deinit();
-        self.allocator.destroy(monitor);
+        monitor.destroy();
     }
 
     fn reloadWithProfile(self: *App, new_profile_name: []const u8) !void {

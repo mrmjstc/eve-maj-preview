@@ -114,8 +114,8 @@ fn runStep(app: *App, step: restart_plan.Step, restart: *Restart) !void {
             slog.info("Kept chatlog monitoring without rescanning logs", .{});
         },
         // Created with its worker thread stopped, so the trackers can be wired in before it runs.
-        .create_monitor => app.rebuilt.chatlog_monitor = chatlog.ChatlogMonitor.init(app.allocator, app.io, &app.global_settings.chatlog, &app.global_settings, &app.character_ids) catch |err| blk: {
-            slog.err("Failed to initialize chatlog monitor: {}", .{err});
+        .create_monitor => app.rebuilt.chatlog_monitor = chatlog.ChatlogMonitor.create(app.allocator, app.io, &app.global_settings.chatlog, &app.global_settings, &app.character_ids) catch |err| blk: {
+            slog.err("Failed to create chatlog monitor: {}", .{err});
             break :blk null;
         },
         .setup_trackers => app.trackers.setup(&app.store.saved, app.rebuilt.chatlog_monitor),
