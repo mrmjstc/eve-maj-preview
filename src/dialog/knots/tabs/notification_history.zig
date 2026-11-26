@@ -8,6 +8,7 @@ const list_look = @import("../../../panels/list_look.zig");
 const palette = @import("../../../palette.zig");
 const panel_header = @import("../../../panels/panel_header.zig");
 const panel_look = @import("../../../panels/panel_look.zig");
+const color = @import("../../../util/color.zig");
 const session = @import("../session.zig");
 const bind = @import("../bind.zig");
 const style = @import("../style.zig");
@@ -55,9 +56,8 @@ const Sample = struct {
 
 /// The preview's colours and text sizes, read from the edited settings.
 const Look = struct {
-    name_color: u32,
-    /// A new row's name.
-    new_name_color: u32,
+    /// One per sample, in SAMPLES order, so unique colours differ row to row.
+    name_colors: [SAMPLES.len]u32,
     name_size: f32,
     small_size: f32,
     /// The chips' and divider's, the header's small font at the preview's scale.
@@ -112,7 +112,7 @@ pub fn show(window: *Window, context: *ui.Frame) !void {
     const is_shown = are_alerts_on and ref.get("show");
     const shown = try window.widgets.openGroup(context, .src(@src()), is_shown);
     var bench = try panel_preview.Bench.open(context, BENCH_KEY);
-    const look = lookOf(profile, &bench);
+    const look = lookOf(context.arena(), profile, &bench);
     try bench.openStage(context, look.scale, &window.notification_history.picker.shows_off);
     try panel(window, context, profile, look);
     try bench.closeStage(context);
@@ -196,14 +196,19 @@ fn settings(window: *Window, context: *ui.Frame, ref: HistoryRef, part: Part) !v
     }
 }
 
-/// A unique name colour varies per character, so a sample stands in for it.
-fn lookOf(profile: *const config.Config, bench: *const panel_preview.Bench) Look {
+/// Unique name colours are picked for the sample names, as the panel would for these characters.
+fn lookOf(arena: std.mem.Allocator, profile: *const config.Config, bench: *const panel_preview.Bench) Look {
     const history_settings = &profile.historyPanel;
     const scale = bench.scaleFor(@floatFromInt(history_settings.width));
     const uses_unique_names = profile.shownColors().uses_unique_name_colors;
+    var character_colors: color.AutoColors = .{};
+    var name_colors: [SAMPLES.len]u32 = undefined;
+    for (SAMPLES, &name_colors) |sample, *name_color| {
+        const plain_name = if (sample.is_new) list_look.ACTIVE_NAME else list_look.NAME;
+        name_color.* = if (uses_unique_names) character_colors.colorFor(arena, sample.name, &.{}) else plain_name;
+    }
     return .{
-        .name_color = if (uses_unique_names) style.UNIQUE_SAMPLE else list_look.NAME,
-        .new_name_color = if (uses_unique_names) style.UNIQUE_SAMPLE else list_look.ACTIVE_NAME,
+        .name_colors = name_colors,
         .name_size = @as(f32, @floatFromInt(history_settings.fontSize)) * scale,
         .small_size = @as(f32, @floatFromInt(list_look.smallFontSize(history_settings.fontSize))) * scale,
         .chip_size = @as(f32, @floatFromInt(palette.SMALL_FONT_SIZE)) * scale,
@@ -264,7 +269,7 @@ fn panel(window: *Window, context: *ui.Frame, profile: *const config.Config, loo
     const chip_layout = history_look.layOutChips(try chipWidths(context, look), history_settings.width, panel_header.HEIGHT);
     const rows_top = chip_layout.bottom;
 
-    const panel_style = try panel_preview.frameStyle(arena, look.scale, history_settings.opacity, .{
+    const panel_style = try panel_preview.frameStyle(arena, look.scale, history_settings.opacity, window.notification_history.picker.isFrameOutlined(.panel), .{
         .width = .fixed(look.scaled(history_settings.width)),
         .height = .fixed(look.scaled(previewHeight(history_settings, look.sizes, rows_top, shown))),
     });
@@ -443,7 +448,7 @@ fn sampleRow(window: *Window, context: *ui.Frame, profile: *const config.Config,
     try tile.close(context);
     try slot.close(context);
 
-    try context.e(Text{ .selectable = false, .key = key.indexed(3), .content = sample.name, .style = try widgets.textStyle(arena, if (sample.is_new) look.new_name_color else look.name_color, look.name_size, .{ .is_bold = true }) });
+    try context.e(Text{ .selectable = false, .key = key.indexed(3), .content = sample.name, .style = try widgets.textStyle(arena, look.name_colors[index], look.name_size, .{ .is_bold = true }) });
     const message_color = history_look.messageColor(&profile.notifications, sample.notification_type);
     // Takes the room left and clips a long message, so the timestamp keeps its place.
     const middle_style = try arena.create(ui.Style);

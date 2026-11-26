@@ -172,6 +172,8 @@ pub fn Picker(comptime Kind: type) type {
         shows_off: bool = false,
         /// The part whose row was hovered last frame, lit on the preview.
         lit: ?Kind = null,
+        /// The header was hovered last frame, outlining the frame it selects.
+        is_header_hovered: bool = false,
 
         const Self = @This();
 
@@ -194,11 +196,23 @@ pub fn Picker(comptime Kind: type) type {
             return open;
         }
 
-        /// A panel's header bar, as `part`: its chevron, `title` and muted `count` in the configuration window's font, as the panels draw it.
+        /// A panel's header bar, clicked to select `part`: its chevron, `title` and muted `count` in the configuration window's font, as the panels draw it.
         pub fn header(self: *Self, context: *ui.Frame, part: Kind, key: ui.Key, title: []const u8, count: []const u8, scale: f32) !void {
-            const header_part = try self.openPart(context, .{ .width = .grow(), .padding = .all(1), .background = .transparent }, .{ 1, 1 }, part, true);
+            const button = Button{ .key = self.keyOf(part), .style = &style.panel_header_part };
+            const response = try button.openResponse(context);
+            if (response.hovered) context.ui().requestCursor(.pointer);
             try headerBar(context, key, title, count, scale);
-            try header_part.close(context);
+            try button.close(context);
+            if (response.clicked) self.select(context, part);
+            if (response.hovered != self.is_header_hovered) {
+                self.is_header_hovered = response.hovered;
+                context.requestRedraw();
+            }
+        }
+
+        /// Whether the frame around the whole preview is outlined as `part`, the one its header selects.
+        pub fn isFrameOutlined(self: *const Self, part: Kind) bool {
+            return self.selected == part or self.lit == part or self.is_header_hovered;
         }
 
         pub fn stateOf(self: *const Self, part: Kind, is_shown: bool) Part.State {
@@ -279,13 +293,13 @@ pub fn scaled(scale: f32, pixels: i32) f32 {
 }
 
 /// A panel's frame in list_look's colours at `scale`, sized by `size`'s width and height or padding.
-pub fn frameStyle(arena: std.mem.Allocator, scale: f32, opacity: u8, size: ui.Style) !*const ui.Style {
+pub fn frameStyle(arena: std.mem.Allocator, scale: f32, opacity: u8, is_outlined: bool, size: ui.Style) !*const ui.Style {
     const frame = try arena.create(ui.Style);
     frame.* = size.with(.{
         .direction = .column,
         .background = color_convert.solid(list_look.PANEL),
         .border_width = .all(1),
-        .border_color = color_convert.solid(list_look.BORDER),
+        .border_color = if (is_outlined) .accent else color_convert.solid(list_look.BORDER),
         .radius = .{ .fixed = scaled(scale, @intCast(list_look.CORNER_RADIUS)) },
         .opacity = @as(f32, @floatFromInt(opacity)) / 255.0,
         .overflow = .hidden,

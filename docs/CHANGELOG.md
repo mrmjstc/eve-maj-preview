@@ -82,6 +82,9 @@
 - ARCHITECTURE.md tick list includes taskbar marking
 
 ### Fixed
+- Client List and Alert History previews outline the whole panel when Panel is selected
+- Client List preview: rates line up with pilot names
+- Panel previews show a different unique colour per pilot
 - Mining price table starts hidden each time the window opens
 - Profile links and hotkeys refuse unknown profile names instead of switching to the default
 - Profiles: a queued action drops a leftover restore backup

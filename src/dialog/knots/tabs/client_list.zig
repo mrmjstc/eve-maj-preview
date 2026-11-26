@@ -3,6 +3,7 @@ const std = @import("std");
 const ui = @import("ui");
 const config = @import("../../../config.zig");
 const types = @import("../../../config/types.zig");
+const color_mod = @import("../../../util/color.zig");
 const list_look = @import("../../../panels/list_look.zig");
 const palette = @import("../../../palette.zig");
 const security = @import("../../../map/security.zig");
@@ -49,6 +50,12 @@ const SAMPLES = [_]Sample{
     .{ .name = "Pilot Foxtrot", .state = .inactive, .system = "Tama", .security_tenths = 3, .stats = &.{ .mining_rate, .bounty_rate } },
     .{ .name = "Pilot Charlie", .state = .excluded },
 };
+const NAME_PART_INDEX = for (SAMPLES, 0..) |sample, index| {
+    if (sample.is_name_part) break index;
+} else unreachable;
+const SYSTEM_PART_INDEX = for (SAMPLES, 0..) |sample, index| {
+    if (sample.is_system_part) break index;
+} else unreachable;
 
 /// What a click on the preview selects: the panel itself, then one per text, as on the thumbnail preview.
 const Part = enum {
@@ -109,9 +116,10 @@ const StatLabel = struct { text: []const u8, color: u32, is_shown: bool };
 /// The preview's colours and text sizes, read from the edited settings.
 const Look = struct {
     active_color: u32,
-    active_name_color: u32,
-    name_color: u32,
-    system_color: u32,
+    /// One per sample, in SAMPLES order, so unique colours differ row to row.
+    name_colors: [SAMPLES.len]u32,
+    /// One per sample, in SAMPLES order.
+    system_colors: [SAMPLES.len]u32,
     notification_color: u32,
     name_size: f32,
     small_size: f32,
@@ -185,8 +193,8 @@ fn partRows(look: *const Look) [PART_COUNT]panel_preview.Picker(Part).Row {
         const is_shown, const color = switch (part) {
             .panel => .{ true, palette.TEXT_SECONDARY },
             .active => .{ true, look.active_color },
-            .names => .{ true, look.name_color },
-            .systems => .{ look.shows_systems, look.system_color },
+            .names => .{ true, look.name_colors[NAME_PART_INDEX] },
+            .systems => .{ look.shows_systems, look.system_colors[SYSTEM_PART_INDEX] },
             .notifications => .{ look.shows_notifications, list_look.BADGE_ALERT },
             .incoming_dps => statChip(look, .incoming_dps),
             .outgoing_dps => statChip(look, .outgoing_dps),
@@ -251,7 +259,7 @@ fn preview(window: *Window, context: *ui.Frame, list_settings: *const config.Lis
     const arena = context.arena();
     const column_count = look.column_count;
     // No bottom padding, as the totals footer is always drawn and pads the bottom itself.
-    const panel_style = try panel_preview.frameStyle(arena, look.scale, list_settings.opacity, .{
+    const panel_style = try panel_preview.frameStyle(arena, look.scale, list_settings.opacity, window.client_list.picker.isFrameOutlined(.panel), .{
         .width = .fixed(look.scaled(look.sizes.column_width * @as(i32, @intCast(column_count)))),
     });
     const panel = Rect{ .key = .src(@src()), .style = panel_style };
@@ -316,8 +324,8 @@ fn totalsFooter(window: *Window, context: *ui.Frame, look: *const Look) !void {
 fn sampleRow(window: *Window, context: *ui.Frame, sample: Sample, index: usize, height: f32, look: *const Look) !void {
     const arena = context.arena();
     const key = ROW_KEY.indexed(index);
-    // A part pads its text for its outline, so the space before a name part and after a right-hand part gives that back.
-    const name_inset: f32 = if (sample.is_name_part) look.scaled(PART_PADDING) else 0;
+    // A part pads its text for its outline, so the space before a name or rate part and after a right-hand part gives that back.
+    const name_inset: f32 = if (sample.is_name_part or sample.stats.len > 0) look.scaled(PART_PADDING) else 0;
     const has_right_part = sample.state == .inactive and (sample.right == .notification or sample.is_system_part);
     const right_inset: f32 = if (has_right_part) look.scaled(PART_PADDING) else 0;
     const has_indicator = look.indicator != .None;
@@ -334,8 +342,8 @@ fn sampleRow(window: *Window, context: *ui.Frame, sample: Sample, index: usize, 
         .active => {
             const row = try openPart(window, context, look, row_style.*, list_look.activeTint(look.active_color), .active, true);
             try indicator(context, key.indexed(1), look.active_color, true, look);
-            try context.e(Text{ .selectable = false, .key = key.indexed(2), .content = sample.name, .style = try widgets.textStyle(arena, look.active_name_color, look.name_size, .{ .is_grown = true, .is_bold = true }) });
-            try systemSlot(window, context, sample, key.indexed(3), look);
+            try context.e(Text{ .selectable = false, .key = key.indexed(2), .content = sample.name, .style = try widgets.textStyle(arena, look.name_colors[index], look.name_size, .{ .is_grown = true, .is_bold = true }) });
+            try systemSlot(window, context, sample, look.system_colors[index], key.indexed(3), look);
             try row.close(context);
         },
         .inactive => {
@@ -344,18 +352,25 @@ fn sampleRow(window: *Window, context: *ui.Frame, sample: Sample, index: usize, 
             try indicator(context, key.indexed(1), list_look.BADGE_INACTIVE, false, look);
             const lines = Rect{ .key = key.indexed(4), .style = try linesStyle(arena, look) };
             _ = try lines.open(context);
-            const name = Text{ .selectable = false, .key = key.indexed(2), .content = sample.name, .style = try widgets.textStyle(arena, look.name_color, look.name_size, .{ .is_bold = true }) };
+            const name = Text{ .selectable = false, .key = key.indexed(2), .content = sample.name, .style = try widgets.textStyle(arena, look.name_colors[index], look.name_size, .{ .is_bold = true }) };
             if (sample.is_name_part) {
                 const part = try openPart(window, context, look, .{}, list_look.PANEL, .names, true);
                 try context.e(name);
                 try part.close(context);
+            } else if (name_inset > 0) {
+                const padded_style = try arena.create(ui.Style);
+                padded_style.* = .{ .padding = .xy(name_inset, 0) };
+                const padded = Rect{ .key = key.indexed(6), .style = padded_style };
+                _ = try padded.open(context);
+                try context.e(name);
+                try padded.close(context);
             } else {
                 try context.e(name);
             }
             if (sample.stats.len > 0) try statsLine(window, context, sample.stats, key.indexed(5), look);
             try lines.close(context);
             switch (sample.right) {
-                .system => try systemSlot(window, context, sample, key.indexed(3), look),
+                .system => try systemSlot(window, context, sample, look.system_colors[index], key.indexed(3), look),
                 .notification => try pillPart(window, context, key.indexed(3), look),
             }
             try row.close(context);
@@ -371,10 +386,10 @@ fn sampleRow(window: *Window, context: *ui.Frame, sample: Sample, index: usize, 
     }
 }
 
-/// A row's name over its stats line, taking the room the right-hand slot leaves.
+/// A row's name over its stats line, taking the room the right-hand slot leaves; cut off there, as the panel drops what won't fit.
 fn linesStyle(arena: std.mem.Allocator, look: *const Look) !*const ui.Style {
     const lines_style = try arena.create(ui.Style);
-    lines_style.* = .{ .width = .grow(), .direction = .column, .gap = look.scaled(list_look.LINE_GAP) };
+    lines_style.* = .{ .width = .grow(), .direction = .column, .gap = look.scaled(list_look.LINE_GAP), .overflow = .hidden };
     return lines_style;
 }
 
@@ -386,12 +401,12 @@ fn groupStyle(arena: std.mem.Allocator, gap: f32) !*const ui.Style {
 }
 
 /// The system then its security; the system is the part that edits it on the row marked `is_system_part`.
-fn systemSlot(window: *Window, context: *ui.Frame, sample: Sample, key: ui.Key, look: *const Look) !void {
+fn systemSlot(window: *Window, context: *ui.Frame, sample: Sample, system_color: u32, key: ui.Key, look: *const Look) !void {
     const arena = context.arena();
     const group = Rect{ .key = key, .style = try groupStyle(arena, look.scaled(list_look.SECURITY_GAP)) };
     _ = try group.open(context);
     const opacity = window.client_list.picker.contentOpacity(.systems, look.shows_systems);
-    const system_style = try widgets.textStyle(arena, look.system_color, look.small_size, .{ .opacity = opacity, .is_bold = true });
+    const system_style = try widgets.textStyle(arena, system_color, look.small_size, .{ .opacity = opacity, .is_bold = true });
     if (sample.is_system_part) {
         try textPart(window, context, .systems, key.indexed(1), sample.system, system_style, look.shows_systems, look);
     } else {
@@ -454,6 +469,17 @@ fn lookOf(arena: std.mem.Allocator, profile: *const config.Config, bench: *const
     const uses_unique_names = list_settings.useUniqueCharacterNameColors;
     const stat_settings: list_look.StatSettings = .{ .list_settings = list_settings, .mining = &profile.mining, .bounty = &profile.bounty };
 
+    // A fresh store per frame picks the samples' colours as the panel would for these names.
+    var character_colors: color_mod.AutoColors = .{};
+    var system_store: color_mod.AutoColors = .{};
+    var name_colors: [SAMPLES.len]u32 = undefined;
+    var system_colors: [SAMPLES.len]u32 = undefined;
+    for (SAMPLES, &name_colors, &system_colors) |sample, *name_color, *system_color| {
+        const plain_name = if (sample.state == .active) list_look.ACTIVE_NAME else list_look.NAME;
+        name_color.* = if (uses_unique_names) character_colors.colorFor(arena, sample.name, &.{}) else plain_name;
+        system_color.* = if (shown.uses_unique_system_colors and sample.system.len > 0) system_store.colorFor(arena, sample.system, &.{}) else shown.system_name_color;
+    }
+
     var stat_labels: [list_look.STAT_COUNT]StatLabel = undefined;
     for (std.enums.values(list_look.Stat), SAMPLE_VALUES, &stat_labels) |stat, sample, *label| {
         const unit = list_look.rateUnit(stat_settings, stat);
@@ -469,10 +495,9 @@ fn lookOf(arena: std.mem.Allocator, profile: *const config.Config, bench: *const
 
     return .{
         .active_color = active_color,
-        .active_name_color = if (uses_unique_names) style.UNIQUE_SAMPLE else list_look.ACTIVE_NAME,
-        .name_color = if (uses_unique_names) style.UNIQUE_SAMPLE else list_look.NAME,
+        .name_colors = name_colors,
+        .system_colors = system_colors,
         .notification_color = profile.notifications.getTypeConfig(.FleetInvite).text_color orelse list_settings.notificationColor,
-        .system_color = if (shown.uses_unique_system_colors) style.UNIQUE_SAMPLE else shown.system_name_color,
         .name_size = @as(f32, @floatFromInt(list_settings.fontSize)) * scale,
         .small_size = @as(f32, @floatFromInt(list_look.smallFontSize(list_settings.fontSize))) * scale,
         .shows_systems = list_settings.showSystemName,

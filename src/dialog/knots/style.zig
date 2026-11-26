@@ -974,6 +974,15 @@ pub const part_row_button: Style = .{
     .hover = &.{ .background = .{ .color = SURFACE }, .state_layer = 0 },
     .active = &.{ .state_layer = 0 },
 };
+/// The preview's header as the Panel part, whose outline is drawn on the whole frame instead.
+pub const panel_header_part: Style = .{
+    .width = .grow(),
+    .justify = .start,
+    .padding = .all(0),
+    .background = .transparent,
+    .hover = &.{ .state_layer = 0 },
+    .active = &.{ .state_layer = 0 },
+};
 pub const part_row_label: Style = .{ .width = .grow(), .foreground = .{ .color = TEXT_SECONDARY } };
 pub const part_row_label_off: Style = part_row_label.with(.{ .foreground = .{ .color = MUTED } });
 pub const part_row_label_selected: Style = part_row_label.with(.{ .font = FONT_SEMIBOLD, .foreground = .{ .color = TEXT } });
