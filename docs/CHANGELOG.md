@@ -123,6 +123,7 @@
 - Intel Panel hides on focus loss after a profile detaches it from the map
 - A failed global settings save no longer corrupts the last-used profile name
 - Saving or switching profile while recording a hotkey no longer leaves the Win key blocked
+- Holding a hotkey through a suspend, Save or profile switch no longer re-fires it or leaks its release to the game
 
 ## [1.0.9] - 2026-10-29
 

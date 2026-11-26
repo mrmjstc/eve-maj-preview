@@ -130,6 +130,8 @@ pub const HotkeyManager = struct {
 
     /// Replaces whatever is registered, so resuming restores exactly the saved bindings.
     pub fn registerHotkeys(self: *HotkeyManager, hwnd: win32.HWND) !void {
+        hooks.hold();
+        defer hooks.releaseHold();
         self.unregisterAll();
         hooks.setExactModifiers(self.config.hotkeys.exactHotkeyModifiers);
 
@@ -228,6 +230,8 @@ pub const HotkeyManager = struct {
 
         const hwnd = self.timer_hwnd;
         if (self.are_hotkeys_suspended) {
+            hooks.hold();
+            defer hooks.releaseHold();
             // Unbound, since the hooks would otherwise keep swallowing these keys system-wide.
             self.unregisterAll();
             // Pressing it again must still be able to resume everything else.
@@ -251,8 +255,9 @@ pub const HotkeyManager = struct {
         if (self.is_dialog_suspended) return;
         slog.debug("Config dialog is recording a hotkey - unregistering live hotkeys", .{});
         self.is_dialog_suspended = true;
-        self.unregisterAll();
+        // Armed first, so the keyboard hook stays installed and keeps the presses still held.
         keyboard_hook.armWinKeyCapture(self.timer_hwnd);
+        self.unregisterAll();
     }
 
     /// Re-registers from the same in-memory config unregisterAll left untouched, so this restores exactly what was live before.
@@ -260,10 +265,11 @@ pub const HotkeyManager = struct {
         if (!self.is_dialog_suspended) return;
         slog.debug("Config dialog finished recording - re-registering hotkeys", .{});
         self.is_dialog_suspended = false;
-        keyboard_hook.disarmWinKeyCapture();
         self.registerHotkeys(hwnd) catch |err| {
             slog.err("Failed to re-register hotkeys after dialog recording: {}", .{err});
         };
+        // Disarmed after, so the keyboard hook stays installed throughout.
+        keyboard_hook.disarmWinKeyCapture();
     }
 
     /// Unbinds rather than gates, since the hooks would otherwise swallow the letters typed; hotkeys already suspended stay as they are.

@@ -28,6 +28,8 @@ pub const HookBindings = struct {
     requires_exact_modifiers: bool = false,
     /// Keeps the hook installed with nothing bound, e.g. while the config dialog records a key.
     is_pinned: bool = false,
+    /// Nested holds keeping the hook installed while bindings are swapped, so presses still held keep their verdict.
+    hold_count: u32 = 0,
 
     const Change = union(enum) {
         register: struct { target_hwnd: win32.HWND, combined_vk: u32, id: c_int },
@@ -36,6 +38,8 @@ pub const HookBindings = struct {
         requires_exact_modifiers: bool,
         pin: win32.HWND,
         unpin,
+        hold,
+        release_hold,
         deinit,
     };
 
@@ -92,6 +96,15 @@ pub const HookBindings = struct {
 
     pub fn unpin(self: *HookBindings) void {
         self.send(.unpin);
+    }
+
+    /// Keeps an installed hook installed until the matching releaseHold, even with nothing bound.
+    pub fn hold(self: *HookBindings) void {
+        self.send(.hold);
+    }
+
+    pub fn releaseHold(self: *HookBindings) void {
+        self.send(.release_hold);
     }
 
     /// Call only once at true process shutdown, before hook_thread.stop, never from a reload path that may register() again.
@@ -152,6 +165,11 @@ pub const HookBindings = struct {
                 self.is_pinned = false;
                 self.uninstallIfUnused(request);
             },
+            .hold => self.hold_count += 1,
+            .release_hold => {
+                self.hold_count -|= 1;
+                self.uninstallIfUnused(request);
+            },
             .deinit => {
                 self.uninstall(request);
                 if (self.map) |*map| map.deinit();
@@ -191,7 +209,7 @@ pub const HookBindings = struct {
     }
 
     fn uninstallIfUnused(self: *HookBindings, request: *ChangeRequest) void {
-        if (self.is_pinned or !self.isEmpty()) return;
+        if (self.is_pinned or self.hold_count > 0 or !self.isEmpty()) return;
         self.uninstall(request);
     }
 

@@ -34,6 +34,17 @@ pub fn unregisterAll() void {
     keyboard_hook.bindings().unregisterAll();
 }
 
+/// Pair with releaseHold: keeps the installed hooks while bindings are swapped, since removing one forgets the keys still held.
+pub fn hold() void {
+    mouse_hook.bindings().hold();
+    keyboard_hook.bindings().hold();
+}
+
+pub fn releaseHold() void {
+    mouse_hook.bindings().releaseHold();
+    keyboard_hook.bindings().releaseHold();
+}
+
 /// Call only once at true process shutdown, before hook_thread.stop, never from a reload path that may register() again.
 pub fn deinit() void {
     mouse_hook.bindings().deinit();

@@ -4,6 +4,7 @@ const app_mod = @import("../app.zig");
 const config = @import("../config.zig");
 const scout = @import("../clients/scout.zig");
 const hotkeys = @import("../hotkeys/manager.zig");
+const hooks = @import("../hotkeys/hooks.zig");
 const chatlog = @import("../chatlog.zig");
 const restart_plan = @import("restart_plan.zig");
 const log = @import("../log.zig");
@@ -42,6 +43,9 @@ pub fn run(app: *App, timer_hwnd: win32.HWND, replacement: ?config.ProfileStore,
     if (!next_chatlog.enabled) slog.info("Chatlog monitoring disabled", .{});
 
     var restart: Restart = .{ .timer_hwnd = timer_hwnd, .pending = &pending, .global_draft = global_draft };
+    // Between the old hotkey manager going and the new one coming, so a key held through a Save keeps its verdict.
+    hooks.hold();
+    defer hooks.releaseHold();
 
     for (plan.steps(), 0..) |step, index| {
         runStep(app, step, &restart) catch |err| {

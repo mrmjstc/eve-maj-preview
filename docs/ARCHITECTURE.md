@@ -338,6 +338,7 @@ Every file here except the `*_feed.zig` ones does no I/O and is tested; the feed
   - `hotkeys/keyboard_hook.zig` and `mouse_hook.zig` are the hooks; `hook_bindings.zig` holds the bindings they share, and `hooks.zig` routes each binding to the right hook.
   - `press_rules.zig` (pure, tested) decides whether a press matches, passes through or is swallowed.
   - Whether a press is swallowed is decided once, on its first key-down, and its repeats and key-up follow that decision. So a client never sees a key-up whose key-down it didn't see, which is what lets Ctrl stay held in the game while cycling clients.
+  - Re-registering and reloads hold the hooks installed (`hooks.hold`), since removing one forgets which keys are held.
   - With `requireEveFocus`, a bound key pressed outside a tracked EVE window passes through untouched.
   - With NumLock on, Windows sends Shift+Numpad as a fake Shift release then a navigation key; the hook and the dialog's recorder read it back as Shift+Numpad.
 - **ID bands** (`hotkeys/bindings.zig`): 1000 per kind (cycle group 0, global action 1000, per-character 2000, profile switch 3000, assign group 4000, app 5000, URL 6000, close group 7000, minimize group 8000). `GLOBAL_BINDINGS` maps global actions to config fields and protocol actions.
