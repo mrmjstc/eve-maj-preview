@@ -1,5 +1,6 @@
 //! One-shot background threads that nothing joins, counted so shutdown can give them time to finish.
 const std = @import("std");
+const threads = @import("threads.zig");
 const log = @import("../log.zig");
 
 const slog = log.Scoped("detached");
@@ -9,11 +10,11 @@ const WAIT_POLL_MS = 10;
 /// Raised by the spawning thread, lowered by each thread as it returns.
 var g_running_count: std.atomic.Value(u32) = .init(0);
 
-/// `std.Thread.spawn` then detach, counted until `function` returns; `function` returns void.
+/// `threads.spawn` then detach, counted until `function` returns; `function` returns void.
 pub fn spawn(comptime function: anytype, args: anytype) !void {
     _ = g_running_count.fetchAdd(1, .monotonic);
     errdefer _ = g_running_count.fetchSub(1, .monotonic);
-    const thread = try std.Thread.spawn(.{}, Counted(function, @TypeOf(args)).run, .{args});
+    const thread = try threads.spawn(Counted(function, @TypeOf(args)).run, .{args});
     thread.detach();
 }
 

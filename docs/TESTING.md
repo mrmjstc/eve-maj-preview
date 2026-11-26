@@ -93,3 +93,11 @@ python tools/ui_tests/coverage.py --all    # every struct
 ```
 
 A new setting is untested until a test covers it. One no test can observe (it writes the registry, needs the network, or only affects the config dialog) goes in `NOT_TESTED` in `coverage.py` with the reason.
+
+## Memory
+
+```powershell
+.\tools\memory_soak.ps1 -DurationMinutes 60
+```
+
+Samples the running app's private bytes, working set, GDI and USER objects, handles and threads, then writes a CSV and prints each one's slope per hour. Repeat one action (open and close the config dialog, toggle thumbnails) while it runs: a leak is a metric that climbs with each repeat and never comes back down. Watch private bytes, not Task Manager's Memory column, which shows only the resident part.

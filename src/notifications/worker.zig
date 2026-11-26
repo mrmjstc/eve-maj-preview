@@ -1,6 +1,7 @@
 //! A thread, started on demand and stopped when idle, that runs queued commands in order on an engine it owns; shared by speech and sound alerts.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
+const threads = @import("../util/threads.zig");
 const log = @import("../log.zig");
 
 /// `Engine`: `init`, `run(command, allocator)` and `deinit`, all called on the worker thread.
@@ -53,7 +54,7 @@ pub fn Worker(comptime Command: type, comptime Engine: type, comptime scope: []c
             };
             self.wake_event = wake_event;
             self.should_exit.store(false, .release);
-            self.thread = std.Thread.spawn(.{}, run, .{ self, wake_event }) catch |err| {
+            self.thread = threads.spawn(run, .{ self, wake_event }) catch |err| {
                 slog.warn("Failed to start the {s} thread: {}", .{ description, err });
                 self.closeWakeEvent();
                 self.has_failed = true;

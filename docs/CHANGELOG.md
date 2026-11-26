@@ -29,6 +29,7 @@
 - Unit tests for alert settings parsing and box geometry
 
 ### Changed
+- Threads use 1 MB stacks, cutting about 30 MB of committed memory
 - Configuration window state moved out of globals
 - Client List, History and Intel panels redesigned, with collapsible headers and a ⋯ settings menu
 - Panels, map and config window share one look, font, icon set and colours

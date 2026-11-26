@@ -10,6 +10,7 @@ const tail = @import("chatlog/tail.zig");
 const discovery = @import("chatlog/discovery.zig");
 const queue = @import("chatlog/queue.zig");
 const interpret = @import("chatlog/interpret.zig");
+const threads = @import("util/threads.zig");
 const log = @import("log.zig");
 
 const CharacterIds = character_ids_mod.CharacterIds;
@@ -206,7 +207,7 @@ pub const ChatlogMonitor = struct {
         if (self.worker_thread != null) return error.AlreadyRunning;
         self.should_exit.store(false, .release);
         _ = win32.ResetEvent(self.stop_event);
-        self.worker_thread = try std.Thread.spawn(.{}, workerMain, .{self});
+        self.worker_thread = try threads.spawn(workerMain, .{self});
     }
 
     /// Main thread only.

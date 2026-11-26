@@ -1,6 +1,7 @@
 //! Jita buy prices for ores from EVE's public ESI API, fetched in parallel.
 const std = @import("std");
 const http_client = @import("../../util/http_client.zig");
+const threads_mod = @import("../../util/threads.zig");
 const log = @import("../../log.zig");
 
 const slog = log.Scoped("esi_prices");
@@ -96,7 +97,7 @@ pub fn fetchOrePrices(allocator: std.mem.Allocator, arena: std.mem.Allocator, io
         var threads: [MAX_CONCURRENT_PRICE_REQUESTS - 1]?std.Thread = @splat(null);
         const background_workers = worker_count - 1;
         for (threads[0..background_workers]) |*slot| {
-            slot.* = std.Thread.spawn(.{}, priceFetchWorker, .{&context}) catch |err| blk: {
+            slot.* = threads_mod.spawn(priceFetchWorker, .{&context}) catch |err| blk: {
                 slog.warn("Failed to spawn price-fetch worker: {}", .{err});
                 break :blk null;
             };

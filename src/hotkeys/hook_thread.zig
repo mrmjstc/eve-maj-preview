@@ -2,6 +2,7 @@
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const messages = @import("../messages.zig");
+const threads = @import("../util/threads.zig");
 const log = @import("../log.zig");
 
 const slog = log.Scoped("hotkeys");
@@ -29,7 +30,7 @@ pub fn start() void {
         slog.err("Failed to create the hotkey hook thread's event, running hooks on the main thread: error {d}", .{win32.GetLastError()});
         return;
     };
-    const thread = std.Thread.spawn(.{}, threadMain, .{done_event}) catch |err| {
+    const thread = threads.spawn(threadMain, .{done_event}) catch |err| {
         slog.err("Failed to start the hotkey hook thread, running hooks on the main thread: {}", .{err});
         _ = win32.CloseHandle(done_event);
         return;
