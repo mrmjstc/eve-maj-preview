@@ -134,30 +134,31 @@ Work that runs less often than every tick (every 2 s, every 15 min, ...) is time
 4. Roster.sync / refreshConfig / setActive
                                     mirror Scout's windows, read new names' settings, record the foreground window
 5. followNewClients                 auto-move clients that joined or logged in, start new ones minimized, verify pending moves
-6. auto_colors.flush                save generated colours, once no client is left
-7. clearLoggedOutExclusions         drop cycle exclusions of clients that logged out
-8. dialog redraw                    after a login, logout or close, so the Characters tab is current
-9. HotkeyManager.syncFocusFilter    tell the hook thread which windows are EVE, for requireEveFocus
-10. hook_bindings.logFailedPosts    log WM_HOTKEY posts the hook thread couldn't make
-11. focus.afterActiveRefresh        record focus, resync cycle cursors
-12. Roster.expireAlerts             drop expired alerts; flashing ones redraw
-13. Roster.refreshMinimized         each client's minimized state, skipping the dragged one
-14. ThumbnailSet.updateConnections  the thumbnails' connection maps, from the intel pins
-15. ThumbnailSet.update             create, destroy or rename thumbnails to match the roster
-16. ThumbnailSet.checkHoverZoom     enlarged preview under the cursor
-17. redrawDialogIfThumbnailsMoved   while the dialog is open, so the Placement tab's map follows the thumbnails
-18. ListWindow.render               the client list, when shown
-19. AutoMinimizer.check             minimize idle clients on the roster
-20. ChatlogMonitor.update + drain   findings to Roster (systems), Intel (pins), Notifier (alerts) and Scout
-21. MapPanel.update                 take new feed snapshots, render the map
-22. NotificationCenter.update       History and Intel panels, after the chatlog so they list this tick's alerts
-23. Trackers.tick                   throttled push of rates and resources onto the roster; alerts via Notifier
-24. travel_left_behind.check        every 2 s
-25. adjust tick interval            active scan rate, or the 1 s idle rate
-26. publishState                    rewrite the state file when it changed; only when EVE_MAJ_STATE_FILE is set
+6. syncTaskbarMarks                 mark clients so the taskbar hides over them (hideTaskbarOverClients): all on a setting change or Explorer restart, else new ones
+7. auto_colors.flush                save generated colours, once no client is left
+8. clearLoggedOutExclusions         drop cycle exclusions of clients that logged out
+9. dialog redraw                    after a login, logout or close, so the Characters tab is current
+10. HotkeyManager.syncFocusFilter   tell the hook thread which windows are EVE, for requireEveFocus
+11. hook_bindings.logFailedPosts    log WM_HOTKEY posts the hook thread couldn't make
+12. focus.afterActiveRefresh        record focus, resync cycle cursors
+13. Roster.expireAlerts             drop expired alerts; flashing ones redraw
+14. Roster.refreshMinimized         each client's minimized state, skipping the dragged one
+15. ThumbnailSet.updateConnections  the thumbnails' connection maps, from the intel pins
+16. ThumbnailSet.update             create, destroy or rename thumbnails to match the roster
+17. ThumbnailSet.checkHoverZoom     enlarged preview under the cursor
+18. redrawDialogIfThumbnailsMoved   while the dialog is open, so the Placement tab's map follows the thumbnails
+19. ListWindow.render               the client list, when shown
+20. AutoMinimizer.check             minimize idle clients on the roster
+21. ChatlogMonitor.update + drain   findings to Roster (systems), Intel (pins), Notifier (alerts) and Scout
+22. MapPanel.update                 take new feed snapshots, render the map
+23. NotificationCenter.update       History and Intel panels, after the chatlog so they list this tick's alerts
+24. Trackers.tick                   throttled push of rates and resources onto the roster; alerts via Notifier
+25. travel_left_behind.check        every 2 s
+26. adjust tick interval            active scan rate, or the 1 s idle rate
+27. publishState                    rewrite the state file when it changed; only when EVE_MAJ_STATE_FILE is set
 ```
 
-`tick` runs steps 4–11 as `discoverWindows`, 12–19 as `updateThumbnails`, 20 as `ingestLogs`, 21–24 as `updatePanels` and 25 as `scheduleNextTick`.
+`tick` runs steps 4–12 as `discoverWindows`, 13–20 as `updateThumbnails`, 21 as `ingestLogs`, 22–25 as `updatePanels` and 26 as `scheduleNextTick`.
 
 ## Threads and concurrency
 
