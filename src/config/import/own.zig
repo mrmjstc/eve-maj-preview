@@ -166,3 +166,61 @@ fn present(arena: std.mem.Allocator, loaded: Value, raw: Value) !Value {
     }
     return loaded;
 }
+
+const testing = std.testing;
+
+fn parseTestObject(arena: std.mem.Allocator, text: []const u8) !Value {
+    return std.json.parseFromSliceLeaky(Value, arena, text, .{});
+}
+
+test "present keeps only the loaded fields the file has, at every depth" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const loaded = try parseTestObject(arena,
+        \\{"enabled":true,"delayMs":250,"nested":{"x":1,"y":2}}
+    );
+    const raw = try parseTestObject(arena,
+        \\{"delayMs":"250","nested":{"y":0},"unknown":1}
+    );
+    const kept = try present(arena, loaded, raw);
+    try testing.expectEqual(@as(usize, 2), kept.object.count());
+    try testing.expect(kept.object.get("enabled") == null);
+    try testing.expectEqual(@as(i64, 250), kept.object.get("delayMs").?.integer);
+    const nested = kept.object.get("nested").?;
+    try testing.expectEqual(@as(usize, 1), nested.object.count());
+    try testing.expectEqual(@as(i64, 2), nested.object.get("y").?.integer);
+}
+
+test "present takes a loaded list whole when its length differs from the file's" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const loaded = try parseTestObject(arena, "[{\"a\":1,\"b\":2}]");
+    const same_length = try present(arena, loaded, try parseTestObject(arena, "[{\"a\":0}]"));
+    try testing.expectEqual(@as(usize, 1), same_length.array.items[0].object.count());
+    const other_length = try present(arena, loaded, try parseTestObject(arena, "[]"));
+    try testing.expectEqual(@as(usize, 2), other_length.array.items[0].object.count());
+}
+
+test "dropPlaceholderCharacters keeps real names in order" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    var list = try parseTestObject(arena,
+        \\[{"name":"Pilot A"},{"name":"Example Name1"},{"name":""},{"name":"Pilot B"}]
+    );
+    dropPlaceholderCharacters(&list);
+    try testing.expectEqual(@as(usize, 2), list.array.items.len);
+    try testing.expectEqualStrings("Pilot A", values.stringAt(list.array.items[0], "name").?);
+    try testing.expectEqualStrings("Pilot B", values.stringAt(list.array.items[1], "name").?);
+}
+
+test "isFile needs this app's format identifier" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    try testing.expect(isFile(try parseTestObject(arena, "{\"app\":\"" ++ config_mod.PROFILE_FORMAT_IDENTIFIER ++ "\"}")));
+    try testing.expect(!isFile(try parseTestObject(arena, "{\"app\":\"something-else\"}")));
+    try testing.expect(!isFile(try parseTestObject(arena, "{}")));
+}

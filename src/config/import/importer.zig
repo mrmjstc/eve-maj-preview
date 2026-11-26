@@ -119,3 +119,34 @@ fn evexProfile(root: Value, requested: ?[]const u8) ?[]const u8 {
     }
     return eve_x.defaultProfile(root);
 }
+
+const testing = std.testing;
+
+test "detect tells each format apart and skips EVE-X's byte-order mark" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    try testing.expect((try detect(arena, "{\"app\":\"" ++ config.PROFILE_FORMAT_IDENTIFIER ++ "\"}")).? == .maj);
+    try testing.expect((try detect(arena, UTF8_BOM ++ "{\"_Profiles\":{\"Default\":{}}}")).? == .evex);
+    try testing.expect((try detect(arena, "{\"FlatLayout\":{}}")).? == .eveo);
+    try testing.expect((try detect(arena, "[ui]\nhighlightColor=#FF0000\n")).? == .apm);
+}
+
+test "detect rejects JSON of no known tool and text with no INI sections" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    try testing.expect(try detect(arena, "{\"something\":1}") == null);
+    try testing.expect(try detect(arena, "[1, 2, 3]") == null);
+    try testing.expect(try detect(arena, "just some text") == null);
+    try testing.expect(try detect(arena, "") == null);
+}
+
+test "evexProfile takes the requested profile only when the file has it" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const root = try std.json.parseFromSliceLeaky(Value, arena_state.allocator(), "{\"_Profiles\":{\"Default\":{},\"Mining\":{}}}", .{});
+    try testing.expectEqualStrings("Mining", evexProfile(root, "Mining").?);
+    try testing.expectEqualStrings("Default", evexProfile(root, "Deleted").?);
+    try testing.expectEqualStrings("Default", evexProfile(root, null).?);
+}

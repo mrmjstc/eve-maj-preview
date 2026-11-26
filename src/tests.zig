@@ -24,6 +24,11 @@ test {
     _ = @import("config/global.zig");
     _ = @import("config/hotkeys.zig");
     _ = @import("config/import/draft.zig");
+    _ = @import("config/import/eve_apm.zig");
+    _ = @import("config/import/eve_o.zig");
+    _ = @import("config/import/eve_x.zig");
+    _ = @import("config/import/importer.zig");
+    _ = @import("config/import/own.zig");
     _ = @import("config/import/values.zig");
     _ = @import("config/key_list.zig");
     _ = @import("config/migrate.zig");

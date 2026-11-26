@@ -357,3 +357,53 @@ fn setDirectory(draft: *Draft, path: []const u8, raw: ?[]const u8) !void {
     if (!hasText(raw)) return;
     try draft.setString(path, std.mem.trim(u8, raw.?, " \t"));
 }
+
+const testing = std.testing;
+
+fn parseTestObject(arena: std.mem.Allocator, text: []const u8) !Value {
+    return std.json.parseFromSliceLeaky(Value, arena, text, .{});
+}
+
+test "defaultProfile takes LastUsedProfile from global_Settings, or the top level in version 3" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const older = try parseTestObject(arena,
+        \\{"global_Settings":{"LastUsedProfile":"Mining"},"_Profiles":{"Default":{},"Mining":{}}}
+    );
+    try testing.expectEqualStrings("Mining", defaultProfile(older).?);
+    const version_3 = try parseTestObject(arena,
+        \\{"LastUsedProfile":"PvP","_Profiles":{"Default":{},"PvP":{}}}
+    );
+    try testing.expectEqualStrings("PvP", defaultProfile(version_3).?);
+}
+
+test "defaultProfile falls back to the first profile when the last used one is gone" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const root = try parseTestObject(arena,
+        \\{"LastUsedProfile":"Deleted","_Profiles":{"Default":{},"Mining":{}}}
+    );
+    try testing.expectEqualStrings("Default", defaultProfile(root).?);
+    try testing.expect(defaultProfile(try parseTestObject(arena, "{\"_Profiles\":{}}")) == null);
+    try testing.expect(defaultProfile(try parseTestObject(arena, "{}")) == null);
+}
+
+test "countHotkeys and countPositions skip placeholder names" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const root = try parseTestObject(arena,
+        \\{"Hotkeys":[{"Pilot A":"F1"},{"Example Name1":"F2","Pilot B":"^F3"}],
+        \\ "Positions":{"Pilot A":{},"EVE":{},"Cycle Group 1":{}}}
+    );
+    try testing.expectEqual(@as(usize, 2), countHotkeys(values.arrayAt(root, "Hotkeys")));
+    try testing.expectEqual(@as(usize, 1), countPositions(values.objectAt(root, "Positions")));
+}
+
+test "hasText is false for null and whitespace" {
+    try testing.expect(hasText("F1"));
+    try testing.expect(!hasText(" \t"));
+    try testing.expect(!hasText(null));
+}
