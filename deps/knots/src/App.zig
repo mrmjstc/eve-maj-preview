@@ -351,7 +351,7 @@ fn renderFrame(
         );
     }
 
-    // A minimized window stays zero-sized after its resize event, and frames requested meanwhile can't be built.
+    // EVE-Maj patch: a minimized window stays zero-sized after its resize event, and frames requested meanwhile can't be built.
     const physical_extent = viewport.window.getFramebufferSize();
     if (physical_extent.width == 0 or physical_extent.height == 0) return;
     const logical_extent = viewport.window.getSize();

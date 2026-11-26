@@ -73,6 +73,7 @@
 - Receiver style rule sees teardown helpers and writes through captures
 - App tick split into named phases; subsystem restart moved to control/restart.zig; fields grouped by lifetime
 - Releases built in CI from tags, with a SHA256SUMS.txt; release scripts share one module
+- Zig upgrade checklist and a weekly build against Zig nightly; knots patches marked against upstream 0.7.0
 
 ### Fixed
 - Profiles: a queued action drops a leftover restore backup
