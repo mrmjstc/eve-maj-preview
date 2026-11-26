@@ -278,6 +278,7 @@ The dialog helpers and map feeds all hand results over through `util/handoff.zig
 | `state.zig` | *(pure, tested)* `MapState`: what the map shows and what's under the cursor, hit testing included. |
 | `scene.zig` | `Scene`: what `MapPanel` hands each render besides the settings, and which of its layers (storms, incursions, sov timers, wormholes, Ansiblex) the settings let through. |
 | `paint.zig` | Draws a frame from `MapState` without changing it, handing back the row and popup boxes the next hit test needs. |
+| `label_sprites.zig` | `LabelSprites`: each system name and its halo drawn by GDI once, kept as coverage and blended into every frame after, which is far cheaper than five GDI text calls a name. Kept in both of GDI's curves, for light and for dark text, so the blend matches GDI. |
 | `menu.zig` | *(pure, tested)* The right-click menus on a system and a region, and the Layers checklist. |
 | `search.zig` | *(pure, tested)* The search's query, cursor, selection and results. |
 | `marks.zig` | *(pure, tested)* The clients on the map. |
@@ -323,6 +324,7 @@ Every file here except the `*_feed.zig` ones does no I/O and is tested; the feed
 - Hover, panning and the mouse wheel redraw straight from their own messages, since waiting for the tick could mean a second's lag when idle. Redraws are capped at the screen's refresh rate; when a mouse move is skipped by that cap, a short timer draws its final position.
 - `PanelWindow.present` paints immediately instead of invalidating, because Windows holds back `WM_PAINT` while the mouse keeps moving.
 - A pan or zoom only recomputes positions. The systems and gates themselves are gathered again only when the shown regions change.
+- System names come from `LabelSprites`, so a frame blends them rather than drawing text; region names and client tags are still drawn with GDI.
 - Labels are placed after a render has measured the cards and legends drawn over the map, so names avoid them. They're placed again only when the set of systems with sov timers changes.
 - A new intel pin or kill, or a system picked from the search, plays a ripple animation on its own fast timer, which stops once no ripple is playing.
 - The render signature decides whether a frame needs drawing. While sov timers or kills show, it includes the current minute, so countdowns, kill ages and fading kill marks keep updating.

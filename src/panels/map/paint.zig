@@ -8,6 +8,7 @@ const history = @import("../../notifications/history.zig");
 const history_rows = @import("../history_rows.zig");
 const list_look = @import("../list_look.zig");
 const destinations_mod = @import("destinations.zig");
+const label_sprites_mod = @import("label_sprites.zig");
 const scene_mod = @import("scene.zig");
 const coloring = @import("coloring.zig");
 const look = @import("look.zig");
@@ -44,6 +45,7 @@ const Activity = activity_mod.Activity;
 const Box = layout_mod.Box;
 const AvoidList = evestars.AvoidList;
 const Kills = zkill.Kills;
+const LabelSprites = label_sprites_mod.LabelSprites;
 const Destinations = destinations_mod.Destinations;
 const FixedText = fixed_text.FixedText;
 const Incursions = incursions_mod.Incursions;
@@ -125,13 +127,6 @@ const PlaceRow = struct {
     detail_color: u32,
 };
 
-/// How a name is lifted off the gates behind it.
-const Outline = enum {
-    full,
-    /// Down and right only, for a drag's frames: two text calls rather than five.
-    shadow,
-};
-
 /// One render's drawing.
 pub const Painter = struct {
     /// Borrowed for one render.
@@ -142,6 +137,8 @@ pub const Painter = struct {
     has_eve_stars: bool,
     /// Null while the menu's closed.
     menu: ?OpenMenu,
+    /// The window's; draws the names on the map.
+    label_sprites: *LabelSprites,
 
     /// With `bitmap` begun and the panel's font selected; `allocator` is for the areas' and routes' masks, each freed before this returns.
     pub fn draw(self: *const Painter, allocator: std.mem.Allocator, bitmap: *const gdi_overlay.OverlayBitmap, scene: Scene, fonts: ?MapFonts, intel_entries: []const history.Entry, now_ms: u64, measured: Measured) void {
@@ -162,7 +159,7 @@ pub const Painter = struct {
             self.drawOverviewLabels(dc, loaded.label_font);
         } else {
             self.drawRegionLabels(dc, loaded.title_font);
-            self.drawLabels(dc, scene, loaded.label_font, now_ms);
+            self.drawLabels(bitmap, scene, loaded.label_font, now_ms);
             self.drawClientTags(bitmap, loaded.chrome, &paint);
         }
         self.drawChrome(bitmap, loaded);
@@ -535,7 +532,7 @@ pub const Painter = struct {
             const label = bubble.label orelse continue;
             const is_hovered = self.state.hover.kind == .region and self.state.hover.index == region;
             const label_color = if (self.state.marks.countIn(region) > 0) self.config.listActiveColor() else if (is_hovered or self.state.ringedRegions().contains(region)) list_look.NAME else look.LABEL;
-            drawHaloText(dc, universe.regionName(region), label.left, label.top, label_color, .full);
+            drawHaloText(dc, universe.regionName(region), label.left, label.top, label_color);
         }
     }
 
@@ -630,7 +627,7 @@ pub const Painter = struct {
         _ = win32.SelectObject(dc, title_font);
         for (layout.regions.slice(), layout.region_labels[0..layout.regions.count]) |region, region_label| {
             const label = region_label orelse continue;
-            drawHaloText(dc, universe.regionName(region), label.left, label.top, look.REGION_NAME, .full);
+            drawHaloText(dc, universe.regionName(region), label.left, label.top, look.REGION_NAME);
         }
     }
 
@@ -940,36 +937,46 @@ pub const Painter = struct {
         }
     }
 
-    fn drawLabels(self: *const Painter, dc: win32.HDC, scene: Scene, label_font: win32.HFONT, now_ms: u64) void {
+    fn drawLabels(self: *const Painter, bitmap: *const gdi_overlay.OverlayBitmap, scene: Scene, label_font: win32.HFONT, now_ms: u64) void {
         const layout = &self.state.layout;
         const storms = scene.shownStorms(self.config);
         const incursions = scene.shownIncursions(self.config);
         const campaigns = scene.shownCampaigns(self.config);
-        _ = win32.SelectObject(dc, label_font);
-        const outline: Outline = if (self.state.isPanning()) .shadow else .full;
+        // Selected for the state file's record of each name's font.
+        _ = win32.SelectObject(bitmap.mem_dc, label_font);
+        finishGdiDrawing();
         for (layout.nodes[0..layout.node_count], 0..) |node, index| {
             const label = node.label orelse continue;
             const plain_color = if (self.state.isNoteworthy(node.system)) list_look.NAME else look.LABEL;
             const label_color = if (self.state.focus_system == node.system) look.FOCUS_NAME else if (scene.pins.find(node.system, self.config.intel.shrinkMs(), now_ms) != null) list_look.NAME else stormCenterColor(storms, node.system) orelse incursionStagingColor(incursions, node.system) orelse plain_color;
-            drawHaloText(dc, universe.systemName(node.system), label.left, label.top, label_color, outline);
+            self.drawName(bitmap, universe.systemName(node.system), label.left, label.top, label_color);
             var suffix_buffer: [security.SECURITY_TEXT_MAX]u8 = undefined;
             if (self.labelSuffix(node.system, &suffix_buffer)) |suffix| {
-                drawHaloText(dc, suffix.text, label.left + self.state.label_widths.names[index] + look.LABEL_SUFFIX_GAP, label.top, suffix.color, outline);
+                self.drawName(bitmap, suffix.text, label.left + self.state.label_widths.names[index] + look.LABEL_SUFFIX_GAP, label.top, suffix.color);
             }
             const shown_campaigns = campaigns orelse continue;
             const campaign = shown_campaigns.soonestIn(node.system) orelse continue;
             // A timed name's box is two lines tall, the timer on the second.
-            drawHaloText(dc, text_mod.timerText(campaign, scene.now_seconds).slice(), label.left, label.top + @divTrunc(label.bottom - label.top, 2), look.SOV_TIMER, outline);
+            self.drawName(bitmap, text_mod.timerText(campaign, scene.now_seconds).slice(), label.left, label.top + @divTrunc(label.bottom - label.top, 2), look.SOV_TIMER);
         }
         for (layout.exits[0..layout.exit_count], 0..) |exit, index| {
             const label = exit.label orelse continue;
             const is_hovered = self.state.hover.kind == .exit and self.state.hover.index == index;
-            drawHaloText(dc, text_mod.exitLabel(exit).slice(), label.left, label.top, if (is_hovered) look.EDGE_HOVER else markers.EXIT, outline);
+            self.drawName(bitmap, text_mod.exitLabel(exit).slice(), label.left, label.top, if (is_hovered) look.EDGE_HOVER else markers.EXIT);
         }
         for (layout.portals[0..layout.portal_count], 0..) |portal, index| {
             const label = portal.label orelse continue;
-            drawHaloText(dc, text_mod.portalLabel(portal.target), label.left, label.top, if (self.isHovered(.portal, index)) look.EDGE_HOVER else portalColor(portal.target), outline);
+            self.drawName(bitmap, text_mod.portalLabel(portal.target), label.left, label.top, if (self.isHovered(.portal, index)) look.EDGE_HOVER else portalColor(portal.target));
         }
+    }
+
+    /// From the window's sprites, else with GDI once they've logged why they can't.
+    fn drawName(self: *const Painter, bitmap: *const gdi_overlay.OverlayBitmap, text: []const u8, x: i32, y: i32, color: u32) void {
+        self.label_sprites.draw(bitmap.canvas(), text, x, y, color) catch {
+            drawHaloText(bitmap.mem_dc, text, x, y, color);
+            return;
+        };
+        panel_chrome.recordText(bitmap.mem_dc, text, x, y, color);
     }
 
     /// The security once zoomed in enough; null before that.
@@ -1364,17 +1371,14 @@ fn centredTop(box: Box, height: i32) i32 {
     return box.top + @divTrunc(box.bottom - box.top - height, 2);
 }
 
-/// A dark outline, so a name stays readable across the gates running behind it; copies and sets up once for all its draws, as there are hundreds a frame.
-fn drawHaloText(dc: win32.HDC, text: []const u8, x: i32, y: i32, text_color: u32, outline: Outline) void {
+/// A dark outline, so a name stays readable across the gates running behind it; the systems' names come from LabelSprites, which draws them this way.
+fn drawHaloText(dc: win32.HDC, text: []const u8, x: i32, y: i32, text_color: u32) void {
     const buffer = gdi_overlay.terminatedCopy(panel_chrome.MAX_TEXT_LENGTH, text);
     const length: c_int = @intCast(@min(text.len, panel_chrome.MAX_TEXT_LENGTH - 1));
     _ = win32.SetBkMode(dc, win32.TRANSPARENT);
     _ = win32.SetTextColor(dc, gdi_overlay.toColorRef(look.BACKGROUND));
-    switch (outline) {
-        .full => inline for (.{ [2]i32{ -1, 0 }, [2]i32{ 1, 0 }, [2]i32{ 0, -1 }, [2]i32{ 0, 1 } }) |offset| {
-            _ = win32.TextOutA(dc, x + offset[0], y + offset[1], &buffer, length);
-        },
-        .shadow => _ = win32.TextOutA(dc, x + 1, y + 1, &buffer, length),
+    inline for (.{ [2]i32{ -1, 0 }, [2]i32{ 1, 0 }, [2]i32{ 0, -1 }, [2]i32{ 0, 1 } }) |offset| {
+        _ = win32.TextOutA(dc, x + offset[0], y + offset[1], &buffer, length);
     }
     _ = win32.SetTextColor(dc, gdi_overlay.toColorRef(text_color));
     _ = win32.TextOutA(dc, x, y, &buffer, length);

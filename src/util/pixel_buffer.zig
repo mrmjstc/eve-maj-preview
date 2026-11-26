@@ -362,6 +362,58 @@ pub fn fillCoverage(canvas: Canvas, left: i32, top: i32, coverage: []const u8, w
     }
 }
 
+/// As GDI blends grayscale text, clipped to the canvas; leaves alpha alone.
+/// `light`: rows `width` wide of 0 up to 255, cornered at `left`,`top`, for each channel of `rgb` at least the one under it.
+/// `dark`: the same for the other channels, as GDI covers dark text by another curve.
+pub fn fillGdiCoverage(canvas: Canvas, left: i32, top: i32, light: []const u8, dark: []const u8, width: usize, rgb: u32) void {
+    if (width == 0) return;
+    const first_column: usize = @intCast(@max(0, -left));
+    const end_column: usize = @intCast(std.math.clamp(@as(i32, @intCast(canvas.width)) - left, 0, @as(i32, @intCast(width))));
+    if (end_column <= first_column) return;
+    for (0..light.len / width) |row| {
+        const y = top + @as(i32, @intCast(row));
+        if (y < 0) continue;
+        if (y >= canvas.height) break;
+        const pixels = canvas.pixels[@as(usize, @intCast(y)) * canvas.width ..];
+        for (first_column..end_column) |column| {
+            const index = row * width + column;
+            if (light[index] == 0 and dark[index] == 0) continue;
+            const pixel = &pixels[@intCast(left + @as(i32, @intCast(column)))];
+            pixel.* = gdiBlend(pixel.*, rgb, light[index], dark[index]);
+        }
+    }
+}
+
+/// What four copies of `coverage`, each one pixel off a different way, cover drawn one over another; `halo` is `coverage`'s size, rows `width` wide.
+pub fn haloCoverage(coverage: []const u8, width: usize, halo: []u8) void {
+    const height = coverage.len / width;
+    for (0..height) |y| {
+        for (0..width) |x| {
+            var uncovered: u32 = 255;
+            if (x > 0) uncovered = stillUncovered(uncovered, coverage[y * width + x - 1]);
+            if (x + 1 < width) uncovered = stillUncovered(uncovered, coverage[y * width + x + 1]);
+            if (y > 0) uncovered = stillUncovered(uncovered, coverage[(y - 1) * width + x]);
+            if (y + 1 < height) uncovered = stillUncovered(uncovered, coverage[(y + 1) * width + x]);
+            halo[y * width + x] = @intCast(255 - uncovered);
+        }
+    }
+}
+
+fn stillUncovered(uncovered: u32, coverage: u8) u32 {
+    return (uncovered * (255 - coverage) + 127) / 255;
+}
+
+fn gdiBlend(under: u32, rgb: u32, light: u8, dark: u8) u32 {
+    var blended = under & 0xFF00_0000;
+    inline for (.{ 16, 8, 0 }) |shift| {
+        const over = (rgb >> shift) & 0xFF;
+        const below = (under >> shift) & 0xFF;
+        const coverage: u32 = if (over >= below) light else dark;
+        blended |= ((over * coverage + below * (255 - coverage) + 127) / 255) << shift;
+    }
+    return blended;
+}
+
 /// Over a premultiplied pixel, so it suits a transparent overlay as well as an opaque canvas; `coverage` is 0 to 1, on top of `argb`'s own alpha.
 fn blendPixel(canvas: Canvas, x: i32, y: i32, argb: u32, coverage: f32) void {
     if (x < 0 or y < 0) return;
@@ -437,6 +489,38 @@ test "fillCoverage paints by coverage and clips what falls off the canvas" {
     try testing.expectEqualSlices(u32, &.{ 0xFF000000, 0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFF000000, 0xFFFFFFFF }, &buffer);
     fillCoverage(canvas, 2, 1, &.{ 0, 255 }, 2, 0xFFFF0000);
     try testing.expectEqual(@as(u32, 0xFFFFFFFF), buffer[5]);
+}
+
+test "fillGdiCoverage takes light coverage where the colour is brighter than what's under, dark where it's darker" {
+    var buffer = [_]u32{0xFF808080};
+    fillGdiCoverage(.{ .pixels = &buffer, .width = 1, .height = 1 }, 0, 0, &.{100}, &.{200}, 1, 0xFFFF0000);
+    try testing.expectEqual(@as(u32, 0xFFB21C1C), buffer[0]);
+}
+
+test "fillGdiCoverage clips at the canvas and leaves uncovered pixels alone" {
+    var buffer: [3 * 2]u32 = @splat(0x00102030);
+    const canvas: Canvas = .{ .pixels = &buffer, .width = 3, .height = 2 };
+    const full = [_]u8{ 255, 0, 255, 255 };
+    fillGdiCoverage(canvas, 2, 1, &full, &full, 2, 0xFFFFFFFF);
+    try testing.expectEqualSlices(u32, &.{ 0x00102030, 0x00102030, 0x00102030, 0x00102030, 0x00102030, 0x00FFFFFF }, &buffer);
+    fillGdiCoverage(canvas, -1, -1, &full, &full, 2, 0xFF000000);
+    try testing.expectEqual(@as(u32, 0x00000000), buffer[0]);
+    try testing.expectEqual(@as(u32, 0x00102030), buffer[1]);
+}
+
+test "a halo covers a pixel's four neighbours but not the pixel or its corners" {
+    var coverage: [3 * 3]u8 = @splat(0);
+    coverage[4] = 255;
+    var halo: [3 * 3]u8 = undefined;
+    haloCoverage(&coverage, 3, &halo);
+    try testing.expectEqualSlices(u8, &.{ 0, 255, 0, 255, 0, 255, 0, 255, 0 }, &halo);
+}
+
+test "halo copies overlapping a pixel cover it as draws stacked on one another do" {
+    const coverage = [_]u8{ 128, 0, 128 };
+    var halo: [3]u8 = undefined;
+    haloCoverage(&coverage, 3, &halo);
+    try testing.expectEqual(@as(u8, 192), halo[1]);
 }
 
 test "fillBox clips a box hanging off each edge to the part on the canvas" {

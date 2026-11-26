@@ -10,6 +10,7 @@ const history_look = @import("../history_look.zig");
 const history_rows = @import("../history_rows.zig");
 const list_look = @import("../list_look.zig");
 const destinations_mod = @import("destinations.zig");
+const label_sprites_mod = @import("label_sprites.zig");
 const look = @import("look.zig");
 const metric_segments = @import("metric_segments.zig");
 const menu_mod = @import("menu.zig");
@@ -38,6 +39,7 @@ const Campaigns = campaigns_mod.Campaigns;
 const Destinations = destinations_mod.Destinations;
 const FixedText = fixed_text.FixedText;
 const GlobalConfig = config_mod.GlobalConfig;
+const LabelSprites = label_sprites_mod.LabelSprites;
 const MapFonts = paint.MapFonts;
 const MapState = state_mod.MapState;
 const PanelWindow = panel_window.PanelWindow;
@@ -71,6 +73,8 @@ pub const MapPanelWindow = struct {
     panel: PanelWindow,
     /// For the names on the map, smaller than the panel's own fonts so more of them fit.
     label_font: gdi_overlay.CachedFont = .{},
+    /// The systems' names in label_font, each drawn once and blended into every frame after.
+    label_sprites: LabelSprites,
     /// For the regions' names beside each region on the map.
     title_font: gdi_overlay.CachedFont = .{},
     /// The cards' and controls' text, in the configuration window's font so they match it.
@@ -114,6 +118,7 @@ pub const MapPanelWindow = struct {
         const panel = try PanelWindow.initNative(context.allocator, context.instance, class_name, "EVE Map", panel_lifecycle.windowRect(map_settings), map_settings.alwaysOnTop);
         return .{
             .panel = panel,
+            .label_sprites = .init(context.allocator),
             .store = context.store,
             .config = &context.store.live,
             .state = .{ .regions = regionsFromSettings(map_settings) },
@@ -125,6 +130,7 @@ pub const MapPanelWindow = struct {
     }
 
     pub fn deinit(self: *MapPanelWindow) void {
+        self.label_sprites.deinit();
         self.label_font.deinit(self.panel.allocator);
         self.title_font.deinit(self.panel.allocator);
         self.ui_font.deinit(self.panel.allocator);
@@ -555,6 +561,12 @@ pub const MapPanelWindow = struct {
         hasher.update(std.mem.asBytes(&map_settings.fontWeight));
     }
 
+    fn labelFontSignature(self: *const MapPanelWindow) u64 {
+        var hasher: std.hash.Wyhash = .init(7);
+        self.hashFonts(&hasher);
+        return hasher.final();
+    }
+
     /// The label width of the node at `index` in `layout`, with its security once zoomed in enough; a sov timer goes on the line below.
     fn labelWidthAt(self: *const MapPanelWindow, index: usize, has_timer: bool) i32 {
         const widths = &self.state.label_widths;
@@ -791,6 +803,7 @@ pub const MapPanelWindow = struct {
         const old_font = panel_chrome.selectFont(&self.panel, dc);
         defer panel_chrome.restoreFont(dc, old_font);
         const fonts = self.mapFonts(dc);
+        if (self.label_font.handle) |font| self.label_sprites.useFont(font, self.labelFontSignature());
         self.ensureLayout(areas);
         self.ensurePortals(scene);
         if (self.state.is_picking_region) self.ensureOverview(dc, areas, fonts);
@@ -801,6 +814,7 @@ pub const MapPanelWindow = struct {
             .areas = areas,
             .has_eve_stars = self.hasEveStars(),
             .menu = if (self.state.menu) |*menu| .{ .menu = menu, .context = self.menuContext(scene.destinations, menu.system) } else null,
+            .label_sprites = &self.label_sprites,
         };
         const title = paint.titleText(&self.state);
         if (fonts) |loaded| self.state.chrome = measureChrome(dc, loaded, areas, .{

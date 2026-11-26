@@ -148,11 +148,6 @@ pub const MapState = struct {
         return self.menu != null or self.region_menu != null or self.layers_menu != null or self.search != null;
     }
 
-    /// A press on empty map has moved it; one that hasn't yet may still be a click.
-    pub fn isPanning(self: *const MapState) bool {
-        return if (self.pan) |pan| pan.has_moved else false;
-    }
-
     /// Null unless the hover is of `kind`.
     pub fn hoveredIndex(self: *const MapState, kind: Hover.Kind) ?usize {
         return if (self.hover.kind == kind) self.hover.index else null;
@@ -268,8 +263,6 @@ pub const MapState = struct {
         hasher.update(std.mem.asBytes(&self.wormhole_hub));
         hasher.update(std.mem.asBytes(&self.is_wormholes_collapsed));
         hasher.update(std.mem.asBytes(&self.is_timers_collapsed));
-        // So letting go of a drag redraws the names' full outline.
-        hasher.update(std.mem.asBytes(&self.isPanning()));
         hasher.update(std.mem.asBytes(&self.hover.kind));
         hasher.update(std.mem.asBytes(&self.hover.index));
         if (self.focus_system) |system| hasher.update(std.mem.asBytes(&system));
