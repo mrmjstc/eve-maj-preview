@@ -6,27 +6,107 @@ const panel_window = @import("../platform/panel_window.zig");
 const config_mod = @import("../config.zig");
 const types = @import("../config/types.zig");
 const list_look = @import("list_look.zig");
-const app = @import("../app.zig");
+const universe = @import("../map/universe.zig");
+const security = @import("../map/security.zig");
 const window = @import("../thumbnail/window.zig");
-const thumbnail_input = @import("../control/thumbnail_input.zig");
-const drag = @import("drag.zig");
+const state = @import("../thumbnail/state.zig");
+const set = @import("../thumbnail/set.zig");
+const scout = @import("../clients/scout.zig");
+const auto_colors_mod = @import("../clients/auto_colors.zig");
+const header_panel = @import("header_panel.zig");
+const palette = @import("../palette.zig");
+const panel_chrome = @import("panel_chrome.zig");
+const panel_header = @import("panel_header.zig");
+const panel_host = @import("panel_host.zig");
+const panel_menu = @import("panel_menu.zig");
+const panel_menu_look = @import("panel_menu_look.zig");
+const panel_section = @import("panel_section.zig");
 const template = @import("../notifications/template.zig");
+const stack = @import("../notifications/stack.zig");
+const roster_mod = @import("../clients/roster.zig");
+const box = @import("../util/box.zig");
 const pixel_buffer = @import("../util/pixel_buffer.zig");
+const log = @import("../log.zig");
 
 const PanelWindow = panel_window.PanelWindow;
-const ThumbnailWindow = window.ThumbnailWindow;
+const NotificationStack = stack.NotificationStack;
+const Client = roster_mod.Client;
+const Roster = roster_mod.Roster;
+const ThumbnailSet = set.ThumbnailSet;
+const AutoColorStore = auto_colors_mod.AutoColorStore;
+const Line = list_look.Line;
+const Box = box.Box;
+const slog = log.Scoped("list_view");
 
 const TEXT_BUFFER_SIZE: usize = 256;
-/// Kept clear for the right-hand slot when a long name is cut short.
-const RIGHT_SLOT_MIN_WIDTH: i32 = 70;
 
 const LIST_WINDOW_CLASS = "EVE_LIST_CLASS";
+const SETTINGS_SECTION = "listView";
+const HEADER_ACTIONS = [_]panel_header.Action{ .pin, .menu };
+/// Fits a system's name, upper-cased for its heading.
+const HEADING_TEXT_MAX = 64;
+/// Fits alertText's longest result.
+const ALERT_TEXT_MAX = 32;
+
+const Class = header_panel.HeaderPanel(ListWindow, LIST_WINDOW_CLASS);
+
+/// thumbnail_input's, passed in by App, so rows click like thumbnails without panels/ importing input code.
+pub const RowInput = struct {
+    press: *const fn (hwnd: win32.HWND, source_hwnd: win32.HWND) void,
+    release: *const fn (hwnd: win32.HWND) void,
+    /// False when Windows should set the class cursor.
+    apply_hover_cursor: *const fn () bool,
+};
+
+/// What the list follows of the thumbnails; with no thumbnail set, as if shown.
+pub const View = struct {
+    /// False once the visibility toggle or auto-hide has hidden the thumbnails.
+    are_thumbnails_shown: bool = true,
+    /// The client whose thumbnail is being dragged.
+    dragged_hwnd: ?win32.HWND = null,
+};
+
+/// What a row draws that comes from the profile rather than the client, worked out each render.
+const Look = struct {
+    /// Null for the default name colour.
+    name_color: ?u32,
+    system_color: u32,
+    /// The character's own or unique active border colour, else the shown active colour.
+    active_color: u32,
+    is_hidden: bool,
+};
+
+/// Who is active and dragged at one render, which decides each row's state.
+const Focus = struct {
+    active_hwnd: ?win32.HWND,
+    dragged_hwnd: ?win32.HWND,
+
+    fn stateOf(self: Focus, client: *const Client) config_mod.ThumbnailState {
+        return state.renderState(.{
+            .is_dragged = client.hwnd == self.dragged_hwnd,
+            .has_alert = !client.notifications.isEmpty(),
+            .is_focused = client.hwnd == self.active_hwnd,
+            .is_minimized = win32.isWindowIconic(client.hwnd),
+        });
+    }
+};
 
 const RowText = struct {
+    /// Bold on every row, so a name's width doesn't change as it's activated.
     name_font: win32.HFONT,
     small_font: win32.HFONT,
+    /// The small font in bold, for the system or notification at a row's right.
+    slot_font: win32.HFONT,
     name_height: i32,
     small_height: i32,
+};
+
+/// The room at a row's right: text at `y`, ending at `right` and starting no further left than `min_left`.
+const Slot = struct {
+    y: i32,
+    text_height: i32,
+    min_left: i32,
+    right: i32,
 };
 
 pub const ListWindow = struct {
@@ -35,276 +115,536 @@ pub const ListWindow = struct {
     store: *config_mod.ProfileStore,
     /// Borrows store.live.
     config: *const config_mod.Config,
-    /// Indices into the thumbnails render() was given, one per row in display order; hidden characters get none.
+    /// App's PANEL_HOST, which redraws read the clients from and drags snap through.
+    host: panel_host.Host,
+    /// Borrowed from App; the rows' system and name colours come from it.
+    auto_colors: *AutoColorStore,
+    instance: win32.HINSTANCE,
+    row_input: RowInput,
+    /// Indices into the roster's clients at the last render, one per row in display order; characters hidden from the list get none.
     rows: std.ArrayList(usize) = .empty,
+    /// Each client's look at the last render, by the same index as the roster's clients.
+    looks: std.ArrayList(Look) = .empty,
+    /// What ordering reads of each client at the last render, by the same index; borrows from the roster.
+    names: std.ArrayList(list_look.RowNames) = .empty,
     /// Each row's client, for clicks between renders.
     row_source_hwnds: std.ArrayList(win32.HWND) = .empty,
+    /// From the last render, top to bottom; a line of rows is as tall as its tallest.
+    lines: std.ArrayList(Line) = .empty,
+    /// The client whose row is under the cursor.
+    hovered_source_hwnd: ?win32.HWND = null,
+    /// The configured font in bold, for the rows' names.
+    bold_font: gdi_overlay.CachedFont = .{},
+    /// The small font in bold, for the rows' systems and notifications.
+    small_bold_font: gdi_overlay.CachedFont = .{},
+    header_fonts: panel_chrome.HeaderFonts = .{},
+    header_input: header_panel.HeaderInput = .{},
+    menu: panel_menu.PanelMenu = .{},
 
-    pub fn init(allocator: std.mem.Allocator, store: *config_mod.ProfileStore, instance: win32.HINSTANCE) !ListWindow {
-        const config = &store.live;
-        try registerWindowClass(instance);
-        const x = config.display.startX;
-        const y = config.display.startY;
-        const sizes = list_look.metrics(&config.display);
-        const panel = try PanelWindow.init(allocator, instance, LIST_WINDOW_CLASS, "EVE Client List", .{ .left = x, .top = y, .right = x + sizes.column_width, .bottom = y + sizes.header_height });
+    pub fn init(context: panel_host.Context, host: panel_host.Host, row_input: RowInput) !ListWindow {
+        const config = &context.store.live;
+        try Class.register(context.instance);
+        const x = config.listView.x;
+        const y = config.listView.y;
+        const sizes = list_look.metrics(&config.listView);
+        const panel: PanelWindow = try .init(context.allocator, context.instance, LIST_WINDOW_CLASS, "EVE Client List", .{
+            .left = x,
+            .top = y,
+            .right = x + sizes.column_width,
+            .bottom = y + sizes.header_height,
+        }, config.listView.alwaysOnTop);
         win32.setClickThroughStyle(panel.hwnd, config.interaction.clickThrough);
-        return .{ .panel = panel, .store = store, .config = config };
+        return .{
+            .panel = panel,
+            .store = context.store,
+            .config = config,
+            .host = host,
+            .auto_colors = context.auto_colors,
+            .instance = context.instance,
+            .row_input = row_input,
+        };
     }
 
     pub fn deinit(self: *ListWindow) void {
+        self.menu.deinit(self.panel.allocator);
+        self.header_fonts.deinit(self.panel.allocator);
+        self.bold_font.deinit(self.panel.allocator);
+        self.small_bold_font.deinit(self.panel.allocator);
         self.rows.deinit(self.panel.allocator);
+        self.looks.deinit(self.panel.allocator);
+        self.names.deinit(self.panel.allocator);
         self.row_source_hwnds.deinit(self.panel.allocator);
+        self.lines.deinit(self.panel.allocator);
         self.panel.deinit();
     }
 
     /// Matches the panel to its configured position.
     pub fn sync(self: *ListWindow) void {
-        self.panel.followPosition(self.config.display.startX, self.config.display.startY);
+        self.panel.followPosition(self.config.listView.x, self.config.listView.y);
         win32.setClickThroughStyle(self.panel.hwnd, self.config.interaction.clickThrough);
     }
 
     /// From the last render; null over the header or an empty cell.
     fn rowSourceAt(self: *const ListWindow, x: i32, y: i32) ?win32.HWND {
-        const sizes = list_look.metrics(&self.config.display);
-        if (y < sizes.header_height) return null;
-        const row: usize = @intCast(@divTrunc(y - sizes.header_height, sizes.row_height));
-        const columns: i32 = list_look.effectiveColumns(self.config.display.listViewColumns, self.row_source_hwnds.items.len);
-        const column: usize = @intCast(std.math.clamp(@divTrunc(x, sizes.column_width), 0, columns - 1));
-        const index: usize = row * @as(usize, @intCast(columns)) + column;
+        const list_settings = &self.config.listView;
+        if (list_settings.collapsed) return null;
+        const line = for (self.lines.items) |candidate| {
+            if (y >= candidate.top and y < candidate.bottom) break candidate;
+        } else return null;
+        if (line.is_heading) return null;
+        const column: usize = @intCast(@max(0, @divTrunc(x, list_look.metrics(list_settings).column_width)));
+        if (column >= line.row_count) return null;
+        const index = line.first_row_index + column;
         if (index >= self.row_source_hwnds.items.len) return null;
         return self.row_source_hwnds.items[index];
     }
 
-    fn saveWindowPosition(self: *const ListWindow) void {
-        if (!self.config.display.rememberListViewPosition) return;
-        const top_left = self.panel.topLeft() orelse return;
-        self.store.update(.{ .display = .{ .startX = top_left.x, .startY = top_left.y } });
+    fn hoverRow(self: *ListWindow, source_hwnd: ?win32.HWND) void {
+        if (self.hovered_source_hwnd == source_hwnd) return;
+        self.hovered_source_hwnd = source_hwnd;
+        self.redraw();
     }
 
-    /// The shown active colour, or the character's own (or unique) active border colour.
-    fn resolveActiveBadgeColor(self: *const ListWindow, thumbnail: *const ThumbnailWindow) u32 {
-        if (thumbnail.cached_border_colors) |colors| {
-            if (colors.activeBorderColor) |color| return color;
+    /// As last drawn.
+    pub fn headerLayout(self: *const ListWindow) panel_header.Layout {
+        return .init(@max(1, self.panel.width), &HEADER_ACTIONS);
+    }
+
+    pub fn toggleCollapsed(self: *ListWindow) void {
+        panel_section.toggleCollapsed(self.store, SETTINGS_SECTION);
+        self.redraw();
+    }
+
+    pub fn runHeaderAction(self: *ListWindow, action: panel_header.Action) void {
+        switch (action) {
+            .pin => panel_section.toggleOnTop(self.store, SETTINGS_SECTION),
+            .menu => self.menu.toggle(self.panel.allocator, self.instance, panel_menu.ownerFor(ListWindow, self), self.menuButton() orelse return),
+            .clear, .mute => {},
         }
-        return self.config.shownColors().active_color;
+        self.redraw();
+        self.menu.refresh();
+    }
+
+    /// The ⋯ button in screen pixels.
+    fn menuButton(self: *const ListWindow) ?Box {
+        const button = self.headerLayout().boxOf(.{ .button = .menu }) orelse return null;
+        return panel_menu.screenBox(&self.panel, button);
+    }
+
+    pub fn menuContents(self: *const ListWindow) panel_menu_look.Contents {
+        // It's shown by the view mode, which belongs to the dialog.
+        var contents = panel_section.menuContents(self.config, SETTINGS_SECTION, "Client List Settings\u{2026}", false);
+        contents.groups_by_system = self.config.listView.groupBySystem;
+        contents.order = self.config.listView.order;
+        return contents;
+    }
+
+    pub fn runMenuAction(self: *ListWindow, action: panel_menu_look.Action) void {
+        if (!panel_section.runMenuAction(self.store, SETTINGS_SECTION, action)) switch (action) {
+            .toggle => |toggle| switch (toggle) {
+                .group_by_system => self.store.update(.{ .listView = .{ .groupBySystem = !self.config.listView.groupBySystem } }),
+                .keep_on_top, .lock_position => {},
+            },
+            .order => |order| self.store.update(.{ .listView = .{ .order = order } }),
+            .command => |command| switch (command) {
+                .settings => self.host.run(.{ .open_settings = .client_list }),
+                .hide => {},
+            },
+            .opacity => {},
+        };
+        self.redraw();
+    }
+
+    pub fn isPositionLocked(self: *const ListWindow) bool {
+        return self.config.listView.lockPosition;
+    }
+
+    /// Now, for input that changed what the panel shows, rather than on the next tick.
+    pub fn redraw(self: *ListWindow) void {
+        const roster = self.host.roster() orelse return;
+        self.render(roster, viewOf(self.host.thumbnail_set())) catch |err| {
+            slog.err("Failed to redraw list window: {}", .{err});
+        };
+    }
+
+    fn header(self: *const ListWindow, panel_width: i32, count_text: []const u8) panel_chrome.Header {
+        const list_settings = &self.config.listView;
+        return .{
+            .layout = .init(panel_width, &HEADER_ACTIONS),
+            .title = list_look.HEADER_TEXT,
+            .count = count_text,
+            .is_collapsed = list_settings.collapsed,
+            .hovered = self.header_input.hovered,
+            .lit = .init(.{ .pin = list_settings.alwaysOnTop }),
+            .accent = self.config.accentColor,
+        };
+    }
+
+    pub fn saveWindowPosition(self: *const ListWindow) void {
+        panel_section.savePosition(self.store, SETTINGS_SECTION, &self.panel);
+    }
+
+    /// Null for a message left to Windows.
+    pub fn handleMessage(self: *ListWindow, hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) ?win32.LRESULT {
+        _ = wParam;
+        switch (msg) {
+            win32.WM_MOUSEMOVE => {
+                self.hoverRow(self.rowSourceAt(win32.lparamX(lParam), win32.lparamY(lParam)));
+                return 0;
+            },
+            win32.WM_MOUSELEAVE => {
+                self.hoverRow(null);
+                return 0;
+            },
+            win32.WM_LBUTTONDOWN => {
+                const source_hwnd = self.rowSourceAt(win32.lparamX(lParam), win32.lparamY(lParam)) orelse return 0;
+                self.row_input.press(hwnd, source_hwnd);
+                return 0;
+            },
+            win32.WM_LBUTTONUP => {
+                self.row_input.release(hwnd);
+                return 0;
+            },
+            win32.WM_SETCURSOR => {
+                // Rows only: the header is the drag handle.
+                const hit_test: win32.LRESULT = @as(u16, @truncate(@as(usize, @bitCast(lParam))));
+                if (hit_test == win32.HTCLIENT and self.row_input.apply_hover_cursor()) return 1;
+                return null;
+            },
+            else => return null,
+        }
+    }
+
+    /// Assigns a unique colour the first time a name or system needs one, as the thumbnails do.
+    fn lookOf(self: *const ListWindow, client: *const Client) Look {
+        const config = self.config;
+        const is_logged_in = !scout.isGenericCharacterName(client.character_name);
+        const border_colors = if (is_logged_in) self.auto_colors.characterBorderColors(config, client.character_name) else null;
+        const own_active_color = if (border_colors) |colors| colors.activeBorderColor else null;
+        return .{
+            .name_color = if (is_logged_in) self.auto_colors.listNameColor(config, client.character_name) else null,
+            .system_color = window.systemColor(config, self.auto_colors, client.system_name),
+            .active_color = own_active_color orelse config.shownColors().active_color,
+            .is_hidden = config.isHiddenFromClientList(client.character_name),
+        };
+    }
+
+    /// From cycling, which goes by name.
+    fn isExcluded(self: *const ListWindow, client: *const Client) bool {
+        const exclusions = self.host.exclusions() orelse return false;
+        return exclusions.contains(client.character_name);
     }
 
     /// Puts `rows` in the configured order and records each row's client.
-    fn sortRows(self: *ListWindow, thumbnails: []const ThumbnailWindow) !void {
-        const AlphabeticalContext = struct {
-            thumbnails: []const ThumbnailWindow,
-
-            fn lessThan(context: @This(), a_index: usize, b_index: usize) bool {
-                const a = &context.thumbnails[a_index];
-                const b = &context.thumbnails[b_index];
-                switch (std.ascii.orderIgnoreCase(a.cached_display_name, b.cached_display_name)) {
-                    .lt => return true,
-                    .gt => return false,
-                    .eq => {},
-                }
-                switch (std.ascii.orderIgnoreCase(a.character_name, b.character_name)) {
-                    .lt => return true,
-                    .gt => return false,
-                    .eq => return a_index < b_index,
-                }
-            }
-        };
-        const ConfiguredContext = struct {
-            thumbnails: []const ThumbnailWindow,
-            order_map: *const std.StringHashMap(usize),
-
-            fn lessThan(context: @This(), a_index: usize, b_index: usize) bool {
-                return config_mod.orderMapLessThan(context.order_map, context.thumbnails[a_index].character_name, context.thumbnails[b_index].character_name, a_index, b_index);
-            }
-        };
-
-        // Rows start in tracked order.
-        switch (self.config.display.listViewOrder) {
-            .Tracked => {},
-            .Alphabetical => std.sort.pdq(usize, self.rows.items, AlphabeticalContext{ .thumbnails = thumbnails }, AlphabeticalContext.lessThan),
-            .ConfiguredCharacters => {
-                // Built once per sort, not per comparison.
-                var order_map = try config_mod.buildCharacterOrderMap(self.config.characters.items, self.panel.allocator);
-                defer order_map.deinit();
-                std.sort.pdq(usize, self.rows.items, ConfiguredContext{ .thumbnails = thumbnails, .order_map = &order_map }, ConfiguredContext.lessThan);
-            },
-        }
-
+    fn sortRows(self: *ListWindow, clients: []const Client) !void {
+        const list_settings = &self.config.listView;
+        try list_look.orderRows(self.panel.allocator, self.rows.items, self.names.items, .{
+            .order = list_settings.order,
+            .configured = self.config.characters.items,
+            .groups_by_system = list_settings.groupBySystem,
+        });
         try self.row_source_hwnds.resize(self.panel.allocator, self.rows.items.len);
-        for (self.rows.items, self.row_source_hwnds.items) |thumbnail_index, *hwnd| hwnd.* = thumbnails[thumbnail_index].source_hwnd;
+        for (self.rows.items, self.row_source_hwnds.items) |client_index, *hwnd| hwnd.* = clients[client_index].hwnd;
     }
 
     /// A hash of everything that affects the rendered pixels, to skip the redraw when nothing changed.
-    fn computeRenderSignature(self: *const ListWindow, thumbnails: []const ThumbnailWindow, active_source_hwnd: ?win32.HWND) u64 {
-        const display = &self.config.display;
-        var hasher = std.hash.Wyhash.init(0);
+    fn computeRenderSignature(self: *const ListWindow, clients: []const Client, focus: Focus, panel_header_state: *const panel_chrome.Header) u64 {
+        const list_settings = &self.config.listView;
+        var hasher: std.hash.Wyhash = .init(0);
+        panel_chrome.hashHeader(&hasher, panel_header_state);
         hasher.update(std.mem.asBytes(&self.rows.items.len));
-        hasher.update(std.mem.asBytes(&display.listViewColumns));
-        hasher.update(std.mem.asBytes(&display.listViewColumnWidth));
-        hasher.update(std.mem.asBytes(&display.listViewOrder));
-        hasher.update(std.mem.asBytes(&display.listViewOpacity));
-        hasher.update(display.listViewFontName);
-        hasher.update(std.mem.asBytes(&display.listViewFontSize));
-        hasher.update(std.mem.asBytes(&display.listViewFontWeight));
-        hasher.update(std.mem.asBytes(&display.listViewShowSystemName));
-        hasher.update(std.mem.asBytes(&display.listViewIndicatorStyle));
-        hasher.update(std.mem.asBytes(&display.listViewShowNotifications));
-        hasher.update(std.mem.asBytes(&display.listViewNotificationColor));
-        hasher.update(std.mem.asBytes(&display.listViewShowIncomingDps));
-        hasher.update(std.mem.asBytes(&display.listViewShowIncomingPrefix));
-        hasher.update(std.mem.asBytes(&display.listViewIncomingDpsColor));
-        hasher.update(std.mem.asBytes(&display.listViewShowOutgoingDps));
-        hasher.update(std.mem.asBytes(&display.listViewShowOutgoingPrefix));
-        hasher.update(std.mem.asBytes(&display.listViewOutgoingDpsColor));
-        hasher.update(std.mem.asBytes(&display.listViewShowMiningRate));
-        hasher.update(std.mem.asBytes(&display.listViewShowMiningPrefix));
-        hasher.update(std.mem.asBytes(&display.listViewMiningRateColor));
-        hasher.update(std.mem.asBytes(&display.listViewShowBountyRate));
-        hasher.update(std.mem.asBytes(&display.listViewShowBountyPrefix));
-        hasher.update(std.mem.asBytes(&display.listViewBountyRateColor));
-        hasher.update(std.mem.asBytes(&self.config.combat.enabled));
-        hasher.update(std.mem.asBytes(&self.config.mining.enabled));
-        hasher.update(std.mem.asBytes(&self.config.bounty.enabled));
+        hasher.update(std.mem.asBytes(&list_settings.columns));
+        hasher.update(std.mem.asBytes(&list_settings.columnWidth));
+        hasher.update(std.mem.asBytes(&list_settings.order));
+        hasher.update(std.mem.asBytes(&list_settings.groupBySystem));
+        hasher.update(std.mem.asBytes(&list_settings.opacity));
+        hasher.update(list_settings.fontName);
+        hasher.update(std.mem.asBytes(&list_settings.fontSize));
+        hasher.update(std.mem.asBytes(&list_settings.fontWeight));
+        hasher.update(std.mem.asBytes(&list_settings.showSystemName));
+        hasher.update(std.mem.asBytes(&list_settings.showSystemSecurity));
+        hasher.update(std.mem.asBytes(&list_settings.indicatorStyle));
+        hasher.update(std.mem.asBytes(&list_settings.showNotifications));
+        hasher.update(std.mem.asBytes(&list_settings.notificationColor));
+        hasher.update(std.mem.asBytes(&list_settings.showIncomingDps));
+        hasher.update(std.mem.asBytes(&list_settings.showIncomingPrefix));
+        hasher.update(std.mem.asBytes(&list_settings.incomingDpsColor));
+        hasher.update(std.mem.asBytes(&list_settings.showOutgoingDps));
+        hasher.update(std.mem.asBytes(&list_settings.showOutgoingPrefix));
+        hasher.update(std.mem.asBytes(&list_settings.outgoingDpsColor));
+        hasher.update(std.mem.asBytes(&list_settings.showMiningRate));
+        hasher.update(std.mem.asBytes(&list_settings.showMiningPrefix));
+        hasher.update(std.mem.asBytes(&list_settings.miningRateColor));
+        hasher.update(std.mem.asBytes(&list_settings.showBountyRate));
+        hasher.update(std.mem.asBytes(&list_settings.showBountyPrefix));
+        hasher.update(std.mem.asBytes(&list_settings.bountyRateColor));
+        hasher.update(std.mem.asBytes(&list_settings.showTotals));
         hasher.update(std.mem.asBytes(&self.config.bounty.isk_rate_unit));
+        hasher.update(std.mem.asBytes(&self.config.mining.m3_rate_unit));
+        const hovered_address: usize = if (self.hovered_source_hwnd) |hovered| @intFromPtr(hovered) else 0;
+        hasher.update(std.mem.asBytes(&hovered_address));
         // Rows are hashed before they're sorted, so the configured order has to be hashed itself.
-        if (display.listViewOrder == .ConfiguredCharacters) {
+        if (list_settings.order == .ConfiguredCharacters) {
             for (self.config.characters.items) |character| hashString(&hasher, character.name);
         }
 
-        for (self.rows.items) |thumbnail_index| {
-            const thumbnail = &thumbnails[thumbnail_index];
-            const render_state = thumbnail.effectiveRenderState(active_source_hwnd);
-            hashString(&hasher, thumbnail.character_name);
-            hashString(&hasher, thumbnail.cached_display_name);
-            hashString(&hasher, thumbnail.system_name);
+        for (self.rows.items) |client_index| {
+            const client = &clients[client_index];
+            const look = &self.looks.items[client_index];
+            const render_state = focus.stateOf(client);
+            hashString(&hasher, client.character_name);
+            hashString(&hasher, client.display_name);
+            hashString(&hasher, client.system_name);
             hasher.update(std.mem.asBytes(&render_state));
-            hasher.update(std.mem.asBytes(&thumbnail.is_excluded_from_cycle));
-            hasher.update(std.mem.asBytes(&thumbnail.stats.incoming_dps));
-            hasher.update(std.mem.asBytes(&thumbnail.stats.outgoing_dps));
-            hasher.update(std.mem.asBytes(&thumbnail.stats.mining_rate));
-            hasher.update(std.mem.asBytes(&thumbnail.stats.bounty_isk_rate));
-            hasher.update(std.mem.asBytes(&thumbnail.stats.has_dps));
-            hasher.update(std.mem.asBytes(&thumbnail.stats.has_mining));
-            hasher.update(std.mem.asBytes(&thumbnail.stats.has_bounty));
-            if (thumbnail.system_name.len > 0) hasher.update(std.mem.asBytes(&thumbnail.cached_system_color));
-            if (thumbnail.cached_character_color) |character_color| hasher.update(std.mem.asBytes(&character_color));
-            if (render_state == .active) {
-                const badge_color = self.resolveActiveBadgeColor(thumbnail);
-                hasher.update(std.mem.asBytes(&badge_color));
-            }
-            for (thumbnail.notifications.items()) |notification| {
+            hasher.update(std.mem.asBytes(&self.isExcluded(client)));
+            hasher.update(std.mem.asBytes(&client.stats.incoming_dps));
+            hasher.update(std.mem.asBytes(&client.stats.outgoing_dps));
+            hasher.update(std.mem.asBytes(&client.stats.mining_rate));
+            hasher.update(std.mem.asBytes(&client.stats.bounty_isk_rate));
+            hasher.update(std.mem.asBytes(&client.stats.has_dps));
+            hasher.update(std.mem.asBytes(&client.stats.has_mining));
+            hasher.update(std.mem.asBytes(&client.stats.has_bounty));
+            if (client.system_name.len > 0) hasher.update(std.mem.asBytes(&look.system_color));
+            if (look.name_color) |name_color| hasher.update(std.mem.asBytes(&name_color));
+            if (render_state == .active) hasher.update(std.mem.asBytes(&look.active_color));
+            for (client.notifications.items()) |notification| {
                 hashString(&hasher, notification.text);
                 hasher.update(std.mem.asBytes(&notification.border_color_override));
                 hasher.update(std.mem.asBytes(&notification.text_color_override));
+                hasher.update(std.mem.asBytes(&notification.shows_text));
+                if (notification.lead) |lead| hasher.update(std.mem.asBytes(&lead.color));
             }
         }
 
         return hasher.final();
     }
 
-    /// In writing order; empty when the list shows none.
-    fn statReadings(self: *const ListWindow, thumbnail: *const ThumbnailWindow, out: *[list_look.STAT_COUNT]list_look.StatReading) []const list_look.StatReading {
+    fn statSettings(self: *const ListWindow) list_look.StatSettings {
         const config = self.config;
-        const settings: list_look.StatSettings = .{ .display = &config.display, .combat = &config.combat, .mining = &config.mining, .bounty = &config.bounty };
-        const stats = &thumbnail.stats;
-        const bounty_period_seconds = config.bounty.isk_rate_unit.seconds();
-        var count: usize = 0;
+        return .{ .list_settings = &config.listView, .mining = &config.mining, .bounty = &config.bounty };
+    }
+
+    /// In writing order; empty when the list shows none.
+    fn statReadings(self: *const ListWindow, client: *const Client, out: *[list_look.STAT_COUNT]list_look.StatReading) []const list_look.StatReading {
+        const config = self.config;
+        const settings = self.statSettings();
+        const stats = &client.stats;
+        var reading_count: usize = 0;
         for (std.enums.values(list_look.Stat)) |stat| {
             if (!list_look.showsStat(settings, stat)) continue;
-            const value: ?f32 = switch (stat) {
-                .incoming_dps => if (stats.showsIncoming()) stats.incoming_dps else continue,
-                .outgoing_dps => if (stats.showsOutgoing()) stats.outgoing_dps else continue,
-                .mining_rate => if (stats.showsMining()) (if (stats.mining_rate) |rate| rate * 60.0 else null) else continue,
-                .bounty_rate => if (stats.showsBounty()) (if (stats.bounty_isk_rate) |rate| rate * bounty_period_seconds else null) else continue,
+            const unit = list_look.rateUnit(settings, stat);
+            const period_seconds: f32 = if (unit) |known| known.seconds() else 1.0;
+            const per_second = switch (stat) {
+                .incoming_dps => stats.shownIncoming(),
+                .outgoing_dps => stats.shownOutgoing(),
+                .mining_rate => stats.shownMining(),
+                .bounty_rate => stats.shownBounty(),
+            } orelse continue;
+            out[reading_count] = .{
+                .stat = stat,
+                .value = per_second * period_seconds,
+                .has_prefix = list_look.hasPrefix(&config.listView, stat),
+                .unit = unit,
             };
-            out[count] = .{ .stat = stat, .value = value, .has_prefix = list_look.hasPrefix(&config.display, stat) };
-            count += 1;
+            reading_count += 1;
         }
-        return out[0..count];
+        return out[0..reading_count];
     }
 
     /// Called every tick; redraws only when the render signature changed.
-    pub fn render(self: *ListWindow, thumbnails: []const ThumbnailWindow, active_source_hwnd: ?win32.HWND) !void {
-        const display = &self.config.display;
-        try self.panel.ensureFont("List View", display.listViewFontName, display.listViewFontSize, display.listViewFontWeight);
-        try self.panel.ensureSmallFont("List View small", display.listViewFontName, list_look.smallFontSize(display.listViewFontSize), display.listViewFontWeight);
+    pub fn render(self: *ListWindow, roster: *const Roster, view: View) !void {
+        const list_settings = &self.config.listView;
+        self.panel.followTopmost(list_settings.alwaysOnTop);
+        try self.panel.ensureFont("List View", list_settings.fontName, list_settings.fontSize, list_settings.fontWeight);
+        try self.panel.ensureSmallFont("List View small", list_settings.fontName, list_look.smallFontSize(list_settings.fontSize), list_settings.fontWeight);
+        try self.bold_font.ensure(self.panel.allocator, "List View names", list_settings.fontName, list_settings.fontSize, list_settings.fontWeight.bolded());
+        try self.small_bold_font.ensure(self.panel.allocator, "List View systems", list_settings.fontName, list_look.smallFontSize(list_settings.fontSize), list_settings.fontWeight.bolded());
 
+        const clients = roster.clients.items;
+        const focus: Focus = .{ .active_hwnd = roster.active_hwnd, .dragged_hwnd = view.dragged_hwnd };
+        try self.looks.resize(self.panel.allocator, clients.len);
+        try self.names.resize(self.panel.allocator, clients.len);
         self.rows.clearRetainingCapacity();
         var has_visible_row = false;
-        for (thumbnails, 0..) |*thumbnail, i| {
-            if (thumbnail.cached_hide_thumbnail) continue;
+        for (clients, self.looks.items, self.names.items, 0..) |*client, *look, *row_names, i| {
+            look.* = self.lookOf(client);
+            row_names.* = .{ .display_name = client.display_name, .character_name = client.character_name, .system_name = client.system_name };
+            if (look.is_hidden) continue;
             try self.rows.append(self.panel.allocator, i);
-            if (thumbnail.isShown()) has_visible_row = true;
+            // As a thumbnail stays up while hidden: a revealing alert or a drag.
+            if (view.are_thumbnails_shown or client.notifications.revealsThumbnail() or client.hwnd == view.dragged_hwnd) has_visible_row = true;
         }
         // Also hidden once the visibility toggle or auto-hide has hidden every client.
         if (!has_visible_row) {
+            self.menu.close();
             self.panel.hide();
             return;
         }
 
-        const signature = self.computeRenderSignature(thumbnails, active_source_hwnd);
+        const columns = list_look.effectiveColumns(list_settings.columns, self.rows.items.len);
+        const sizes = list_look.metrics(list_settings);
+        const panel_width = columns * sizes.column_width;
+        var count_buffer: [list_look.COUNT_TEXT_MAX]u8 = undefined;
+        const panel_header_state = self.header(panel_width, list_look.countText(&count_buffer, self.rows.items.len));
+        const signature = self.computeRenderSignature(clients, focus, &panel_header_state);
         if (self.panel.isUnchanged(signature)) return;
 
-        try self.sortRows(thumbnails);
+        try self.sortRows(clients);
+        // Room for stats whether or not there are any yet, so the list doesn't grow when combat starts.
+        const row_height = if (list_look.showsAnyStat(self.statSettings())) sizes.stats_row_height else sizes.row_height;
+        const lines_bottom = try list_look.layOutLines(self.panel.allocator, &self.lines, self.rows.items, self.names.items, .{
+            .columns = @intCast(columns),
+            .groups_by_system = list_settings.groupBySystem,
+            .top = sizes.header_height,
+            .row_height = row_height,
+        });
+        try self.header_fonts.ensure(self.panel.allocator);
 
-        const count: i32 = @intCast(self.rows.items.len);
-        const columns = list_look.effectiveColumns(display.listViewColumns, self.rows.items.len);
-        const sizes = list_look.metrics(display);
-        const rows_per_column: i32 = @divTrunc(count + columns - 1, columns);
-        const bitmap = try self.panel.beginFrame(columns * sizes.column_width, sizes.header_height + rows_per_column * sizes.row_height + list_look.BOTTOM_PADDING);
-        const width: usize = bitmap.width;
-        const height: usize = bitmap.height;
-        const dc = bitmap.mem_dc;
-
-        pixel_buffer.fillRect(bitmap.canvas(), 0, 0, width, height, list_look.PANEL);
-        pixel_buffer.fillRect(bitmap.canvas(), 0, @intCast(sizes.header_height - 1), width, 1, list_look.DIVIDER);
-
-        var row_text: ?RowText = null;
-        var old_font: ?win32.HANDLE = null;
-        if (self.panel.font.handle) |name_font| {
-            if (self.panel.small_font.handle) |small_font| {
-                old_font = win32.SelectObject(dc, small_font);
-                const small_height = lineHeight(dc);
-                var header_buf: [list_look.HEADER_TEXT_MAX]u8 = undefined;
-                drawText(dc, list_look.headerText(&header_buf, self.rows.items.len), list_look.PADDING_X, @divTrunc(sizes.header_height - small_height, 2), list_look.MUTED);
-                _ = win32.SelectObject(dc, name_font);
-                row_text = .{ .name_font = name_font, .small_font = small_font, .name_height = lineHeight(dc), .small_height = small_height };
+        const is_collapsed = list_settings.collapsed;
+        // Kept while every rate is zero, so the list doesn't grow when combat starts; it pads the bottom itself.
+        const shows_totals = list_look.showsTotals(self.statSettings());
+        const content_bottom = if (shows_totals) lines_bottom + sizes.footer_height else lines_bottom + list_look.BOTTOM_PADDING;
+        const panel_height = panel_header.panelHeight(is_collapsed, content_bottom);
+        const frame = try panel_chrome.beginFrame(&self.panel, &self.header_fonts, &panel_header_state, panel_width, panel_height);
+        defer frame.end();
+        const bitmap = frame.bitmap;
+        const dc = frame.dc;
+        const canvas = frame.canvas;
+        if (is_collapsed) {
+            self.drawSummary(canvas, dc, clients, focus, frame.summary_left, panel_header_state.layout.content_right);
+        } else {
+            var row_text: ?RowText = null;
+            if (self.panel.font.handle) |regular_font| {
+                if (self.panel.small_font.handle) |small_font| {
+                    const name_font = self.bold_font.handle orelse regular_font;
+                    _ = win32.SelectObject(dc, small_font);
+                    const small_height = panel_chrome.lineHeight(dc);
+                    _ = win32.SelectObject(dc, name_font);
+                    row_text = .{
+                        .name_font = name_font,
+                        .small_font = small_font,
+                        .slot_font = self.small_bold_font.handle orelse small_font,
+                        .name_height = panel_chrome.lineHeight(dc),
+                        .small_height = small_height,
+                    };
+                }
+            }
+            for (self.lines.items) |line| {
+                if (line.is_heading) {
+                    self.drawHeading(canvas, dc, clients, line, panel_width);
+                    continue;
+                }
+                for (0..line.row_count) |column| self.drawRow(bitmap, clients, self.rows.items[line.first_row_index + column], line, column, sizes.column_width, row_text, focus);
+            }
+            if (shows_totals) {
+                if (row_text) |text| self.drawTotals(canvas, dc, clients, text, lines_bottom, sizes.footer_height, panel_width);
             }
         }
-        // A font still selected into the DC can't be deleted when the settings change.
-        defer if (old_font) |font| {
-            _ = win32.SelectObject(dc, font);
-        };
 
-        for (self.rows.items, 0..) |thumbnail_index, row_index| self.drawRow(bitmap, &thumbnails[thumbnail_index], row_index, columns, sizes, row_text, active_source_hwnd);
-
-        pixel_buffer.fixTextAlpha(bitmap.canvas());
-        pixel_buffer.drawRoundedFrame(bitmap.canvas(), list_look.CORNER_RADIUS, list_look.BORDER);
-
-        self.panel.present(display.listViewOpacity, signature);
+        panel_chrome.finish(canvas);
+        self.panel.present(list_settings.opacity, signature);
     }
 
-    /// `row_index` is in display order.
-    fn drawRow(self: *const ListWindow, bitmap: *const gdi_overlay.OverlayBitmap, thumbnail: *const ThumbnailWindow, row_index: usize, columns: i32, sizes: list_look.Metrics, row_text: ?RowText, active_source_hwnd: ?win32.HWND) void {
-        const display = &self.config.display;
-        const column_count: usize = @intCast(columns);
-        const row: i32 = @intCast(row_index / column_count);
-        const column: i32 = @intCast(row_index % column_count);
-        const row_top: i32 = sizes.header_height + row * sizes.row_height;
-        const column_left: i32 = column * sizes.column_width;
-        const render_state = thumbnail.effectiveRenderState(active_source_hwnd);
+    /// The active client, and how many are alerting, after the title of a collapsed list.
+    fn drawSummary(self: *const ListWindow, canvas: pixel_buffer.Canvas, dc: win32.HDC, clients: []const Client, focus: Focus, left: i32, right: i32) void {
+        var active_index: ?usize = null;
+        var alert_count: usize = 0;
+        for (self.rows.items) |client_index| {
+            switch (focus.stateOf(&clients[client_index])) {
+                .active => active_index = client_index,
+                .alert => alert_count += 1,
+                .inactive, .minimized, .dragging => {},
+            }
+        }
+        var alert_buffer: [ALERT_TEXT_MAX]u8 = undefined;
+        const alert_text = if (alert_count == 0) "" else alertText(&alert_buffer, alert_count);
+        var text_left = left;
+        if (active_index) |index| text_left = panel_chrome.drawSummaryDot(canvas, left, self.looks.items[index].active_color);
+        const runs = [_]panel_chrome.Run{
+            .{ .text = if (active_index) |index| clients[index].display_name else "", .color = palette.TEXT_SECONDARY },
+            .{ .text = alert_text, .color = palette.ERROR, .fill = palette.ERROR_TINT },
+        };
+        panel_chrome.drawSummary(canvas, dc, &self.header_fonts, text_left, right, &runs);
+    }
+
+    /// The system's name and security, a rule, and how many clients are there.
+    fn drawHeading(self: *const ListWindow, canvas: pixel_buffer.Canvas, dc: win32.HDC, clients: []const Client, line: Line, panel_width: i32) void {
+        const font = self.header_fonts.small.handle orelse return;
+        _ = win32.SelectObject(dc, font);
+        const text_height = panel_chrome.lineHeight(dc);
+        const y = line.top + @divTrunc(line.bottom - line.top - text_height, 2);
+        const right = panel_width - list_look.PADDING_X;
+        const system_name = clients[self.rows.items[line.first_row_index]].system_name;
+        var heading_buffer: [HEADING_TEXT_MAX]u8 = undefined;
+        const heading = if (system_name.len == 0) list_look.NO_SYSTEM_TEXT else std.ascii.upperString(&heading_buffer, system_name[0..@min(system_name.len, heading_buffer.len)]);
+
+        var count_buffer: [list_look.COUNT_TEXT_MAX]u8 = undefined;
+        const count_text = list_look.countText(&count_buffer, line.row_count);
+        const count_left = right - panel_chrome.textWidth(dc, count_text);
+        panel_chrome.drawLine(dc, count_text, count_left, y, list_look.MUTED);
+        const text_right = count_left - list_look.GROUP_HEADING_GAP;
+
+        var x = list_look.PADDING_X;
+        x += panel_chrome.drawFitted(dc, heading, x, y, list_look.MUTED, text_right - x);
+        if (self.config.listView.showSystemSecurity) security_suffix: {
+            const system = universe.findSystem(system_name) orelse break :security_suffix;
+            const security_tenths = universe.systemInfo(system).security_tenths;
+            var security_buffer: [security.SECURITY_TEXT_MAX]u8 = undefined;
+            x += list_look.SECURITY_GAP;
+            if (x < text_right) x += panel_chrome.drawFitted(dc, security.securityText(&security_buffer, security_tenths), x, y, security.securityTextColor(security_tenths), text_right - x);
+        }
+        const rule_left = x + list_look.GROUP_HEADING_GAP;
+        const rule_top = line.top + @divTrunc(line.bottom - line.top, 2);
+        pixel_buffer.fillBox(canvas, .{ .left = rule_left, .top = rule_top, .right = text_right, .bottom = rule_top + 1 }, list_look.DIVIDER);
+    }
+
+    /// A rule, then each rate the rows show added up.
+    fn drawTotals(self: *const ListWindow, canvas: pixel_buffer.Canvas, dc: win32.HDC, clients: []const Client, text: RowText, top: i32, height: i32, panel_width: i32) void {
+        var totals: list_look.Totals = @splat(.{});
+        for (self.rows.items) |client_index| {
+            var readings_buffer: [list_look.STAT_COUNT]list_look.StatReading = undefined;
+            list_look.addReadings(&totals, self.statReadings(&clients[client_index], &readings_buffer));
+        }
+        pixel_buffer.fillBox(canvas, .{ .left = 0, .top = top, .right = panel_width, .bottom = top + 1 }, list_look.DIVIDER);
+        const y = top + @divTrunc(height - text.small_height, 2);
+        const left = list_look.PADDING_X;
+        const right = panel_width - list_look.PADDING_X;
+        _ = win32.SelectObject(dc, text.slot_font);
+        const label_width = panel_chrome.drawFitted(dc, list_look.TOTALS_TEXT, left, y, list_look.MUTED, right - left);
+        _ = win32.SelectObject(dc, text.small_font);
+        var readings_buffer: [list_look.STAT_COUNT]list_look.StatReading = undefined;
+        drawStats(dc, &self.config.listView, list_look.totalReadings(self.statSettings(), &totals, &readings_buffer), left + label_width + list_look.STAT_GAP, y, right);
+    }
+
+    /// `column` is within `line`; `client_index` is into `clients`.
+    fn drawRow(self: *const ListWindow, bitmap: *const gdi_overlay.OverlayBitmap, clients: []const Client, client_index: usize, line: Line, column: usize, column_width: i32, row_text: ?RowText, focus: Focus) void {
+        const list_settings = &self.config.listView;
+        const canvas = bitmap.canvas();
+        const client = &clients[client_index];
+        const look = &self.looks.items[client_index];
+        const row_top = line.top;
+        const row_height = line.bottom - line.top;
+        const column_left: i32 = @as(i32, @intCast(column)) * column_width;
+        const render_state = focus.stateOf(client);
         const is_active = render_state == .active;
         const is_alert = render_state == .alert;
-        const is_excluded = thumbnail.is_excluded_from_cycle;
-        const active_color = self.resolveActiveBadgeColor(thumbnail);
+        const is_excluded = self.isExcluded(client);
+        const active_color = look.active_color;
 
-        const tint: ?u32 = if (is_alert)
-            list_look.alertTint(alertColor(thumbnail))
+        const background: u32 = if (is_alert)
+            list_look.alertTint(alertColor(&client.notifications))
         else if (is_active)
             list_look.activeTint(active_color)
+        else if (self.hovered_source_hwnd == client.hwnd)
+            list_look.ROW_HOVER
         else
-            null;
-        if (tint) |row_bg| pixel_buffer.fillRect(bitmap.canvas(), @intCast(column_left), @intCast(row_top), @intCast(sizes.column_width), @intCast(sizes.row_height), row_bg);
+            list_look.PANEL;
+        if (background != list_look.PANEL) pixel_buffer.fillBox(canvas, .{
+            .left = column_left,
+            .top = row_top,
+            .right = column_left + column_width,
+            .bottom = row_top + row_height,
+        }, background);
 
         const badge_color: u32 = if (is_excluded)
             list_look.BADGE_EXCLUDED
@@ -316,183 +656,140 @@ pub const ListWindow = struct {
             list_look.BADGE_MINIMIZED
         else
             list_look.BADGE_INACTIVE;
-        const indicator_style = display.listViewIndicatorStyle;
-        drawIndicator(bitmap, indicator_style, column_left, row_top, sizes.row_height, badge_color);
+        const indicator_style = list_settings.indicatorStyle;
+        const center_y = row_top + @divTrunc(row_height, 2);
+        drawIndicator(canvas, indicator_style, column_left + list_look.PADDING_X + list_look.LIT_BADGE_RADIUS, center_y, badge_color, if (!is_excluded and (is_active or is_alert)) background else null);
 
         const text = row_text orelse return;
         const dc = bitmap.mem_dc;
-        const name_offset = list_look.textLeft(indicator_style);
-        const text_left = column_left + name_offset;
+        const text_left = column_left + list_look.textLeft(indicator_style);
+        const right_x = column_left + column_width - list_look.PADDING_X;
+        var readings_buffer: [list_look.STAT_COUNT]list_look.StatReading = undefined;
+        const readings = self.statReadings(client, &readings_buffer);
 
+        _ = win32.SelectObject(dc, text.slot_font);
+        const slot_left = self.drawRightSlot(canvas, dc, client, look, .{
+            .y = center_y - @divTrunc(text.small_height, 2),
+            .text_height = text.small_height,
+            .min_left = text_left + list_look.MIN_NAME_WIDTH,
+            .right = right_x,
+        });
+        const name_right = if (slot_left < right_x) slot_left - list_look.SLOT_GAP else right_x;
+
+        const text_height = if (readings.len > 0) text.name_height + list_look.LINE_GAP + text.small_height else text.name_height;
+        const name_y = row_top + @divTrunc(row_height - text_height, 2);
         _ = win32.SelectObject(dc, text.name_font);
-        const name_y = row_top + @divTrunc(sizes.row_height - text.name_height, 2);
         const name_color: u32 = if (is_excluded)
             list_look.MUTED
         else
-            thumbnail.cached_character_color orelse if (is_active) list_look.activeNameColor(active_color) else list_look.NAME;
-        const max_name_width: usize = @intCast(sizes.column_width - name_offset - list_look.PADDING_X - RIGHT_SLOT_MIN_WIDTH);
-        if (measureTextWidth(dc, thumbnail.cached_display_name) <= max_name_width) {
-            drawText(dc, thumbnail.cached_display_name, text_left, name_y, name_color);
-        } else {
-            drawTextTruncated(dc, thumbnail.cached_display_name, text_left, name_y, name_color, max_name_width);
-        }
+            look.name_color orelse if (is_active) list_look.ACTIVE_NAME else list_look.NAME;
+        _ = panel_chrome.drawFitted(dc, client.display_name, text_left, name_y, name_color, name_right - text_left);
 
-        var readings_buf: [list_look.STAT_COUNT]list_look.StatReading = undefined;
-        const readings = self.statReadings(thumbnail, &readings_buf);
-
+        if (readings.len == 0) return;
         _ = win32.SelectObject(dc, text.small_font);
-        const small_y = row_top + @divTrunc(sizes.row_height - text.small_height, 2);
-        const right_x = column_left + sizes.column_width - list_look.PADDING_X;
+        drawStats(dc, list_settings, readings, text_left, name_y + text.name_height + list_look.LINE_GAP, name_right);
+    }
 
-        // One slot only: the newest notification wins, then stats, then exclusion, then the system.
+    /// The newest notification's pill, else "Excluded", else the system and security unless grouped; returns where it starts, or `slot.right` if empty.
+    fn drawRightSlot(self: *const ListWindow, canvas: pixel_buffer.Canvas, dc: win32.HDC, client: *const Client, look: *const Look, slot: Slot) i32 {
+        const list_settings = &self.config.listView;
         var notification_buffer: [TEXT_BUFFER_SIZE]u8 = undefined;
-        const newest = if (display.listViewShowNotifications) thumbnail.notifications.newest() else null;
+        const alerts = &client.notifications;
+        const newest = if (list_settings.showNotifications) alerts.newestWithText() else null;
         if (newest) |notification| {
-            drawTextRight(dc, template.oneLine(notification.text, &notification_buffer), right_x, small_y, notification.text_color_override orelse display.listViewNotificationColor, text_left);
-        } else if (readings.len > 0) {
-            drawStatsRight(dc, display, readings, right_x, small_y, text_left);
-        } else if (is_excluded) {
-            drawTextRight(dc, "Excluded", right_x, small_y, list_look.MUTED, text_left);
-        } else if (display.listViewShowSystemName and thumbnail.system_name.len > 0) {
-            drawTextRight(dc, thumbnail.system_name, right_x, small_y, thumbnail.cached_system_color, text_left);
+            const line = template.oneLine(notification.text, &notification_buffer);
+            const text_color = notification.text_color_override orelse list_settings.notificationColor;
+            const lead: Lead = if (notification.lead) |lead| .{ .length = @min(lead.length, line.len), .color = lead.color } else .{ .length = 0, .color = text_color };
+            return drawPill(canvas, dc, slot, line, lead, text_color, alertColor(alerts));
         }
+        if (self.isExcluded(client)) return drawRightAligned(dc, slot, "Excluded", list_look.MUTED);
+        // Grouped rows sit under their system's heading.
+        if (!list_settings.showSystemName or list_settings.groupBySystem or client.system_name.len == 0) return slot.right;
+
+        var system_slot = slot;
+        if (list_settings.showSystemSecurity) security_suffix: {
+            const system = universe.findSystem(client.system_name) orelse break :security_suffix;
+            const security_tenths = universe.systemInfo(system).security_tenths;
+            var security_buffer: [security.SECURITY_TEXT_MAX]u8 = undefined;
+            system_slot.right = drawRightAligned(dc, slot, security.securityText(&security_buffer, security_tenths), security.securityTextColor(security_tenths)) - list_look.SECURITY_GAP;
+        }
+        return drawRightAligned(dc, system_slot, client.system_name, look.system_color);
     }
 };
 
-var g_is_class_registered: bool = false;
+/// A notification's first bytes, drawn in their own colour.
+const Lead = struct { length: usize, color: u32 };
+
+/// The thumbnails' visibility and drag, from App's current set.
+pub fn viewOf(thumbnail_set: ?*const ThumbnailSet) View {
+    const active_set = thumbnail_set orelse return .{};
+    return .{ .are_thumbnails_shown = active_set.thumbnailsShown(), .dragged_hwnd = active_set.draggedSourceHwnd() };
+}
+
+fn alertText(buffer: *[ALERT_TEXT_MAX]u8, count: usize) []const u8 {
+    return std.mem.print(buffer, "{d} {s}", .{ count, if (count == 1) "alert" else "alerts" }) catch unreachable;
+}
 
 /// The newest notification's border colour, which tints an alerting row.
-fn alertColor(thumbnail: *const ThumbnailWindow) u32 {
-    const notification = thumbnail.notifications.newest() orelse return list_look.BADGE_ALERT;
+fn alertColor(alerts: *const NotificationStack) u32 {
+    const notification = alerts.newest() orelse return list_look.BADGE_ALERT;
     return notification.border_color_override orelse list_look.BADGE_ALERT;
 }
 
-fn registerWindowClass(instance: win32.HINSTANCE) !void {
-    if (g_is_class_registered) return;
-    try gdi_overlay.registerWindowClass(instance, listWindowProc, LIST_WINDOW_CLASS, null);
-    g_is_class_registered = true;
-}
-
-fn listWindow() ?*ListWindow {
-    const running = app.g_app orelse return null;
-    return if (running.list_window) |*list_window| list_window else null;
-}
-
-fn listWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
-    // The thumbnail set only holds the list once its window exists, so creation's messages go without a header.
-    const header_height = if (listWindow()) |list_window| list_look.metrics(&list_window.config.display).header_height else 0;
-    if (drag.handleMessage(app.currentThumbnailSet(), hwnd, msg, lParam, header_height)) |result| return result;
-    switch (msg) {
-        win32.WM_ENTERSIZEMOVE => {
-            drag.beginPanelDrag(hwnd);
-            return 0;
-        },
-        win32.WM_EXITSIZEMOVE => {
-            if (listWindow()) |list_window| list_window.saveWindowPosition();
-            return 0;
-        },
-        win32.WM_LBUTTONDOWN => {
-            const list_window = listWindow() orelse return 0;
-            const source_hwnd = list_window.rowSourceAt(win32.lparamX(lParam), win32.lparamY(lParam)) orelse return 0;
-            thumbnail_input.press(hwnd, source_hwnd);
-            return 0;
-        },
-        win32.WM_LBUTTONUP => {
-            thumbnail_input.release(hwnd);
-            return 0;
-        },
-        win32.WM_SETCURSOR => {
-            // Rows only: the header is the drag handle.
-            const hit_test: win32.LRESULT = @as(u16, @truncate(@as(usize, @bitCast(lParam))));
-            if (hit_test == win32.HTCLIENT and thumbnail_input.applyHoverCursor()) return 1;
-            return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
-        },
-        else => return win32.DefWindowProcA(hwnd, msg, wParam, lParam),
-    }
-}
-
-fn drawIndicator(bitmap: *const gdi_overlay.OverlayBitmap, style: types.ListIndicatorStyle, column_left: i32, row_top: i32, row_height: i32, argb: u32) void {
-    const canvas = bitmap.canvas();
-    const radius = list_look.BADGE_RADIUS;
-    const center_x = column_left + list_look.PADDING_X + radius;
-    const center_y = row_top + @divTrunc(row_height, 2);
+/// `glow_background` is set for a lit dot, whose halo is blended onto it.
+fn drawIndicator(canvas: pixel_buffer.Canvas, style: types.ListIndicatorStyle, center_x: i32, center_y: i32, argb: u32, glow_background: ?u32) void {
+    const radius = if (glow_background != null) list_look.LIT_BADGE_RADIUS else list_look.BADGE_RADIUS;
     switch (style) {
-        .Dot => drawDot(canvas, center_x, center_y, radius, argb),
-        .Square => pixel_buffer.fillRect(canvas, @intCast(center_x - radius), @intCast(center_y - radius), @intCast(radius * 2), @intCast(radius * 2), argb),
+        .Dot => {
+            if (glow_background) |background| pixel_buffer.fillCircle(canvas, center_x, center_y, @floatFromInt(radius + list_look.GLOW_WIDTH), list_look.glowColor(argb, background));
+            pixel_buffer.fillCircle(canvas, center_x, center_y, @floatFromInt(radius), argb);
+        },
+        .Square => pixel_buffer.fillBox(canvas, .{
+            .left = center_x - radius,
+            .top = center_y - radius,
+            .right = center_x + radius,
+            .bottom = center_y + radius,
+        }, argb),
         .None => {},
     }
 }
 
-fn drawDot(canvas: pixel_buffer.Canvas, center_x: i32, center_y: i32, radius: i32, argb: u32) void {
-    const width = canvas.width;
-    const radius_squared = radius * radius;
-    var dy: i32 = -radius;
-    while (dy <= radius) : (dy += 1) {
-        var dx: i32 = -radius;
-        while (dx <= radius) : (dx += 1) {
-            if (dx * dx + dy * dy <= radius_squared) {
-                const x: i32 = center_x + dx;
-                const y: i32 = center_y + dy;
-                if (x >= 0 and y >= 0 and @as(usize, @intCast(x)) < width and @as(usize, @intCast(y)) < canvas.height) {
-                    canvas.pixels[@as(usize, @intCast(y)) * width + @as(usize, @intCast(x))] = argb;
-                }
-            }
-        }
-    }
+/// Cut short rather than start left of `slot.min_left`; returns where it starts, or `slot.right` when there's no room.
+fn drawRightAligned(dc: win32.HDC, slot: Slot, text: []const u8, argb: u32) i32 {
+    if (slot.right <= slot.min_left) return slot.right;
+    const left = @max(slot.min_left, slot.right - panel_chrome.wideTextWidth(dc, text));
+    _ = panel_chrome.drawFitted(dc, text, left, slot.y, argb, slot.right - left);
+    return left;
 }
 
-/// Ignores `color`'s alpha byte.
-fn drawText(dc: win32.HDC, text: []const u8, x: i32, y: i32, color: u32) void {
-    _ = win32.SetBkMode(dc, win32.TRANSPARENT);
-    const text_z = gdi_overlay.toBufZ(TEXT_BUFFER_SIZE, text);
-    const length = @min(text.len, TEXT_BUFFER_SIZE - 1);
-    _ = win32.SetTextColor(dc, gdi_overlay.toColorRef(color & 0x00FF_FFFF));
-    _ = win32.TextOutA(dc, x, y, &text_z, @intCast(length));
+/// Outlined and filled in shades of `alert_color`; returns where it starts, or `slot.right` when there's no room.
+fn drawPill(canvas: pixel_buffer.Canvas, dc: win32.HDC, slot: Slot, text: []const u8, lead: Lead, text_color: u32, alert_color: u32) i32 {
+    const padding = list_look.PILL_PADDING_X;
+    const room = slot.right - slot.min_left - 2 * padding;
+    if (room <= 0) return slot.right;
+    const text_width = @min(panel_chrome.wideTextWidth(dc, text), room);
+    const left = slot.right - text_width - 2 * padding;
+    const pill: Box = .{ .left = left, .top = slot.y - 1, .right = left + text_width + 2 * padding, .bottom = slot.y + slot.text_height + 1 };
+    pixel_buffer.fillRoundedBox(canvas, pill, list_look.PILL_RADIUS, list_look.pillBorder(alert_color));
+    pixel_buffer.fillRoundedBox(canvas, pill.inset(1), list_look.PILL_RADIUS - 1, list_look.pillFill(alert_color));
+    const lead_width = panel_chrome.drawFitted(dc, text[0..lead.length], left + padding, slot.y, lead.color, text_width);
+    _ = panel_chrome.drawFitted(dc, text[lead.length..], left + padding + lead_width, slot.y, text_color, text_width - lead_width);
+    return left;
 }
 
-fn lineHeight(dc: win32.HDC) i32 {
-    return gdi_overlay.measureTextSize(TEXT_BUFFER_SIZE, dc, "Ag").cy;
-}
-
-fn measureTextWidth(dc: win32.HDC, text: []const u8) usize {
-    return gdi_overlay.measureTextWidth(TEXT_BUFFER_SIZE, dc, text);
-}
-
-/// Right edge at `right_x`; skipped rather than drawn left of `min_x`, where it would overlap the name.
-fn drawTextRight(dc: win32.HDC, text: []const u8, right_x: i32, y: i32, rgb: u32, min_x: i32) void {
-    const length = @min(text.len, TEXT_BUFFER_SIZE - 1);
-    const x = right_x - @as(i32, @intCast(measureTextWidth(dc, text[0..length])));
-    if (x < min_x) return;
-    drawText(dc, text[0..length], x, y, rgb);
-}
-
-/// Each reading in its own colour, a space apart; skipped like drawTextRight past `min_x`.
-fn drawStatsRight(dc: win32.HDC, display: *const config_mod.DisplayConfig, readings: []const list_look.StatReading, right_x: i32, y: i32, min_x: i32) void {
-    var texts: [list_look.STAT_COUNT][list_look.STAT_TEXT_MAX]u8 = undefined;
-    var lengths: [list_look.STAT_COUNT]usize = undefined;
-    var widths: [list_look.STAT_COUNT]i32 = undefined;
-    const gap: i32 = @intCast(measureTextWidth(dc, " "));
-    var total: i32 = 0;
-    for (readings, 0..) |reading, index| {
-        var writer: std.Io.Writer = .fixed(&texts[index]);
+/// Each reading in its own colour, left to right; stops at the first that won't fit before `right`.
+fn drawStats(dc: win32.HDC, list_settings: *const config_mod.ListViewConfig, readings: []const list_look.StatReading, left: i32, y: i32, right: i32) void {
+    var x = left;
+    for (readings) |reading| {
+        var stat_buffer: [list_look.STAT_TEXT_MAX]u8 = undefined;
+        var writer: std.Io.Writer = .fixed(&stat_buffer);
         list_look.writeStat(&writer, reading);
-        lengths[index] = writer.buffered().len;
-        widths[index] = @intCast(measureTextWidth(dc, texts[index][0..lengths[index]]));
-        total += widths[index];
-        if (index > 0) total += gap;
+        const stat_text = writer.buffered();
+        const width = panel_chrome.textWidth(dc, stat_text);
+        if (x + width > right) return;
+        panel_chrome.drawLine(dc, stat_text, x, y, list_look.statColor(list_settings, reading.stat));
+        x += width + list_look.STAT_GAP;
     }
-    var x = right_x - total;
-    if (x < min_x) return;
-    for (readings, 0..) |reading, index| {
-        drawText(dc, texts[index][0..lengths[index]], x, y, list_look.statColor(display, reading.stat));
-        x += widths[index] + gap;
-    }
-}
-
-fn drawTextTruncated(dc: win32.HDC, text: []const u8, x: i32, y: i32, rgb: u32, max_width: usize) void {
-    var out: [TEXT_BUFFER_SIZE:0]u8 = undefined;
-    const truncated = gdi_overlay.truncateTextToFit(TEXT_BUFFER_SIZE, dc, &out, text, max_width);
-    drawText(dc, truncated, x, y, rgb);
 }
 
 /// Length-prefixed, so swapping "Bob" and "BobBob" can't leave the hashed byte stream unchanged.

@@ -1,7 +1,6 @@
 //! Right-button drag of a thumbnail and its linked text overlay; holding Ctrl moves every thumbnail together.
 const win32 = @import("../platform/win32.zig");
 const set = @import("../thumbnail/set.zig");
-const overlays = @import("overlays.zig");
 const snapping = @import("snapping.zig");
 const arrange = @import("../thumbnail/arrange.zig");
 const spaces = @import("../layout/spaces.zig");
@@ -10,20 +9,11 @@ const log = @import("../log.zig");
 const ThumbnailSet = set.ThumbnailSet;
 const slog = log.Scoped("drag");
 
-const DragState = struct {
-    /// Null when no drag is in progress.
-    hwnd: ?win32.HWND = null,
-    offset_x: i32 = 0,
-    offset_y: i32 = 0,
-};
-
-var g_drag_state: DragState = .{};
-
 pub fn start(thumbnail_set: *ThumbnailSet, hwnd: win32.HWND, lParam: win32.LPARAM) void {
     if (!thumbnail_set.config.interaction.enableDragging or grabbedThumbnailIsPlaced(thumbnail_set, hwnd)) return;
 
-    thumbnail_set.renderer.hover_zoom.hide();
-    g_drag_state = .{
+    thumbnail_set.hideHoverZoom();
+    thumbnail_set.drag_grab = .{
         .hwnd = hwnd,
         .offset_x = win32.lparamX(lParam),
         .offset_y = win32.lparamY(lParam),
@@ -34,18 +24,15 @@ pub fn start(thumbnail_set: *ThumbnailSet, hwnd: win32.HWND, lParam: win32.LPARA
         thumbnail_set.renderThumbnail(thumbnail) catch |err| {
             slog.err("Failed to render dragging thumbnail for '{s}': {}", .{ thumbnail.character_name, err });
         };
-        if (thumbnail_set.config.snapping.showGhostPositionBorders) {
-            thumbnail_set.ghost_overlay.show(thumbnail_set.instance, &thumbnail_set.renderer.font_cache, thumbnail_set.config, thumbnail.character_name);
-        }
     }
-    overlays.showDragHint(&thumbnail_set.hint_box, thumbnail_set.instance, &thumbnail_set.renderer.font_cache, thumbnail_set.config, hwnd);
+    thumbnail_set.showDragOverlays(hwnd);
 
     _ = win32.SetCapture(hwnd);
 }
 
 /// Saves `thumbnail_hwnd`'s position, whichever of its two windows (`hwnd`) was grabbed.
 pub fn end(thumbnail_set: *ThumbnailSet, hwnd: win32.HWND, thumbnail_hwnd: win32.HWND) void {
-    if (g_drag_state.hwnd != hwnd) return;
+    if ((thumbnail_set.drag_grab orelse return).hwnd != hwnd) return;
     stop(thumbnail_set);
 
     if (thumbnail_set.getThumbnailByOverlayHwnd(hwnd)) |thumbnail| {
@@ -62,7 +49,8 @@ pub fn end(thumbnail_set: *ThumbnailSet, hwnd: win32.HWND, thumbnail_hwnd: win32
 }
 
 pub fn move(thumbnail_set: *ThumbnailSet, hwnd: win32.HWND) void {
-    if (g_drag_state.hwnd != hwnd) return;
+    const grab = thumbnail_set.drag_grab orelse return;
+    if (grab.hwnd != hwnd) return;
 
     if (!win32.isWindow(hwnd)) {
         slog.warn("Window {*} became invalid during drag operation, canceling drag", .{hwnd});
@@ -79,15 +67,19 @@ pub fn move(thumbnail_set: *ThumbnailSet, hwnd: win32.HWND) void {
 
     // The real cursor, not the message's coordinates, which lag behind a window that's moving under them.
     var cursor: win32.POINT = undefined;
-    if (!win32.toBool(win32.GetCursorPos(&cursor))) return;
-    const new_x = cursor.x - g_drag_state.offset_x;
-    const new_y = cursor.y - g_drag_state.offset_y;
+    if (!win32.toBool(win32.GetCursorPos(&cursor))) {
+        slog.debug("Failed to get the cursor position while dragging a thumbnail", .{});
+        return;
+    }
+    const new_x = cursor.x - grab.offset_x;
+    const new_y = cursor.y - grab.offset_y;
 
     const width = win32.rectWidth(rect);
     const height = win32.rectHeight(rect);
+    const unsnapped: snapping.Drag = .{ .x = new_x, .y = new_y, .width = width, .height = height, .hwnd = hwnd };
 
     if (!win32.isCtrlPressed()) {
-        const snapped = snapping.applySnapping(thumbnail_set, new_x, new_y, width, height, hwnd);
+        const snapped = snapping.applySnapping(thumbnail_set, unsnapped);
         const dragged = thumbnail_set.getThumbnailByOverlayHwnd(hwnd) orelse return;
         dragged.moveTo(snapped.x, snapped.y, .{ .width = width, .height = height });
         return;
@@ -97,7 +89,7 @@ pub fn move(thumbnail_set: *ThumbnailSet, hwnd: win32.HWND) void {
     var delta_x = new_x - rect.left;
     var delta_y = new_y - rect.top;
     if (thumbnail_set.config.snapping.enabled and thumbnail_set.config.snapping.screenEdges) {
-        const snapped = snapping.applyScreenEdgeSnapping(new_x, new_y, width, height, thumbnail_set.config.snapping.threshold, hwnd);
+        const snapped = snapping.applyScreenEdgeSnapping(unsnapped, thumbnail_set.config.snapping.threshold);
         delta_x = snapped.x - rect.left;
         delta_y = snapped.y - rect.top;
     }
@@ -105,7 +97,7 @@ pub fn move(thumbnail_set: *ThumbnailSet, hwnd: win32.HWND) void {
     // Batched so the whole group moves in one DWM update instead of drifting apart across separate moves.
     var hdwp = arrange.beginDefer(thumbnail_set) orelse return;
     for (thumbnail_set.thumbnails.items) |thumbnail| {
-        if (!thumbnail.is_win32_enabled or !win32.isWindow(thumbnail.hwnd) or !win32.isWindow(thumbnail.text_hwnd)) continue;
+        if (!win32.isWindow(thumbnail.hwnd) or !win32.isWindow(thumbnail.text_hwnd)) continue;
 
         var thumbnail_rect: win32.RECT = undefined;
         if (!win32.toBool(win32.GetWindowRect(thumbnail.hwnd, &thumbnail_rect))) {
@@ -128,11 +120,10 @@ fn grabbedThumbnailIsPlaced(thumbnail_set: *ThumbnailSet, hwnd: win32.HWND) bool
 
 /// Cleared before any re-render, so effectiveRenderState already sees the drag as over.
 fn stop(thumbnail_set: *ThumbnailSet) void {
-    if (g_drag_state.hwnd) |hwnd| {
-        if (thumbnail_set.getThumbnailByOverlayHwnd(hwnd)) |thumbnail| thumbnail.is_dragged = false;
+    if (thumbnail_set.drag_grab) |grab| {
+        if (thumbnail_set.getThumbnailByOverlayHwnd(grab.hwnd)) |thumbnail| thumbnail.is_dragged = false;
     }
-    g_drag_state = .{};
+    thumbnail_set.drag_grab = null;
     _ = win32.ReleaseCapture();
-    thumbnail_set.ghost_overlay.hide();
-    thumbnail_set.hint_box.hide();
+    thumbnail_set.hideDragOverlays();
 }

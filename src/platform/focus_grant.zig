@@ -47,7 +47,7 @@ pub fn handleWmHotkey(id: c_int) bool {
     return true;
 }
 
-/// SetForegroundWindow refuses without fresh real input, which hook-dispatched hotkeys lack; the direct call covers our own windows, the async conduit hotkey everything else.
+/// Tries a direct call, which works after fresh input such as a thumbnail click, then the conduit hotkey, which hook-dispatched hotkeys need.
 pub fn forceSetForegroundWindow(target_hwnd: win32.HWND) void {
     _ = win32.SetForegroundWindow(target_hwnd);
     _ = win32.SetFocus(target_hwnd);

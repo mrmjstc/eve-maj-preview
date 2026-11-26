@@ -238,7 +238,7 @@ pub fn init(allocator: std.mem.Allocator, window_handle: gpu.Context.WindowHandl
 
 /// Imports a device created elsewhere. The device is not destroyed by `deinit`.
 pub fn initExternal(allocator: std.mem.Allocator, external: External) !Device {
-    const get_instance_proc_addr: vk.PfnGetInstanceProcAddr = @ptrCast(external.get_instance_proc_addr);
+    const get_instance_proc_addr: vk.PfnGetInstanceProcAddr = @ptrCast(@alignCast(external.get_instance_proc_addr));
     const instance: vk.Instance = @ptrFromInt(external.instance);
     const physical_device: vk.PhysicalDevice = @ptrFromInt(external.physical_device);
     const device: vk.Device = @ptrFromInt(external.device);

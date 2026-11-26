@@ -31,10 +31,6 @@ const EVENT_TYPES = [_]struct { []const u8, []const u8 }{
 const SKIPPED_NON_EVE_NOTE = "Skipped {n} non-EVE window item(s) (tracked via EVE-APM's non-EVE window overlay - not real characters).";
 const SUPPORTED_BORDER_STYLE_COUNT = 4;
 
-/// The mouse buttons thumbnails use themselves, which `vk` has no names for.
-const VK_LBUTTON = 0x01;
-const VK_RBUTTON = 0x02;
-
 const Keys = std.array_hash_map.String([]const u8);
 
 const Font = struct { family: ?[]const u8, size: ?f64 };
@@ -87,7 +83,7 @@ pub const Ini = struct {
 
 pub fn anchorName(index: ?f64) ?[]const u8 {
     const position = index orelse return null;
-    if (position < 0 or position >= POSITIONS_IN_ORDER.len) return null;
+    if (std.math.isNan(position) or position < 0 or position >= POSITIONS_IN_ORDER.len) return null;
     return POSITIONS_IN_ORDER[@intFromFloat(position)];
 }
 
@@ -164,7 +160,11 @@ fn appendCodepoint(arena: std.mem.Allocator, out: *std.ArrayList(u8), codepoint:
 }
 
 fn unquote(raw: ?[]const u8) ?[]const u8 {
-    const trimmed = std.mem.trim(u8, raw orelse return null, " \t");
+    return unquoteText(raw orelse return null);
+}
+
+fn unquoteText(text: []const u8) []const u8 {
+    const trimmed = std.mem.trim(u8, text, " \t");
     if (trimmed.len >= 2 and trimmed[0] == '"' and trimmed[trimmed.len - 1] == '"') return trimmed[1 .. trimmed.len - 1];
     return trimmed;
 }
@@ -224,7 +224,13 @@ fn parseTuple(raw: ?[]const u8) ?Tuple {
         if (field_count < fields.len) fields[field_count] = values.parseIntLoose(part);
     }
     if (field_count < 2) return null;
-    return .{ .is_enabled = isNonZero(fields[0]), .vk_code = fields[1], .has_ctrl = isNonZero(fields[2]), .has_alt = isNonZero(fields[3]), .has_shift = isNonZero(fields[4]) };
+    return .{
+        .is_enabled = isNonZero(fields[0]),
+        .vk_code = fields[1],
+        .has_ctrl = isNonZero(fields[2]),
+        .has_alt = isNonZero(fields[3]),
+        .has_shift = isNonZero(fields[4]),
+    };
 }
 
 fn isNonZero(field: ?i64) bool {
@@ -242,7 +248,7 @@ fn tupleHotkey(raw: ?[]const u8) ?u32 {
     const tuple = parseTuple(raw) orelse return null;
     if (!tuple.is_enabled) return null;
     const virtual_key = tuple.vk_code orelse return null;
-    if (virtual_key <= 0 or virtual_key > 0xFF or virtual_key == VK_LBUTTON or virtual_key == VK_RBUTTON) return null;
+    if (virtual_key <= 0 or virtual_key > 0xFF or virtual_key == vk.VK_LBUTTON or virtual_key == vk.VK_RBUTTON) return null;
     var modifiers: u32 = 0;
     if (tuple.has_ctrl) modifiers |= vk.MOD_CONTROL;
     if (tuple.has_alt) modifiers |= vk.MOD_ALT;
@@ -277,7 +283,7 @@ fn groupCount(draft: *Draft, ini: *const Ini) !usize {
 
 /// "member,member|forward tuple|backward tuple|...".
 fn parseGroup(arena: std.mem.Allocator, raw: []const u8) !Group {
-    var parts = std.mem.splitScalar(u8, unquote(raw).?, '|');
+    var parts = std.mem.splitScalar(u8, unquoteText(raw), '|');
     var members: std.ArrayList([]const u8) = .empty;
     var names = std.mem.splitScalar(u8, parts.first(), ',');
     while (names.next()) |name| {
@@ -297,8 +303,8 @@ fn orderCharacters(draft: *Draft, ini: *const Ini) !void {
         try order.appendSlice(draft.arena, group.members);
     }
     std.mem.sort(std.json.Value, characters.array.items, order.items, struct {
-        fn lessThan(names: []const []const u8, a: std.json.Value, b: std.json.Value) bool {
-            return groupRank(names, a) < groupRank(names, b);
+        fn lessThan(names: []const []const u8, first: std.json.Value, second: std.json.Value) bool {
+            return groupRank(names, first) < groupRank(names, second);
         }
     }.lessThan);
 }
@@ -317,7 +323,10 @@ fn borderStyle(draft: *Draft, path: []const u8, raw: ?[]const u8, label: []const
     const style_index = values.parseIntLoose(raw orelse return) orelse return;
     const name = if (style_index >= 0 and style_index < BORDER_STYLES.len) BORDER_STYLES[@intCast(style_index)] else try draft.arena.print("#{d}", .{style_index});
     if (style_index >= 0 and style_index < SUPPORTED_BORDER_STYLE_COUNT) return draft.setString(path, name);
-    try draft.note("{label} border style \"{name}\" has no equivalent in EVE-Maj Preview and was not imported.", &.{ .{ .name = "label", .value = label, .should_translate = true }, .{ .name = "name", .value = name } });
+    try draft.note("{label} border style \"{name}\" has no equivalent in EVE-Maj Preview and was not imported.", &.{
+        .{ .name = "label", .value = label, .should_translate = true },
+        .{ .name = "name", .value = name },
+    });
 }
 
 fn appearance(draft: *Draft, ini: *const Ini) !void {
@@ -354,7 +363,7 @@ fn appearance(draft: *Draft, ini: *const Ini) !void {
         const alpha: f64 = if (!is_shown) 0 else if (number(ini.get("overlay", "backgroundOpacity"))) |percent| values.opacityFromPercent(percent) else 255;
         // One shared background, which each overlay text here has its own of.
         const color = values.withAlpha(background, alpha);
-        inline for (.{ "thumbnail.characterNameBgColor", "thumbnail.systemNameBgColor", "thumbnail.quickGroupBadgeBgColor", "thumbnail.notifications.bg_color" }) |path| {
+        inline for (.{ "thumbnail.characterNameBgColor", "thumbnail.systemNameBgColor", "thumbnail.quickGroupBadgeBgColor", "thumbnail.alertText.bg_color" }) |path| {
             try draft.setColor(path, color);
         }
     }
@@ -482,8 +491,9 @@ fn globalHotkeys(draft: *Draft, ini: *const Ini) !void {
 }
 
 fn characterList(draft: *Draft, raw: ?[]const u8, field: []const u8) !void {
-    if (isInvalid(raw)) return;
-    var names = std.mem.splitScalar(u8, unquote(raw).?, ',');
+    const text = raw orelse return;
+    if (isInvalid(text)) return;
+    var names = std.mem.splitScalar(u8, unquoteText(text), ',');
     while (names.next()) |raw_name| {
         const name = values.characterName(raw_name) orelse continue;
         try draft.put(try draft.character(name), field, .{ .bool = true });
@@ -516,7 +526,7 @@ fn chatlog(draft: *Draft, ini: *const Ini) !void {
 }
 
 fn notifications(draft: *Draft, ini: *const Ini) !void {
-    try draft.setBool("thumbnail.notifications.enabled", qtBool(ini.get("combatMessages", "enabled")));
+    try draft.setBool("notifications.enabled", qtBool(ini.get("combatMessages", "enabled")));
     const default_duration = intValue(ini.get("combatMessages", "duration"));
     const color = values.rgbColor(ini.get("combatMessages", "color"));
     const suppresses_all = qtBool(ini.get("combatMessages", "suppressWhenFocused"));
@@ -529,7 +539,7 @@ fn notifications(draft: *Draft, ini: *const Ini) !void {
             try draft.note("Event type \"{evt}\" has no equivalent notification in EVE-Maj Preview and was not imported.", &.{.{ .name = "evt", .value = event }});
             continue;
         };
-        const base = try draft.arena.print("thumbnail.notifications.type_configs.{s}.", .{target});
+        const base = try draft.arena.print("notifications.type_configs.{s}.", .{target});
         try draft.setBool(try concat(draft, base, "enabled"), true);
         const duration_key = try draft.arena.print("eventDurations\\{s}", .{event});
         try draft.setNumber(try concat(draft, base, "duration_ms"), intValue(ini.get("combatMessages", duration_key)) orelse default_duration);
@@ -541,4 +551,125 @@ fn notifications(draft: *Draft, ini: *const Ini) !void {
 
 fn concat(draft: *Draft, prefix: []const u8, suffix: []const u8) ![]const u8 {
     return std.mem.concat(draft.arena, u8, &.{ prefix, suffix });
+}
+
+const testing = std.testing;
+
+test "Ini.parse keeps keys under their section and skips comments and keys before any section" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const ini = try Ini.parse(arena_state.allocator(), "orphan=1\r\n; comment\r\n[ui]\r\nhighlightColor = #FF0000\r\n# also a comment\r\n[window]\r\nminimizeDelay=100\r\n[ui]\r\nhighlightBorderWidth=3\r\n");
+    try testing.expectEqual(@as(usize, 2), ini.sections.count());
+    try testing.expectEqualStrings("#FF0000", ini.get("ui", "highlightColor").?);
+    try testing.expectEqualStrings("3", ini.get("ui", "highlightBorderWidth").?);
+    try testing.expectEqualStrings("100", ini.get("window", "minimizeDelay").?);
+    try testing.expect(ini.get("ui", "orphan") == null);
+    try testing.expect(ini.get("missing", "key") == null);
+}
+
+test "Ini.parse of text with no sections has none" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const ini = try Ini.parse(arena_state.allocator(), "not an ini file\nkey=value\n");
+    try testing.expectEqual(@as(usize, 0), ini.sections.count());
+}
+
+test "decodeKey reads QSettings' %XX Latin-1 bytes and %UXXXX UTF-16 units" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    try testing.expectEqualStrings("Some Pilot", try decodeKey(arena, "Some%20Pilot"));
+    try testing.expectEqualStrings("Ren\u{e9}", try decodeKey(arena, "Ren%E9"));
+    try testing.expectEqualStrings("\u{4e2d}", try decodeKey(arena, "%U4E2D"));
+    try testing.expectEqualStrings("100%", try decodeKey(arena, "100%"));
+    try testing.expectEqualStrings("%ZZ", try decodeKey(arena, "%ZZ"));
+}
+
+test "decodeKey replaces a lone surrogate half" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    try testing.expectEqualStrings("a\u{fffd}b", try decodeKey(arena_state.allocator(), "a%UD800b"));
+}
+
+test "qtPoint reads @Point(x y), including negative coordinates" {
+    const point = qtPoint("@Point(-1920 240)").?;
+    try testing.expectEqual(@as(i64, -1920), point.x);
+    try testing.expectEqual(@as(i64, 240), point.y);
+    try testing.expect(qtPoint("@Point(10)") == null);
+    try testing.expect(qtPoint("@Size(10 20)") == null);
+    try testing.expect(qtPoint(null) == null);
+}
+
+test "qtFont keeps only the family and a positive point size" {
+    const font = qtFont("\"Segoe UI,11,-1,5,700,0,0,0,0,0\"").?;
+    try testing.expectEqualStrings("Segoe UI", font.family.?);
+    try testing.expectEqual(@as(f64, 11), font.size.?);
+    const no_size = qtFont("Arial,-1").?;
+    try testing.expectEqualStrings("Arial", no_size.family.?);
+    try testing.expect(no_size.size == null);
+    try testing.expect(qtFont("\"\"") == null);
+}
+
+test "tupleHotkey combines the virtual key with its modifier flags" {
+    try testing.expectEqual(vk.combineKey(vk.VK_F1, vk.MOD_CONTROL | vk.MOD_SHIFT), tupleHotkey("1,112,1,0,1").?);
+    try testing.expectEqual(vk.combineKey('A', 0), tupleHotkey("\"1,65\"").?);
+}
+
+test "tupleHotkey rejects disabled tuples and the left and right mouse buttons" {
+    try testing.expect(tupleHotkey("0,112,0,0,0") == null);
+    try testing.expect(tupleHotkey("1,1,0,0,0") == null);
+    try testing.expect(tupleHotkey("1,2,0,0,0") == null);
+    try testing.expect(tupleHotkey("1,0,0,0,0") == null);
+    try testing.expect(tupleHotkey("1,256,0,0,0") == null);
+    try testing.expect(tupleHotkey("1") == null);
+}
+
+test "isBound reports a mouse-button binding that tupleHotkey can't convert" {
+    try testing.expect(isBound("1,1,0,0,0"));
+    try testing.expect(!isBound("0,112,0,0,0"));
+    try testing.expect(!isBound("1,0,0,0,0"));
+    try testing.expect(!isBound(null));
+}
+
+test "parseGroup splits members from the forward and backward tuples" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const group = try parseGroup(arena_state.allocator(), "\"Pilot One, Pilot Two,|1,112,0,0,0|1,113,0,0,0\"");
+    try testing.expectEqual(@as(usize, 2), group.members.len);
+    try testing.expectEqualStrings("Pilot One", group.members[0]);
+    try testing.expectEqualStrings("Pilot Two", group.members[1]);
+    try testing.expectEqualStrings("1,112,0,0,0", group.forward.?);
+    try testing.expectEqualStrings("1,113,0,0,0", group.backward.?);
+}
+
+test "parseGroup of an empty group has no members or keys" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const group = try parseGroup(arena_state.allocator(), "");
+    try testing.expectEqual(@as(usize, 0), group.members.len);
+    try testing.expect(group.forward == null);
+    try testing.expect(group.backward == null);
+}
+
+test "isNonEveWindow matches '<process>.exe::<title>' only" {
+    try testing.expect(isNonEveWindow("notepad.exe::Untitled - Notepad"));
+    try testing.expect(!isNonEveWindow("Some Pilot"));
+    try testing.expect(!isNonEveWindow("Some::Pilot"));
+    try testing.expect(!isNonEveWindow("trailing.::title"));
+}
+
+test "isInvalid treats empty and @Invalid() as unset" {
+    try testing.expect(isInvalid(null));
+    try testing.expect(isInvalid(" "));
+    try testing.expect(isInvalid("@Invalid()"));
+    try testing.expect(!isInvalid("Pilot One"));
+}
+
+test "anchorName maps indices in TextPosition order and rejects the rest" {
+    try testing.expectEqualStrings("TopLeft", anchorName(0).?);
+    try testing.expectEqualStrings("BottomRight", anchorName(8).?);
+    try testing.expect(anchorName(9) == null);
+    try testing.expect(anchorName(-1) == null);
+    try testing.expect(anchorName(std.math.nan(f64)) == null);
+    try testing.expect(anchorName(null) == null);
 }

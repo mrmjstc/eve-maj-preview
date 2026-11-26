@@ -15,8 +15,6 @@ const Section = draft_mod.Section;
 const SKIPPED_PLACEHOLDER_NOTE = "Skipped {n} placeholder item(s) from EVE-O Preview's default config - not real characters.";
 /// EVE-O Preview's fixed number of cycle groups.
 const CYCLE_GROUP_COUNT = 5;
-/// Right Win, which `vk` has no name for.
-const VK_RWIN = 0x5C;
 
 /// .NET's named colours, the CSS3/X11 set.
 const NAMED_COLORS = [_]struct { []const u8, u24 }{
@@ -134,12 +132,11 @@ fn pair(value: ?Value) ?[2]f64 {
     return .{ @floatFromInt(first), @floatFromInt(second) };
 }
 
-/// WinForms' Keys names the digit row "D0".."D9" and has LWin/RWin keys of its own.
+/// WinForms' Keys names the digit row "D0".."D9" and has LWin/RWin keys of its own, both bound here as VK_LWIN, as the hooks match either Win key.
 fn baseKey(token: []const u8) ?u32 {
     const trimmed = std.mem.trim(u8, token, " \t");
     if (trimmed.len == 2 and (trimmed[0] == 'D' or trimmed[0] == 'd') and std.ascii.isDigit(trimmed[1])) return trimmed[1];
-    if (std.ascii.eqlIgnoreCase(trimmed, "lwin")) return vk.VK_LWIN;
-    if (std.ascii.eqlIgnoreCase(trimmed, "rwin")) return VK_RWIN;
+    if (std.ascii.eqlIgnoreCase(trimmed, "lwin") or std.ascii.eqlIgnoreCase(trimmed, "rwin")) return vk.VK_LWIN;
     return values.legacyBaseKey(trimmed);
 }
 
@@ -201,8 +198,8 @@ fn cycleGroupMembers(arena: std.mem.Allocator, root: Value, group_number: usize)
         try members.append(arena, .{ .name = name, .order = values.number(entry.value_ptr.*) orelse 0 });
     }
     std.mem.sort(Member, members.items, {}, struct {
-        fn lessThan(_: void, a: Member, b: Member) bool {
-            return a.order < b.order;
+        fn lessThan(_: void, first: Member, second: Member) bool {
+            return first.order < second.order;
         }
     }.lessThan);
     const names = try arena.alloc([]const u8, members.items.len);
@@ -326,7 +323,10 @@ fn colorsAndHotkeys(draft: *Draft, root: Value) !void {
             };
             if (entry.value_ptr.* != .string or std.mem.trim(u8, entry.value_ptr.string, " \t").len == 0) continue;
             const combined = hotkey(entry.value_ptr.string) orelse {
-                try draft.note(eve_x.SKIPPED_HOTKEY_NOTE, &.{ .{ .name = "name", .value = name }, .{ .name = "raw", .value = entry.value_ptr.string } });
+                try draft.note(eve_x.SKIPPED_HOTKEY_NOTE, &.{
+                    .{ .name = "name", .value = name },
+                    .{ .name = "raw", .value = entry.value_ptr.string },
+                });
                 continue;
             };
             try draft.put(try draft.character(name), "hotkey", try values.keyValue(draft.arena, combined));
@@ -353,4 +353,70 @@ fn hotkeyGroups(draft: *Draft, root: Value, cycle_group_name: []const u8) !void 
         try draft.put(group, "forwardKey", try values.keysValue(draft.arena, forward));
         try draft.put(group, "backwardKey", try values.keysValue(draft.arena, backward));
     }
+}
+
+const testing = std.testing;
+
+fn parseTestObject(arena: std.mem.Allocator, text: []const u8) !Value {
+    return std.json.parseFromSliceLeaky(Value, arena, text, .{});
+}
+
+test "color reads #RRGGBB, drops #AARRGGBB's alpha and knows .NET names in any case" {
+    try testing.expectEqual(@as(u32, 0xFF1A2B3C), color("#1A2B3C").?);
+    try testing.expectEqual(@as(u32, 0xFF1A2B3C), color("#801A2B3C").?);
+    try testing.expectEqual(@as(u32, 0xFF6495ED), color(" CornflowerBlue ").?);
+    try testing.expectEqual(@as(u32, 0xFF000000), color("black").?);
+    try testing.expect(color("#80GGGGGG") == null);
+    try testing.expect(color("NotAColor") == null);
+    try testing.expect(color(null) == null);
+}
+
+test "pair reads WinForms' \"W, H\" strings" {
+    const size = pair(.{ .string = "384, 216" }).?;
+    try testing.expectEqual(@as(f64, 384), size[0]);
+    try testing.expectEqual(@as(f64, 216), size[1]);
+    const point = pair(.{ .string = "-1920,40" }).?;
+    try testing.expectEqual(@as(f64, -1920), point[0]);
+    try testing.expectEqual(@as(f64, 40), point[1]);
+    try testing.expect(pair(.{ .string = "384" }) == null);
+    try testing.expect(pair(.{ .integer = 384 }) == null);
+    try testing.expect(pair(null) == null);
+}
+
+test "hotkey reads WinForms' modifier names, digit row and Win keys" {
+    try testing.expectEqual(vk.combineKey(vk.VK_F1 + 13, vk.MOD_CONTROL | vk.MOD_ALT), hotkey("Control+Alt+F14").?);
+    try testing.expectEqual(vk.combineKey('5', vk.MOD_SHIFT), hotkey("Shift + D5").?);
+    try testing.expectEqual(vk.combineKey(vk.VK_LWIN, 0), hotkey("RWin").?);
+    try testing.expectEqual(vk.combineKey('A', 0), hotkey("A").?);
+}
+
+test "hotkey rejects unknown modifiers, a missing key and an empty binding" {
+    try testing.expect(hotkey("Hyper+A") == null);
+    try testing.expect(hotkey("Control+") == null);
+    try testing.expect(hotkey("") == null);
+    try testing.expect(hotkey("+") == null);
+}
+
+test "cycleGroupMembers sorts by ClientsOrder and drops placeholders" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const root = try parseTestObject(arena,
+        \\{"CycleGroup2ClientsOrder":{"EVE - Pilot B":2,"Example Name1":0,"EVE - Pilot A":1}}
+    );
+    const members = try cycleGroupMembers(arena, root, 2);
+    try testing.expectEqual(@as(usize, 2), members.len);
+    try testing.expectEqualStrings("Pilot A", members[0]);
+    try testing.expectEqualStrings("Pilot B", members[1]);
+    try testing.expectEqual(@as(usize, 0), (try cycleGroupMembers(arena, root, 1)).len);
+}
+
+test "isFile recognises EVE-O Preview by fields it always writes" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    try testing.expect(isFile(try parseTestObject(arena, "{\"CycleGroup1ForwardHotkeys\":[]}")));
+    try testing.expect(isFile(try parseTestObject(arena, "{\"FlatLayout\":{}}")));
+    try testing.expect(!isFile(try parseTestObject(arena, "{\"CycleGroup1ForwardHotkeys\":\"F1\"}")));
+    try testing.expect(!isFile(try parseTestObject(arena, "{\"_Profiles\":{}}")));
 }

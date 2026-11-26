@@ -1,0 +1,11 @@
+# Deliberate exceptions to dead_code.py, one per line: <rule> <path under src/ or *> <text on the line, or *>  # reason
+# The text is matched against the flagged line, so an entry survives line shifts but not a rewrite of that line.
+# An allowlisted declaration counts as live, so what only it uses isn't reported either.
+dead-private dialog/knots/header.zig fn searchBox(  # the settings search is parked, hidden for now
+# Declaration libraries: pub is the point, mirroring the Win32 headers whether or not a module uses it yet.
+pub-unneeded platform/win32.zig *  # Win32 declarations
+pub-unneeded platform/virtual_keys.zig pub const VK_  # Win32 VK_* codes
+# The theme is one vocabulary tabs pick from; a value only style.zig composes today stays pub with its palette.
+pub-unneeded dialog/knots/style.zig *  # palette and Style values
+# config.zig re-exports every settings type, used or not, so callers never reach into config/.
+dead-pub config.zig pub const RateUnit  # settings type re-export

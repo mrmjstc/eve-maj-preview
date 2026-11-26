@@ -18,7 +18,7 @@ pub const SpaceCounts = [MAX_SPACES]usize;
 pub const Assignment = struct {
     /// Per name: index into thumbnailSpaces, or null when it's placed by hand or its thumbnail is hidden; owned, freed in deinit.
     space_indices: []?usize,
-    /// Per name: its cell within its space; unused when placed by hand; owned, freed in deinit.
+    /// Each name's cell within its space, unused when placed by hand; owned, freed in deinit.
     rank: []usize,
     counts: SpaceCounts = @splat(0),
 
@@ -41,13 +41,13 @@ const RankContext = struct {
         return if (space.holdsUnassigned or holdsGroupOf(self.config, space, name)) 0 else 1;
     }
 
-    fn lessThan(self: RankContext, a_index: usize, b_index: usize) bool {
-        const a_name = self.names[a_index];
-        const b_name = self.names[b_index];
-        const a_tier = self.tier(a_name);
-        const b_tier = self.tier(b_name);
-        if (a_tier != b_tier) return a_tier < b_tier;
-        return config_mod.orderMapLessThan(self.order_map, a_name, b_name, a_index, b_index);
+    fn lessThan(self: RankContext, first_index: usize, second_index: usize) bool {
+        const first_name = self.names[first_index];
+        const second_name = self.names[second_index];
+        const first_tier = self.tier(first_name);
+        const second_tier = self.tier(second_name);
+        if (first_tier != second_tier) return first_tier < second_tier;
+        return config_mod.orderMapLessThan(self.order_map, first_name, second_name, first_index, second_index);
     }
 };
 
@@ -63,10 +63,6 @@ pub fn rect(space: *const ThumbnailSpace) ?win32.RECT {
 pub fn activeRect(space: *const ThumbnailSpace) ?win32.RECT {
     if (!space.enabled) return null;
     return rect(space);
-}
-
-pub fn isActive(space: *const ThumbnailSpace) bool {
-    return activeRect(space) != null;
 }
 
 /// The spaces layout considers, in list order; none in Manual placement mode.
@@ -96,7 +92,7 @@ pub fn unassignedSpaceIn(items: []const ThumbnailSpace) ?usize {
     return firstActiveWith(items, "holdsUnassigned") orelse firstActiveWith(items, "takesUnassigned");
 }
 
-/// The first active space holding one of this character's hotkey groups, else where unassigned characters go; null when it's placed by hand or its thumbnail is hidden.
+/// The first active space holding one of the character's hotkey groups, else the unassigned one; null when placed by hand or its thumbnail is hidden.
 pub fn spaceFor(config: *const Config, character_name: []const u8) ?usize {
     // A hidden thumbnail takes no cell, so its space closes up around it rather than leaving a gap.
     if (config.isThumbnailHidden(character_name)) return null;
@@ -149,6 +145,10 @@ pub fn assign(allocator: std.mem.Allocator, config: *const Config, names: []cons
     return assignment;
 }
 
+fn isActive(space: *const ThumbnailSpace) bool {
+    return activeRect(space) != null;
+}
+
 fn firstActiveWith(items: []const ThumbnailSpace, comptime flag_name: []const u8) ?usize {
     for (items, 0..) |*space, i| {
         if (isActive(space) and @field(space, flag_name)) return i;
@@ -171,15 +171,15 @@ fn orderMap(allocator: std.mem.Allocator, config: *const Config, space: *const T
         .HotkeyGroups => {
             var map: std.StringHashMap(usize) = .init(allocator);
             errdefer map.deinit();
-            var next: usize = 0;
+            var next_index: usize = 0;
             for ([_]bool{ true, false }) |wants_own_groups| {
                 for (config.hotkeyGroups.items) |group| {
                     if ((space.groupIndex(group.name) != null) != wants_own_groups) continue;
                     for (group.characters.items) |name| {
                         const entry = try map.getOrPut(name);
                         if (entry.found_existing) continue;
-                        entry.value_ptr.* = next;
-                        next += 1;
+                        entry.value_ptr.* = next_index;
+                        next_index += 1;
                     }
                 }
             }
@@ -193,7 +193,13 @@ const testing = std.testing;
 const LOGIN_SCREEN = "EVE";
 
 fn testConfig(groups: []config_mod.HotkeyGroupConfig, spaces: []ThumbnailSpace) Config {
-    return .{ .allocator = testing.allocator, .profile_name = "", .display = .{ .placementMode = .ThumbnailSpaces }, .hotkeyGroups = .fromOwnedSlice(groups), .thumbnailSpaces = .fromOwnedSlice(spaces) };
+    return .{
+        .allocator = testing.allocator,
+        .profile_name = "",
+        .display = .{ .placementMode = .ThumbnailSpaces },
+        .hotkeyGroups = .fromOwnedSlice(groups),
+        .thumbnailSpaces = .fromOwnedSlice(spaces),
+    };
 }
 
 fn testSpace(name: []const u8, groups: []const []const u8) ThumbnailSpace {

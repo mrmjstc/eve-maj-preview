@@ -1,0 +1,14 @@
+diff --git a/lib/js-bridge/build.zig.zon b/lib/js-bridge/build.zig.zon
+index e18076a..93fd776 100644
+--- a/lib/js-bridge/build.zig.zon
++++ b/lib/js-bridge/build.zig.zon
+@@ -1,7 +1,8 @@
+ .{
+     .name = .js_bridge,
+     .version = "0.0.1",
+-    .minimum_zig_version = "0.17.0",
++    // EVE-Maj patch: matches the app's minimum.
++    .minimum_zig_version = "0.17.1",
+     .paths = .{
+         "src",
+         "build.zig",

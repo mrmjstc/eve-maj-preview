@@ -1,49 +1,17 @@
 //! Bindings for one low-level input hook, installed only while something is bound, re-posting each match as WM_HOTKEY from hook_thread.zig's thread.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
-const vk = @import("../platform/virtual_keys.zig");
 const hook_thread = @import("hook_thread.zig");
+const press_rules = @import("press_rules.zig");
 const log = @import("../log.zig");
 
 const slog = log.Scoped("hotkeys");
 
-/// Far more clients and window-filter matches than anyone runs.
-const MAX_FOCUS_WINDOWS = 128;
+/// Built by HotkeyManager and handed over through setFocusFilter.
+pub const FocusFilter = press_rules.FocusFilter;
+
 /// WM_HOTKEY's lParam for a key held past its first press.
 const REPEAT_LPARAM: win32.LPARAM = 1;
-
-/// What the require-EVE-focus setting checks a match against; built by the main thread, with a copy kept on the hook thread.
-pub const FocusFilter = struct {
-    is_required: bool = false,
-    /// Matches anywhere, so the suspend hotkey still resumes outside EVE.
-    exempt_id: ?c_int = null,
-    /// Every tracked window, window-filter matches included, as HotkeyManager.foregroundEveWindow counts them.
-    windows: [MAX_FOCUS_WINDOWS]win32.HWND = undefined,
-    window_count: usize = 0,
-
-    /// False once full, leaving `hwnd` out.
-    pub fn add(self: *FocusFilter, hwnd: win32.HWND) bool {
-        if (self.window_count == self.windows.len) return false;
-        self.windows[self.window_count] = hwnd;
-        self.window_count += 1;
-        return true;
-    }
-
-    pub fn eql(self: *const FocusFilter, other: *const FocusFilter) bool {
-        return self.is_required == other.is_required and
-            std.meta.eql(self.exempt_id, other.exempt_id) and
-            std.mem.eql(win32.HWND, self.windows[0..self.window_count], other.windows[0..other.window_count]);
-    }
-
-    fn allows(self: *const FocusFilter, id: c_int) bool {
-        if (!self.is_required) return true;
-        if (self.exempt_id) |exempt_id| {
-            if (id == exempt_id) return true;
-        }
-        const foreground = win32.GetForegroundWindow() orelse return false;
-        return std.mem.indexOfScalar(win32.HWND, self.windows[0..self.window_count], foreground) != null;
-    }
-};
 
 /// Owned by the hook thread: the main thread changes it only through the pub methods, which run there by hook_thread.call.
 pub const HookBindings = struct {
@@ -60,6 +28,8 @@ pub const HookBindings = struct {
     requires_exact_modifiers: bool = false,
     /// Keeps the hook installed with nothing bound, e.g. while the config dialog records a key.
     is_pinned: bool = false,
+    /// Nested holds keeping the hook installed while bindings are swapped, so presses still held keep their verdict.
+    hold_count: u32 = 0,
 
     const Change = union(enum) {
         register: struct { target_hwnd: win32.HWND, combined_vk: u32, id: c_int },
@@ -68,6 +38,8 @@ pub const HookBindings = struct {
         requires_exact_modifiers: bool,
         pin: win32.HWND,
         unpin,
+        hold,
+        release_hold,
         deinit,
     };
 
@@ -95,7 +67,10 @@ pub const HookBindings = struct {
 
     /// Installs the hook on first registration, logging if that fails; error.AlreadyBound, unlogged, when another ID holds the combo, which keeps it.
     pub fn register(self: *HookBindings, target_hwnd: win32.HWND, combined_vk: u32, id: c_int) !void {
-        var pending: ChangeRequest = .{ .bindings = self, .change = .{ .register = .{ .target_hwnd = target_hwnd, .combined_vk = combined_vk, .id = id } } };
+        var pending: ChangeRequest = .{
+            .bindings = self,
+            .change = .{ .register = .{ .target_hwnd = target_hwnd, .combined_vk = combined_vk, .id = id } },
+        };
         _ = hook_thread.call(&pending, ChangeRequest.run);
         self.logHookChange(&pending);
         return pending.result;
@@ -123,18 +98,25 @@ pub const HookBindings = struct {
         self.send(.unpin);
     }
 
+    /// Keeps an installed hook installed until the matching releaseHold, even with nothing bound.
+    pub fn hold(self: *HookBindings) void {
+        self.send(.hold);
+    }
+
+    pub fn releaseHold(self: *HookBindings) void {
+        self.send(.release_hold);
+    }
+
     /// Call only once at true process shutdown, before hook_thread.stop, never from a reload path that may register() again.
     pub fn deinit(self: *HookBindings) void {
         self.send(.deinit);
     }
 
-    /// Hook thread only: whether it matched and was posted; unless requires_exact_modifiers, an unbound combo falls back to the bare key's binding, so an unrelated held modifier doesn't block it.
+    /// Hook thread only; whether a binding matched (see press_rules.bindingFor) and the focus filter let it through.
     pub fn dispatch(self: *const HookBindings, base_vk: u32, modifiers: u32, is_repeat: bool) bool {
         const map = if (self.map) |*m| m else return false;
-        const id = map.get(vk.combineKey(base_vk, modifiers)) orelse
-            (if (modifiers != 0 and !self.requires_exact_modifiers) map.get(vk.combineKey(base_vk, 0)) else null) orelse
-            return false;
-        if (!g_focus_filter.allows(id)) return false;
+        const id = press_rules.bindingFor(map, base_vk, modifiers, self.requires_exact_modifiers) orelse return false;
+        if (!g_focus_filter.allows(id, win32.GetForegroundWindow())) return false;
 
         if (self.target_hwnd) |hwnd| {
             if (!win32.toBool(win32.PostMessageA(hwnd, win32.WM_HOTKEY, @intCast(id), if (is_repeat) REPEAT_LPARAM else 0))) {
@@ -183,6 +165,11 @@ pub const HookBindings = struct {
                 self.is_pinned = false;
                 self.uninstallIfUnused(request);
             },
+            .hold => self.hold_count += 1,
+            .release_hold => {
+                self.hold_count -|= 1;
+                self.uninstallIfUnused(request);
+            },
             .deinit => {
                 self.uninstall(request);
                 if (self.map) |*map| map.deinit();
@@ -221,8 +208,13 @@ pub const HookBindings = struct {
         request.hook_change = .installed;
     }
 
+    /// A pin, a hold or a binding keeps the hook installed.
+    fn isInUse(self: *const HookBindings) bool {
+        return self.is_pinned or self.hold_count > 0 or !self.isEmpty();
+    }
+
     fn uninstallIfUnused(self: *HookBindings, request: *ChangeRequest) void {
-        if (self.is_pinned or !self.isEmpty()) return;
+        if (self.isInUse()) return;
         self.uninstall(request);
     }
 
@@ -263,4 +255,55 @@ pub fn isRepeat(lParam: win32.LPARAM) bool {
 
 fn storeFocusFilter(filter: *FocusFilter) void {
     g_focus_filter = filter.*;
+}
+
+const testing = std.testing;
+
+fn testProc(_: c_int, _: win32.WPARAM, _: win32.LPARAM) callconv(.c) win32.LRESULT {
+    return 0;
+}
+
+fn testOnUninstall() void {}
+
+/// Never installed, so applying a change touches no hook.
+fn testBindings() HookBindings {
+    var bindings: HookBindings = .{ .hook_type = 0, .proc = testProc, .name = "test", .on_uninstall = testOnUninstall };
+    bindings.setAllocator(testing.allocator);
+    return bindings;
+}
+
+test "a hold keeps the hook in use with nothing bound until it's released" {
+    var bindings = testBindings();
+    defer bindings.map.?.deinit();
+    var request: HookBindings.ChangeRequest = .{ .bindings = &bindings, .change = .hold };
+    try testing.expect(!bindings.isInUse());
+
+    try bindings.apply(.hold, &request);
+    try bindings.apply(.unregister_all, &request);
+    try testing.expect(bindings.isInUse());
+
+    try bindings.apply(.release_hold, &request);
+    try testing.expect(!bindings.isInUse());
+}
+
+test "holds nest, and an unmatched release leaves the count at zero" {
+    var bindings = testBindings();
+    defer bindings.map.?.deinit();
+    var request: HookBindings.ChangeRequest = .{ .bindings = &bindings, .change = .hold };
+
+    try bindings.apply(.hold, &request);
+    try bindings.apply(.hold, &request);
+    try bindings.apply(.release_hold, &request);
+    try testing.expect(bindings.isInUse());
+    try bindings.apply(.release_hold, &request);
+    try bindings.apply(.release_hold, &request);
+    try testing.expectEqual(@as(u32, 0), bindings.hold_count);
+    try testing.expect(!bindings.isInUse());
+}
+
+test "a binding keeps the hook in use without a hold" {
+    var bindings = testBindings();
+    defer bindings.map.?.deinit();
+    try bindings.map.?.put(0x41, 7);
+    try testing.expect(bindings.isInUse());
 }

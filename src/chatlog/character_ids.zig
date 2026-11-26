@@ -1,6 +1,7 @@
 //! Each character's EVE character ID, learned from its log file names and cached in character_ids.json so later lookups skip reading log headers.
 const std = @import("std");
 const files = @import("../config/files.zig");
+const atomic_file = @import("../util/atomic_file.zig");
 const log = @import("../log.zig");
 
 const slog = log.Scoped("chatlog");
@@ -93,7 +94,7 @@ pub const CharacterIds = struct {
         };
         defer self.allocator.free(json);
         slog.info("Cached character ID: {s} -> {s}", .{ name, id });
-        try files.atomicWriteFile(self.allocator, self.io, FILE_NAME, json);
+        try atomic_file.write(self.allocator, self.io, FILE_NAME, json);
     }
 
     /// `{name: id}`.

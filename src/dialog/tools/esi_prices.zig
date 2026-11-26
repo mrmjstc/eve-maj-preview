@@ -1,6 +1,7 @@
 //! Jita buy prices for ores from EVE's public ESI API, fetched in parallel.
 const std = @import("std");
 const http_client = @import("../../util/http_client.zig");
+const threads_mod = @import("../../util/threads.zig");
 const log = @import("../../log.zig");
 
 const slog = log.Scoped("esi_prices");
@@ -54,9 +55,11 @@ const PriceFetchContext = struct {
     results: *std.ArrayList(Price),
 };
 
-/// Each ore's Jita buy price via its compressed variant, from the public ESI API, leaving out unmatched names; `allocator` must be thread-safe, and the result is in `arena`.
+/// Each ore's Jita buy price via its compressed variant, from ESI, leaving out unmatched names.
+/// `allocator`: thread-safe.
+/// `arena`: holds the result.
 pub fn fetchOrePrices(allocator: std.mem.Allocator, arena: std.mem.Allocator, io: std.Io, names: []const []const u8) !Prices {
-    var session = try http_client.Session.init();
+    var session: http_client.Session = try .init();
     defer session.deinit();
 
     var type_ids = try resolveOreTypeIds(allocator, &session, names);
@@ -80,7 +83,7 @@ pub fn fetchOrePrices(allocator: std.mem.Allocator, arena: std.mem.Allocator, io
     }
 
     if (lookups.len > 0) {
-        var context = PriceFetchContext{
+        var context: PriceFetchContext = .{
             .allocator = allocator,
             .io = io,
             .session = &session,
@@ -94,7 +97,7 @@ pub fn fetchOrePrices(allocator: std.mem.Allocator, arena: std.mem.Allocator, io
         var threads: [MAX_CONCURRENT_PRICE_REQUESTS - 1]?std.Thread = @splat(null);
         const background_workers = worker_count - 1;
         for (threads[0..background_workers]) |*slot| {
-            slot.* = std.Thread.spawn(.{}, priceFetchWorker, .{&context}) catch |err| blk: {
+            slot.* = threads_mod.spawn(priceFetchWorker, .{&context}) catch |err| blk: {
                 slog.warn("Failed to spawn price-fetch worker: {}", .{err});
                 break :blk null;
             };

@@ -42,6 +42,24 @@ const BorderRegion = struct {
     y_end: usize,
 };
 
+/// A mark and a gap, repeated along each edge, then optionally a second mark and gap in the same repeat.
+const LengthwisePattern = struct {
+    mark: usize,
+    gap: usize,
+    second_mark: usize = 0,
+    second_gap: usize = 0,
+
+    fn length(self: LengthwisePattern) usize {
+        return self.mark + self.gap + self.second_mark + self.second_gap;
+    }
+
+    fn marks(self: LengthwisePattern, distance: usize) bool {
+        const phase = distance % self.length();
+        const second_start = self.mark + self.gap;
+        return phase < self.mark or (phase >= second_start and phase < second_start + self.second_mark);
+    }
+};
+
 pub fn horizontalAlignOf(position: TextPosition) HorizontalAlign {
     return switch (position) {
         .TopLeft, .LeftCenter, .BottomLeft => .left,
@@ -61,16 +79,35 @@ pub fn alignedLineX(block_x: i32, block_width: usize, line_width: usize, alignme
 
 /// Where `text` sits in an `overlay`-sized box at `position`, moved by the offset and kept inside the box.
 pub fn calculateTextPosition(position: TextPosition, text: TextDimensions, overlay: TextDimensions, offset_x: i32, offset_y: i32) TextOrigin {
-    var x = alignedLineX(0, overlay.width, text.width, horizontalAlignOf(position));
-    var y = alignedLineY(0, overlay.height, text.height, verticalAlignOf(position));
+    const origin = placedOrigin(i32, position, .{ @intCast(text.width), @intCast(text.height) }, .{ @intCast(overlay.width), @intCast(overlay.height) }, .{ offset_x, offset_y });
+    return .{ .x = origin[0], .y = origin[1] };
+}
 
-    x += offset_x;
-    y += offset_y;
+/// The top-left of something `size` big sitting flush in `position`'s corner, edge or centre of `box`.
+/// `T`: i32 for the thumbnails' pixels, f32 for the configuration window's scaled preview.
+pub fn anchorOrigin(comptime T: type, position: TextPosition, size: [2]T, box: [2]T) [2]T {
+    const free_x = @max(0, box[0] - size[0]);
+    const free_y = @max(0, box[1] - size[1]);
+    const horizontal_step: u2 = switch (horizontalAlignOf(position)) {
+        .left => 0,
+        .center => 1,
+        .right => 2,
+    };
+    const vertical_step: u2 = switch (verticalAlignOf(position)) {
+        .top => 0,
+        .middle => 1,
+        .bottom => 2,
+    };
+    return .{ alongFreeSpace(T, free_x, horizontal_step), alongFreeSpace(T, free_y, vertical_step) };
+}
 
-    x = @max(0, @min(x, @as(i32, @intCast(overlay.width)) - @as(i32, @intCast(text.width))));
-    y = @max(0, @min(y, @as(i32, @intCast(overlay.height)) - @as(i32, @intCast(text.height))));
-
-    return .{ .x = x, .y = y };
+/// anchorOrigin moved by `offset`, then kept inside `box`.
+pub fn placedOrigin(comptime T: type, position: TextPosition, size: [2]T, box: [2]T, offset: [2]T) [2]T {
+    const anchor = anchorOrigin(T, position, size, box);
+    return .{
+        std.math.clamp(anchor[0] + offset[0], 0, @max(0, box[0] - size[0])),
+        std.math.clamp(anchor[1] + offset[1], 0, @max(0, box[1] - size[1])),
+    };
 }
 
 /// Clipped to the buffer.
@@ -106,16 +143,16 @@ pub fn drawExclusionOverlay(canvas: Canvas, color: u32, style: types.ExclusionOv
             const sqrt2 = @sqrt(@as(f32, 2.0));
             for (0..height) |y| {
                 const row_start = y * width;
-                const fy: f32 = @floatFromInt(y);
+                const pixel_y: f32 = @floatFromInt(y);
                 for (0..width) |x| {
-                    const fx: f32 = @floatFromInt(x);
-                    const dx = fx - center_x;
-                    const dy = fy - center_y;
-                    const dist = @sqrt(dx * dx + dy * dy);
-                    const on_ring = @abs(dist - radius) <= thickness / 2;
-                    // Lower-left to upper-right, where dx + dy = 0.
-                    const on_slash = @abs(dx + dy) / sqrt2 <= thickness / 2 and dist <= slash_reach;
-                    if (on_ring or on_slash) pixels[row_start + x] = blended;
+                    const pixel_x: f32 = @floatFromInt(x);
+                    const delta_x = pixel_x - center_x;
+                    const delta_y = pixel_y - center_y;
+                    const distance = @sqrt(delta_x * delta_x + delta_y * delta_y);
+                    const is_on_ring = @abs(distance - radius) <= thickness / 2;
+                    // Lower-left to upper-right, where delta_x + delta_y = 0.
+                    const is_on_slash = @abs(delta_x + delta_y) / sqrt2 <= thickness / 2 and distance <= slash_reach;
+                    if (is_on_ring or is_on_slash) pixels[row_start + x] = blended;
                 }
             }
         },
@@ -164,10 +201,10 @@ pub fn drawBorder(canvas: Canvas, border_width: usize, color: u32, style: Border
                 @memset(pixels[row + width - border_width .. row + width], color);
             }
         },
-        .Dashed => drawLengthwisePattern(canvas, border_width, color, DASH_LENGTH, DASH_GAP),
+        .Dashed => drawLengthwisePattern(canvas, border_width, color, .{ .mark = DASH_LENGTH, .gap = DASH_GAP }),
         .Dotted => {
             const dot_length = if (border_width == 0) 0 else @max(1, border_width);
-            drawLengthwisePattern(canvas, border_width, color, dot_length, dot_length * 2);
+            drawLengthwisePattern(canvas, border_width, color, .{ .mark = dot_length, .gap = dot_length * 2 });
         },
         .Double => {
             // CSS-style double border; too thin for a gap, it renders solid.
@@ -202,28 +239,13 @@ pub fn drawBorder(canvas: Canvas, border_width: usize, color: u32, style: Border
             }
         },
         .DashDot => {
-            // Dash, gap, dot, gap: too many phases for drawLengthwisePattern.
             const dot_length: usize = if (border_width == 0) 0 else @max(1, border_width);
-            const pattern_length = DASH_LENGTH + DASH_GAP + dot_length + DASH_GAP;
-            const dot_start = DASH_LENGTH + DASH_GAP;
-
-            for (borderRegions(width, height, border_width)) |region| {
-                const is_horizontal = (region.x_end - region.x_start) == width;
-
-                for (region.y_start..region.y_end) |y| {
-                    const row_start = y * width;
-                    for (region.x_start..region.x_end) |x| {
-                        const distance = if (is_horizontal) x else y;
-                        const phase = distance % pattern_length;
-                        const in_dash = phase < DASH_LENGTH;
-                        const in_dot = phase >= dot_start and phase < dot_start + dot_length;
-
-                        if (in_dash or in_dot) {
-                            pixels[row_start + x] = color;
-                        }
-                    }
-                }
-            }
+            drawLengthwisePattern(canvas, border_width, color, .{
+                .mark = DASH_LENGTH,
+                .gap = DASH_GAP,
+                .second_mark = dot_length,
+                .second_gap = DASH_GAP,
+            });
         },
         .CornerBrackets => {
             // Capped at a third of the shorter side so adjacent corners' brackets never meet.
@@ -255,6 +277,13 @@ pub fn renderText(dc: win32.HDC, text: []const u8, x: i32, y: i32, color: u32) v
     gdi_overlay.drawText(TEXT_BUFFER_SIZE, dc, x + TEXT_PADDING_X, y + TEXT_PADDING_Y, text, color);
 }
 
+/// Like renderText, with the first `lead_length` bytes in `lead_color`.
+pub fn renderTextWithLead(dc: win32.HDC, text: []const u8, lead_length: usize, lead_color: u32, x: i32, y: i32, color: u32) void {
+    renderText(dc, text[0..lead_length], x, y, lead_color);
+    const lead_width = gdi_overlay.measureTextSize(TEXT_BUFFER_SIZE, dc, text[0..lead_length]).cx;
+    renderText(dc, text[lead_length..], x + lead_width, y, color);
+}
+
 fn verticalAlignOf(position: TextPosition) VerticalAlign {
     return switch (position) {
         .TopLeft, .TopCenter, .TopRight => .top,
@@ -263,12 +292,12 @@ fn verticalAlignOf(position: TextPosition) VerticalAlign {
     };
 }
 
-/// Puts a `line_height` line against the block edge `alignment` names.
-fn alignedLineY(block_y: i32, block_height: usize, line_height: usize, alignment: VerticalAlign) i32 {
-    return switch (alignment) {
-        .top => block_y,
-        .middle => block_y + @as(i32, @intCast((block_height -| line_height) / 2)),
-        .bottom => block_y + @as(i32, @intCast(block_height -| line_height)),
+/// None, half or all of `free`; step 0, 1 or 2.
+fn alongFreeSpace(comptime T: type, free: T, step: u2) T {
+    return switch (step) {
+        0 => 0,
+        1 => if (@typeInfo(T) == .float) free / 2 else @divTrunc(free, 2),
+        else => free,
     };
 }
 
@@ -302,11 +331,10 @@ fn borderRegions(width: usize, height: usize, border_width: usize) [4]BorderRegi
     };
 }
 
-fn drawLengthwisePattern(canvas: Canvas, border_width: usize, color: u32, mark_length: usize, gap_length: usize) void {
+fn drawLengthwisePattern(canvas: Canvas, border_width: usize, color: u32, pattern: LengthwisePattern) void {
     const pixels = canvas.pixels;
     const width = canvas.width;
     const height = canvas.height;
-    const pattern_length = mark_length + gap_length;
 
     for (borderRegions(width, height, border_width)) |region| {
         const is_horizontal = (region.x_end - region.x_start) == width;
@@ -314,11 +342,7 @@ fn drawLengthwisePattern(canvas: Canvas, border_width: usize, color: u32, mark_l
         for (region.y_start..region.y_end) |y| {
             const row_start = y * width;
             for (region.x_start..region.x_end) |x| {
-                const distance = if (is_horizontal) x else y;
-
-                if ((distance % pattern_length) < mark_length) {
-                    pixels[row_start + x] = color;
-                }
+                if (pattern.marks(if (is_horizontal) x else y)) pixels[row_start + x] = color;
             }
         }
     }
@@ -329,6 +353,21 @@ test "calculateTextPosition centres text and clamps it inside the overlay" {
     const overlay: TextDimensions = .{ .width = 100, .height = 50 };
     try std.testing.expectEqual(TextOrigin{ .x = 40, .y = 20 }, calculateTextPosition(.Center, text, overlay, 0, 0));
     try std.testing.expectEqual(TextOrigin{ .x = 80, .y = 40 }, calculateTextPosition(.BottomRight, text, overlay, 30, 30));
+}
+
+test "the preview's anchors match the thumbnails' at real size" {
+    const size = [2]i32{ 21, 10 };
+    const box = [2]i32{ 100, 51 };
+    for (std.enums.values(TextPosition)) |position| {
+        const pixels = anchorOrigin(i32, position, size, box);
+        const scaled = anchorOrigin(f32, position, .{ 21, 10 }, .{ 100, 51 });
+        try std.testing.expectEqual(@as(f32, @floatFromInt(pixels[0])), @floor(scaled[0]));
+        try std.testing.expectEqual(@as(f32, @floatFromInt(pixels[1])), @floor(scaled[1]));
+    }
+}
+
+test "placedOrigin keeps something bigger than its box at the box's start" {
+    try std.testing.expectEqual([2]f32{ 0, 0 }, placedOrigin(f32, .BottomRight, .{ 50, 50 }, .{ 20, 20 }, .{ 5, 5 }));
 }
 
 test "alignedLineX keeps a line wider than its block at the block's start" {
@@ -342,6 +381,16 @@ test "borderRegions covers each edge at the border's width" {
     try std.testing.expectEqual(@as(usize, 47), regions[1].y_start);
     try std.testing.expectEqual(@as(usize, 3), regions[2].x_end);
     try std.testing.expectEqual(@as(usize, 97), regions[3].x_start);
+}
+
+test "a dash-dot border repeats a dash, a gap, a dot and a gap" {
+    var pixels: [40 * 6]u32 = @splat(0);
+    drawBorder(.{ .pixels = &pixels, .width = 40, .height = 6 }, 1, 0xFFFFFFFF, .DashDot);
+    try std.testing.expectEqual(@as(u32, 0xFFFFFFFF), pixels[DASH_LENGTH - 1]);
+    try std.testing.expectEqual(@as(u32, 0), pixels[DASH_LENGTH]);
+    try std.testing.expectEqual(@as(u32, 0xFFFFFFFF), pixels[DASH_LENGTH + DASH_GAP]);
+    try std.testing.expectEqual(@as(u32, 0), pixels[DASH_LENGTH + DASH_GAP + 1]);
+    try std.testing.expectEqual(@as(u32, 0xFFFFFFFF), pixels[DASH_LENGTH + DASH_GAP + 1 + DASH_GAP]);
 }
 
 test "a solid border leaves the inside untouched" {

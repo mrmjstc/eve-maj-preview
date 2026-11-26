@@ -28,6 +28,8 @@ pub const HotkeysConfig = struct {
     hotkeyToggleTravelMode: KeyList = .empty,
     hotkeyToggleNotificationHistory: KeyList = .empty,
     hotkeyClearNotificationHistory: KeyList = .empty,
+    hotkeyToggleMapPanel: KeyList = .empty,
+    hotkeyToggleIntelPanel: KeyList = .empty,
 
     pub const Wire = wire.Wire(HotkeysConfig);
 };

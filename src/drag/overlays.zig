@@ -14,14 +14,48 @@ const log = @import("../log.zig");
 
 const Config = config_mod.Config;
 const FontCache = font_cache_mod.FontCache;
-const GhostGroup = ghost_groups.GhostGroup;
 const slog = log.Scoped("drag_overlays");
+
+pub const GhostGroup = ghost_groups.GhostGroup;
 
 const WINDOW_CLASS_NAME = "EVE_GHOST_OVERLAY_CLASS";
 const OUTLINE_THICKNESS = 2;
 
+/// What a thumbnail drag shows on screen from start to drop.
+pub const DragOverlays = struct {
+    ghost: GhostOverlay,
+    hint: gdi_overlay.HintBox = .{},
+
+    pub fn init(allocator: std.mem.Allocator) DragOverlays {
+        return .{ .ghost = .init(allocator) };
+    }
+
+    pub fn deinit(self: *DragOverlays) void {
+        self.ghost.deinit();
+        self.hint.deinit();
+    }
+
+    /// Called once when a drag starts; `dragged_character` is null when `dragging_hwnd` isn't a thumbnail's, which leaves out the ghosts.
+    pub fn show(self: *DragOverlays, instance: win32.HINSTANCE, font_cache: *FontCache, config: *const Config, dragging_hwnd: win32.HWND, dragged_character: ?[]const u8) void {
+        if (dragged_character) |name| {
+            if (config.snapping.showGhostPositionBorders) self.ghost.show(instance, font_cache, config, name);
+        }
+        showHint(&self.hint, instance, font_cache, config, dragging_hwnd);
+    }
+
+    pub fn hide(self: *DragOverlays) void {
+        self.ghost.hide();
+        self.hint.hide();
+    }
+
+    /// Borrowed, valid until hide; null when the ghosts aren't shown.
+    pub fn ghostGroups(self: *const DragOverlays) ?[]const GhostGroup {
+        return self.ghost.groups;
+    }
+};
+
 /// A topmost, click-through overlay outlining every other saved position during a drag, created on first use and hidden between drags.
-pub const GhostOverlay = struct {
+const GhostOverlay = struct {
     allocator: std.mem.Allocator,
     hwnd: ?win32.HWND = null,
     bitmap: ?gdi_overlay.OverlayBitmap = null,
@@ -45,7 +79,7 @@ pub const GhostOverlay = struct {
         self.groups = null;
     }
 
-    /// Called once when a drag starts, since the ghosts don't change during it.
+    /// Once per drag, since the ghosts don't change during it.
     pub fn show(self: *GhostOverlay, instance: win32.HINSTANCE, font_cache: *FontCache, config: *const Config, exclude_character: []const u8) void {
         self.clearGroups();
 
@@ -78,7 +112,7 @@ pub const GhostOverlay = struct {
         if (self.hwnd) |hwnd| {
             _ = win32.SetWindowPos(hwnd, win32.HWND_TOPMOST, bounds.left, bounds.top, width, height, win32.SWP_NOACTIVATE);
         } else {
-            registerWindowClass(instance) catch |err| {
+            GhostClass.register(instance) catch |err| {
                 slog.err("Failed to register the ghost overlay window class: {}", .{err});
                 return;
             };
@@ -103,19 +137,10 @@ pub const GhostOverlay = struct {
 
         const hwnd = self.hwnd.?;
 
-        if (gdi_overlay.OverlayBitmap.needsResize(self.bitmap, width, height)) {
-            const init_dc = win32.GetDC(null) orelse {
-                slog.err("Failed to get the screen DC for the ghost overlay", .{});
-                return;
-            };
-            defer _ = win32.ReleaseDC(null, init_dc);
-            gdi_overlay.OverlayBitmap.recreate(&self.bitmap, init_dc, width, height) catch |err| {
-                slog.err("Failed to allocate ghost overlay bitmap: {}", .{err});
-                return;
-            };
-        }
-
-        const overlay = &self.bitmap.?;
+        const overlay = gdi_overlay.OverlayBitmap.ensureSize(&self.bitmap, width, height) catch |err| {
+            slog.err("Failed to allocate ghost overlay bitmap: {}", .{err});
+            return;
+        };
         overlay.clear();
 
         const font = font_cache.characterNameFont(&config.thumbnail, monitors.getWindowDpi(hwnd)) catch |err| {
@@ -128,7 +153,7 @@ pub const GhostOverlay = struct {
         }
 
         // Reduced alpha, so it reads as a ghost rather than a real thumbnail.
-        const outline_color: u32 = color.withAlpha(config.thumbnail.borderColor, 0xB0);
+        const outline_color: u32 = color.withAlpha(config.focusedBorderColor(), 0xB0);
         const text_color: u32 = 0xE0FFFFFF;
 
         for (groups) |group| {
@@ -139,9 +164,9 @@ pub const GhostOverlay = struct {
 
             pixel_buffer.drawRectOutline(overlay.canvas(), local_x, local_y, rect_width, rect_height, OUTLINE_THICKNESS, outline_color);
 
-            const dims = draw.measureText(overlay.mem_dc, group.names);
+            const dimensions = draw.measureText(overlay.mem_dc, group.names);
             draw.renderText(overlay.mem_dc, group.names, local_x, local_y, text_color);
-            pixel_buffer.fixTextAlphaRect(overlay.canvas(), local_x, local_y, dims.width, dims.height);
+            pixel_buffer.fixTextAlphaRect(overlay.canvas(), local_x, local_y, dimensions.width, dimensions.height);
         }
 
         gdi_overlay.presentLayered(hwnd, overlay, 255);
@@ -157,20 +182,14 @@ pub const GhostOverlay = struct {
     }
 };
 
-var g_is_class_registered = false;
+const GhostClass = gdi_overlay.WindowClass(WINDOW_CLASS_NAME, win32.DefWindowProcA);
 
-/// Hint box centered on the monitor nearest `dragging_hwnd`; called once when a drag starts, static for its duration.
-pub fn showDragHint(hint_box: *gdi_overlay.HintBox, instance: win32.HINSTANCE, font_cache: *FontCache, config: *const Config, dragging_hwnd: win32.HWND) void {
+/// Centred on the monitor nearest `dragging_hwnd`, and static for the drag.
+fn showHint(hint_box: *gdi_overlay.HintBox, instance: win32.HINSTANCE, font_cache: *FontCache, config: *const Config, dragging_hwnd: win32.HWND) void {
     const nearest = monitors.nearestMonitorBounds(dragging_hwnd);
     const font = font_cache.characterNameFont(&config.thumbnail, monitors.dpiForMonitor(nearest.monitor)) catch |err| {
         slog.err("Failed to get font for drag hint: {}", .{err});
         return;
     };
     hint_box.show(instance, font, color.withAlpha(config.thumbnail.characterNameColor, 0xFF), lang.text("Hold Ctrl to move all thumbnails together"), lang.text("Turn off dragging from the tray icon or settings"), nearest.bounds);
-}
-
-fn registerWindowClass(instance: win32.HINSTANCE) !void {
-    if (g_is_class_registered) return;
-    try gdi_overlay.registerWindowClass(instance, win32.DefWindowProcA, WINDOW_CLASS_NAME, null);
-    g_is_class_registered = true;
 }

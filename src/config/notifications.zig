@@ -1,12 +1,16 @@
-//! Notification popups: shared appearance and each type's own settings.
+//! How alerts behave wherever they show: the master switch, speech, and each type's own settings.
 const std = @import("std");
-const types = @import("types.zig");
 const notification = @import("../notifications/notification.zig");
 const wire = @import("wire.zig");
 const ranges_mod = @import("ranges.zig");
 
+/// Combat runs on for minutes, so a reminder a minute is enough.
+const TAKING_DAMAGE_THROTTLE_MS: u32 = 60_000;
+
 pub const NotificationTypeConfig = struct {
     enabled: bool = true,
+    /// Off leaves its border, sound, speech and history entry, for an alert with no words on screen.
+    show_text: bool = true,
     duration_ms: u32 = 10000,
     suppress_when_focused: bool = false,
     suppress_when_clicked: bool = false,
@@ -15,6 +19,8 @@ pub const NotificationTypeConfig = struct {
     throttle_ms: u32 = 10000,
     border_color: ?u32 = null,
     text_color: ?u32 = null,
+    /// Chat intel only: draws the system its text starts with in that system's name colour.
+    color_system_name: bool = false,
     show_border: bool = false,
     flash_border: bool = false,
     tts_enabled: bool = false,
@@ -30,12 +36,15 @@ pub const NotificationTypeConfig = struct {
         return .{ .primary = self.custom_text, .alt = self.custom_text_alt };
     }
 
+    /// Chat alerts have no throttle: it would drop a different message, and each rule has a cooldown instead.
     fn defaultFor(notification_type: notification.NotificationType) NotificationTypeConfig {
-        return if (notification.isUserAction(notification_type)) .{ .duration_ms = 3000, .throttle_ms = 0 } else .{};
+        if (notification.isUserAction(notification_type)) return .{ .duration_ms = 3000, .throttle_ms = 0 };
+        if (notification_type == .TakingDamage) return .{ .throttle_ms = TAKING_DAMAGE_THROTTLE_MS };
+        return if (notification.notificationCategory(notification_type) == .Chat) .{ .throttle_ms = 0 } else .{};
     }
 
     /// A const, not a fn: evaluated once instead of per comptime Wire field default, which exceeded the branch quota.
-    pub const defaults_by_type = blk: {
+    pub const DEFAULTS_BY_TYPE = blk: {
         var map = std.enums.EnumArray(notification.NotificationType, NotificationTypeConfig).initFill(.{});
         for (std.enums.values(notification.NotificationType)) |notification_type| map.set(notification_type, defaultFor(notification_type));
         break :blk map;
@@ -57,7 +66,7 @@ pub const NotificationTypeConfig = struct {
 pub const NotificationTypeConfigs = struct {
     const Map = std.enums.EnumArray(notification.NotificationType, NotificationTypeConfig);
 
-    map: Map = NotificationTypeConfig.defaults_by_type,
+    map: Map = NotificationTypeConfig.DEFAULTS_BY_TYPE,
 
     pub fn get(self: *const NotificationTypeConfigs, notification_type: notification.NotificationType) NotificationTypeConfig {
         return self.map.get(notification_type);
@@ -87,12 +96,12 @@ pub const NotificationTypeConfigs = struct {
     }
 
     pub const Wire = struct {
-        map: std.enums.EnumArray(notification.NotificationType, NotificationTypeConfig.Wire) = default_wire_map,
+        map: std.enums.EnumArray(notification.NotificationType, NotificationTypeConfig.Wire) = DEFAULT_WIRE_MAP,
 
-        const default_wire_map = blk: {
+        const DEFAULT_WIRE_MAP = blk: {
             @setEvalBranchQuota(10_000_000);
             var map = std.enums.EnumArray(notification.NotificationType, NotificationTypeConfig.Wire).initFill(.{});
-            for (std.enums.values(notification.NotificationType)) |notification_type| map.set(notification_type, wire.encode(NotificationTypeConfig, NotificationTypeConfig.defaults_by_type.get(notification_type)));
+            for (std.enums.values(notification.NotificationType)) |notification_type| map.set(notification_type, wire.encode(NotificationTypeConfig, NotificationTypeConfig.DEFAULTS_BY_TYPE.get(notification_type)));
             break :blk map;
         };
 
@@ -121,6 +130,11 @@ pub const NotificationTypeConfigs = struct {
                 if (wire_value.sound_path) |sound_path| wire_value.sound_path = try allocator.dupe(u8, sound_path);
                 if (wire_value.custom_text) |custom_text| wire_value.custom_text = try allocator.dupe(u8, custom_text);
                 if (wire_value.custom_text_alt) |custom_text_alt| wire_value.custom_text_alt = try allocator.dupe(u8, custom_text_alt);
+                // A field left out takes this type's default, not NotificationTypeConfig's: they differ for throttle_ms and duration_ms.
+                const type_defaults = DEFAULT_WIRE_MAP.get(notification_type);
+                inline for (@typeInfo(NotificationTypeConfig.Wire).@"struct".field_names) |name| {
+                    if (!entry.value_ptr.object.contains(name)) @field(wire_value, name) = @field(type_defaults, name);
+                }
                 result.map.set(notification_type, wire_value);
             }
             return result;
@@ -160,15 +174,8 @@ pub const NotificationTypeConfigs = struct {
 
 pub const NotificationConfig = struct {
     enabled: bool = true,
-    position: types.TextPosition = .Center,
-    offset_x: i32 = 0,
-    offset_y: i32 = 0,
-    font_name: []const u8 = "Segoe UI",
-    font_size: i32 = 12,
-    font_weight: types.FontWeight = .Regular,
-    /// A type without a text colour of its own uses this.
+    /// A type without a text colour of its own uses this, on thumbnails and in the History and Intel panels.
     color: u32 = 0xFFFFFFFF,
-    bg_color: u32 = 0xE6000000,
 
     suppress_click_duration_ms: u32 = 2000,
 
@@ -184,9 +191,6 @@ pub const NotificationConfig = struct {
     type_configs: NotificationTypeConfigs = .{},
 
     pub const ranges = .{
-        .offset_x = ranges_mod.TEXT_OFFSET,
-        .offset_y = ranges_mod.TEXT_OFFSET,
-        .font_size = ranges_mod.FONT_SIZE,
         .suppress_click_duration_ms = .{ 0, 60000 },
         .tts_volume = ranges_mod.PERCENT,
         .tts_rate = .{ -10, 10 },
@@ -204,3 +208,79 @@ pub const NotificationConfig = struct {
 
     pub const Wire = wire.Wire(NotificationConfig);
 };
+
+const testing = std.testing;
+
+/// Parsed as loading parses it, then decoded into configs the caller frees with deinit.
+fn parseTestConfigs(arena: std.mem.Allocator, text: []const u8) !NotificationTypeConfigs {
+    const value = try std.json.parseFromSliceLeaky(std.json.Value, arena, text, .{});
+    const saved = try std.json.parseFromValueLeaky(NotificationTypeConfigs.Wire, arena, value, .{ .ignore_unknown_fields = true });
+    return NotificationTypeConfigs.fromWire(saved, testing.allocator);
+}
+
+test "a type's left-out fields take that type's defaults, not the general ones" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    var configs = try parseTestConfigs(arena_state.allocator(),
+        \\{"ProfileSwitch":{"enabled":false},"TakingDamage":{"tts_enabled":true},"ChatKeyword":{"show_border":true},"FleetInvite":{"flash_border":true}}
+    );
+    defer configs.deinit(testing.allocator);
+    const profile_switch = configs.get(.ProfileSwitch);
+    try testing.expect(!profile_switch.enabled);
+    try testing.expectEqual(@as(u32, 3000), profile_switch.duration_ms);
+    try testing.expectEqual(@as(u32, 0), profile_switch.throttle_ms);
+    try testing.expect(configs.get(.TakingDamage).tts_enabled);
+    try testing.expectEqual(TAKING_DAMAGE_THROTTLE_MS, configs.get(.TakingDamage).throttle_ms);
+    try testing.expectEqual(@as(u32, 0), configs.get(.ChatKeyword).throttle_ms);
+    try testing.expectEqual(@as(u32, 10000), configs.get(.FleetInvite).throttle_ms);
+}
+
+test "a type the file leaves out keeps its own defaults" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    var configs = try parseTestConfigs(arena_state.allocator(), "{\"FleetInvite\":{\"enabled\":false}}");
+    defer configs.deinit(testing.allocator);
+    try testing.expect(!configs.get(.FleetInvite).enabled);
+    try testing.expect(configs.get(.Decloak).enabled);
+    try testing.expectEqual(@as(u32, 3000), configs.get(.HotkeySuspend).duration_ms);
+    try testing.expectEqual(TAKING_DAMAGE_THROTTLE_MS, configs.get(.TakingDamage).throttle_ms);
+}
+
+test "saved strings survive the per-type parse's arena" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    var configs = try parseTestConfigs(arena_state.allocator(),
+        \\{"Decloak":{"sound_path":"C:\\sounds\\decloak.wav","custom_text":"{character} decloaked","custom_text_alt":"Cloak back up"}}
+    );
+    defer configs.deinit(testing.allocator);
+    const decloak = configs.get(.Decloak);
+    try testing.expectEqualStrings("C:\\sounds\\decloak.wav", decloak.sound_path.?);
+    try testing.expectEqualStrings("{character} decloaked", decloak.custom_text.?);
+    try testing.expectEqualStrings("Cloak back up", decloak.custom_text_alt.?);
+}
+
+test "unknown alert types are skipped and a non-object leaves every default" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    var unknown = try parseTestConfigs(arena, "{\"RemovedType\":{\"enabled\":false},\"Docking\":{\"enabled\":false}}");
+    defer unknown.deinit(testing.allocator);
+    try testing.expect(!unknown.get(.Docking).enabled);
+    try testing.expect(unknown.get(.FleetInvite).enabled);
+    var not_object = try parseTestConfigs(arena, "[]");
+    defer not_object.deinit(testing.allocator);
+    try testing.expectEqual(@as(u32, 3000), not_object.get(.ProfileSwitch).duration_ms);
+    try testing.expect(not_object.get(.Docking).enabled);
+}
+
+test "toWire then fromWire keeps every type's settings" {
+    var original: NotificationTypeConfigs = .{};
+    original.set(.CargoFull, .{ .enabled = false, .duration_ms = 4500, .border_color = 0xFF112233 });
+    var copy = try NotificationTypeConfigs.fromWire(original.toWire(), testing.allocator);
+    defer copy.deinit(testing.allocator);
+    const cargo = copy.get(.CargoFull);
+    try testing.expect(!cargo.enabled);
+    try testing.expectEqual(@as(u32, 4500), cargo.duration_ms);
+    try testing.expectEqual(@as(u32, 0xFF112233), cargo.border_color.?);
+    try testing.expectEqual(@as(u32, 0), copy.get(.ProfileSwitch).throttle_ms);
+}

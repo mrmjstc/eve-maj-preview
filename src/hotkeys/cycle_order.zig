@@ -11,7 +11,7 @@ const CharacterConfig = characters.CharacterConfig;
 const HotkeyGroupConfig = hotkeys_config.HotkeyGroupConfig;
 const slog = log.Scoped("hotkeys");
 
-/// Visits each index in [0, item_count) once from one step past `cursor`, or the first in its direction when that's stale, stopping at the end unless it `wraps`.
+/// Visits each index below item_count once, from one past `cursor`, or the first in its direction when stale; stops at the end unless it `wraps`.
 pub const CycleOrder = struct {
     index: usize,
     item_count: usize,
@@ -41,7 +41,7 @@ pub const CycleOrder = struct {
     }
 };
 
-/// Character name -> configured-order index, rebuilt only when the Characters list's names/order change, which is far less often than cycle hotkeys are pressed.
+/// Character name to configured-order index, rebuilt only when the Characters list's names or order change, far less often than cycling presses.
 pub const CharacterOrderCache = struct {
     map: ?std.StringHashMap(usize) = null,
     signature: u64 = 0,
@@ -149,7 +149,8 @@ pub fn chainOf(groups: []const HotkeyGroupConfig, group_indices: []const usize) 
     return .{ .chain = chain };
 }
 
-/// Walks the chain from its cursor to the next running, non-excluded member or not-logged-in client; `clients` has `hwndFor(name) ?win32.HWND` and `isExcluded(name) bool`.
+/// Walks the chain from its cursor to the next running, non-excluded member or not-logged-in client.
+/// `clients`: `hwndFor(name) ?win32.HWND` and `isExcluded(name) bool`.
 pub fn planGroupCycle(cycle: GroupCycle, clients: anytype) GroupStep {
     const member_count = cycle.chain.member_count;
     const total_count = member_count + cycle.not_logged_in_hwnds.len;
@@ -163,9 +164,11 @@ pub fn planGroupCycle(cycle: GroupCycle, clients: anytype) GroupStep {
         if (indexOfHwnd(cycle.not_logged_in_hwnds, cycle.last_not_logged_in_hwnd)) |i| found_index = member_count + i;
     }
 
-    var it = CycleOrder.init(found_index, total_count, .{ .is_forward = cycle.is_forward, .wraps = !cycle.chain.stops_at_ends });
+    var it: CycleOrder = .init(found_index, total_count, .{ .is_forward = cycle.is_forward, .wraps = !cycle.chain.stops_at_ends });
     while (it.next()) |position| {
-        if (position >= member_count) return .{ .not_logged_in = .{ .hwnd = cycle.not_logged_in_hwnds[position - member_count], .position = position, .total_count = total_count } };
+        if (position >= member_count) return .{
+            .not_logged_in = .{ .hwnd = cycle.not_logged_in_hwnds[position - member_count], .position = position, .total_count = total_count },
+        };
         const member = chainMember(cycle.groups, cycle.group_indices, position);
         const hwnd = memberHwnd(cycle, member, clients) orelse continue;
         return .{ .member = .{ .member = member, .hwnd = hwnd, .position = position, .total_count = total_count } };
@@ -243,7 +246,7 @@ fn memberHwnd(cycle: GroupCycle, member: ChainMember, clients: anytype) ?win32.H
 }
 
 fn characterOrderSignature(configured: []const CharacterConfig) u64 {
-    var hasher = std.hash.Wyhash.init(0);
+    var hasher: std.hash.Wyhash = .init(0);
     for (configured) |character| {
         hasher.update(character.name);
         // The map's keys borrow these names, so a reallocated but equal name (a discarded dialog preview) must rebuild it too.
@@ -411,7 +414,7 @@ test "a group cycle backwards from no cursor starts at the last member" {
 test "a stop-at-ends group refocuses its end member once focus has moved away" {
     var names = [_][]const u8{ "A", "B" };
     const groups = [_]HotkeyGroupConfig{testGroup(&names, .{ .stops_at_ends = true })};
-    const clients = FakeClients{ .running = &.{ "A", "B" } };
+    const clients: FakeClients = .{ .running = &.{ "A", "B" } };
 
     var cycle = cycleOver(&groups, &.{0}, &.{1});
     cycle.foreground_hwnd = fakeHwnd(9);

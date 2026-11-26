@@ -37,7 +37,7 @@ pub const ResourceTracker = struct {
     pdh_buffer: std.ArrayList(u8) = .empty,
 
     pub fn init(allocator: std.mem.Allocator) ResourceTracker {
-        var self = ResourceTracker{
+        var self: ResourceTracker = .{
             .allocator = allocator,
             .cpu_samples = .init(allocator),
             .stats = .init(allocator),

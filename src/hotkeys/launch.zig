@@ -52,7 +52,7 @@ pub fn activateApp(global_settings: *const config.GlobalConfig, app_index: usize
 pub fn cycleApps(global_settings: *const config.GlobalConfig, is_forward: bool) void {
     const apps = global_settings.appHotkeys.items;
     const current = foregroundAppIndex(apps);
-    var it = cycle_order.CycleOrder.init(current, apps.len, .{ .is_forward = is_forward });
+    var it: cycle_order.CycleOrder = .init(current, apps.len, .{ .is_forward = is_forward });
     while (it.next()) |index| {
         const name = apps[index].executableName;
         if (name.len == 0) continue;
@@ -76,6 +76,10 @@ pub fn openUrl(allocator: std.mem.Allocator, global_settings: *const config.Glob
     const url_hotkey = global_settings.urlHotkeys.items[url_index];
     if (url_hotkey.url.len == 0) {
         slog.debug("Open URL hotkey pressed - no URL set", .{});
+        return;
+    }
+    if (!win32.isWebUrl(url_hotkey.url)) {
+        slog.warn("Failed to open URL '{s}': only http:// and https:// links open", .{url_hotkey.url});
         return;
     }
 
@@ -105,7 +109,7 @@ fn findByExecutableCallback(hwnd: win32.HWND, lParam: win32.LPARAM) callconv(.c)
 
 /// First visible top-level window (in Z-order, so effectively the frontmost) owned by executable_name.
 fn findWindowByExecutable(executable_name: []const u8) ?win32.HWND {
-    var context = FindByExecutableContext{ .executable_name = executable_name };
+    var context: FindByExecutableContext = .{ .executable_name = executable_name };
     _ = win32.EnumWindows(findByExecutableCallback, win32.ptrToLparam(&context));
     return context.found;
 }

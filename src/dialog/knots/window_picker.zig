@@ -2,7 +2,7 @@
 const std = @import("std");
 const ui = @import("ui");
 const win32 = @import("../../platform/win32.zig");
-const status = @import("status.zig");
+const status_mod = @import("status.zig");
 const style = @import("style.zig");
 const lang = @import("../../lang/lang.zig");
 const log = @import("../../log.zig");
@@ -30,9 +30,9 @@ pub const Picker = struct {
 };
 
 /// Replaces `picker`'s earlier scan; leaves it closed when there are none.
-pub fn open(allocator: std.mem.Allocator, picker: *?Picker, index: usize) void {
+pub fn open(status: *status_mod.Status, allocator: std.mem.Allocator, picker: *?Picker, index: usize) void {
     close(picker);
-    var arena = std.heap.ArenaAllocator.init(allocator);
+    var arena: std.heap.ArenaAllocator = .init(allocator);
     const windows = runningWindows(arena.allocator()) catch |err| {
         arena.deinit();
         slog.err("Failed to scan running windows: {}", .{err});
@@ -61,8 +61,8 @@ pub fn select(context: *ui.Frame, picker: *const ?Picker, key: ui.Key, index: us
     const values = try arena.alloc(u32, open_picker.windows.len + 1);
     labels[0] = lang.text(PROMPT);
     values[0] = 0;
-    for (open_picker.windows, 1..) |window, option| {
-        labels[option] = try std.fmt.allocPrint(arena, "{s} \u{2014} {s}", .{ window.title, window.executable });
+    for (open_picker.windows, 1..) |open_window, option| {
+        labels[option] = try arena.print("{s} \u{2014} {s}", .{ open_window.title, open_window.executable });
         values[option] = @intCast(option);
     }
     const response = try context.interact(SelectInput(u32){
@@ -80,12 +80,12 @@ pub fn select(context: *ui.Frame, picker: *const ?Picker, key: ui.Key, index: us
 
 /// Sorted by executable name; everything borrows from `arena`.
 fn runningWindows(arena: std.mem.Allocator) ![]const RunningWindow {
-    var scan = WindowScan{ .arena = arena };
+    var scan: WindowScan = .{ .arena = arena };
     _ = win32.EnumWindows(collectWindow, win32.ptrToLparam(&scan));
     if (scan.scan_error) |err| return err;
     std.sort.pdq(RunningWindow, scan.windows.items, {}, struct {
-        fn lessThan(_: void, a: RunningWindow, b: RunningWindow) bool {
-            return std.mem.lessThan(u8, a.executable, b.executable);
+        fn lessThan(_: void, first: RunningWindow, second: RunningWindow) bool {
+            return std.mem.lessThan(u8, first.executable, second.executable);
         }
     }.lessThan);
     return scan.windows.items;
@@ -93,15 +93,15 @@ fn runningWindows(arena: std.mem.Allocator) ![]const RunningWindow {
 
 fn collectWindow(hwnd: win32.HWND, lParam: win32.LPARAM) callconv(.c) win32.BOOL {
     const scan: *WindowScan = win32.lparamToPtr(WindowScan, lParam);
-    if (!win32.toBool(win32.IsWindowVisible(hwnd))) return win32.TRUE;
+    if (!win32.isWindowVisible(hwnd)) return win32.TRUE;
 
-    var title_buf: [win32.WINDOW_TITLE_MAX_UNITS * 3]u8 = undefined;
+    var title_buffer: [win32.WINDOW_TITLE_MAX_UNITS * 3]u8 = undefined;
     // UTF-8, since the dialog's text, picked labels included, must be.
-    const title = win32.getWindowTitleUtf8(hwnd, &title_buf) orelse return win32.TRUE;
-    var class_buf: [64:0]u8 = undefined;
-    const class = win32.getClassNameBuf(hwnd, &class_buf) orelse return win32.TRUE;
-    var executable_buf: [260:0]u8 = undefined;
-    const executable = win32.windowExecutableName(hwnd, &executable_buf) orelse return win32.TRUE;
+    const title = win32.getWindowTitleUtf8(hwnd, &title_buffer) orelse return win32.TRUE;
+    var class_buffer: [64:0]u8 = undefined;
+    const class = win32.getClassName(hwnd, &class_buffer) orelse return win32.TRUE;
+    var executable_buffer: [win32.MAX_PATH:0]u8 = undefined;
+    const executable = win32.windowExecutableName(hwnd, &executable_buffer) orelse return win32.TRUE;
     if (executable.len == 0) return win32.TRUE;
 
     for (scan.windows.items) |existing| {

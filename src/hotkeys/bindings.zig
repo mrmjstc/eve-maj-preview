@@ -2,7 +2,7 @@
 const std = @import("std");
 const url = @import("../protocol/url.zig");
 
-// ID bands: 0 group cycle (2 per combo), 1000 global, 2000 character, 3000 profile, 4000 group assign, 5000 app, 6000 URL, 7000 group close, 8000 group minimize.
+// Bands 1000 IDs apart; a group cycle combo takes two.
 pub const HOTKEY_ID_CYCLE_GROUP_BASE: c_int = 0;
 
 /// IDs in the group cycle band, before it runs into the global band.
@@ -52,21 +52,28 @@ pub const GLOBAL_BINDINGS = [_]GlobalBinding{
     .{ .action = .toggle_travel_mode, .protocol = .toggle_travel_mode, .field = "hotkeyToggleTravelMode", .description = "toggle travel mode" },
     .{ .action = .toggle_notification_history, .protocol = .toggle_notification_history, .field = "hotkeyToggleNotificationHistory", .description = "show/hide the notification history" },
     .{ .action = .clear_notification_history, .protocol = .clear_notification_history, .field = "hotkeyClearNotificationHistory", .description = "clear the notification history" },
+    .{ .action = .toggle_map_panel, .protocol = .toggle_map_panel, .field = "hotkeyToggleMapPanel", .description = "show/hide the map panel" },
+    .{ .action = .toggle_intel_panel, .protocol = .toggle_intel_panel, .field = "hotkeyToggleIntelPanel", .description = "show/hide the intel panel" },
 };
 
 /// Also re-registered on its own while hotkeys are suspended, so it can resume them.
-pub const SUSPEND_BINDING = GlobalBinding{ .action = .suspend_hotkeys, .protocol = .suspend_hotkeys, .field = "hotkeySuspend", .description = "suspend/resume all hotkeys" };
+pub const SUSPEND_BINDING: GlobalBinding = .{
+    .action = .suspend_hotkeys,
+    .protocol = .suspend_hotkeys,
+    .field = "hotkeySuspend",
+    .description = "suspend/resume all hotkeys",
+};
 
 /// Characters sharing one per-character hotkey.
 pub const CharacterGroup = struct {
-    /// Owned; HotkeyManager.unregisterAll frees it.
+    /// Borrows from the registered plan.Plan.
     character_indices: []const usize,
     current_index: ?usize = null,
 };
 
 /// Hotkey groups sharing one cycle combo, cycled as one list.
 pub const GroupChain = struct {
-    /// In hotkeyGroups order; owned, HotkeyManager.unregisterAll frees it.
+    /// In hotkeyGroups order; borrows from the registered plan.Plan, or from the caller for one run outside a press.
     group_indices: []const usize,
     is_forward: bool,
 };
@@ -113,6 +120,8 @@ pub const HotkeyAction = union(enum) {
     toggle_travel_mode: void,
     toggle_notification_history: void,
     clear_notification_history: void,
+    toggle_map_panel: void,
+    toggle_intel_panel: void,
     activate_app: struct {
         app_index: usize,
     },
@@ -156,11 +165,11 @@ pub fn fromProtocol(action: url.GlobalAction) HotkeyAction {
 
 comptime {
     for (std.enums.values(url.GlobalAction)) |tag| {
-        var matches: usize = 0;
+        var match_count: usize = 0;
         for (GLOBAL_BINDINGS) |binding| {
-            if (binding.protocol == tag) matches += 1;
+            if (binding.protocol == tag) match_count += 1;
         }
-        if (matches != 1) @compileError("url.GlobalAction." ++ @tagName(tag) ++ " must map to exactly one global binding");
+        if (match_count != 1) @compileError("url.GlobalAction." ++ @tagName(tag) ++ " must map to exactly one global binding");
     }
 }
 

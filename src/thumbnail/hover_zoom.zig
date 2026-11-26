@@ -3,6 +3,7 @@ const win32 = @import("../platform/win32.zig");
 const config_mod = @import("../config.zig");
 const window = @import("window.zig");
 const overlay = @import("overlay.zig");
+const look = @import("look.zig");
 const font_cache_mod = @import("font_cache.zig");
 const zoom = @import("../layout/zoom.zig");
 const monitors = @import("../layout/monitors.zig");
@@ -33,6 +34,8 @@ pub const HoverZoom = struct {
     pub fn show(self: *HoverZoom, instance: win32.HINSTANCE, font_cache: *FontCache, thumbnail: *const ThumbnailWindow, config: *const Config) void {
         if (self.source_hwnd == thumbnail.source_hwnd) return;
         self.hide();
+        // A blank thumbnail has no picture to enlarge.
+        if (thumbnail.thumbnail_id == null) return;
 
         const windows = self.windows orelse blk: {
             const created = create(instance) catch |err| {
@@ -52,7 +55,7 @@ pub const HoverZoom = struct {
         }
         const bounds = monitors.nearestMonitorBounds(thumbnail.hwnd).bounds;
         const rect = zoom.zoomedRect(base, interaction.hoverZoomPercent, interaction.hoverZoomAnchor, bounds);
-        const size = window.Size{ .width = win32.rectWidth(rect), .height = win32.rectHeight(rect) };
+        const size: window.Size = .{ .width = win32.rectWidth(rect), .height = win32.rectHeight(rect) };
 
         var thumbnail_id: win32.HTHUMBNAIL = undefined;
         if (win32.DwmRegisterThumbnail(hwnd, thumbnail.source_hwnd, &thumbnail_id) != 0) {
@@ -61,8 +64,8 @@ pub const HoverZoom = struct {
         }
         self.thumbnail_id = thumbnail_id;
 
-        const props = window.thumbnailProps(size, win32.DWM_TNP_VISIBLE | win32.DWM_TNP_RECTDESTINATION | win32.DWM_TNP_SOURCECLIENTAREAONLY);
-        if (win32.DwmUpdateThumbnailProperties(thumbnail_id, &props) != 0) {
+        const properties = window.thumbnailProperties(size, win32.DWM_TNP_VISIBLE | win32.DWM_TNP_RECTDESTINATION | win32.DWM_TNP_SOURCECLIENTAREAONLY);
+        if (win32.DwmUpdateThumbnailProperties(thumbnail_id, &properties) != 0) {
             slog.warn("Failed to size the hover zoom thumbnail for '{s}'", .{thumbnail.character_name});
             self.hide();
             return;
@@ -78,7 +81,7 @@ pub const HoverZoom = struct {
     }
 
     /// Call after any thumbnail's overlay is redrawn; ignores all but the zoomed one.
-    pub fn renderOverlay(self: *HoverZoom, font_cache: *FontCache, thumbnail: *const ThumbnailWindow, settings: overlay.RenderSettings, config: *const Config) void {
+    pub fn renderOverlay(self: *HoverZoom, font_cache: *FontCache, thumbnail: *const ThumbnailWindow, settings: look.RenderSettings, config: *const Config) void {
         if (self.source_hwnd != thumbnail.source_hwnd) return;
         self.drawOverlay(font_cache, thumbnail, settings, config);
     }
@@ -103,13 +106,13 @@ pub const HoverZoom = struct {
         self.source_hwnd = null;
     }
 
-    /// Hides the zoom unless the cursor still rests on its thumbnail; also run per tick, since a hidden or moved thumbnail sends no mouse leave.
+    /// Hides the zoom unless the cursor still rests on its live thumbnail; also run per tick, since a hidden or moved thumbnail sends no mouse leave.
     pub fn check(self: *HoverZoom, config: *const Config, thumbnails: []const ThumbnailWindow) void {
         const source_hwnd = self.source_hwnd orelse return;
         const interaction = &config.interaction;
         if (!interaction.hoverZoomEnabled or interaction.clickThrough) return self.hide();
         for (thumbnails) |*thumbnail| {
-            if (thumbnail.source_hwnd == source_hwnd and isHovered(thumbnail)) return;
+            if (thumbnail.source_hwnd == source_hwnd and thumbnail.thumbnail_id != null and isHovered(thumbnail)) return;
         }
         self.hide();
     }
@@ -125,7 +128,7 @@ pub const HoverZoom = struct {
     }
 
     /// Text keeps the thumbnail's font sizes; only the canvas grows.
-    fn drawOverlay(self: *HoverZoom, font_cache: *FontCache, thumbnail: *const ThumbnailWindow, settings: overlay.RenderSettings, config: *const Config) void {
+    fn drawOverlay(self: *HoverZoom, font_cache: *FontCache, thumbnail: *const ThumbnailWindow, settings: look.RenderSettings, config: *const Config) void {
         const windows = self.windows orelse return;
         const width = win32.rectWidth(self.rect);
         const height = win32.rectHeight(self.rect);

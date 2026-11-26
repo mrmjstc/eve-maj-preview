@@ -1,0 +1,46 @@
+# Names stale_refs.py may see in comments though src/ doesn't declare them, one per line: <name>  # reason
+# Win32 and Windows terms the comments explain against.
+WinHTTP  # the Windows HTTP API
+WinEvent  # Win32's WinEvent hooks
+WinForms  # .NET UI, how the C# importers' apps store settings
+SpVoice  # the SAPI voice COM class
+waveOut  # the winmm API family
+WOM_OPEN  # winmm message
+WOM_DONE  # winmm message
+QuickEdit  # the console's Quick Edit mode
+PdhAddCounterA  # the localized PDH call the code avoids
+IO_STATUS_BLOCK  # NT structure
+IDI_ICON1  # the icon id in app.rc
+HWND_TOP  # named to explain why it isn't used
+HKEY_CLASSES_ROOT  # registry hive
+LowLevelHooksTimeout  # the registry value capping a low-level hook's time
+XxxConfig  # ARCHITECTURE.md's placeholder for a settings type's name
+XxxTextStyle  # ARCHITECTURE.md's placeholder for a text style's name
+GET_X_LPARAM  # the Win32 macro lparamX stands in for
+GET_Y_LPARAM  # the Win32 macro lparamY stands in for
+CS_DBLCLKS  # window class style
+COLOR_WINDOW  # system colour index
+CF_TEXT  # clipboard format the code avoids
+ClearType  # Windows font smoothing
+OneDrive  # where Documents can live
+# Zig and std.
+zig  # the `zig build test` command
+breakpoint  # Zig's @breakpoint builtin
+ParseFromValueError  # std.json's error set
+# Other programs, formats and services.
+sRGB  # colour space
+GitHub  # releases API host
+JavaScript  # the web importer's source
+aDashboard  # adashboard.info
+SemiBold  # a font face name
+AutoHotkey  # hotkey syntax the importers read
+EverMore  # a predecessor app
+MultiPreview  # a predecessor app
+ZoomAnchor  # EVE-O Preview's setting
+ClientsOrder  # EVE-O Preview's setting
+connectionId  # EVE's core_public__.yaml key shape
+device  # EVE's core_public__.yaml section
+per_page  # GitHub API query parameter
+days_from_civil  # Howard Hinnant's algorithm
+press_drag_threshold_sq  # knots' constant, outside src/
+was_maximized  # named to explain why no such state is kept

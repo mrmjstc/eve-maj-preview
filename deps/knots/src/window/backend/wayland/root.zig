@@ -7,6 +7,7 @@ const wayland = @import("wayland");
 const wl = wayland.client.wl;
 const xdg = wayland.client.xdg;
 const zxdg = wayland.client.zxdg;
+const zwp = wayland.client.zwp;
 
 const gpu = @import("gpu");
 const window = @import("window");
@@ -14,6 +15,7 @@ const drop_paths = @import("window_drop_paths");
 
 const keymap = @import("keymap.zig");
 const xkb = @import("xkb.zig");
+const text_input = @import("text_input.zig");
 
 const BTN_LEFT: u32 = 0x110;
 const BTN_RIGHT: u32 = 0x111;
@@ -23,7 +25,69 @@ const BTN_EXTRA: u32 = 0x114;
 const TEXT_URI_LIST: [*:0]const u8 = "text/uri-list";
 const TEXT_UTF8: [*:0]const u8 = "text/plain;charset=utf-8";
 const TEXT_PLAIN: [*:0]const u8 = "text/plain";
-const MAX_CLIPBOARD_BYTES: usize = 1024 * 1024;
+const MAX_OFFER_BYTES: usize = 1024 * 1024;
+const RESIZE_BORDER: f64 = 6;
+const DOUBLE_CLICK_MS: u32 = 400;
+const ResizeEdge = xdg.Toplevel.ResizeEdge;
+
+/// A read of a data offer's pipe, drained from the event loop so a slow or
+/// stuck source never blocks the UI thread.
+const OfferRead = struct {
+    fd: posix.fd_t = -1,
+    buf: std.ArrayList(u8) = .empty,
+    state: ?*State = null,
+
+    const Status = enum { pending, done, failed };
+
+    fn start(self: *OfferRead, display: *wl.Display, offer: *wl.DataOffer, mime: [*:0]const u8, target: *State) bool {
+        var fds: [2]i32 = undefined;
+        switch (posix.errno(linux.pipe2(&fds, .{ .CLOEXEC = true }))) {
+            .SUCCESS => {},
+            else => return false,
+        }
+        offer.receive(mime, fds[1]);
+        closeFd(fds[1]);
+        _ = display.flush();
+
+        // Only our read end is non-blocking since the source owns the write end.
+        const nonblock: u32 = @bitCast(linux.O{ .NONBLOCK = true });
+        switch (posix.errno(linux.fcntl(fds[0], linux.F.SETFL, nonblock))) {
+            .SUCCESS => {},
+            else => {
+                closeFd(fds[0]);
+                return false;
+            },
+        }
+        self.fd = fds[0];
+        self.state = target;
+        return true;
+    }
+
+    fn drain(self: *OfferRead, allocator: std.mem.Allocator) Status {
+        var chunk: [4096]u8 = undefined;
+        while (true) {
+            const n = posix.read(self.fd, &chunk) catch |err| switch (err) {
+                error.WouldBlock => return .pending,
+                else => return .failed,
+            };
+            if (n == 0) return .done;
+            if (self.buf.items.len + n > MAX_OFFER_BYTES) return .failed;
+            self.buf.appendSlice(allocator, chunk[0..n]) catch return .failed;
+        }
+    }
+
+    fn cancel(self: *OfferRead) void {
+        closeFd(self.fd);
+        self.fd = -1;
+        self.buf.clearRetainingCapacity();
+        self.state = null;
+    }
+
+    fn deinit(self: *OfferRead, allocator: std.mem.Allocator) void {
+        self.cancel();
+        self.buf.deinit(allocator);
+    }
+};
 
 const OutputState = struct {
     output: *wl.Output,
@@ -49,6 +113,10 @@ const Shared = struct {
     clipboard_text: []u8 = &.{},
     selection_offer: ?*wl.DataOffer = null,
     selection_mime: ?[*:0]const u8 = null,
+    paste: OfferRead = .{},
+    drop: OfferRead = .{},
+    drop_offer: ?*wl.DataOffer = null,
+    drop_finish: bool = false,
     cursor_theme: ?*wl.CursorTheme = null,
     cursor_surface: ?*wl.Surface = null,
     wake_pipe: [2]posix.fd_t = .{ -1, -1 },
@@ -65,21 +133,29 @@ const Shared = struct {
     xkb_context: ?*xkb.Context = null,
     xkb_keymap: ?*xkb.Keymap = null,
     xkb_state: ?*xkb.State = null,
+    compose: text_input.Compose = .{},
+    text_input_manager: ?*zwp.TextInputManagerV3 = null,
+    ime: text_input.Ime,
     repeat_rate: i32 = 0,
     repeat_delay_ms: i32 = 600,
     repeat_key: ?u32 = null,
     repeat_window_key: input_types.Key = @fromBackingInt(@intCast(0)),
     repeat_char: ?u21 = null,
     repeat_next_ms: i64 = 0,
-    last_keyboard_serial: u32 = 0,
+    last_input_serial: u32 = 0,
     keyboard_state: ?*State = null,
     pointer_state: ?*State = null,
     first: ?*State = null,
 
     fn deinit(self: *Shared) void {
         self.clearRepeat();
+        self.ime.deinit();
+        if (self.text_input_manager) |manager| manager.destroy();
         self.deinitXkb();
         self.clearClipboardSource();
+        self.paste.deinit(self.allocator);
+        self.cancelDrop();
+        self.drop.deinit(self.allocator);
         if (self.selection_offer) |offer| offer.destroy();
 
         if (self.drag_offer) |offer| offer.destroy();
@@ -110,7 +186,52 @@ const Shared = struct {
         }
     }
 
+    fn readPaste(self: *Shared) void {
+        switch (self.paste.drain(self.allocator)) {
+            .pending => return,
+            .failed => return self.paste.cancel(),
+            .done => {},
+        }
+        defer self.paste.cancel();
+        const state = self.paste.state orelse return;
+        const owner = state.owner orelse return;
+        owner.pushPaste(self.paste.buf.items);
+    }
+
+    fn startDrop(self: *Shared, offer: *wl.DataOffer, target: ?*State, accepted: bool, finish: bool) void {
+        self.cancelDrop();
+        self.drop_offer = offer;
+        self.drop_finish = finish;
+        const state = target orelse return self.cancelDrop();
+        if (!accepted) return self.cancelDrop();
+        if (!self.drop.start(self.display, offer, TEXT_URI_LIST, state)) return self.cancelDrop();
+    }
+
+    fn readDrop(self: *Shared) void {
+        switch (self.drop.drain(self.allocator)) {
+            .pending => return,
+            .failed => return self.cancelDrop(),
+            .done => {},
+        }
+        defer self.cancelDrop();
+        const offer = self.drop_offer orelse return;
+        if (self.drop_finish) offer.finish();
+        const target = self.drop.state orelse return;
+        const count = parseUriListIntoBuffers(self.drop.buf.items, &target.drop_paths_buf, &target.drop_slices);
+        if (count == 0) return;
+        const owner = target.owner orelse return;
+        owner.markDropped(count);
+    }
+
+    fn cancelDrop(self: *Shared) void {
+        self.drop.cancel();
+        if (self.drop_offer) |offer| offer.destroy();
+        self.drop_offer = null;
+        self.drop_finish = false;
+    }
+
     fn deinitXkb(self: *Shared) void {
+        self.compose.deinit();
         if (self.xkb_state) |state| {
             xkb.xkb_state_unref(state);
             self.xkb_state = null;
@@ -141,6 +262,32 @@ const Shared = struct {
         if (cp < 0x20 or cp == 0x7F or cp > std.math.maxInt(u21)) return null;
         const mods = self.currentMods();
         if ((mods.ctrl and !mods.alt) or mods.super) return null;
+        return @intCast(cp);
+    }
+
+    fn unshiftedForKey(self: *const Shared, evdev_key: u32) ?u21 {
+        return self.charAtLevel(evdev_key, 0);
+    }
+
+    fn typedForKey(self: *const Shared, evdev_key: u32) ?u21 {
+        const state = self.xkb_state orelse return null;
+        const kc = evdev_key + 8;
+        return self.charAtLevel(evdev_key, xkb.xkb_state_key_get_level(state, kc, xkb.xkb_state_key_get_layout(state, kc)));
+    }
+
+    fn charAtLevel(self: *const Shared, evdev_key: u32, level: u32) ?u21 {
+        const state = self.xkb_state orelse return null;
+        const map = self.xkb_keymap orelse return null;
+        const kc = evdev_key + 8;
+
+        var syms: ?[*]const u32 = null;
+        if (xkb.xkb_keymap_key_get_syms_by_level(map, kc, xkb.xkb_state_key_get_layout(state, kc), level, &syms) != 1)
+            return null;
+
+        const cp = xkb.xkb_keysym_to_utf32((syms orelse return null)[0]);
+        if (cp < 0x20 or cp == 0x7F or cp > std.math.maxInt(u21))
+            return null;
+
         return @intCast(cp);
     }
 
@@ -180,8 +327,9 @@ const Shared = struct {
         const interval = @max(@as(i64, 1), @divTrunc(1000, @as(i64, self.repeat_rate)));
         var emitted: usize = 0;
         while (now >= self.repeat_next_ms and emitted < 8) : (emitted += 1) {
-            owner.pushKey(@backingInt(self.repeat_window_key), .repeat, self.currentMods());
-            if (self.repeat_char) |cp| owner.pushChar(cp);
+            const typed = if (self.repeat_key) |k| self.typedForKey(k) orelse 0 else 0;
+            owner.pushKeyText(@backingInt(self.repeat_window_key), .repeat, self.currentMods(), typed);
+            if (self.repeat_char) |cp| typeChar(owner, cp);
             self.repeat_next_ms += interval;
         }
     }
@@ -193,6 +341,21 @@ const Shared = struct {
         const data_device = manager.getDataDevice(seat) catch return;
         data_device.setListener(*Shared, dataDeviceListener, self);
         self.data_device = data_device;
+    }
+
+    fn setupTextInput(self: *Shared) void {
+        if (self.ime.text_input != null) return;
+        const manager = self.text_input_manager orelse return;
+        const seat = self.seat orelse return;
+        const ti = manager.getTextInput(seat) catch return;
+        ti.setListener(*Shared, textInputListener, self);
+        self.ime.text_input = ti;
+    }
+
+    fn typeChar(owner: *window.Window, cp: u21) void {
+        var buf: [4]u8 = undefined;
+        const n = std.unicode.utf8Encode(cp, &buf) catch return;
+        owner.pushText(buf[0..n]);
     }
 
     fn offerMime(self: *Shared, data_offer: *wl.DataOffer, mime: [*:0]const u8) void {
@@ -241,6 +404,7 @@ const Shared = struct {
         if (state.xkb_keymap) |old| xkb.xkb_keymap_unref(old);
         state.xkb_keymap = new_keymap;
         state.xkb_state = new_state;
+        state.compose.init(context);
     }
 };
 
@@ -266,6 +430,10 @@ const State = struct {
     cursor_visible: bool = true,
     cursor_shape: input_types.CursorShape = .default,
     cursor: ?*wl.Cursor = null,
+    undecorated: bool,
+    resizable: bool,
+    resize_edge: ResizeEdge = .none,
+    caption_press_ms: ?u32 = null,
     pointer_enter_serial: u32 = 0,
     cursor_pos: [2]f64 = .{ 0, 0 },
     pending_axis: [2]f64 = .{ 0, 0 },
@@ -284,6 +452,8 @@ const State = struct {
             shared.keyboard_state = null;
             shared.clearRepeat();
         }
+        if (shared.paste.state == self) shared.paste.cancel();
+        if (shared.drop.state == self) shared.cancelDrop();
         if (shared.drag_state == self) {
             if (shared.drag_offer) |offer| offer.destroy();
             shared.drag_offer = null;
@@ -332,7 +502,7 @@ const State = struct {
             _ = self.shared.display.flush();
             return;
         }
-        const cursor = self.cursor orelse return;
+        const cursor = self.edgeCursor() orelse self.cursor orelse return;
         if (cursor.image_count == 0) return;
         const image = cursor.images[0];
         const buffer = image.getBuffer() catch return;
@@ -344,11 +514,102 @@ const State = struct {
         _ = self.shared.display.flush();
     }
 
+    fn edgeCursor(self: *const State) ?*wl.Cursor {
+        const theme = self.shared.cursor_theme orelse return null;
+        const name: [*:0]const u8 = switch (self.resize_edge) {
+            .top => "top_side",
+            .bottom => "bottom_side",
+            .left => "left_side",
+            .right => "right_side",
+            .top_left => "top_left_corner",
+            .top_right => "top_right_corner",
+            .bottom_left => "bottom_left_corner",
+            .bottom_right => "bottom_right_corner",
+            else => return null,
+        };
+        return theme.getCursor(name);
+    }
+
+    fn resizeEdgeAt(self: *const State, pos: [2]f64) ResizeEdge {
+        if (!self.undecorated or !self.resizable or self.display_mode != .windowed) {
+            return .none;
+        }
+        const w: f64 = @floatFromInt(self.logical_size.width);
+        const h: f64 = @floatFromInt(self.logical_size.height);
+        var edges: c_int = 0;
+        if (pos[1] < RESIZE_BORDER) {
+            edges |= @backingInt(ResizeEdge.top);
+        }
+        if (pos[1] >= h - RESIZE_BORDER) {
+            edges |= @backingInt(ResizeEdge.bottom);
+        }
+        if (pos[0] < RESIZE_BORDER) {
+            edges |= @backingInt(ResizeEdge.left);
+        }
+        if (pos[0] >= w - RESIZE_BORDER) {
+            edges |= @backingInt(ResizeEdge.right);
+        }
+        return @fromBackingInt(@intCast(edges));
+    }
+
+    fn updateResizeEdge(self: *State) void {
+        const edge = self.resizeEdgeAt(self.cursor_pos);
+        if (edge == self.resize_edge) {
+            return;
+        }
+        self.resize_edge = edge;
+        self.applyCursor();
+    }
+
+    fn startWindowGesture(self: *State, button: input_types.MouseButton, serial: u32, time: u32) bool {
+        const seat = self.shared.seat orelse return false;
+        if (button == .left and self.resize_edge != .none) {
+            self.toplevel.resize(seat, serial, self.resize_edge);
+            _ = self.shared.display.flush();
+            return true;
+        }
+        const owner = self.owner orelse return false;
+        if (owner.hitRegionAt(self.cursor_pos) != .caption) {
+            return false;
+        }
+        switch (button) {
+            .left => {
+                const previous = self.caption_press_ms;
+                self.caption_press_ms = time;
+                if (previous != null and time -% previous.? < DOUBLE_CLICK_MS) {
+                    self.caption_press_ms = null;
+                    self.toggleMaximized();
+                    return true;
+                }
+                self.toplevel.move(seat, serial);
+            },
+            .right => self.toplevel.showWindowMenu(seat, serial, @intFromFloat(self.cursor_pos[0]), @intFromFloat(self.cursor_pos[1])),
+            else => return false,
+        }
+        _ = self.shared.display.flush();
+        return true;
+    }
+
+    fn toggleMaximized(self: *State) void {
+        switch (self.display_mode) {
+            .maximized => self.desired_display_mode = .windowed,
+            .windowed, .fullscreen => self.desired_display_mode = .maximized,
+        }
+        self.reconcileDisplayMode();
+    }
+
     fn reconcileDisplayMode(self: *State) void {
         if (self.display_mode_transition or self.display_mode == self.desired_display_mode) return;
-        switch (self.desired_display_mode) {
-            .windowed => self.toplevel.unsetFullscreen(),
-            .fullscreen => self.toplevel.setFullscreen(null),
+        switch (self.display_mode) {
+            .fullscreen => self.toplevel.unsetFullscreen(),
+            .maximized => switch (self.desired_display_mode) {
+                .fullscreen => self.toplevel.setFullscreen(null),
+                .windowed, .maximized => self.toplevel.unsetMaximized(),
+            },
+            .windowed => switch (self.desired_display_mode) {
+                .fullscreen => self.toplevel.setFullscreen(null),
+                .windowed, .maximized => self.toplevel.setMaximized(),
+            },
         }
         self.surface.commit();
         _ = self.shared.display.flush();
@@ -402,6 +663,17 @@ pub const Backend = struct {
                 .events = @intCast(posix.POLL.IN),
                 .revents = 0,
             },
+            // poll ignores negative fds while no transfer is in flight.
+            .{
+                .fd = shared.paste.fd,
+                .events = @intCast(posix.POLL.IN),
+                .revents = 0,
+            },
+            .{
+                .fd = shared.drop.fd,
+                .events = @intCast(posix.POLL.IN),
+                .revents = 0,
+            },
         };
         const ready = posix.poll(&fds, timeout_ms) catch 0;
         if (ready > 0 and (fds[0].revents & @as(i16, @intCast(posix.POLL.IN))) != 0) {
@@ -411,6 +683,12 @@ pub const Backend = struct {
         }
         if (ready > 0 and (fds[1].revents & @as(i16, @intCast(posix.POLL.IN))) != 0) {
             drainWake(shared);
+        }
+        if (ready > 0 and fds[2].revents != 0) {
+            shared.readPaste();
+        }
+        if (ready > 0 and fds[3].revents != 0) {
+            shared.readDrop();
         }
 
         _ = shared.display.dispatchPending();
@@ -471,6 +749,12 @@ pub const Backend = struct {
         self.state.applyCursor();
     }
 
+    pub fn updateTextInput(self: *Self, owner: *window.Window, change: window.TextInputState.Change) void {
+        // The UI ended the preedit; without a reset the next key types the accent again.
+        if (change.any()) self.state.shared.compose.reset();
+        self.state.shared.ime.sync(self.state.surface, owner, change);
+    }
+
     pub fn setCursorShape(self: *Self, shape: input_types.CursorShape) void {
         if (self.state.cursor_shape == shape) return;
         self.state.cursor_shape = shape;
@@ -510,6 +794,15 @@ pub const Backend = struct {
         return self.state.display_mode;
     }
 
+    pub fn minimize(self: *Self) void {
+        self.state.toplevel.setMinimized();
+        _ = self.state.shared.display.flush();
+    }
+
+    pub fn nativeControlsWidth(_: *const Self) f32 {
+        return 0;
+    }
+
     pub fn consumeResize(self: *Self, owner: *window.Window) ?window.ResizeEvent {
         if (!owner.resized) return null;
         owner.resized = false;
@@ -524,21 +817,25 @@ pub const Backend = struct {
         return drop_paths.copy(allocator, self.state.drop_slices[0..n]);
     }
 
-    pub fn getClipboardText(self: *Self, allocator: std.mem.Allocator) !?[]u8 {
+    pub fn requestPaste(self: *Self, owner: *window.Window) !void {
         const shared = self.state.shared;
-        if (shared.selection_offer) |offer| {
-            const mime = shared.selection_mime orelse return null;
-            return receiveClipboardText(shared, allocator, offer, mime) catch null;
+        shared.paste.cancel();
+
+        if (shared.clipboard_source != null) {
+            owner.pushPaste(shared.clipboard_text);
+            return;
         }
-        if (shared.clipboard_text.len > 0) return try allocator.dupe(u8, shared.clipboard_text);
-        return null;
+
+        const offer = shared.selection_offer orelse return;
+        const mime = shared.selection_mime orelse return;
+        _ = shared.paste.start(shared.display, offer, mime, self.state);
     }
 
     pub fn setClipboardText(self: *Self, _: std.mem.Allocator, text: []const u8) !bool {
         const shared = self.state.shared;
         const manager = shared.data_device_manager orelse return false;
         const data_device = shared.data_device orelse return false;
-        if (shared.last_keyboard_serial == 0) return false;
+        if (shared.last_input_serial == 0) return false;
 
         const source = manager.createDataSource() catch return false;
         errdefer source.destroy();
@@ -553,7 +850,7 @@ pub const Backend = struct {
         shared.clipboard_source = source;
         shared.clipboard_text = owned_text;
 
-        data_device.setSelection(source, shared.last_keyboard_serial);
+        data_device.setSelection(source, shared.last_input_serial);
         _ = shared.display.flush();
         return true;
     }
@@ -581,6 +878,7 @@ fn initShared(io: std.Io, allocator: std.mem.Allocator) !*Shared {
         .allocator = allocator,
         .display = display,
         .registry = registry,
+        .ime = .{ .allocator = allocator },
     };
     shared.wake_pipe = try createWakePipe();
     errdefer {
@@ -625,13 +923,23 @@ fn initWindow(shared: *Shared, cfg: window.Config) !Backend {
         .logical_size = .{ .width = cfg.width, .height = cfg.height },
         .configured_size = .{ .width = cfg.width, .height = cfg.height },
         .title_buf = title_buf,
+        .undecorated = cfg.decorations == .none,
+        .resizable = cfg.resizable,
     };
     errdefer if (state.decoration) |decoration| decoration.destroy();
     surface.setListener(*State, surfaceListener, state);
     xdg_surface.setListener(*State, xdgSurfaceListener, state);
     state.toplevel.setListener(*State, xdgToplevelListener, state);
     state.toplevel.setTitle(@ptrCast(&state.title_buf));
-    state.toplevel.setAppId("knots");
+    var exe_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const app_id = cfg.app_id orelse executableName(shared.io, &exe_buf);
+    if (app_id.len >= 256) {
+        return error.AppIdTooLong;
+    }
+    var app_id_buf: [256:0]u8 = undefined;
+    @memcpy(app_id_buf[0..app_id.len], app_id);
+    app_id_buf[app_id.len] = 0;
+    state.toplevel.setAppId(@ptrCast(&app_id_buf));
 
     if (!cfg.resizable) {
         state.toplevel.setMinSize(@intCast(cfg.width), @intCast(cfg.height));
@@ -645,7 +953,10 @@ fn initWindow(shared: *Shared, cfg: window.Config) !Backend {
     if (shared.decoration_manager) |manager| {
         if (manager.getToplevelDecoration(state.toplevel)) |decoration| {
             decoration.setListener(*State, decorationListener, state);
-            decoration.setMode(.server_side);
+            switch (cfg.decorations) {
+                .native => decoration.setMode(.server_side),
+                .none => decoration.setMode(.client_side),
+            }
             state.decoration = decoration;
         } else |_| {}
     }
@@ -667,6 +978,12 @@ fn initWindow(shared: *Shared, cfg: window.Config) !Backend {
     return .{ .state = state };
 }
 
+/// Desktops match the app ID against a .desktop file, which is usually named after the executable.
+fn executableName(io: std.Io, buf: []u8) []const u8 {
+    const len = std.process.executablePath(io, buf) catch return "knots";
+    return std.fs.path.basename(buf[0..len]);
+}
+
 fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, state: *Shared) void {
     switch (event) {
         .global => |global| {
@@ -679,6 +996,7 @@ fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, state: *Sh
                 seat.setListener(*Shared, seatListener, state);
                 state.seat = seat;
                 state.setupDataDevice();
+                state.setupTextInput();
             } else if (std.mem.orderZ(u8, global.interface, wl.Output.interface.name) == .eq) {
                 if (state.output_count >= state.outputs.len) return;
                 const output = registry.bind(global.name, wl.Output, global.version) catch return;
@@ -692,6 +1010,9 @@ fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, state: *Sh
                 const wm_base = registry.bind(global.name, xdg.WmBase, global.version) catch return;
                 wm_base.setListener(*Shared, wmBaseListener, state);
                 state.wm_base = wm_base;
+            } else if (std.mem.orderZ(u8, global.interface, zwp.TextInputManagerV3.interface.name) == .eq) {
+                state.text_input_manager = registry.bind(global.name, zwp.TextInputManagerV3, 1) catch null;
+                state.setupTextInput();
             } else if (std.mem.orderZ(u8, global.interface, zxdg.DecorationManagerV1.interface.name) == .eq) {
                 state.decoration_manager = registry.bind(global.name, zxdg.DecorationManagerV1, global.version) catch null;
             }
@@ -755,6 +1076,9 @@ fn xdgToplevelListener(_: *xdg.Toplevel, event: xdg.Toplevel.Event, state: *Stat
                 if (configured_state == @backingInt(xdg.Toplevel.State.fullscreen)) {
                     mode = .fullscreen;
                     break;
+                }
+                if (configured_state == @backingInt(xdg.Toplevel.State.maximized)) {
+                    mode = .maximized;
                 }
             }
             const changed = state.display_mode != mode;
@@ -838,15 +1162,25 @@ fn pointerListener(_: *wl.Pointer, event: wl.Pointer.Event, shared: *Shared) voi
             state.pointer_enter_serial = enter.serial;
             state.cursor_pos = .{ enter.surface_x.toDouble(), enter.surface_y.toDouble() };
             if (state.owner) |owner| owner.setCursorPos(state.cursor_pos);
+            state.resize_edge = state.resizeEdgeAt(state.cursor_pos);
             state.applyCursor();
         },
-        .leave => shared.pointer_state = null,
+        .leave => {
+            const state = shared.pointer_state orelse return;
+            shared.pointer_state = null;
+            state.resize_edge = .none;
+            if (state.owner) |owner| {
+                owner.pointerLeft();
+            }
+        },
         .motion => |motion| {
             const state = shared.pointer_state orelse return;
             state.cursor_pos = .{ motion.surface_x.toDouble(), motion.surface_y.toDouble() };
             if (state.owner) |owner| owner.setCursorPos(state.cursor_pos);
+            state.updateResizeEdge();
         },
         .button => |button| {
+            shared.last_input_serial = button.serial;
             const state = shared.pointer_state orelse return;
             const translated: ?input_types.MouseButton = switch (button.button) {
                 BTN_LEFT => .left,
@@ -856,7 +1190,14 @@ fn pointerListener(_: *wl.Pointer, event: wl.Pointer.Event, shared: *Shared) voi
                 BTN_EXTRA => .forward,
                 else => null,
             };
-            if (translated) |mouse_button| if (state.owner) |owner| owner.setMouseButton(mouse_button, button.state == .pressed, state.cursor_pos);
+            const mouse_button = translated orelse return;
+            const pressed = button.state == .pressed;
+            if (pressed and state.startWindowGesture(mouse_button, button.serial, button.time)) {
+                return;
+            }
+            if (state.owner) |owner| {
+                owner.setMouseButton(mouse_button, pressed, state.cursor_pos);
+            }
         },
         .axis => |axis| {
             const state = shared.pointer_state orelse return;
@@ -903,12 +1244,14 @@ fn keyboardListener(_: *wl.Keyboard, event: wl.Keyboard.Event, state: *Shared) v
             std.log.warn("failed to load Wayland XKB keymap: {s}", .{@errorName(err)});
         },
         .enter => |enter| {
+            state.last_input_serial = enter.serial;
             const target = findState(state, enter.surface orelse return) orelse return;
             state.keyboard_state = target;
             if (target.owner) |owner| owner.setFocused(true);
         },
         .leave => {
             state.clearRepeat();
+            state.compose.reset();
             if (state.keyboard_state) |target| {
                 if (target.owner) |owner| owner.setFocused(false);
             }
@@ -916,14 +1259,22 @@ fn keyboardListener(_: *wl.Keyboard, event: wl.Keyboard.Event, state: *Shared) v
         },
         .key => |key| {
             const owner = (state.keyboard_state orelse return).owner orelse return;
-            const translated = keymap.translateEvdev(key.key);
+            const translated = input_types.layoutKey(keymap.translateEvdev(key.key), state.unshiftedForKey(key.key));
             const mods = state.currentMods();
-            state.last_keyboard_serial = key.serial;
+            state.last_input_serial = key.serial;
             switch (key.state) {
                 .pressed => {
+                    // Dead keys and Compose sequences belong to the composition, not the UI.
+                    if (state.xkb_state) |xkb_state| {
+                        const keysym = xkb.xkb_state_key_get_one_sym(xkb_state, key.key + 8);
+                        if (state.compose.feed(owner, keysym) == .consumed) {
+                            state.clearRepeat();
+                            return;
+                        }
+                    }
                     const cp = state.utf32ForKey(key.key);
-                    owner.pushKey(@backingInt(translated), .press, mods);
-                    if (cp) |ch| owner.pushChar(ch);
+                    owner.pushKeyText(@backingInt(translated), .press, mods, state.typedForKey(key.key) orelse 0);
+                    if (cp) |ch| Shared.typeChar(owner, ch);
                     state.startRepeat(key.key, translated, cp);
                 },
                 .released => {
@@ -954,6 +1305,18 @@ fn keyboardListener(_: *wl.Keyboard, event: wl.Keyboard.Event, state: *Shared) v
             state.repeat_delay_ms = @max(repeat.delay, 0);
             if (state.repeat_rate == 0) state.clearRepeat();
         },
+    }
+}
+
+fn textInputListener(_: *zwp.TextInputV3, event: zwp.TextInputV3.Event, state: *Shared) void {
+    const surface = switch (event) {
+        .enter => |enter| enter.surface,
+        else => state.ime.entered,
+    };
+    const owner = if (surface) |s| if (findState(state, s)) |target| target.owner else null else null;
+    state.ime.handle(event, owner);
+    if (event == .enter) {
+        if (owner) |o| state.ime.sync(surface.?, o, .{ .started = true });
     }
 }
 
@@ -993,20 +1356,14 @@ fn dataDeviceListener(_: *wl.DataDevice, event: wl.DataDevice.Event, state: *Sha
         },
         .drop => {
             const offer = state.drag_offer orelse return;
-            defer {
-                offer.destroy();
-                state.drag_offer = null;
-                state.drag_state = null;
-                state.drag_has_uri = false;
-                state.drag_action_ok = false;
-            }
-            const target = state.drag_state orelse return;
-            if (!state.drag_has_uri) return;
-            const count = receiveUriListDrop(target, offer) catch 0;
-            if (count > 0) {
-                if (target.owner) |owner| owner.markDropped(count);
-            }
-            if (offer.getVersion() >= 3 and state.drag_action_ok) offer.finish();
+            const target = state.drag_state;
+            const accepted = state.drag_has_uri;
+            const finish = offer.getVersion() >= 3 and state.drag_action_ok;
+            state.drag_offer = null;
+            state.drag_state = null;
+            state.drag_has_uri = false;
+            state.drag_action_ok = false;
+            state.startDrop(offer, target, accepted, finish);
         },
         .selection => |selection| {
             if (state.selection_offer) |old| {
@@ -1067,58 +1424,6 @@ fn dataSourceListener(data_source: *wl.DataSource, event: wl.DataSource.Event, s
         },
         .target, .dnd_drop_performed, .dnd_finished, .action => {},
     }
-}
-
-fn receiveClipboardText(state: *Shared, allocator: std.mem.Allocator, offer: *wl.DataOffer, mime: [*:0]const u8) !?[]u8 {
-    var fds: [2]i32 = undefined;
-    switch (posix.errno(linux.pipe2(&fds, .{ .CLOEXEC = true }))) {
-        .SUCCESS => {},
-        else => return null,
-    }
-    defer closeFd(fds[0]);
-
-    offer.receive(mime, fds[1]);
-    closeFd(fds[1]);
-    _ = state.display.flush();
-
-    var out: std.ArrayList(u8) = .empty;
-    errdefer out.deinit(allocator);
-
-    var buf: [4096]u8 = undefined;
-    while (true) {
-        const n = try posix.read(fds[0], &buf);
-        if (n == 0) break;
-        if (out.items.len + n > MAX_CLIPBOARD_BYTES) {
-            out.deinit(allocator);
-            return null;
-        }
-        try out.appendSlice(allocator, buf[0..n]);
-    }
-
-    return try out.toOwnedSlice(allocator);
-}
-
-fn receiveUriListDrop(state: *State, offer: *wl.DataOffer) !usize {
-    var fds: [2]i32 = undefined;
-    switch (posix.errno(linux.pipe2(&fds, .{ .CLOEXEC = true }))) {
-        .SUCCESS => {},
-        else => return error.PipeFailed,
-    }
-    defer closeFd(fds[0]);
-
-    offer.receive(TEXT_URI_LIST, fds[1]);
-    closeFd(fds[1]);
-    _ = state.shared.display.flush();
-
-    var data: [8192]u8 = undefined;
-    var len: usize = 0;
-    while (len < data.len) {
-        const n = try posix.read(fds[0], data[len..]);
-        if (n == 0) break;
-        len += n;
-    }
-
-    return parseUriListIntoBuffers(data[0..len], &state.drop_paths_buf, &state.drop_slices);
 }
 
 fn decodeFileUriToBuffer(text: []const u8, out: []u8) ?[]const u8 {

@@ -19,7 +19,10 @@ pub const Text = draft_mod.Text;
 const UTF8_BOM = "\xEF\xBB\xBF";
 
 pub const Built = struct {
+    /// On the profile.
     ops: []const patch.Op,
+    /// On the global settings: Log Monitoring, which every profile shares.
+    global_ops: []const patch.Op,
     notes: []const Text,
     /// See Draft.skipped.
     skipped: []const []const u8,
@@ -82,7 +85,13 @@ pub fn build(arena: std.mem.Allocator, text: []const u8, source_profile: ?[]cons
     }
     // Imported positions come from a different setup, so ghost outlines of them would only clutter drags.
     if (chosen.len > 0) try draft.setBool("snapping.showGhostPositionBorders", false);
-    return .{ .ops = try draft_mod.toOps(arena, &draft, doc), .notes = draft.notes.items, .skipped = draft.skipped.items };
+    const chatlog = draft.root.fetchOrderedRemove("chatlog");
+    return .{
+        .ops = try draft_mod.toOps(arena, &draft, doc),
+        .global_ops = if (chatlog) |entry| try draft_mod.sectionOps(arena, config.GlobalConfig, entry.key, entry.value) else &.{},
+        .notes = draft.notes.items,
+        .skipped = draft.skipped.items,
+    };
 }
 
 fn detect(arena: std.mem.Allocator, raw_text: []const u8) !?Source {
@@ -109,4 +118,35 @@ fn evexProfile(root: Value, requested: ?[]const u8) ?[]const u8 {
         if (values.objectAt(values.objectAt(root, "_Profiles"), name) != null) return name;
     }
     return eve_x.defaultProfile(root);
+}
+
+const testing = std.testing;
+
+test "detect tells each format apart and skips EVE-X's byte-order mark" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    try testing.expect((try detect(arena, "{\"app\":\"" ++ config.PROFILE_FORMAT_IDENTIFIER ++ "\"}")).? == .maj);
+    try testing.expect((try detect(arena, UTF8_BOM ++ "{\"_Profiles\":{\"Default\":{}}}")).? == .evex);
+    try testing.expect((try detect(arena, "{\"FlatLayout\":{}}")).? == .eveo);
+    try testing.expect((try detect(arena, "[ui]\nhighlightColor=#FF0000\n")).? == .apm);
+}
+
+test "detect rejects JSON of no known tool and text with no INI sections" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    try testing.expect(try detect(arena, "{\"something\":1}") == null);
+    try testing.expect(try detect(arena, "[1, 2, 3]") == null);
+    try testing.expect(try detect(arena, "just some text") == null);
+    try testing.expect(try detect(arena, "") == null);
+}
+
+test "evexProfile takes the requested profile only when the file has it" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const root = try std.json.parseFromSliceLeaky(Value, arena_state.allocator(), "{\"_Profiles\":{\"Default\":{},\"Mining\":{}}}", .{});
+    try testing.expectEqualStrings("Mining", evexProfile(root, "Mining").?);
+    try testing.expectEqualStrings("Default", evexProfile(root, "Deleted").?);
+    try testing.expectEqualStrings("Default", evexProfile(root, null).?);
 }

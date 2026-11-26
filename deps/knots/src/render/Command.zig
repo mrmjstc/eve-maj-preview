@@ -1,9 +1,29 @@
-const types = @import("render_types");
+const Material = @import("Material.zig");
 const math = @import("math");
 const Clip = @import("Clip.zig");
 
 /// Erased so `ui` builds draw lists without a GPU backend; the renderer casts back.
 pub const Extension = enum(u64) { knots = 0x6b6e6f7473, _ };
+
+/// Pixel layout of `TextureSource.Pixels`. Each renderer maps it to its own texture
+/// format, so the packet does not depend on a graphics API. Depth and integer formats
+/// are not listed, because the UI only samples color images.
+pub const PixelFormat = enum {
+    rgba8,
+    rgba8_srgb,
+    bgra8,
+    bgra8_srgb,
+    r8,
+    rgba32f,
+
+    pub fn bytesPerPixel(format: PixelFormat) u32 {
+        return switch (format) {
+            .r8 => 1,
+            .rgba8, .rgba8_srgb, .bgra8, .bgra8_srgb => 4,
+            .rgba32f => 16,
+        };
+    }
+};
 
 pub const TextureHandle = struct {
     extension: Extension,
@@ -41,7 +61,7 @@ pub const TextureSource = union(enum) {
         data: []const u8,
         width: u32,
         height: u32,
-        format: types.Texture.Format,
+        format: PixelFormat,
         bytes_per_row: ?u32,
         version: u64,
         force_upload: bool,
@@ -97,7 +117,7 @@ pub const Command = struct {
     pub const Backdrop = struct {
         bounds: math.Rect,
         corner_radius: [4]f32,
-        material: types.Material,
+        material: Material,
         /// Below `groups_max`.
         group: u32,
 

@@ -8,6 +8,7 @@ const config_mod = @import("../../config.zig");
 
 const Value = std.json.Value;
 const Config = config_mod.Config;
+const ChatlogConfig = config_mod.ChatlogConfig;
 const Draft = draft_mod.Draft;
 const Section = draft_mod.Section;
 
@@ -16,10 +17,16 @@ const SECTIONS = std.StaticStringMap(SectionWords).initComptime(.{
     .{ "autoMinimize", SectionWords{ .title = "Auto-Minimize", .hint = "Minimize inactive clients" } },
     .{ "bounty", SectionWords{ .title = "Bounty Tracker", .hint = "Bounty log parsing" } },
     .{ "characters", SectionWords{ .title = "Characters", .hint = "Positions, sizes, colors, hotkeys ({n})" } },
+    .{ "chatAlerts", SectionWords{ .title = "Chat Events", .hint = "Chat channel alert rules ({n})" } },
     .{ "chatlog", SectionWords{ .title = "Chatlog Monitoring", .hint = "Chat/game log directories and triggers" } },
     .{ "closeAll", SectionWords{ .title = "Close All", .hint = "Close-all behavior" } },
     .{ "combat", SectionWords{ .title = "Combat Tracker", .hint = "Combat log parsing" } },
-    .{ "display", SectionWords{ .title = "Display", .hint = "List view appearance" } },
+    .{ "display", SectionWords{ .title = "Display", .hint = "Thumbnail Placement" } },
+    .{ "listView", SectionWords{ .title = "Client List", .hint = "List view appearance" } },
+    .{ "historyPanel", SectionWords{ .title = "Alert History", .hint = "Panel of recent alerts" } },
+    .{ "mapPanel", SectionWords{ .title = "Map", .hint = "Region map, live stats and routes" } },
+    .{ "intelPanel", SectionWords{ .title = "Intel Panel", .hint = "Intel reports from chat" } },
+    .{ "intel", SectionWords{ .title = "Intel Pins", .hint = "How long intel marks a system, and clear calls" } },
     .{ "hotkeyGroups", SectionWords{ .title = "Hotkey Groups", .hint = "Character cycling groups ({n})" } },
     .{ "hotkeys", SectionWords{ .title = "Global Hotkeys", .hint = "App-wide hotkeys" } },
     .{ "interaction", SectionWords{ .title = "Interaction", .hint = "Click/drag behavior" } },
@@ -27,8 +34,10 @@ const SECTIONS = std.StaticStringMap(SectionWords).initComptime(.{
     .{ "ping", SectionWords{ .title = "Ping", .hint = "Per-client ping overlay" } },
     .{ "resources", SectionWords{ .title = "Resource Usage", .hint = "Per-client CPU/RAM/VRAM overlay" } },
     .{ "snapping", SectionWords{ .title = "Snapping", .hint = "Thumbnail snapping" } },
+    .{ "panelSnapping", SectionWords{ .title = "Panel Snapping", .hint = "Panel snapping" } },
     .{ "systemColors", SectionWords{ .title = "System Colors", .hint = "Per-system name colors ({n})" } },
-    .{ "thumbnail", SectionWords{ .title = "Thumbnail Appearance & Notifications", .hint = "Border/text styling, per-state visuals, alert notifications" } },
+    .{ "thumbnail", SectionWords{ .title = "Thumbnail Appearance", .hint = "Border/text styling, per-state visuals" } },
+    .{ "notifications", SectionWords{ .title = "Alert Options", .hint = "Game event alerts and speech" } },
     .{ "thumbnailSpaces", SectionWords{ .title = "Thumbnail Spaces", .hint = "Screen regions hotkey groups fill ({n})" } },
     .{ "timer", SectionWords{ .title = "Scan Timer", .hint = "Window scan interval" } },
     .{ "windowFilters", SectionWords{ .title = "Window Filters", .hint = "Window matching rules for other apps ({n})" } },
@@ -56,11 +65,21 @@ pub fn sections(draft: *Draft, root: Value) ![]const Section {
         const words = comptime sectionWords(f.name);
         if (comptime isList(f.type)) {
             const item_count = if (raw) |value| (if (value == .array) value.array.items.len else 0) else 0;
-            try out.append(draft.arena, .{ .id = f.name, .title = words.title, .hint = try draft.countText(words.hint, item_count), .available = item_count > 0 });
+            try out.append(draft.arena, .{
+                .id = f.name,
+                .title = words.title,
+                .hint = try draft.countText(words.hint, item_count),
+                .available = item_count > 0,
+            });
         } else {
             const is_in_file = if (raw) |value| value != .null else false;
             try out.append(draft.arena, .{ .id = f.name, .title = words.title, .hint = .{ .key = words.hint }, .available = is_in_file });
         }
+    }
+    // Log Monitoring moved into the global settings, but a profile saved before then still holds it.
+    if (config_mod.migrateProfileChatlog(migrated)) |_| {
+        const words = comptime sectionWords("chatlog");
+        try out.append(draft.arena, .{ .id = "chatlog", .title = words.title, .hint = .{ .key = words.hint }, .available = true });
     }
     return out.items;
 }
@@ -78,11 +97,21 @@ pub fn build(draft: *Draft, text: []const u8, root: Value, chosen: []const []con
         if (comptime isStamp(f.name)) continue;
         if (draft_mod.isChosen(chosen, f.name)) try importSection(draft, &config, readable_root, f.name);
     }
+    if (draft_mod.isChosen(chosen, "chatlog")) try importChatlog(draft, readable_root);
     for (skipped.items) |path| {
         const section_end = std.mem.findScalar(u8, path, '.') orelse path.len;
         if (!draft_mod.isChosen(chosen, path[0..section_end])) continue;
         try draft.skipped.append(draft.arena, path);
     }
+}
+
+/// Read as loading reads it, expanding its folders, since the global settings take it as it comes.
+fn importChatlog(draft: *Draft, root: Value) !void {
+    var section = config_mod.migrateProfileChatlog(root) orelse return;
+    if (!readable.dropUnreadable(ChatlogConfig.Wire, draft.arena, &section, null)) return;
+    const saved = try std.json.parseFromValueLeaky(ChatlogConfig.Wire, draft.arena, section, readable.PARSE_OPTIONS);
+    const chatlog = try ChatlogConfig.fromWire(saved, draft.arena);
+    try draft.root.put(draft.arena, "chatlog", try draft_mod.toValue(draft.arena, ChatlogConfig, &chatlog, &.{}));
 }
 
 fn sectionWords(comptime name: []const u8) SectionWords {
@@ -136,4 +165,62 @@ fn present(arena: std.mem.Allocator, loaded: Value, raw: Value) !Value {
         return .{ .array = out };
     }
     return loaded;
+}
+
+const testing = std.testing;
+
+fn parseTestObject(arena: std.mem.Allocator, text: []const u8) !Value {
+    return std.json.parseFromSliceLeaky(Value, arena, text, .{});
+}
+
+test "present keeps only the loaded fields the file has, at every depth" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const loaded = try parseTestObject(arena,
+        \\{"enabled":true,"delayMs":250,"nested":{"x":1,"y":2}}
+    );
+    const raw = try parseTestObject(arena,
+        \\{"delayMs":"250","nested":{"y":0},"unknown":1}
+    );
+    const kept = try present(arena, loaded, raw);
+    try testing.expectEqual(@as(usize, 2), kept.object.count());
+    try testing.expect(kept.object.get("enabled") == null);
+    try testing.expectEqual(@as(i64, 250), kept.object.get("delayMs").?.integer);
+    const nested = kept.object.get("nested").?;
+    try testing.expectEqual(@as(usize, 1), nested.object.count());
+    try testing.expectEqual(@as(i64, 2), nested.object.get("y").?.integer);
+}
+
+test "present takes a loaded list whole when its length differs from the file's" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const loaded = try parseTestObject(arena, "[{\"a\":1,\"b\":2}]");
+    const same_length = try present(arena, loaded, try parseTestObject(arena, "[{\"a\":0}]"));
+    try testing.expectEqual(@as(usize, 1), same_length.array.items[0].object.count());
+    const other_length = try present(arena, loaded, try parseTestObject(arena, "[]"));
+    try testing.expectEqual(@as(usize, 2), other_length.array.items[0].object.count());
+}
+
+test "dropPlaceholderCharacters keeps real names in order" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    var list = try parseTestObject(arena,
+        \\[{"name":"Pilot A"},{"name":"Example Name1"},{"name":""},{"name":"Pilot B"}]
+    );
+    dropPlaceholderCharacters(&list);
+    try testing.expectEqual(@as(usize, 2), list.array.items.len);
+    try testing.expectEqualStrings("Pilot A", values.stringAt(list.array.items[0], "name").?);
+    try testing.expectEqualStrings("Pilot B", values.stringAt(list.array.items[1], "name").?);
+}
+
+test "isFile needs this app's format identifier" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    try testing.expect(isFile(try parseTestObject(arena, "{\"app\":\"" ++ config_mod.PROFILE_FORMAT_IDENTIFIER ++ "\"}")));
+    try testing.expect(!isFile(try parseTestObject(arena, "{\"app\":\"something-else\"}")));
+    try testing.expect(!isFile(try parseTestObject(arena, "{}")));
 }

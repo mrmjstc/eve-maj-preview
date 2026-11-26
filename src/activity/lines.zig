@@ -24,10 +24,10 @@ const Entity = struct { name: []const u8, char: u8 };
 pub const ParsedMiningEvent = struct {
     amount: u32,
     name_buf: [64]u8 = undefined,
-    name_len: u8 = 0,
+    name_length: u8 = 0,
 
     pub fn name(self: *const ParsedMiningEvent) []const u8 {
-        return self.name_buf[0..self.name_len];
+        return self.name_buf[0..self.name_length];
     }
 };
 
@@ -96,25 +96,25 @@ pub fn parseBountyLine(line: []const u8) ?f32 {
 
     // u64, as a single payout can pass u32's 4.3 billion.
     var amount: u64 = 0;
-    var found_digit = false;
+    var has_digit = false;
     var i: usize = 0;
     while (i < stripped.len) {
         const byte = stripped[i];
         if (std.ascii.isDigit(byte)) {
             amount = appendDigit(u64, amount, byte) orelse return null;
-            found_digit = true;
+            has_digit = true;
             i += 1;
-        } else if (found_digit) {
-            const separator_len = thousandsSeparatorLen(stripped[i..]);
-            if (separator_len == 0) break;
-            i += separator_len;
+        } else if (has_digit) {
+            const separator_length = thousandsSeparatorLen(stripped[i..]);
+            if (separator_length == 0) break;
+            i += separator_length;
         } else if (byte == ' ' or byte == '\t') {
             i += 1;
         } else {
             return null;
         }
     }
-    if (!found_digit or amount == 0) return null;
+    if (!has_digit or amount == 0) return null;
     return @floatFromInt(amount);
 }
 
@@ -153,33 +153,33 @@ pub fn parseMiningLine(line: []const u8) ?ParsedMiningEvent {
     var result: ParsedMiningEvent = .{ .amount = leading.amount };
     if (ore_name.len > result.name_buf.len) return null;
     @memcpy(result.name_buf[0..ore_name.len], ore_name);
-    result.name_len = @intCast(ore_name.len);
+    result.name_length = @intCast(ore_name.len);
     return result;
 }
 
 /// Drops tags and decodes entities in one pass, so a decoded "<ALLY>" isn't then taken for a tag; truncated to `out_buf`'s length.
 pub fn stripHtml(html: []const u8, out_buf: []u8) []const u8 {
-    var out_len: usize = 0;
-    var in_tag = false;
+    var out_length: usize = 0;
+    var is_in_tag = false;
     var i: usize = 0;
-    while (i < html.len and out_len < out_buf.len) : (i += 1) {
+    while (i < html.len and out_length < out_buf.len) : (i += 1) {
         const byte = html[i];
         switch (byte) {
-            '<' => in_tag = true,
-            '>' => in_tag = false,
-            else => if (!in_tag) {
-                out_buf[out_len] = byte;
+            '<' => is_in_tag = true,
+            '>' => is_in_tag = false,
+            else => if (!is_in_tag) {
+                out_buf[out_length] = byte;
                 if (byte == '&') {
                     if (decodeEntity(html[i..])) |entity| {
-                        out_buf[out_len] = entity.char;
-                        i += entity.len - 1;
+                        out_buf[out_length] = entity.char;
+                        i += entity.length - 1;
                     }
                 }
-                out_len += 1;
+                out_length += 1;
             },
         }
     }
-    return out_buf[0..out_len];
+    return out_buf[0..out_length];
 }
 
 /// The whole number after leading spaces and tabs, and where its digits end; null for none, zero or one too large for u32.
@@ -207,9 +207,9 @@ fn thousandsSeparatorLen(text: []const u8) usize {
     return 0;
 }
 
-fn decodeEntity(text: []const u8) ?struct { char: u8, len: usize } {
+fn decodeEntity(text: []const u8) ?struct { char: u8, length: usize } {
     for (ENTITIES) |entity| {
-        if (std.mem.startsWith(u8, text, entity.name)) return .{ .char = entity.char, .len = entity.name.len };
+        if (std.mem.startsWith(u8, text, entity.name)) return .{ .char = entity.char, .length = entity.name.len };
     }
     return null;
 }

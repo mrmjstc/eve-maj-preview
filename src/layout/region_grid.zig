@@ -6,10 +6,29 @@ const types = @import("../config/types.zig");
 
 const Position = characters.Position;
 
-/// box_* is each column's or row's share of the region, which picks the column count; cell_* is the aspect-corrected thumbnail size it's positioned by.
-pub const RegionFitGrid = struct { columns: u32, rows: u32, box_width: i32, box_height: i32, cell_width: i32, cell_height: i32 };
+/// cell_* is the aspect-corrected thumbnail size the grid is positioned by.
+pub const RegionFitGrid = struct { columns: u32, rows: u32, cell_width: i32, cell_height: i32 };
 
 pub const RegionFitCap = struct { width: i32, height: i32 };
+
+/// What stays fixed while calculateRegionFitGrid tries grid shapes.
+const GridFit = struct {
+    region_width: i32,
+    region_height: i32,
+    spacing_x: i32,
+    spacing_y: i32,
+    aspect_ratio: f32,
+    max_cell: ?RegionFitCap,
+
+    fn gridFor(self: GridFit, columns: u32, rows: u32) RegionFitGrid {
+        const box_width = @max(@divTrunc(self.region_width - self.spacing_x * (@as(i32, @intCast(columns)) - 1), @as(i32, @intCast(columns))), 1);
+        const box_height = @max(@divTrunc(self.region_height - self.spacing_y * (@as(i32, @intCast(rows)) - 1), @as(i32, @intCast(rows))), 1);
+        const fit_width = if (self.max_cell) |cap| @min(box_width, cap.width) else box_width;
+        const fit_height = if (self.max_cell) |cap| @min(box_height, cap.height) else box_height;
+        const cell = fitAspect(fit_width, fit_height, self.aspect_ratio);
+        return .{ .columns = columns, .rows = rows, .cell_width = cell.width, .cell_height = cell.height };
+    }
+};
 
 /// Grows from one full-region cell a column or row at a time, whichever gives the bigger cell.
 pub fn calculateRegionFitGrid(region: win32.RECT, count: usize, spacing_x: i32, spacing_y: i32, aspect_ratio: f32, max_cell: ?RegionFitCap) RegionFitGrid {
@@ -23,13 +42,21 @@ pub fn calculateRegionFitGrid(region: win32.RECT, count: usize, spacing_x: i32, 
     else
         false;
 
+    const fit: GridFit = .{
+        .region_width = region_width,
+        .region_height = region_height,
+        .spacing_x = spacing_x,
+        .spacing_y = spacing_y,
+        .aspect_ratio = aspect_ratio,
+        .max_cell = max_cell,
+    };
     var columns: u32 = 1;
     var rows: u32 = 1;
-    var grid = regionFitGridForSize(region_width, region_height, columns, rows, spacing_x, spacing_y, aspect_ratio, max_cell);
+    var grid = fit.gridFor(columns, rows);
 
     while (columns * rows < cell_count) {
-        const grow_columns = regionFitGridForSize(region_width, region_height, columns + 1, rows, spacing_x, spacing_y, aspect_ratio, max_cell);
-        const grow_rows = regionFitGridForSize(region_width, region_height, columns, rows + 1, spacing_x, spacing_y, aspect_ratio, max_cell);
+        const grow_columns = fit.gridFor(columns + 1, rows);
+        const grow_rows = fit.gridFor(columns, rows + 1);
         const area_columns = regionFitCellArea(grow_columns);
         const area_rows = regionFitCellArea(grow_rows);
         const grows_columns = if (area_columns != area_rows) area_columns > area_rows else !prefers_rows_on_tie;
@@ -68,15 +95,6 @@ fn fitAspect(box_width: i32, box_height: i32, aspect_ratio: f32) struct { width:
     return .{ .width = @max(width, 1), .height = @max(height, 1) };
 }
 
-fn regionFitGridForSize(region_width: i32, region_height: i32, columns: u32, rows: u32, spacing_x: i32, spacing_y: i32, aspect_ratio: f32, max_cell: ?RegionFitCap) RegionFitGrid {
-    const box_width = @max(@divTrunc(region_width - spacing_x * (@as(i32, @intCast(columns)) - 1), @as(i32, @intCast(columns))), 1);
-    const box_height = @max(@divTrunc(region_height - spacing_y * (@as(i32, @intCast(rows)) - 1), @as(i32, @intCast(rows))), 1);
-    const fit_width = if (max_cell) |cap| @min(box_width, cap.width) else box_width;
-    const fit_height = if (max_cell) |cap| @min(box_height, cap.height) else box_height;
-    const cell = fitAspect(fit_width, fit_height, aspect_ratio);
-    return .{ .columns = columns, .rows = rows, .box_width = box_width, .box_height = box_height, .cell_width = cell.width, .cell_height = cell.height };
-}
-
 fn regionFitCellArea(grid: RegionFitGrid) i64 {
     return @as(i64, grid.cell_width) * @as(i64, grid.cell_height);
 }
@@ -91,11 +109,17 @@ fn regionFitColumnRow(direction: types.RegionFitDirection, index: usize, columns
     return switch (direction) {
         .RowFirst_RTL_TTB => .{ .column = @as(i32, @intCast(columns - 1)) - @as(i32, @intCast(index % columns)), .row = @intCast(index / columns) },
         .RowFirst_LTR_BTT => .{ .column = @intCast(index % columns), .row = @as(i32, @intCast(rows - 1)) - @as(i32, @intCast(index / columns)) },
-        .RowFirst_RTL_BTT => .{ .column = @as(i32, @intCast(columns - 1)) - @as(i32, @intCast(index % columns)), .row = @as(i32, @intCast(rows - 1)) - @as(i32, @intCast(index / columns)) },
+        .RowFirst_RTL_BTT => .{
+            .column = @as(i32, @intCast(columns - 1)) - @as(i32, @intCast(index % columns)),
+            .row = @as(i32, @intCast(rows - 1)) - @as(i32, @intCast(index / columns)),
+        },
         .ColumnFirst_TTB_LTR => .{ .column = @intCast(index / rows), .row = @intCast(index % rows) },
         .ColumnFirst_BTT_LTR => .{ .column = @intCast(index / rows), .row = @as(i32, @intCast(rows - 1)) - @as(i32, @intCast(index % rows)) },
         .ColumnFirst_TTB_RTL => .{ .column = @as(i32, @intCast(columns - 1)) - @as(i32, @intCast(index / rows)), .row = @intCast(index % rows) },
-        .ColumnFirst_BTT_RTL => .{ .column = @as(i32, @intCast(columns - 1)) - @as(i32, @intCast(index / rows)), .row = @as(i32, @intCast(rows - 1)) - @as(i32, @intCast(index % rows)) },
+        .ColumnFirst_BTT_RTL => .{
+            .column = @as(i32, @intCast(columns - 1)) - @as(i32, @intCast(index / rows)),
+            .row = @as(i32, @intCast(rows - 1)) - @as(i32, @intCast(index % rows)),
+        },
         .RowFirst_LTR_TTB => .{ .column = @intCast(index % columns), .row = @intCast(index / columns) },
     };
 }
@@ -203,7 +227,7 @@ test "regionFitColumnRow puts each index of a full grid in its own cell" {
 
 test "regionFitPositionForGrid strides by cell size plus spacing from the region's corner" {
     const region: win32.RECT = .{ .left = 100, .top = 50, .right = 1710, .bottom = 960 };
-    const grid: RegionFitGrid = .{ .columns = 2, .rows = 2, .box_width = 800, .box_height = 450, .cell_width = 800, .cell_height = 450 };
+    const grid: RegionFitGrid = .{ .columns = 2, .rows = 2, .cell_width = 800, .cell_height = 450 };
     const bottom_right = regionFitPositionForGrid(region, grid, 3, .RowFirst_LTR_TTB, 10);
     try testing.expectEqual(@as(i32, 910), bottom_right.x);
     try testing.expectEqual(@as(i32, 510), bottom_right.y);

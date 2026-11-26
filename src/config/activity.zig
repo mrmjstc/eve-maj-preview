@@ -1,46 +1,24 @@
-//! Combat, mining, bounty, resource and ping overlays, and the travel left-behind check.
-const types = @import("types.zig");
+//! What the activity trackers measure and how often, and the travel left-behind check.
 const wire = @import("wire.zig");
 const ranges_mod = @import("ranges.zig");
 
 const UPDATE_INTERVAL_MS = .{ 1000, 10000 };
+// The thumbnails' and the client list's default rate colours, softened and kept off the accent presets.
+pub const INCOMING_COLOR: u32 = 0xFFE05A4E;
+pub const OUTGOING_COLOR: u32 = 0xFF68CA6B;
+pub const MINING_COLOR: u32 = 0xFF7E98E7;
+pub const BOUNTY_COLOR: u32 = 0xFFE1C747;
 
+/// The tracker runs while the thumbnails or the client list show its rates; see Config.tracksCombat.
 pub const CombatConfig = struct {
-    enabled: bool = false,
     window_seconds: u32 = 60,
-    show_incoming: bool = true,
-    show_outgoing: bool = true,
-    incoming_color: u32 = 0xFFFF4444,
-    outgoing_color: u32 = 0xFF44FF44,
-    incoming_bg_color: u32 = 0xE6000000,
-    outgoing_bg_color: u32 = 0xE6000000,
-    incoming_font_size: i32 = 12,
-    incoming_font_name: []const u8 = "Segoe UI",
-    incoming_font_weight: types.FontWeight = .Regular,
-    outgoing_font_size: i32 = 12,
-    outgoing_font_name: []const u8 = "Segoe UI",
-    outgoing_font_weight: types.FontWeight = .Regular,
     update_interval_ms: u32 = 1000,
-    incoming_position: types.TextPosition = .TopCenter,
-    outgoing_position: types.TextPosition = .TopCenter,
-    incoming_offset_x: i32 = 0,
-    incoming_offset_y: i32 = 0,
-    outgoing_offset_x: i32 = 0,
-    outgoing_offset_y: i32 = 24,
-    incoming_show_prefix: bool = true,
-    outgoing_show_prefix: bool = true,
     /// Comma-separated, case-insensitive weapon-name substrings whose hits count toward DPS but don't trigger the Taking Damage alert.
     damage_alert_excluded_weapons: []const u8 = "",
 
     pub const ranges = .{
         .window_seconds = .{ 5, 600 },
-        .incoming_font_size = ranges_mod.FONT_SIZE,
-        .outgoing_font_size = ranges_mod.FONT_SIZE,
         .update_interval_ms = UPDATE_INTERVAL_MS,
-        .incoming_offset_x = ranges_mod.TEXT_OFFSET,
-        .incoming_offset_y = ranges_mod.TEXT_OFFSET,
-        .outgoing_offset_x = ranges_mod.TEXT_OFFSET,
-        .outgoing_offset_y = ranges_mod.TEXT_OFFSET,
     };
     pub const zero_means_default = .{"window_seconds"};
 
@@ -51,45 +29,42 @@ pub const CombatConfig = struct {
     pub const Wire = wire.Wire(CombatConfig);
 };
 
-pub const IskRateUnit = enum {
+pub const RateUnit = enum {
     minute,
     hour,
 
-    pub fn seconds(self: IskRateUnit) f32 {
+    pub fn seconds(self: RateUnit) f32 {
         return switch (self) {
             .minute => 60.0,
             .hour => 3600.0,
         };
     }
+
+    /// After a rate's "/", as in "ISK/hr".
+    pub fn suffix(self: RateUnit) []const u8 {
+        return switch (self) {
+            .minute => "min",
+            .hour => "hr",
+        };
+    }
 };
 
+/// The tracker, and with it the Mining Idle and Stopped alerts, runs while the thumbnails or the client list show its rate; see Config.tracksMining.
 pub const MiningConfig = struct {
-    enabled: bool = false,
     window_seconds: u32 = 60,
-    color: u32 = 0xFF44AAFF,
-    bg_color: u32 = 0xE6000000,
-    font_size: i32 = 12,
-    font_name: []const u8 = "Segoe UI",
-    font_weight: types.FontWeight = .Regular,
     update_interval_ms: u32 = 1000,
-    position: types.TextPosition = .BottomRight,
-    offset_x: i32 = 0,
-    offset_y: i32 = 0,
     idle_alert_window_seconds: u32 = 30,
     idle_alert_threshold: u32 = 1,
     stopped_alert_window_seconds: u32 = 60,
-    show_isk_rate: bool = true,
-    isk_rate_unit: IskRateUnit = .hour,
-    show_prefix: bool = true,
+    /// The m3 rate's period; isk_rate_unit is the ISK rate's.
+    m3_rate_unit: RateUnit = .hour,
+    isk_rate_unit: RateUnit = .hour,
 
     pub const ranges = .{
         .window_seconds = .{ 30, 3600 },
-        .font_size = ranges_mod.FONT_SIZE,
         .update_interval_ms = UPDATE_INTERVAL_MS,
         .idle_alert_window_seconds = .{ 30, 600 },
         .stopped_alert_window_seconds = .{ 30, 3600 },
-        .offset_x = ranges_mod.TEXT_OFFSET,
-        .offset_y = ranges_mod.TEXT_OFFSET,
         .idle_alert_threshold = .{ 0, 60 },
     };
     pub const zero_means_default = .{ "window_seconds", "idle_alert_window_seconds", "stopped_alert_window_seconds" };
@@ -101,28 +76,15 @@ pub const MiningConfig = struct {
     pub const Wire = wire.Wire(MiningConfig);
 };
 
-/// Like Mining's ISK rate, without an m3 rate or ore table, since bounties already arrive in ISK.
+/// Like Mining's ISK rate, without an m3 rate or ore table, since bounties already arrive in ISK; see Config.tracksBounty.
 pub const BountyConfig = struct {
-    enabled: bool = false,
     window_seconds: u32 = 1200,
-    color: u32 = 0xFFFFD700,
-    bg_color: u32 = 0xE6000000,
-    font_size: i32 = 12,
-    font_name: []const u8 = "Segoe UI",
-    font_weight: types.FontWeight = .Regular,
     update_interval_ms: u32 = 1000,
-    position: types.TextPosition = .TopRight,
-    offset_x: i32 = 0,
-    offset_y: i32 = 0,
-    isk_rate_unit: IskRateUnit = .hour,
-    show_prefix: bool = true,
+    isk_rate_unit: RateUnit = .hour,
 
     pub const ranges = .{
         .window_seconds = .{ 60, 3600 },
-        .font_size = ranges_mod.FONT_SIZE,
         .update_interval_ms = UPDATE_INTERVAL_MS,
-        .offset_x = ranges_mod.TEXT_OFFSET,
-        .offset_y = ranges_mod.TEXT_OFFSET,
     };
     pub const zero_means_default = .{"window_seconds"};
 
@@ -133,28 +95,13 @@ pub const BountyConfig = struct {
     pub const Wire = wire.Wire(BountyConfig);
 };
 
-/// One combined label and no alerts, like BountyConfig.
+/// Each client's CPU, RAM and VRAM, sampled while the thumbnails show them; see Config.tracksResources.
 pub const ResourcesConfig = struct {
-    enabled: bool = false,
-    show_cpu: bool = true,
-    show_ram: bool = true,
-    show_vram: bool = true,
-    color: u32 = 0xFFFFFFFF,
-    bg_color: u32 = 0xE6000000,
-    font_size: i32 = 12,
-    font_name: []const u8 = "Segoe UI",
-    font_weight: types.FontWeight = .Regular,
     update_interval_ms: u32 = 10000,
-    position: types.TextPosition = .LeftCenter,
-    offset_x: i32 = 0,
-    offset_y: i32 = 0,
 
     pub const ranges = .{
-        .font_size = ranges_mod.FONT_SIZE,
-        // A higher ceiling than the other overlays: each refresh samples every client's CPU, RAM and VRAM.
+        // A higher ceiling than the log-fed trackers': each refresh samples every client's CPU, RAM and VRAM.
         .update_interval_ms = .{ 1000, 60000 },
-        .offset_x = ranges_mod.TEXT_OFFSET,
-        .offset_y = ranges_mod.TEXT_OFFSET,
     };
 
     pub fn validate(self: *ResourcesConfig) void {
@@ -164,25 +111,13 @@ pub const ResourcesConfig = struct {
     pub const Wire = wire.Wire(ResourcesConfig);
 };
 
-/// One label and no alerts, like ResourcesConfig.
+/// Each client's round trip to its server, pinged while the thumbnails show it; see Config.tracksPing.
 pub const PingConfig = struct {
-    enabled: bool = false,
-    color: u32 = 0xFFFFFFFF,
-    bg_color: u32 = 0xE6000000,
-    font_size: i32 = 12,
-    font_name: []const u8 = "Segoe UI",
-    font_weight: types.FontWeight = .Regular,
     update_interval_ms: u32 = 10000,
-    position: types.TextPosition = .RightCenter,
-    offset_x: i32 = 0,
-    offset_y: i32 = 24,
 
     pub const ranges = .{
-        .font_size = ranges_mod.FONT_SIZE,
         // Like ResourcesConfig's ceiling, since a ping rarely changes between samples.
         .update_interval_ms = .{ 1000, 60000 },
-        .offset_x = ranges_mod.TEXT_OFFSET,
-        .offset_y = ranges_mod.TEXT_OFFSET,
     };
 
     pub fn validate(self: *PingConfig) void {

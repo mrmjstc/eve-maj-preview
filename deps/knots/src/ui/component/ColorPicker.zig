@@ -4,6 +4,7 @@ const Button = @import("Button.zig");
 const Frame = @import("../root.zig").Frame;
 const Element = @import("layout").Element;
 const ui_mod = @import("../root.zig");
+const placePopup = @import("popup.zig").place;
 
 const Color = ui_mod.Color;
 const Decoration = ui_mod.Decoration;
@@ -73,6 +74,9 @@ pub const base = struct {
     };
     pub const area: Style = .{ .width = .grow(), .height = .fixed(150) };
     pub const strip: Style = .{ .width = .grow(), .height = .fixed(16) };
+    /// EVE-Maj patch: empty, since the Reset button takes Button's look and `parts.reset`/`parts.reset_label` only layer over it.
+    pub const reset: Style = .{};
+    pub const reset_label: Style = .{};
 };
 
 /// Resolved geometry shared by the trigger and the popup.
@@ -279,50 +283,55 @@ fn handlePickerInput(self: *const ColorPicker, frame: *Frame, s: *State.ColorPic
     if (hex_focused) {
         var changed = false;
         var commit = false;
-        for (ui.input.chars) |ch| {
-            if (ch == 0) break;
-            if (s.hex_len >= @as(u32, s.hex_buf.len)) continue;
+        for (ui.input.events) |event| switch (event) {
+            .text => |typed| {
+                if (!typed.isTyping()) continue;
+                const view = std.unicode.Utf8View.init(typed.text) catch continue;
+                var it = view.iterator();
+                while (it.nextCodepoint()) |ch| {
+                    if (s.hex_len >= @as(u32, s.hex_buf.len)) continue;
 
-            const c: u8 = switch (ch) {
-                '#' => '#',
-                '0'...'9' => @intCast(ch),
-                'a'...'f' => @as(u8, @intCast(ch)) - 'a' + 'A',
-                'A'...'F' => @intCast(ch),
-                else => continue,
-            };
+                    const c: u8 = switch (ch) {
+                        '#' => '#',
+                        '0'...'9' => @intCast(ch),
+                        'a'...'f' => @as(u8, @intCast(ch)) - 'a' + 'A',
+                        'A'...'F' => @intCast(ch),
+                        else => continue,
+                    };
 
-            if (c == '#' and s.hex_len != 0) continue;
-            if (s.hex_len == 0 and c != '#') s.hex_buf[s.hex_len] = '#';
-            if (s.hex_len == 0 and c != '#') s.hex_len += 1;
-            if (s.hex_len < @as(u32, s.hex_buf.len)) {
-                s.hex_buf[s.hex_len] = c;
-                s.hex_len += 1;
-                changed = true;
-            }
-        }
-
-        for (ui.input.key_events) |event| {
-            if (event.action == .release) continue;
-            switch (event.key) {
-                .backspace => if (s.hex_len > 0) {
-                    s.hex_len -= 1;
-                    changed = true;
-                },
-                .delete => {
-                    s.hex_len = 0;
-                    changed = true;
-                },
-                .enter => commit = true,
-                .escape => {
-                    s.editing_hex = false;
-                    var buf: [10]u8 = undefined;
-                    const hex = formatHex(&buf, self.value.*, true);
-                    @memcpy(s.hex_buf[0..hex.len], hex);
-                    s.hex_len = @intCast(hex.len);
-                },
-                else => {},
-            }
-        }
+                    if (c == '#' and s.hex_len != 0) continue;
+                    if (s.hex_len == 0 and c != '#') s.hex_buf[s.hex_len] = '#';
+                    if (s.hex_len == 0 and c != '#') s.hex_len += 1;
+                    if (s.hex_len < @as(u32, s.hex_buf.len)) {
+                        s.hex_buf[s.hex_len] = c;
+                        s.hex_len += 1;
+                        changed = true;
+                    }
+                }
+            },
+            .key => |key| {
+                if (key.action == .release) continue;
+                switch (key.key) {
+                    .backspace => if (s.hex_len > 0) {
+                        s.hex_len -= 1;
+                        changed = true;
+                    },
+                    .delete => {
+                        s.hex_len = 0;
+                        changed = true;
+                    },
+                    .enter => commit = true,
+                    .escape => {
+                        s.editing_hex = false;
+                        var buf: [10]u8 = undefined;
+                        const hex = formatHex(&buf, self.value.*, true);
+                        @memcpy(s.hex_buf[0..hex.len], hex);
+                        s.hex_len = @intCast(hex.len);
+                    },
+                    else => {},
+                }
+            },
+        };
 
         if (changed) try commitHexInput(self, frame, s, false);
         if (commit) try commitHexInput(self, frame, s, true);
@@ -344,30 +353,21 @@ fn isCommittableHexLen(hex: []const u8, allow_shorthand: bool) bool {
 
 fn renderPopover(self: *const ColorPicker, frame: *Frame, s: *State.ColorPicker, parent: *const Style.Content, m: Metrics) !void {
     const ui = frame.ui();
-    const anchor = s.anchor_box;
-    const viewport = s.viewport_box;
     const popup_id = self.key.indexed(POPUP_INDEX).hash();
 
     const line_h = try ui.lineHeight(parent.font_size, parent.font);
+    // EVE-Maj patch: one strip without alpha, and the Reset button adds a line and its padding.
     const strip_count: f32 = if (self.show_alpha) 2 else 1;
-    // EVE-Maj patch: the Reset button adds a line and its padding.
     const reset_h: f32 = if (self.reset != null) line_h + 20 else 0;
     const popup_h = m.area_h + m.strip_h * strip_count + line_h + 76 + reset_h;
-    const viewport_bottom = viewport.y() + viewport.h();
-    const space_below = viewport_bottom - (anchor.y() + anchor.h());
-    const space_above = anchor.y() - viewport.y();
-    const open_above = popup_h > space_below and space_above > space_below;
-    const max_h = if (open_above) space_above else space_below;
-    const popup_y = if (open_above) anchor.y() - @min(popup_h, max_h) else anchor.y() + anchor.h();
+    const p = placePopup(s.viewport_box, s.anchor_box, m.popup_w, popup_h);
 
     _ = try ui.state.getOrCreate(.measured, ui.allocator, popup_id);
     const popup = ui.resolveStyle(popup_id, .{ .base = &base.popup, .user = self.parts.popup }, .{}, parent);
     var config = popup.element(.{ .interactive = true });
-    config.width = .fixed(m.popup_w);
-    config.height = .{ .kind = .fit, .max = max_h };
-    // EVE-Maj patch: shifted left, as far as the viewport allows, so a trigger near the right edge doesn't push the popup off it.
-    const popup_x = @max(viewport.x(), @min(anchor.x(), viewport.x() + viewport.w() - m.popup_w));
-    _ = try ui.openResolved(self.key.indexed(POPUP_INDEX), &popup, config, .{ popup_x, popup_y });
+    config.width = .fixed(p.width);
+    config.height = .{ .kind = .fit, .max = p.max_height };
+    _ = try ui.openResolved(self.key.indexed(POPUP_INDEX), &popup, config, .{ p.x, p.y });
 
     try self.renderSvControl(frame, s, m);
     try self.renderHueControl(frame, s, m);

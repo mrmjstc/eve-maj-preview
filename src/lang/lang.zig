@@ -11,7 +11,7 @@ const Catalog = std.json.Parsed(std.json.Value);
 
 var g_allocator: std.mem.Allocator = undefined;
 var g_language: Language = .en;
-/// g_language's file; null for English, which is the text itself; owned, freed when the language changes and in deinit.
+/// g_language's file, owned until the language changes or deinit; null for English, which is the text itself.
 var g_translated: ?Catalog = null;
 
 pub fn init(allocator: std.mem.Allocator, language: Language) void {

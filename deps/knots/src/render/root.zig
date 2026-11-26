@@ -4,6 +4,10 @@ pub const DrawList = @import("DrawList.zig");
 pub const contract = @import("Contract.zig");
 pub const shaders = @import("shaders.zig");
 pub const GlyphAtlas = @import("GlyphAtlas.zig");
+pub const Vertex = @import("Vertex.zig");
+pub const Instance = @import("Instance.zig");
+pub const SlugInstance = @import("SlugInstance.zig");
+pub const Material = @import("Material.zig");
 
 test {
     _ = DrawList;
@@ -12,7 +16,7 @@ test {
 pub const Command = @import("Command.zig").Command;
 pub const TextureHandle = @import("Command.zig").TextureHandle;
 pub const TextureSource = @import("Command.zig").TextureSource;
+pub const PixelFormat = @import("Command.zig").PixelFormat;
 pub const CustomDrawCallback = @import("Command.zig").CustomDrawCallback;
-pub const types = @import("render_types");
 pub const Extension = @import("Command.zig").Extension;
 pub const PaintCallback = @import("Command.zig").PaintCallback;

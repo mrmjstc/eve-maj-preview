@@ -1,0 +1,27 @@
+name: Zig master
+
+# Early warning for the next Zig upgrade (docs/UPGRADING_ZIG.md): builds and tests against Zig's
+# nightly. A failure here blocks nothing; it shows what the upgrade will have to fix.
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: master
+
+      - name: Show the Zig version
+        run: zig version
+
+      - name: Type-check the app and the simulator
+        run: zig build check
+
+      - name: Run the unit tests
+        run: zig build test

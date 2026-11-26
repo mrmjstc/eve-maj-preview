@@ -2,6 +2,7 @@
 const std = @import("std");
 const files = @import("files.zig");
 const config_mod = @import("../config.zig");
+const atomic_file = @import("../util/atomic_file.zig");
 const log = @import("../log.zig");
 
 const Config = config_mod.Config;
@@ -183,19 +184,27 @@ pub fn listBackups(allocator: std.mem.Allocator, io: std.Io) !std.ArrayList([]co
     }
 
     std.mem.sort([]const u8, names.items, {}, struct {
-        fn newerFirst(_: void, a: []const u8, b: []const u8) bool {
-            return std.mem.order(u8, a, b) == .gt;
+        fn newerFirst(_: void, first: []const u8, second: []const u8) bool {
+            return std.mem.order(u8, first, second) == .gt;
         }
     }.newerFirst);
     return names;
 }
 
-/// Falls back to DEFAULT_PROFILE when invalid or missing and to defaults when malformed; a name differing only in case takes the file's spelling.
+/// For startup: like loadExisting, but falls back to DEFAULT_PROFILE when the name is invalid or missing.
 pub fn load(allocator: std.mem.Allocator, io: std.Io, name: []const u8) !Config {
-    validateName(name) catch {
-        slog.warn("Refused profile name '{s}', falling back to default profile", .{name});
-        return load(allocator, io, files.DEFAULT_PROFILE);
+    return loadExisting(allocator, io, name) catch |err| switch (err) {
+        error.InvalidProfileName, error.MissingProfile, error.FileNotFound, error.UnreadableProfileKept, error.StreamTooLong => {
+            slog.warn("Failed to load profile '{s}', falling back to default profile: {}", .{ name, err });
+            return loadExisting(allocator, io, files.DEFAULT_PROFILE);
+        },
+        else => return err,
     };
+}
+
+/// Malformed, it's backed up and defaults load, or error.UnreadableProfileKept; a name differing only in case takes the file's spelling.
+pub fn loadExisting(allocator: std.mem.Allocator, io: std.Io, name: []const u8) !Config {
+    try validateName(name);
     try ensureDir(allocator, io);
 
     var names = try list(allocator, io);
@@ -203,22 +212,13 @@ pub fn load(allocator: std.mem.Allocator, io: std.Io, name: []const u8) !Config 
         for (names.items) |listed| allocator.free(listed);
         names.deinit(allocator);
     }
-    if (listedSpelling(names.items, name)) |listed| {
-        if (!std.mem.eql(u8, listed, name)) return load(allocator, io, listed);
-    }
+    const listed = listedSpelling(names.items, name) orelse return error.MissingProfile;
 
-    const profile_path = try path(allocator, name);
+    const profile_path = try path(allocator, listed);
     defer allocator.free(profile_path);
 
     slog.info("Loading JSON config from: {s}", .{profile_path});
-    return loadFile(allocator, io, profile_path, name) catch |err| {
-        // ensureDir() above guarantees DEFAULT_PROFILE exists, so this can't recurse forever.
-        if (err == error.FileNotFound and !std.mem.eql(u8, name, files.DEFAULT_PROFILE)) {
-            slog.warn("Profile '{s}' not found, falling back to default profile", .{name});
-            return load(allocator, io, files.DEFAULT_PROFILE);
-        }
-        return err;
-    };
+    return loadFile(allocator, io, profile_path, listed);
 }
 
 /// The profile file names in PROFILES_DIR, e.g. "default.json"; caller owns the list and its strings.
@@ -271,8 +271,9 @@ pub fn readBackupAccent(allocator: std.mem.Allocator, io: std.Io, backup: []cons
 pub fn save(config: *const Config, allocator: std.mem.Allocator, io: std.Io, file_path: []const u8) !void {
     const json = try config.toJsonString(allocator);
     defer allocator.free(json);
+    if (json.len >= files.MAX_CONFIG_FILE_SIZE) return error.ProfileTooLarge;
 
-    try files.atomicWriteFile(allocator, io, file_path, json);
+    try atomic_file.write(allocator, io, file_path, json);
     slog.info("Saved JSON config to: {s}", .{file_path});
 }
 
@@ -313,7 +314,7 @@ fn copyFrom(allocator: std.mem.Allocator, io: std.Io, source_path: []const u8, t
     };
 
     const color = accent_color orelse return;
-    var config = try load(allocator, io, target);
+    var config = try loadExisting(allocator, io, target);
     defer config.deinit();
     config.accentColor = color;
     try save(&config, allocator, io, target_path);
@@ -327,13 +328,13 @@ fn newBackupPath(allocator: std.mem.Allocator, io: std.Io, name: []const u8) ![]
 }
 
 /// Keeps a copy of a profile that couldn't be read, since running on defaults saves over it.
-fn backUpUnreadable(allocator: std.mem.Allocator, io: std.Io, profile_path: []const u8, name: []const u8) void {
+fn backUpUnreadable(allocator: std.mem.Allocator, io: std.Io, profile_path: []const u8, name: []const u8) !void {
     const backup_path = copyToBackup(allocator, io, profile_path, name) catch |err| {
-        slog.err("Failed to back up unreadable profile '{s}': {}", .{ name, err });
-        return;
+        slog.err("Failed to back up unreadable profile '{s}', so it isn't loaded and stays as it is: {}", .{ name, err });
+        return error.UnreadableProfileKept;
     };
     defer allocator.free(backup_path);
-    slog.warn("Backed up unreadable profile '{s}' to '{s}'", .{ name, backup_path });
+    slog.warn("Backed up unreadable profile '{s}' to '{s}', and loading defaults in its place", .{ name, backup_path });
 }
 
 /// Caller owns the returned backup path.
@@ -346,19 +347,17 @@ fn copyToBackup(allocator: std.mem.Allocator, io: std.Io, profile_path: []const 
 }
 
 fn loadFile(allocator: std.mem.Allocator, io: std.Io, profile_path: []const u8, name: []const u8) !Config {
-    const content = std.Io.Dir.cwd().readFileAlloc(io, profile_path, allocator, .limited(files.MAX_CONFIG_FILE_SIZE)) catch |err| {
+    const content = files.readSettingsFile(allocator, io, profile_path) catch |err| {
         if (err != error.FileNotFound) slog.err("Failed to read config file '{s}': {}", .{ profile_path, err });
         return err;
     };
     defer allocator.free(content);
 
-    const config = Config.buildConfigFromJson(allocator, content, name) catch |err| {
-        slog.err("Failed to parse config file '{s}', falling back to defaults: {}", .{ profile_path, err });
-        backUpUnreadable(allocator, io, profile_path, name);
+    return Config.buildConfigFromJson(allocator, content, name) catch |err| {
+        slog.err("Failed to parse config file '{s}': {}", .{ profile_path, err });
+        try backUpUnreadable(allocator, io, profile_path, name);
         return Config.getDefaultsWithProfile(allocator, name);
     };
-    config.chatlog.warnUnreachableDirs(io);
-    return config;
 }
 
 fn readAccentFrom(allocator: std.mem.Allocator, io: std.Io, file_path: []const u8) !?u32 {
@@ -415,7 +414,7 @@ test "validateName accepts only a plain <name>.json" {
     try testing.expectError(error.InvalidProfileName, validateName("what?.json"));
 }
 
-test "validateName accepts the default profile, so load's fallback can't recurse" {
+test "validateName accepts the default profile, which load falls back to" {
     try validateName(files.DEFAULT_PROFILE);
 }
 

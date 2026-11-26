@@ -23,7 +23,7 @@ pub const Dock = struct {
     }
 };
 
-/// Pulls a dragged window's edges onto the nearest edges of other rects, one rect at a time; each axis keeps the closest within the threshold, later ones winning ties.
+/// Pulls a dragged window's edges onto other rects' nearest, a rect at a time; each axis keeps the closest within the threshold, the later on a tie.
 pub const EdgeSnap = struct {
     x: i32,
     y: i32,
@@ -98,7 +98,7 @@ const SCREEN = rectOf(0, 0, 1920, 1080);
 
 /// Docks (`x`, `y`) against `saved` with a 10 px threshold.
 fn docked(x: i32, y: i32, saved: []const win32.RECT) SnapPosition {
-    var dock = Dock.init(x, y, 10);
+    var dock: Dock = .init(x, y, 10);
     for (saved) |rect| dock.consider(rect);
     return dock.position;
 }
@@ -120,19 +120,19 @@ test "docking takes the nearest saved corner within the threshold" {
 }
 
 test "a window beside another lines its left edge up with the other's right" {
-    var snap = EdgeSnap.init(305, 120, 200, 100, 10);
+    var snap: EdgeSnap = .init(305, 120, 200, 100, 10);
     snap.toward(rectOf(100, 100, 300, 200));
     try testing.expectEqual(SnapPosition{ .x = 300, .y = 120 }, snap.position());
 }
 
 test "a window that doesn't overlap another along the other axis isn't pulled in line" {
-    var snap = EdgeSnap.init(305, 500, 200, 100, 10);
+    var snap: EdgeSnap = .init(305, 500, 200, 100, 10);
     snap.toward(rectOf(100, 100, 300, 200));
     try testing.expectEqual(SnapPosition{ .x = 305, .y = 500 }, snap.position());
 }
 
 test "across several rects each axis keeps the closest edge" {
-    var snap = EdgeSnap.init(305, 150, 200, 100, 10);
+    var snap: EdgeSnap = .init(305, 150, 200, 100, 10);
     snap.toward(rectOf(100, 100, 298, 200));
     snap.toward(rectOf(100, 100, 304, 200));
     try testing.expectEqual(SnapPosition{ .x = 304, .y = 150 }, snap.position());

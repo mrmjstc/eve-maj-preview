@@ -12,7 +12,7 @@ const slog = log.Scoped("activation");
 /// Restores the client first if it's minimized.
 pub fn activate(app: *App, source_hwnd: win32.HWND) void {
     if (!win32.isWindow(source_hwnd)) return;
-    const thumbnail_set = app.thumbnail_set orelse return;
+    const thumbnail_set = app.rebuilt.thumbnail_set orelse return;
 
     var placement: win32.WINDOWPLACEMENT = undefined;
     placement.length = @sizeOf(win32.WINDOWPLACEMENT);
@@ -22,6 +22,7 @@ pub fn activate(app: *App, source_hwnd: win32.HWND) void {
     }
     const was_minimized = placement.showCmd == win32.SW_SHOWMINIMIZED;
 
+    app.persistent.client_speed.focusClient(&app.global_settings.clientSpeed, app.scout.getWindows(), source_hwnd, win32.Ticks.now());
     focus_grant.forceSetForegroundWindow(source_hwnd);
 
     // SW_RESTORE returns a maximized window to maximized, so no need to track was_maximized separately.
@@ -30,11 +31,8 @@ pub fn activate(app: *App, source_hwnd: win32.HWND) void {
     // Handled now rather than when the foreground hook fires, which can be late, so the active border shows at once.
     _ = focus.onClientFocused(app, source_hwnd);
 
-    if (thumbnail_set.getThumbnailBySourceHwnd(source_hwnd)) |thumbnail| {
-        thumbnail.last_click_time = win32.Ticks.now();
-        // After focus is reconciled above, since that decides which notifications a click dismisses.
-        _ = thumbnail_set.dismissClickSuppressedNotifications(thumbnail);
-    }
+    // After focus is reconciled above, since that decides which notifications a click dismisses.
+    app.persistent.roster.recordClick(source_hwnd, win32.Ticks.now());
 
     // Rendering now avoids hotkey lag; past a few, the rest wait for the timer so a rare bulk update can't block.
     const max_immediate_renders: usize = 4;

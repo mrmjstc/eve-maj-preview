@@ -15,6 +15,15 @@ pub const NSWindowStyleMaskClosable: c_ulong = 1 << 1;
 pub const NSWindowStyleMaskMiniaturizable: c_ulong = 1 << 2;
 pub const NSWindowStyleMaskResizable: c_ulong = 1 << 3;
 pub const NSWindowStyleMaskFullScreen: c_ulong = 1 << 14;
+pub const NSWindowStyleMaskFullSizeContentView: c_ulong = 1 << 15;
+
+pub const NSWindowTitleHidden: c_long = 1;
+pub const NSWindowCloseButton: c_ulong = 0;
+pub const NSWindowZoomButton: c_ulong = 2;
+
+pub const NSTrackingMouseEnteredAndExited: c_ulong = 0x01;
+pub const NSTrackingActiveAlways: c_ulong = 0x80;
+pub const NSTrackingInVisibleRect: c_ulong = 0x200;
 
 pub const NSNormalWindowLevel: c_long = 0;
 pub const NSMainMenuWindowLevel: c_long = 24;
@@ -129,6 +138,6 @@ pub fn pushUtf8Chars(owner: *Window, slice: []const u8, comptime filter_function
 
         // 0xF700-0xF8FF is the NSFunctionKey range AppKit emits for arrow keys, F-keys, etc, those must stay out of the chars channel.
         if (filter_function_keys and cp >= 0xF700 and cp <= 0xF8FF) continue;
-        owner.pushChar(cp);
+        owner.pushText(slice[i - len .. i]);
     }
 }

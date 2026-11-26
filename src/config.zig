@@ -10,29 +10,30 @@ const system_colors = @import("config/system_colors.zig");
 const hotkeys_mod = @import("config/hotkeys.zig");
 const spaces = @import("config/spaces.zig");
 const migrate = @import("config/migrate.zig");
-const chatlog_mod = @import("config/chatlog.zig");
+const legacy_dpi = @import("config/legacy_dpi.zig");
+const chatlog = @import("config/chatlog.zig");
 const activity = @import("config/activity.zig");
-const notifications = @import("config/notifications.zig");
+const notifications_mod = @import("config/notifications.zig");
 const window_filters = @import("config/window_filters.zig");
+const chat_alerts = @import("config/chat_alerts.zig");
 const thumbnail_mod = @import("config/thumbnail.zig");
 const display_mod = @import("config/display.zig");
+const panels = @import("config/panels.zig");
+const intel_mod = @import("config/intel.zig");
 const behavior = @import("config/behavior.zig");
-const auto_colors = @import("config/auto_colors.zig");
 const profiles = @import("config/profiles.zig");
 const store = @import("config/store.zig");
-const strings = @import("util/strings.zig");
 const log = @import("log.zig");
 
 const slog = log.Scoped("config");
 
 pub const setEnvironMap = files.setEnvironMap;
 pub const environMap = files.environMap;
-pub const PROFILES_DIR = files.PROFILES_DIR;
 pub const DEFAULT_PROFILE = files.DEFAULT_PROFILE;
-pub const GLOBAL_SETTINGS_FILE = files.GLOBAL_SETTINGS_FILE;
-pub const atomicWriteFile = files.atomicWriteFile;
 pub const migrateLegacyLayout = files.migrateLegacyLayout;
+pub const sweepTempFiles = files.sweepTempFiles;
 pub const loadProfile = profiles.load;
+pub const loadExistingProfile = profiles.loadExisting;
 pub const listProfiles = profiles.list;
 pub const writeDefaultProfile = profiles.writeDefault;
 pub const createProfile = profiles.create;
@@ -52,13 +53,12 @@ pub const parseBackupName = profiles.parseBackupName;
 pub const profileFileName = profiles.fileNameFor;
 pub const profileDisplayName = profiles.displayName;
 pub const ProfileStore = store.ProfileStore;
-pub const Argb = wire.Argb;
 pub const KeyList = key_list.KeyList;
 pub const parseHexColor = wire.parseHexColor;
 
-pub const DEFAULT_ORE_TABLE = global.DEFAULT_ORE_TABLE;
-pub const OreEntry = global.OreEntry;
 pub const GlobalConfig = global.GlobalConfig;
+pub const ProtocolLinksConfig = global.ProtocolLinksConfig;
+pub const ClientSpeedConfig = global.ClientSpeedConfig;
 pub const Position = characters_mod.Position;
 pub const WindowSize = characters_mod.WindowSize;
 pub const CharacterBorderColorsConfig = characters_mod.CharacterBorderColorsConfig;
@@ -70,34 +70,47 @@ pub const SystemColorConfig = system_colors.SystemColorConfig;
 pub const HotkeyGroupConfig = hotkeys_mod.HotkeyGroupConfig;
 pub const ThumbnailSpace = spaces.ThumbnailSpace;
 pub const migrateProfileJson = migrate.profile;
-pub const ChatlogConfig = chatlog_mod.ChatlogConfig;
+pub const migrateProfileChatlog = migrate.profileChatlog;
+pub const ChatlogConfig = chatlog.ChatlogConfig;
 pub const CombatConfig = activity.CombatConfig;
 pub const MiningConfig = activity.MiningConfig;
 pub const BountyConfig = activity.BountyConfig;
 pub const ResourcesConfig = activity.ResourcesConfig;
 pub const PingConfig = activity.PingConfig;
 pub const TravelConfig = activity.TravelConfig;
-pub const IskRateUnit = activity.IskRateUnit;
-pub const NotificationTypeConfig = notifications.NotificationTypeConfig;
-pub const NotificationConfig = notifications.NotificationConfig;
+pub const RateUnit = activity.RateUnit;
+pub const NotificationTypeConfig = notifications_mod.NotificationTypeConfig;
+pub const NotificationConfig = notifications_mod.NotificationConfig;
 pub const WindowFilterConfig = window_filters.WindowFilterConfig;
+pub const ChatAlertConfig = chat_alerts.ChatAlertConfig;
 pub const StateVisualConfig = thumbnail_mod.StateVisualConfig;
 pub const ThumbnailState = thumbnail_mod.ThumbnailState;
 pub const ThumbnailConfig = thumbnail_mod.ThumbnailConfig;
+pub const AlertTextStyle = thumbnail_mod.AlertTextStyle;
+pub const CombatTextStyle = thumbnail_mod.CombatTextStyle;
+pub const MiningTextStyle = thumbnail_mod.MiningTextStyle;
+pub const BountyTextStyle = thumbnail_mod.BountyTextStyle;
+pub const ResourcesTextStyle = thumbnail_mod.ResourcesTextStyle;
+pub const PingTextStyle = thumbnail_mod.PingTextStyle;
 pub const DisplayConfig = display_mod.DisplayConfig;
+pub const ListViewConfig = panels.ListViewConfig;
+pub const HistoryPanelConfig = panels.HistoryPanelConfig;
+pub const MapPanelConfig = panels.MapPanelConfig;
+pub const IntelPanelConfig = panels.IntelPanelConfig;
+pub const IntelConfig = intel_mod.IntelConfig;
 pub const TimerConfig = behavior.TimerConfig;
 pub const SnappingConfig = behavior.SnappingConfig;
+pub const PanelSnappingConfig = behavior.PanelSnappingConfig;
 pub const InteractionConfig = behavior.InteractionConfig;
 pub const AutoMinimizeConfig = behavior.AutoMinimizeConfig;
 pub const AutoMovePositionConfig = behavior.AutoMovePositionConfig;
 pub const ExclusionConfig = behavior.ExclusionConfig;
 pub const CloseAllConfig = behavior.CloseAllConfig;
 pub const HotkeysConfig = hotkeys_mod.HotkeysConfig;
-pub const AutoColorStore = auto_colors.AutoColorStore;
 
 pub const PROFILE_FORMAT_IDENTIFIER = "eve-maj-preview";
 /// Bumped only for schema changes needing a migration, independent of the release version; see config/migrate.zig and Config.fromWire.
-pub const PROFILE_FORMAT_VERSION: u32 = migrate.SPACES_VERSION;
+pub const PROFILE_FORMAT_VERSION: u32 = migrate.REGROUP_VERSION;
 
 pub const ShownColors = struct {
     system_name_color: u32,
@@ -120,15 +133,21 @@ pub const Config = struct {
     app: []const u8 = PROFILE_FORMAT_IDENTIFIER,
     formatVersion: u32 = PROFILE_FORMAT_VERSION,
     thumbnail: ThumbnailConfig = .{},
+    notifications: NotificationConfig = .{},
     timer: TimerConfig = .{},
     display: DisplayConfig = .{},
+    listView: ListViewConfig = .{},
+    historyPanel: HistoryPanelConfig = .{},
+    mapPanel: MapPanelConfig = .{},
+    intelPanel: IntelPanelConfig = .{},
+    intel: IntelConfig = .{},
     snapping: SnappingConfig = .{},
+    panelSnapping: PanelSnappingConfig = .{},
     interaction: InteractionConfig = .{},
     autoMinimize: AutoMinimizeConfig = .{},
     autoMovePosition: AutoMovePositionConfig = .{},
     exclusion: ExclusionConfig = .{},
     closeAll: CloseAllConfig = .{},
-    chatlog: ChatlogConfig = .{},
     combat: CombatConfig = .{},
     mining: MiningConfig = .{},
     bounty: BountyConfig = .{},
@@ -141,6 +160,7 @@ pub const Config = struct {
     systemColors: std.ArrayList(SystemColorConfig) = .empty,
     hotkeyGroups: std.ArrayList(HotkeyGroupConfig) = .empty,
     thumbnailSpaces: std.ArrayList(ThumbnailSpace) = .empty,
+    chatAlerts: std.ArrayList(ChatAlertConfig) = .empty,
     hotkeys: HotkeysConfig = .{},
 
     pub const runtime_fields = .{ "allocator", "profile_name" };
@@ -167,7 +187,7 @@ pub const Config = struct {
 
         if (config.formatVersion < migrate.DPI_AWARE_VERSION) {
             for (config.characters.items) |*character| {
-                if (character.position) |position| character.position = position.scaleFromLegacyDpiUnaware();
+                if (character.position) |position| character.position = legacy_dpi.scalePosition(position);
             }
         }
 
@@ -279,12 +299,20 @@ pub const Config = struct {
         return self.characterSetting(character_name, "excludeFromMinimize", false);
     }
 
+    pub fn keepsFullSpeed(self: *const Config, character_name: []const u8) bool {
+        return self.characterSetting(character_name, "keepFullSpeed", false);
+    }
+
     pub fn isExcludedFromCloseAll(self: *const Config, character_name: []const u8) bool {
         return self.characterSetting(character_name, "excludeFromCloseAll", false);
     }
 
     pub fn isThumbnailHidden(self: *const Config, character_name: []const u8) bool {
         return self.characterSetting(character_name, "hideThumbnail", false);
+    }
+
+    pub fn isHiddenFromClientList(self: *const Config, character_name: []const u8) bool {
+        return self.characterSetting(character_name, "hideFromClientList", false);
     }
 
     pub fn isExcludedFromAutoMove(self: *const Config, character_name: []const u8) bool {
@@ -299,23 +327,40 @@ pub const Config = struct {
         return self.characterSetting(character_name, "opacity", null) orelse self.thumbnail.thumbnailOpacity;
     }
 
+    pub fn showsLivePreview(self: *const Config, character_name: []const u8) bool {
+        return self.characterSetting(character_name, "preview", .Default).showsLive(self.thumbnail.showLivePreview);
+    }
+
+    /// `active_border_color` is the character's focused border colour, which blankDimsBorder dims.
+    pub fn getBlankThumbnailColor(self: *const Config, character_name: []const u8, active_border_color: u32) u32 {
+        return self.characterSetting(character_name, "blankThumbnailColor", null) orelse self.thumbnail.blankFill(active_border_color);
+    }
+
     pub fn getDisplayName(self: *const Config, character_name: []const u8) []const u8 {
         return self.characterSetting(character_name, "displayName", null) orelse character_name;
+    }
+
+    pub fn listActiveColor(self: *const Config) u32 {
+        return self.listView.activeColor orelse self.accentColor;
+    }
+
+    pub fn focusedBorderColor(self: *const Config) u32 {
+        return self.thumbnail.borderColor orelse self.accentColor;
     }
 
     /// The colour settings of whichever view is shown, since the client list alone has its own.
     pub fn shownColors(self: *const Config) ShownColors {
         return switch (self.display.viewMode) {
             .ClientList => .{
-                .system_name_color = self.display.listViewSystemNameColor,
-                .active_color = self.display.listViewActiveColor,
-                .uses_unique_system_colors = self.display.listViewUseUniqueSystemColors,
-                .uses_unique_name_colors = self.display.listViewUseUniqueCharacterNameColors,
-                .uses_unique_border_colors = self.display.listViewUseUniqueActiveColors,
+                .system_name_color = self.listView.systemNameColor,
+                .active_color = self.listActiveColor(),
+                .uses_unique_system_colors = self.listView.useUniqueSystemColors,
+                .uses_unique_name_colors = self.listView.useUniqueCharacterNameColors,
+                .uses_unique_border_colors = self.listView.useUniqueActiveColors,
             },
             .Thumbnails, .ThumbnailsAndList, .Nothing => .{
                 .system_name_color = self.thumbnail.systemNameColor,
-                .active_color = self.thumbnail.borderColor,
+                .active_color = self.focusedBorderColor(),
                 .uses_unique_system_colors = self.thumbnail.useUniqueSystemColors,
                 .uses_unique_name_colors = self.thumbnail.useUniqueCharacterNameColors,
                 .uses_unique_border_colors = self.thumbnail.useUniqueCharacterBorderColors,
@@ -326,27 +371,43 @@ pub const Config = struct {
     /// The focus auto-hide of whichever view is shown, since the client list alone has its own.
     pub fn shownAutoHide(self: *const Config) AutoHide {
         return switch (self.display.viewMode) {
-            .ClientList => .{ .is_enabled = self.display.listViewHideWhenNoEveFocus, .delay_ms = self.display.listViewHideDebounceMs },
-            .Thumbnails, .ThumbnailsAndList, .Nothing => .{ .is_enabled = self.thumbnail.hideWhenNoEveFocus, .delay_ms = self.thumbnail.hideDebounceMs },
+            .ClientList => .{ .is_enabled = self.listView.hideWhenNoEveFocus, .delay_ms = self.listView.hideDebounceMs },
+            .Thumbnails, .ThumbnailsAndList, .Nothing => .{
+                .is_enabled = self.thumbnail.hideWhenNoEveFocus,
+                .delay_ms = self.thumbnail.hideDebounceMs,
+            },
         };
     }
 
-    /// The badge-enabled groups `character_name` is in, comma-joined by name or 1-based number ("1, Miners"); "" when none; owned by the caller.
-    pub fn groupBadgeLabel(self: *const Config, allocator: std.mem.Allocator, character_name: []const u8) ![]const u8 {
-        var label: std.Io.Writer.Allocating = .init(allocator);
-        errdefer label.deinit();
-        for (self.hotkeyGroups.items, 1..) |*group, number| {
-            if (!group.showBadge or strings.indexOfString(group.characters.items, character_name) == null) continue;
-            if (label.written().len > 0) try label.writer.writeAll(", ");
-            if (group.name.len > 0) try label.writer.writeAll(group.name) else try label.writer.print("{}", .{number});
-        }
-        return label.toOwnedSlice();
+    /// The thumbnails' overlay or the shown client list wants damage, so its tracker runs.
+    pub fn tracksCombat(self: *const Config) bool {
+        const list_view = &self.listView;
+        return self.thumbnail.combatText.shown or (self.display.viewMode.showsClientList() and (list_view.showIncomingDps or list_view.showOutgoingDps));
+    }
+
+    pub fn tracksMining(self: *const Config) bool {
+        return self.thumbnail.miningText.shown or (self.display.viewMode.showsClientList() and self.listView.showMiningRate);
+    }
+
+    /// Only the thumbnails show them.
+    pub fn tracksResources(self: *const Config) bool {
+        return self.thumbnail.resourcesText.shown;
+    }
+
+    /// Only the thumbnails show it.
+    pub fn tracksPing(self: *const Config) bool {
+        return self.thumbnail.pingText.shown;
+    }
+
+    pub fn tracksBounty(self: *const Config) bool {
+        return self.thumbnail.bountyText.shown or (self.display.viewMode.showsClientList() and self.listView.showBountyRate);
     }
 
     pub fn validate(self: *Config) void {
         ranges.clamp(Config, self);
         for (self.characters.items) |*character| character.validate();
         for (self.thumbnailSpaces.items) |*space| space.validate();
+        for (self.chatAlerts.items) |*rule| rule.validate();
         spaces.keepOneOfEachSpecialSpace(self.thumbnailSpaces.items);
     }
 
@@ -385,26 +446,6 @@ test "findSystemColor prefers an exact name over an earlier pattern" {
     try testing.expectEqual(@as(?u32, null), config.findSystemColor("Amarr"));
 }
 
-test "groupBadgeLabel names badge groups, numbering unnamed ones from 1" {
-    var config = try testConfig(
-        \\{"hotkeyGroups": [
-        \\  {"name": "", "characters": ["Alpha"], "showBadge": true},
-        \\  {"name": "Miners", "characters": ["Alpha"], "showBadge": true},
-        \\  {"name": "Hidden", "characters": ["Alpha"], "showBadge": false},
-        \\  {"name": "Scouts", "characters": ["Bravo"], "showBadge": true}
-        \\]}
-    );
-    defer config.deinit();
-
-    const label = try config.groupBadgeLabel(testing.allocator, "Alpha");
-    defer testing.allocator.free(label);
-    try testing.expectEqualStrings("1, Miners", label);
-
-    const none = try config.groupBadgeLabel(testing.allocator, "Charlie");
-    defer testing.allocator.free(none);
-    try testing.expectEqualStrings("", none);
-}
-
 test "hotkeyGroupIndex ignores case but hasHotkeyGroupNamed doesn't" {
     var config = try testConfig(
         \\{"hotkeyGroups": [{"name": "Miners"}, {"name": "miners"}]}
@@ -436,9 +477,33 @@ test "a character's own settings override the profile's, which apply to unknown 
     try testing.expectEqual(config.thumbnail.height, default_size.height);
 }
 
+test "a character's preview choice overrides the profile's, and Default follows it" {
+    var config = try testConfig(
+        \\{"thumbnail": {"showLivePreview": false, "blankThumbnailColor": "0xFF102030"},
+        \\ "characters": [{"name": "Alpha", "preview": "Live"}, {"name": "Bravo", "blankThumbnailColor": "0xFF405060"}]}
+    );
+    defer config.deinit();
+
+    try testing.expect(config.showsLivePreview("Alpha"));
+    try testing.expect(!config.showsLivePreview("Bravo"));
+    try testing.expect(!config.showsLivePreview("Charlie"));
+    try testing.expectEqual(@as(u32, 0xFF405060), config.getBlankThumbnailColor("Bravo", 0xFFFFFFFF));
+    try testing.expectEqual(@as(u32, 0xFF102030), config.getBlankThumbnailColor("Charlie", 0xFFFFFFFF));
+}
+
+test "a dimmed border fill darkens the border colour, but a character's own colour still wins" {
+    var config = try testConfig(
+        \\{"thumbnail": {"blankDimsBorder": true}, "characters": [{"name": "Bravo", "blankThumbnailColor": "0xFF405060"}]}
+    );
+    defer config.deinit();
+
+    try testing.expectEqual(@as(u32, 0xFF3F2010), config.getBlankThumbnailColor("Alpha", 0xFFFF8040));
+    try testing.expectEqual(@as(u32, 0xFF405060), config.getBlankThumbnailColor("Bravo", 0xFFFF8040));
+}
+
 test "shownColors follows the client list's own settings in its view" {
     var config = try testConfig(
-        \\{"display": {"viewMode": "ClientList", "listViewSystemNameColor": "0xFF000003"}, "thumbnail": {"systemNameColor": "0xFF000004"}}
+        \\{"display": {"viewMode": "ClientList"}, "listView": {"systemNameColor": "0xFF000003"}, "thumbnail": {"systemNameColor": "0xFF000004"}}
     );
     defer config.deinit();
 
@@ -449,11 +514,47 @@ test "shownColors follows the client list's own settings in its view" {
 
 test "shownColors follows the thumbnails when the list is shown beside them" {
     var config = try testConfig(
-        \\{"display": {"viewMode": "ThumbnailsAndList", "listViewActiveColor": "0xFF000001"}, "thumbnail": {"borderColor": "0xFF000002"}}
+        \\{"display": {"viewMode": "ThumbnailsAndList"}, "listView": {"activeColor": "0xFF000001"}, "thumbnail": {"borderColor": "0xFF000002"}}
     );
     defer config.deinit();
 
     try testing.expectEqual(@as(u32, 0xFF000002), config.shownColors().active_color);
+}
+
+test "an unset active colour and focused border follow the accent" {
+    var config = try testConfig(
+        \\{"accentColor": "0xFFD97AA0"}
+    );
+    defer config.deinit();
+
+    try testing.expectEqual(@as(u32, 0xFFD97AA0), config.listActiveColor());
+    try testing.expectEqual(@as(u32, 0xFFD97AA0), config.focusedBorderColor());
+}
+
+test "a tracker runs for the shown client list's rate without the thumbnails' overlay" {
+    var config = try testConfig(
+        \\{"formatVersion": 6, "display": {"viewMode": "ClientList"}, "listView": {"showMiningRate": true}}
+    );
+    defer config.deinit();
+
+    try testing.expect(config.tracksMining());
+    try testing.expect(!config.tracksCombat());
+    config.display.viewMode = .Thumbnails;
+    try testing.expect(!config.tracksMining());
+    config.thumbnail.miningText.shown = true;
+    try testing.expect(config.tracksMining());
+}
+
+test "an alert type given in part keeps its own defaults for the fields left out" {
+    var config = try testConfig(
+        \\{"notifications": {"type_configs": {"CycleExclusion": {"custom_text": "Out"}}}}
+    );
+    defer config.deinit();
+
+    const type_config = config.notifications.getTypeConfig(.CycleExclusion);
+    try testing.expectEqualStrings("Out", type_config.custom_text orelse "");
+    try testing.expectEqual(@as(u32, 0), type_config.throttle_ms);
+    try testing.expectEqual(@as(u32, 3000), type_config.duration_ms);
 }
 
 test "getOrCreateCharacter returns an existing character rather than adding another" {

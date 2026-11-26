@@ -1,5 +1,6 @@
 //! The process environment and the on-disk layout of the app's profile and data files.
 const std = @import("std");
+const atomic_file = @import("../util/atomic_file.zig");
 const log = @import("../log.zig");
 
 const slog = log.Scoped("config");
@@ -7,7 +8,11 @@ const slog = log.Scoped("config");
 pub const PROFILES_DIR = "profiles";
 pub const DEFAULT_PROFILE = "default.json";
 pub const GLOBAL_SETTINGS_FILE = "profiles/global.settings.json";
+/// The most readSettingsFile reads, so saves refuse anything this size or more, which wouldn't load again.
 pub const MAX_CONFIG_FILE_SIZE: u64 = 300 * 1024;
+/// A locked file is often freed within moments, e.g. once an antivirus scan or sync lets go of it.
+const READ_ATTEMPTS = 5;
+const READ_RETRY_MS = 100;
 
 /// App state that isn't a setting, kept out of PROFILES_DIR so copying profiles doesn't carry it along.
 const DATA_DIR = "data";
@@ -15,6 +20,12 @@ pub const AUTO_COLORS_FILE = DATA_DIR ++ "/colors.json";
 pub const CHARACTER_IDS_FILE = DATA_DIR ++ "/character_ids.json";
 /// Downloaded character portraits, one `{id}.jpg` each, kept for good.
 pub const PORTRAITS_DIR = DATA_DIR ++ "/portraits";
+/// The colour picked from each sovereignty-holding alliance's logo, so a logo is fetched once.
+pub const LOGO_COLORS_FILE = DATA_DIR ++ "/logo_colors.json";
+/// The folders the app's own files are written into; their subfolders aren't swept.
+const TEMP_FILE_DIRS = [_][]const u8{ PROFILES_DIR, DATA_DIR, PORTRAITS_DIR };
+/// What the app writes in TEMP_FILE_DIRS, so a temp file for anything else isn't the app's.
+const TEMP_FILE_TARGET_EXTENSIONS = [_][]const u8{ ".json", ".jpg" };
 
 const LEGACY_FILES = [_]struct { from: []const u8, to: []const u8 }{
     .{ .from = "eve-maj.log", .to = log.LOG_FILE_NAME },
@@ -77,6 +88,34 @@ pub fn migrateLegacyLayout(io: std.Io) void {
     }
 }
 
+/// Deletes the temp files a save cut short by the process ending left behind; call once this is the only instance, before anything saves.
+pub fn sweepTempFiles(io: std.Io) void {
+    for (TEMP_FILE_DIRS) |dir_path| {
+        var dir = std.Io.Dir.cwd().openDir(io, dir_path, .{ .iterate = true }) catch |err| switch (err) {
+            error.FileNotFound => continue,
+            else => {
+                slog.warn("Failed to open folder '{s}' to clean up temp files: {}", .{ dir_path, err });
+                continue;
+            },
+        };
+        defer dir.close(io);
+
+        var it = dir.iterate();
+        while (true) {
+            const entry = it.next(io) catch |err| {
+                slog.warn("Failed to list folder '{s}' to clean up temp files: {}", .{ dir_path, err });
+                break;
+            } orelse break;
+            if (entry.kind != .file or !isTempFileName(entry.name)) continue;
+            dir.deleteFile(io, entry.name) catch |err| {
+                slog.warn("Failed to delete leftover temp file '{s}/{s}': {}", .{ dir_path, entry.name, err });
+                continue;
+            };
+            slog.info("Deleted leftover temp file '{s}/{s}'", .{ dir_path, entry.name });
+        }
+    }
+}
+
 /// Doesn't log.
 pub fn createDirIfMissing(io: std.Io, path: []const u8) !void {
     std.Io.Dir.cwd().createDir(io, path, .default_dir) catch |err| switch (err) {
@@ -85,37 +124,17 @@ pub fn createDirIfMissing(io: std.Io, path: []const u8) !void {
     };
 }
 
-/// Logs every failure itself.
-pub fn atomicWriteFile(allocator: std.mem.Allocator, io: std.Io, path: []const u8, content: []const u8) !void {
-    // Unique per call so overlapping saves of the same path can't share a temp file.
-    const unique = blk: {
-        var random_bytes: [8]u8 = undefined;
-        io.random(&random_bytes);
-        break :blk std.mem.readInt(u64, &random_bytes, .little);
-    };
-    const temp_path = allocator.print("{s}.{x}.tmp", .{ path, unique }) catch |err| {
-        slog.err("Failed to build a temp file name for '{s}': {}", .{ path, err });
-        return err;
-    };
-    defer allocator.free(temp_path);
-
-    const cwd = std.Io.Dir.cwd();
-    const temp_file = cwd.createFile(io, temp_path, .{}) catch |err| {
-        slog.err("Failed to create temp file '{s}' ({} bytes): {}", .{ temp_path, content.len, err });
-        return err;
-    };
-    writeAndSync(io, temp_file, temp_path, content) catch |err| {
-        temp_file.close(io);
-        deleteTemp(io, temp_path, err);
-        return err;
-    };
-    temp_file.close(io);
-
-    cwd.rename(temp_path, cwd, path, io) catch |err| {
-        slog.err("Failed to rename temp file '{s}' to '{s}' ({} bytes): {}", .{ temp_path, path, content.len, err });
-        deleteTemp(io, temp_path, err);
-        return err;
-    };
+/// Up to MAX_CONFIG_FILE_SIZE, retried briefly while another program holds it; caller owns the result and logs.
+pub fn readSettingsFile(allocator: std.mem.Allocator, io: std.Io, path: []const u8) ![]u8 {
+    var attempt: usize = 1;
+    while (true) : (attempt += 1) {
+        return std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(MAX_CONFIG_FILE_SIZE)) catch |err| {
+            if (err == error.FileNotFound or attempt == READ_ATTEMPTS) return err;
+            // The read's error is the one worth reporting, not the wait's.
+            std.Io.sleep(io, .fromMilliseconds(READ_RETRY_MS), .awake) catch return err;
+            continue;
+        };
+    }
 }
 
 /// Caller owns the result.
@@ -127,56 +146,56 @@ pub fn expandEnvironmentVariables(allocator: std.mem.Allocator, path: []const u8
     var result: std.ArrayList(u8) = .empty;
     errdefer result.deinit(allocator);
 
-    var i: usize = 0;
-    while (i < path.len) {
-        if (path[i] == '%') {
-            const start = i + 1;
+    var index: usize = 0;
+    while (index < path.len) {
+        if (path[index] == '%') {
+            const start = index + 1;
             const end = std.mem.findScalarPos(u8, path, start, '%') orelse {
                 try result.append(allocator, '%');
-                i += 1;
+                index += 1;
                 continue;
             };
 
             const variable_name = path[start..end];
             if (variable_name.len == 0) {
                 try result.append(allocator, '%');
-                i += 1;
+                index += 1;
                 continue;
             }
 
             const variable_value = environmentVariable(variable_name) orelse {
                 slog.warn("Failed to read environment variable '{s}'", .{variable_name});
-                try result.appendSlice(allocator, path[i .. end + 1]);
-                i = end + 1;
+                try result.appendSlice(allocator, path[index .. end + 1]);
+                index = end + 1;
                 continue;
             };
 
             try result.appendSlice(allocator, variable_value);
 
-            i = end + 1;
+            index = end + 1;
         } else {
-            try result.append(allocator, path[i]);
-            i += 1;
+            try result.append(allocator, path[index]);
+            index += 1;
         }
     }
 
     return result.toOwnedSlice(allocator);
 }
 
-/// Flushed before the rename, so a crash can't leave the renamed file empty; logs its own failures.
-fn writeAndSync(io: std.Io, file: std.Io.File, temp_path: []const u8, content: []const u8) !void {
-    file.writeStreamingAll(io, content) catch |err| {
-        slog.err("Failed to write {} bytes to temp file '{s}': {}", .{ content.len, temp_path, err });
-        return err;
-    };
-    file.sync(io) catch |err| {
-        slog.err("Failed to flush temp file '{s}' to disk: {}", .{ temp_path, err });
-        return err;
-    };
+/// A temp file atomic_file.write left for one of the app's file types, so no file of anyone else's matches.
+fn isTempFileName(name: []const u8) bool {
+    const target = atomic_file.tempTarget(name) orelse return false;
+    for (TEMP_FILE_TARGET_EXTENSIONS) |extension| {
+        if (target.len > extension.len and std.mem.endsWith(u8, target, extension)) return true;
+    }
+    return false;
 }
 
-fn deleteTemp(io: std.Io, temp_path: []const u8, original_err: anyerror) void {
-    std.Io.Dir.cwd().deleteFile(io, temp_path) catch |err| {
-        slog.err("Failed to clean up temp file '{s}' (original error: {}): {}", .{ temp_path, original_err, err });
-    };
+test "a temp file is swept only for the app's file types" {
+    try std.testing.expect(isTempFileName("default.json.9862892f425a8fc0.tmp"));
+    try std.testing.expect(isTempFileName("2112625428.jpg.0123456789abcdef.tmp"));
+    try std.testing.expect(!isTempFileName("notes.txt.9862892f.tmp"));
+    try std.testing.expect(!isTempFileName("default.9862892f.tmp"));
+    try std.testing.expect(!isTempFileName(".json.9862892f.tmp"));
+    try std.testing.expect(!isTempFileName("default.json.notahex.tmp"));
 }

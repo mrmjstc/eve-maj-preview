@@ -1,7 +1,8 @@
 .{
     .name = .js_bridge,
     .version = "0.0.1",
-    .minimum_zig_version = "0.17.0",
+    // EVE-Maj patch: matches the app's minimum.
+    .minimum_zig_version = "0.17.1",
     .paths = .{
         "src",
         "build.zig",

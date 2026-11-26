@@ -35,7 +35,7 @@ const WindowSum = struct {
         }
     }
 
-    /// The window's total (a young streak's from its first moment) rated to now or the newest event, within what a full ring still covers; null while too short to trust.
+    /// The total rated to now or the newest event, within what a full ring covers, a young streak's from its start; null while too short to trust.
     fn rate(self: WindowSum, streak_start: Ticks, now: Ticks, window_ms: u64, ring_full_from: ?Ticks, warm_up: WarmUp) ?f32 {
         if (self.event_count == 0) return 0.0;
         if (ring_full_from) |from| {
@@ -89,7 +89,7 @@ pub const CombatWindow = struct {
         if (hit.is_incoming and hit.counts_for_alert and hit.timestamp.ms > self.last_incoming_hit.ms) self.last_incoming_hit = hit.timestamp;
     }
 
-    /// Fires once per burst of incoming damage and stays silent once combat stops; how often it repeats is the Notifications tab's throttle.
+    /// Fires once per burst of incoming damage and stays silent once combat stops; how often it repeats is its Cooldown on the Game Events tab.
     pub fn checkDamageAlert(self: *CombatWindow) bool {
         if (self.last_incoming_hit.isZero()) return false;
         if (self.last_incoming_hit.ms <= self.last_damage_alert.ms) return false;
@@ -208,7 +208,8 @@ pub const CombatTracker = Tracker(CombatWindow);
 pub const MiningTracker = Tracker(MiningWindow);
 pub const BountyTracker = Tracker(BountyWindow);
 
-/// One locked Window per character, read by the main thread and fed by the chatlog worker; `Window` needs `init(window_seconds: u32)`, `addEntry` and a `ring` field.
+/// One locked Window per character, read by the main thread and fed by the chatlog worker.
+/// `Window`: `init(window_seconds: u32)`, `addEntry` and a `ring` field.
 fn Tracker(comptime Window: type) type {
     return struct {
         allocator: std.mem.Allocator,

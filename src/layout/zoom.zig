@@ -45,7 +45,7 @@ fn anchorHalves(anchor: TextPosition) Halves {
 
 const testing = std.testing;
 
-const MONITOR = win32.RECT{ .left = 0, .top = 0, .right = 1920, .bottom = 1080 };
+const MONITOR: win32.RECT = .{ .left = 0, .top = 0, .right = 1920, .bottom = 1080 };
 
 fn rect(left: i32, top: i32, width: i32, height: i32) win32.RECT {
     return .{ .left = left, .top = top, .right = left + width, .bottom = top + height };
@@ -73,6 +73,6 @@ test "a zoom bigger than the monitor shrinks to fit, keeping its aspect" {
 }
 
 test "a monitor not at the origin bounds the zoom" {
-    const second = win32.RECT{ .left = 1920, .top = -200, .right = 3840, .bottom = 880 };
+    const second: win32.RECT = .{ .left = 1920, .top = -200, .right = 3840, .bottom = 880 };
     try testing.expectEqual(rect(1920, -200, 400, 200), zoomedRect(rect(1920, -200, 200, 100), 200, .Center, second));
 }

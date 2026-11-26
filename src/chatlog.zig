@@ -1,10 +1,7 @@
 //! Follows each logged-in character's chatlog and gamelog on a worker thread, and hands what they say to the main thread.
 const std = @import("std");
 const win32 = @import("platform/win32.zig");
-const notification_mod = @import("notifications/notification.zig");
-const gamelog_events = @import("notifications/gamelog_events.zig");
-const tracker_mod = @import("activity/tracker.zig");
-const activity_lines = @import("activity/lines.zig");
+const tracker = @import("activity/tracker.zig");
 const scout = @import("clients/scout.zig");
 const config = @import("config.zig");
 const character_ids_mod = @import("chatlog/character_ids.zig");
@@ -12,14 +9,14 @@ const lines = @import("chatlog/lines.zig");
 const tail = @import("chatlog/tail.zig");
 const discovery = @import("chatlog/discovery.zig");
 const queue = @import("chatlog/queue.zig");
+const interpret = @import("chatlog/interpret.zig");
+const threads = @import("util/threads.zig");
 const log = @import("log.zig");
 
 const CharacterIds = character_ids_mod.CharacterIds;
 const LogFile = tail.LogFile;
 const slog = log.Scoped("chatlog");
 
-/// Shorter lines can't hold a timestamp and a message.
-const MIN_LINE_LENGTH = 25;
 /// Per worker loop, so a rescan of many characters doesn't keep commands waiting.
 const RESCAN_BUDGET_NS = 100 * std.time.ns_per_ms;
 
@@ -28,11 +25,13 @@ pub const Findings = struct {
     system_updates: std.ArrayList(queue.SystemUpdate) = .empty,
     notifications: std.ArrayList(queue.NotificationEvent) = .empty,
     session_starts: std.ArrayList(queue.SessionStart) = .empty,
+    intel_sightings: std.ArrayList(queue.IntelSighting) = .empty,
 
     pub fn deinit(self: *Findings, allocator: std.mem.Allocator) void {
         freeAll(queue.SystemUpdate, allocator, &self.system_updates);
         freeAll(queue.NotificationEvent, allocator, &self.notifications);
         freeAll(queue.SessionStart, allocator, &self.session_starts);
+        freeAll(queue.IntelSighting, allocator, &self.intel_sightings);
     }
 };
 
@@ -41,18 +40,12 @@ pub const ChatlogMonitor = struct {
     io: std.Io,
     /// Worker only, but for its folder paths, which never change after init.
     finder: discovery.LogFinder,
-    /// Read by the worker for ore prices, which only change while it's stopped.
-    global_settings: ?*config.GlobalConfig,
     /// Borrowed, outliving the monitor; shared by both threads, as it locks its own map.
     character_ids: ?*CharacterIds,
-    /// Read by the worker; set by setTrackers only while it's stopped.
-    combat_tracker: ?*tracker_mod.CombatTracker = null,
-    /// Read by the worker; set by setTrackers only while it's stopped.
-    mining_tracker: ?*tracker_mod.MiningTracker = null,
-    /// Read by the worker; set by setTrackers only while it's stopped.
-    bounty_tracker: ?*tracker_mod.BountyTracker = null,
-    /// Owned and freed in deinit; read by the worker, and set only while it's stopped.
-    damage_alert_excluded_weapons: []const u8 = "",
+    /// Worker only, but for its set functions, which run only while the worker is stopped.
+    interpreter: interpret.Interpreter,
+    /// Set with the interpreter's alert rules; the worker clears it once it has followed the channels they name.
+    has_stale_channels: bool = false,
     /// Read by the worker; set by applySettings only while it's stopped.
     idle_poll_threshold: u32 = 20,
     /// Read by the worker; set by applySettings only while it's stopped.
@@ -74,6 +67,8 @@ pub const ChatlogMonitor = struct {
     notifications: queue.Queue(queue.NotificationEvent),
     /// Worker to main thread.
     session_starts: queue.Queue(queue.SessionStart),
+    /// Worker to main thread.
+    intel_sightings: queue.Queue(queue.IntelSighting),
 
     /// Main thread only: characters added and not yet removed, so each is sent to the worker once.
     requested: std.StringHashMap(void),
@@ -97,15 +92,15 @@ pub const ChatlogMonitor = struct {
 
         pub fn onLine(self: LineHandler, line: []const u8) void {
             const trimmed = std.mem.trim(u8, line, " \r\t");
-            if (trimmed.len > 0) self.monitor.parseLine(self.file, trimmed);
+            if (trimmed.len > 0) self.monitor.interpreter.interpret(self.file, trimmed, win32.Ticks.now());
         }
 
         pub fn onLongLine(self: LineHandler, line_length: usize) void {
-            warnLongLine(self.file, line_length);
+            interpret.Interpreter.warnLongLine(self.file, line_length);
         }
     };
 
-    pub fn init(allocator: std.mem.Allocator, io: std.Io, chatlog_config: *const config.ChatlogConfig, global_settings: ?*config.GlobalConfig, character_ids: ?*CharacterIds) !*ChatlogMonitor {
+    pub fn create(allocator: std.mem.Allocator, io: std.Io, chatlog_config: *const config.ChatlogConfig, global_settings: ?*config.GlobalConfig, character_ids: ?*CharacterIds) !*ChatlogMonitor {
         const monitor = try allocator.create(ChatlogMonitor);
         errdefer allocator.destroy(monitor);
         const stop_event = win32.CreateEventA(null, win32.TRUE, win32.FALSE, null) orelse return error.CreateEventFailed;
@@ -115,12 +110,22 @@ pub const ChatlogMonitor = struct {
             .io = io,
             .stop_event = stop_event,
             .finder = try discovery.LogFinder.init(allocator, io, chatlog_config.chatlogDir, chatlog_config.gamelogDir, character_ids),
-            .global_settings = global_settings,
             .character_ids = character_ids,
+            .interpreter = .{
+                .allocator = allocator,
+                .outbox = .{
+                    .system_updates = &monitor.system_updates,
+                    .notifications = &monitor.notifications,
+                    .intel_sightings = &monitor.intel_sightings,
+                },
+                .own_characters = &monitor.wanted,
+                .global_settings = global_settings,
+            },
             .commands = .init(allocator, io),
             .system_updates = .init(allocator, io),
             .notifications = .init(allocator, io),
             .session_starts = .init(allocator, io),
+            .intel_sightings = .init(allocator, io),
             .requested = .init(allocator),
             .monitored_paths = .init(allocator),
             .wanted = .init(allocator),
@@ -129,13 +134,14 @@ pub const ChatlogMonitor = struct {
         return monitor;
     }
 
-    pub fn deinit(self: *ChatlogMonitor) void {
+    pub fn destroy(self: *ChatlogMonitor) void {
         self.stopWorkerThread();
         _ = win32.CloseHandle(self.stop_event);
         self.commands.deinit();
         self.system_updates.deinit();
         self.notifications.deinit();
         self.session_starts.deinit();
+        self.intel_sightings.deinit();
         freeKeys(self.allocator, &self.requested);
         freeKeys(self.allocator, &self.wanted);
         freeKeys(self.allocator, &self.monitored_paths);
@@ -144,7 +150,8 @@ pub const ChatlogMonitor = struct {
         self.finder.deinit();
         for (self.log_files.items) |*file| file.deinit(self.allocator, self.io);
         self.log_files.deinit(self.allocator);
-        if (self.damage_alert_excluded_weapons.len > 0) self.allocator.free(self.damage_alert_excluded_weapons);
+        self.interpreter.deinit();
+        self.allocator.destroy(self);
     }
 
     fn freeKeys(allocator: std.mem.Allocator, map: *std.StringHashMap(void)) void {
@@ -168,23 +175,17 @@ pub const ChatlogMonitor = struct {
         self.poll_interval_ms = chatlog_config.pollIntervalMs;
     }
 
-    /// Owned, since the worker reads it while a dialog preview may replace the config's copy; only while the worker is stopped.
-    pub fn setDamageAlertExcludedWeapons(self: *ChatlogMonitor, weapons: []const u8) void {
-        if (!self.isWorkerStopped("damage alert weapon filter")) return;
-        const owned: []const u8 = if (weapons.len == 0) "" else self.allocator.dupe(u8, weapons) catch |err| {
-            slog.err("Failed to copy damage alert weapon filter, keeping the previous one: {}", .{err});
-            return;
-        };
-        if (self.damage_alert_excluded_weapons.len > 0) self.allocator.free(self.damage_alert_excluded_weapons);
-        self.damage_alert_excluded_weapons = owned;
+    /// The profile's chat-alert rules and Taking Damage weapon filter; only while the worker is stopped.
+    pub fn applyProfile(self: *ChatlogMonitor, settings: *const config.Config) void {
+        if (!self.isWorkerStopped("chat alerts and weapon filter")) return;
+        self.interpreter.setDamageAlertExcludedWeapons(settings.combat.damage_alert_excluded_weapons);
+        if (self.interpreter.setChatAlerts(settings.chatAlerts.items, settings.characters.items)) self.has_stale_channels = true;
     }
 
     /// Borrows the trackers; only while the worker is stopped.
-    pub fn setTrackers(self: *ChatlogMonitor, combat: ?*tracker_mod.CombatTracker, mining: ?*tracker_mod.MiningTracker, bounty: ?*tracker_mod.BountyTracker) void {
+    pub fn setTrackers(self: *ChatlogMonitor, combat: ?*tracker.CombatTracker, mining: ?*tracker.MiningTracker, bounty: ?*tracker.BountyTracker) void {
         if (!self.isWorkerStopped("trackers")) return;
-        self.combat_tracker = combat;
-        self.mining_tracker = mining;
-        self.bounty_tracker = bounty;
+        self.interpreter.setTrackers(combat, mining, bounty);
     }
 
     /// Logs rather than asserts when it's running, so a misordered call costs a setting instead of the app.
@@ -207,7 +208,7 @@ pub const ChatlogMonitor = struct {
         if (self.worker_thread != null) return error.AlreadyRunning;
         self.should_exit.store(false, .release);
         _ = win32.ResetEvent(self.stop_event);
-        self.worker_thread = try std.Thread.spawn(.{}, workerMain, .{self});
+        self.worker_thread = try threads.spawn(workerMain, .{self});
     }
 
     /// Main thread only.
@@ -251,6 +252,7 @@ pub const ChatlogMonitor = struct {
         drainLogged(queue.SystemUpdate, &self.system_updates, &findings.system_updates, "system updates");
         drainLogged(queue.NotificationEvent, &self.notifications, &findings.notifications, "notifications");
         drainLogged(queue.SessionStart, &self.session_starts, &findings.session_starts, "session starts");
+        drainLogged(queue.IntelSighting, &self.intel_sightings, &findings.intel_sightings, "intel sightings");
         return findings;
     }
 
@@ -286,6 +288,7 @@ pub const ChatlogMonitor = struct {
         self.want(character_name);
         self.followNewestLog(character_name, true);
         self.followNewestLog(character_name, false);
+        self.followChannels(character_name);
     }
 
     fn want(self: *ChatlogMonitor, character_name: []const u8) void {
@@ -303,9 +306,52 @@ pub const ChatlogMonitor = struct {
     fn followNewestLog(self: *ChatlogMonitor, character_name: []const u8, is_chatlog: bool) void {
         const path = self.finder.find(character_name, is_chatlog) orelse return;
         defer self.allocator.free(path);
-        self.addLogFile(path, character_name, is_chatlog) catch |err| {
+        self.addLogFile(path, character_name, if (is_chatlog) lines.LOCAL_CHANNEL else "", is_chatlog) catch |err| {
             slog.err("Failed to follow {s} '{s}' for '{s}': {}", .{ if (is_chatlog) "chatlog" else "gamelog", path, character_name, err });
         };
+    }
+
+    /// Needs the character's Local log, which dates its session.
+    fn followChannels(self: *ChatlogMonitor, character_name: []const u8) void {
+        const rules = self.interpreter.alertRules() orelse return;
+        if (rules.rules.len == 0) return;
+        const session_start = self.sessionStart(character_name) orelse return;
+
+        var logs = self.finder.findChannels(character_name, session_start);
+        defer {
+            for (logs.items) |*channel_log| channel_log.deinit(self.allocator);
+            logs.deinit(self.allocator);
+        }
+        for (logs.items) |channel_log| {
+            if (!rules.followsChannel(channel_log.channel)) continue;
+            self.addLogFile(channel_log.path, character_name, channel_log.channel, true) catch |err| {
+                slog.err("Failed to follow channel '{s}' for '{s}': {}", .{ channel_log.channel, character_name, err });
+            };
+        }
+    }
+
+    /// UTC Unix seconds; EVE opens a character's channel logs as it opens Local.
+    fn sessionStart(self: *const ChatlogMonitor, character_name: []const u8) ?i64 {
+        for (self.log_files.items) |*file| {
+            if (!file.is_chatlog or file.isChannelLog() or !std.mem.eql(u8, file.character_name, character_name)) continue;
+            return lines.logTimestampToUnixSeconds(lines.logFileTimestamp(std.Io.Dir.path.basename(file.path), true));
+        }
+        return null;
+    }
+
+    /// After the rules change, as nothing else lets go of a channel that's still written to.
+    fn dropUnfollowedChannels(self: *ChatlogMonitor) void {
+        var i: usize = 0;
+        while (i < self.log_files.items.len) {
+            const file = &self.log_files.items[i];
+            const is_followed = if (self.interpreter.alertRules()) |rules| rules.followsChannel(file.channel_name) else false;
+            if (!file.isChannelLog() or is_followed) {
+                i += 1;
+                continue;
+            }
+            slog.info("Stopped monitoring channel '{s}' for {s}", .{ file.channel_name, file.character_name });
+            self.dropLogFile(i);
+        }
     }
 
     fn unfollow(self: *ChatlogMonitor, character_name: []const u8) void {
@@ -323,9 +369,7 @@ pub const ChatlogMonitor = struct {
             self.dropLogFile(i);
         }
 
-        if (self.combat_tracker) |tracker| tracker.removeCharacter(character_name);
-        if (self.mining_tracker) |tracker| tracker.removeCharacter(character_name);
-        if (self.bounty_tracker) |tracker| tracker.removeCharacter(character_name);
+        self.interpreter.forget(character_name);
     }
 
     fn resolveId(self: *const ChatlogMonitor, character_name: []const u8) void {
@@ -348,14 +392,14 @@ pub const ChatlogMonitor = struct {
         removed.deinit(self.allocator, self.io);
     }
 
-    fn addLogFile(self: *ChatlogMonitor, path: []const u8, character_name: []const u8, is_chatlog: bool) !void {
+    fn addLogFile(self: *ChatlogMonitor, path: []const u8, character_name: []const u8, channel_name: []const u8, is_chatlog: bool) !void {
         if (self.monitored_paths.contains(path)) return;
 
-        // A newer file for the same character and kind replaces the old one: EVE started a new session.
+        // A newer file for the same character and channel replaces the old one: EVE started a new session.
         var i: usize = 0;
         while (i < self.log_files.items.len) {
             const file = &self.log_files.items[i];
-            if (file.is_chatlog != is_chatlog or !std.mem.eql(u8, file.character_name, character_name)) {
+            if (file.is_chatlog != is_chatlog or !std.mem.eql(u8, file.character_name, character_name) or !std.mem.eql(u8, file.channel_name, channel_name)) {
                 i += 1;
                 continue;
             }
@@ -364,7 +408,7 @@ pub const ChatlogMonitor = struct {
         }
 
         {
-            var file = try LogFile.init(self.allocator, path, character_name, is_chatlog);
+            var file: LogFile = try .init(self.allocator, path, character_name, channel_name, is_chatlog);
             errdefer file.deinit(self.allocator, self.io);
             try self.log_files.append(self.allocator, file);
         }
@@ -383,7 +427,7 @@ pub const ChatlogMonitor = struct {
         if (initial_system) |match| {
             slog.debug("Initial system for {s}: {s} (event_timestamp={})", .{ character_name, match.system, match.event_timestamp });
             // Not a jump: it's where the character already was.
-            self.queueSystemUpdate(character_name, match.system, match.event_timestamp, false);
+            self.interpreter.queueSystemUpdate(character_name, match.system, match.event_timestamp, false);
         }
         if (!is_chatlog) self.queueSessionStart(character_name, std.Io.Dir.path.basename(path));
 
@@ -405,7 +449,13 @@ pub const ChatlogMonitor = struct {
         const start_time_ns = std.Io.Timestamp.now(self.io, .awake).toNanoseconds();
 
         if (!self.rescan_changes.hasAny()) {
-            const changes = self.finder.changes();
+            var changes = self.finder.changes();
+            if (self.has_stale_channels) {
+                self.has_stale_channels = false;
+                self.dropUnfollowedChannels();
+                // The logs of a newly named channel already exist, so the folder won't signal them.
+                changes.chatlog_changed = true;
+            }
             if (!changes.hasAny()) return;
             self.rescan_changes = changes;
             self.rescan_index = 0;
@@ -430,7 +480,10 @@ pub const ChatlogMonitor = struct {
             const name = names[self.rescan_index];
             if (!self.wanted.contains(name)) continue;
             // addLogFile skips a file already followed.
-            if (self.rescan_changes.chatlog_changed) self.followNewestLog(name, true);
+            if (self.rescan_changes.chatlog_changed) {
+                self.followNewestLog(name, true);
+                self.followChannels(name);
+            }
             if (self.rescan_changes.gamelog_changed) self.followNewestLog(name, false);
         }
 
@@ -439,22 +492,6 @@ pub const ChatlogMonitor = struct {
         self.rescan_index = 0;
         self.clearRescanNames();
         slog.debug("Log file scan completed", .{});
-    }
-
-    fn queueSystemUpdate(self: *ChatlogMonitor, character_name: []const u8, system_name: []const u8, event_timestamp: u64, is_jump: bool) void {
-        const system_update = self.copySystemUpdate(character_name, system_name, event_timestamp, is_jump) catch |err| {
-            slog.err("Failed to copy system update for '{s}': {}", .{ character_name, err });
-            return;
-        };
-        self.system_updates.push(system_update) catch |err| {
-            slog.err("Failed to queue system update for '{s}': {}", .{ character_name, err });
-        };
-    }
-
-    fn copySystemUpdate(self: *const ChatlogMonitor, character_name: []const u8, system_name: []const u8, event_timestamp: u64, is_jump: bool) !queue.SystemUpdate {
-        const owned_name = try self.allocator.dupe(u8, character_name);
-        errdefer self.allocator.free(owned_name);
-        return .{ .character_name = owned_name, .system_name = try self.allocator.dupe(u8, system_name), .event_timestamp = event_timestamp, .is_jump = is_jump };
     }
 
     /// EVE starts a new gamelog at each login, named for when it did.
@@ -466,116 +503,6 @@ pub const ChatlogMonitor = struct {
         };
         self.session_starts.push(.{ .character_name = owned_name, .started_at = started_at }) catch |err| {
             slog.err("Failed to queue session start for '{s}': {}", .{ character_name, err });
-        };
-    }
-
-    /// Gated by the type's settings in ThumbnailSet.notify, once the main thread delivers it.
-    fn queueNotification(self: *ChatlogMonitor, character_name: []const u8, notification: notification_mod.Notification) void {
-        var event: queue.NotificationEvent = .{ .character_name = "", .notification = .{ .notification_type = notification.notification_type, .state = notification.state } };
-        self.copyNotificationEvent(&event, character_name, notification) catch |err| {
-            event.deinit(self.allocator);
-            slog.err("Failed to copy {s} notification for '{s}': {}", .{ @tagName(notification.notification_type), character_name, err });
-            return;
-        };
-        self.notifications.push(event) catch |err| {
-            slog.err("Failed to queue {s} notification for '{s}': {}", .{ @tagName(notification.notification_type), character_name, err });
-        };
-    }
-
-    /// Fills `event` field by field so a partial failure leaves it safe to deinit.
-    fn copyNotificationEvent(self: *const ChatlogMonitor, event: *queue.NotificationEvent, character_name: []const u8, notification: notification_mod.Notification) !void {
-        event.character_name = try self.allocator.dupe(u8, character_name);
-        if (notification.source) |source| event.notification.source = try self.allocator.dupe(u8, source);
-        if (notification.target) |target| event.notification.target = try self.allocator.dupe(u8, target);
-    }
-
-    /// Only the first few and then every 100th, since a malformed log can produce thousands.
-    fn warnLongLine(file: *LogFile, line_length: usize) void {
-        file.long_line_warning_count += 1;
-        if (file.long_line_warning_count <= 3 or file.long_line_warning_count % 100 == 0) {
-            slog.warn("Dropping line ({} bytes, over the {}-byte cap) for '{s}' (warning #{})", .{ line_length, lines.MAX_LINE_LENGTH, file.character_name, file.long_line_warning_count });
-        }
-    }
-
-    fn parseLine(self: *ChatlogMonitor, file: *LogFile, line: []const u8) void {
-        if (line.len < MIN_LINE_LENGTH) return;
-        if (line.len > lines.MAX_LINE_LENGTH) {
-            warnLongLine(file, line.len);
-            return;
-        }
-
-        if (file.is_chatlog) {
-            if (lines.parseChatLine(line)) |system| self.handleSystemChange(file, system, .chatlog, lines.leadingTimestamp(line));
-            return;
-        }
-
-        const parsed = lines.parseGameLine(line);
-        if (parsed.system) |change| self.handleSystemChange(file, change.system, change.source, lines.leadingTimestamp(line));
-        if (parsed.activity) |activity| switch (activity) {
-            .event => self.handleGamelogEvent(file, line),
-            .mining => self.handleMiningEvent(file, line),
-            .bounty => self.handleBountyEvent(file, line),
-        };
-    }
-
-    /// Ignores an undock or Local change that repeats the last system, but never a jump; `system` is borrowed and copied into the queued events.
-    fn handleSystemChange(self: *ChatlogMonitor, file: *LogFile, system: []const u8, source: lines.SystemSource, event_timestamp: u64) void {
-        const system_hash = std.hash.Wyhash.hash(0, system);
-        const is_jump = source == .jump or source == .conduit;
-        if (!is_jump and file.last_system_hash == system_hash) return;
-        file.last_system_hash = system_hash;
-
-        // Only jumps notify: undock and Local detection report the same arrival and would fire it twice.
-        if (source == .jump) self.queueNotification(file.character_name, .{ .notification_type = .SystemChange, .target = system });
-        // Timestamped, since a quiet chatlog can be read after a newer gamelog jump.
-        self.queueSystemUpdate(file.character_name, system, event_timestamp, is_jump);
-        slog.info("System change ({s}): {s} -> {s}", .{ @tagName(source), file.character_name, system });
-    }
-
-    fn handleGamelogEvent(self: *ChatlogMonitor, file: *LogFile, event_text: []const u8) void {
-        // Stripped once for both uses; this is the highest-volume line type.
-        var stripped_buf: [activity_lines.MAX_STRIPPED_LENGTH]u8 = undefined;
-        const stripped_text = activity_lines.stripHtml(event_text, &stripped_buf);
-
-        if (self.combat_tracker) |tracker| {
-            if (activity_lines.parseCombatLine(stripped_text)) |parsed| {
-                // Filtered weapons still count toward DPS but mustn't retrigger Taking Damage.
-                const counts_for_alert = !activity_lines.isWeaponExcluded(parsed.weapon, self.damage_alert_excluded_weapons);
-                const hit: tracker_mod.CombatWindow.Hit = .{ .amount = parsed.amount, .timestamp = win32.Ticks.now(), .is_incoming = parsed.is_incoming, .counts_for_alert = counts_for_alert };
-                tracker.addEntry(file.character_name, .{hit}) catch |err| {
-                    slog.warn("Failed to record combat entry for '{s}': {}", .{ file.character_name, err });
-                };
-            }
-        }
-
-        const notification = gamelog_events.classify(stripped_text) orelse return;
-        self.queueNotification(file.character_name, notification);
-        slog.debug("Gamelog event: {s} -> {s}", .{ file.character_name, event_text });
-    }
-
-    /// A missing price counts as 0 ISK; only a missing volume drops the yield, since m3 can't be computed without it.
-    fn handleMiningEvent(self: *const ChatlogMonitor, file: *LogFile, event_text: []const u8) void {
-        const tracker = self.mining_tracker orelse return;
-        const parsed = activity_lines.parseMiningLine(event_text) orelse return;
-        const global_settings = self.global_settings orelse return;
-        const volume_per_unit = global_settings.oreVolume(parsed.name()) orelse {
-            slog.warn("Failed to record mining yield: unknown ore, ice or gas '{s}'", .{parsed.name()});
-            return;
-        };
-        const price_per_unit = global_settings.orePrice(parsed.name()) orelse 0;
-        const amount: f32 = @floatFromInt(parsed.amount);
-        const m3 = amount * @as(f32, @floatCast(volume_per_unit));
-        const isk = amount * @as(f32, @floatCast(price_per_unit));
-        tracker.addEntry(file.character_name, .{ m3, isk, win32.Ticks.now() }) catch |err| {
-            slog.warn("Failed to record mining entry for '{s}': {}", .{ file.character_name, err });
-        };
-    }
-
-    fn handleBountyEvent(self: *const ChatlogMonitor, file: *LogFile, event_text: []const u8) void {
-        const tracker = self.bounty_tracker orelse return;
-        const isk = activity_lines.parseBountyLine(event_text) orelse return;
-        tracker.addEntry(file.character_name, .{ isk, win32.Ticks.now() }) catch |err| {
-            slog.warn("Failed to record bounty entry for '{s}': {}", .{ file.character_name, err });
         };
     }
 };

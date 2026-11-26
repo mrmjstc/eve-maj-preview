@@ -29,6 +29,8 @@ pub const LPCSTR = [*:0]const u8;
 pub const LPSTR = [*:0]u8;
 
 pub const WS_POPUP = 0x80000000;
+/// A title bar with close, minimize and maximize, and a sizing border.
+pub const WS_OVERLAPPEDWINDOW = 0x00CF0000;
 
 pub const WS_EX_TOPMOST = 0x00000008;
 pub const WS_EX_TRANSPARENT = 0x00000020;
@@ -39,14 +41,24 @@ pub const WS_EX_NOACTIVATE = 0x08000000;
 pub const WM_DESTROY = 0x0002;
 pub const WM_MOVING = 0x0216;
 pub const WM_ACTIVATE = 0x0006;
+pub const WM_KILLFOCUS = 0x0008;
+pub const WM_SIZE = 0x0005;
+/// WM_SIZE's wParam when the window was minimized, and its size means nothing.
+pub const SIZE_MINIMIZED = 1;
+pub const WM_PAINT = 0x000F;
+pub const WM_GETMINMAXINFO = 0x0024;
 pub const WM_CLOSE = 0x0010;
 /// wParam is FALSE when the shutdown or logoff was cancelled.
 pub const WM_ENDSESSION = 0x0016;
 pub const WM_ERASEBKGND = 0x0014;
 pub const WM_NCHITTEST = 0x0084;
+pub const WM_NCLBUTTONDOWN = 0x00A1;
+/// wParam is the WM_NCHITTEST result under the cursor; sent without CS_DBLCLKS.
+pub const WM_NCLBUTTONDBLCLK = 0x00A3;
 pub const WM_TIMER = 0x0113;
 pub const WM_KEYDOWN = 0x0100;
 pub const WM_KEYUP = 0x0101;
+pub const WM_CHAR = 0x0102;
 pub const WM_SYSKEYDOWN = 0x0104;
 pub const WM_SYSKEYUP = 0x0105;
 pub const KEY_EXTENDED_BIT: LPARAM = 1 << 24;
@@ -69,6 +81,9 @@ pub const HTCLIENT: LRESULT = 1;
 pub const HTCAPTION: LRESULT = 2;
 pub const WM_ENTERSIZEMOVE = 0x0231;
 pub const WM_EXITSIZEMOVE = 0x0232;
+pub const WM_SYSCOMMAND = 0x0112;
+/// WM_SYSCOMMAND's move, in wParam's top bits; the low four carry how it was asked for.
+pub const SC_MOVE = 0xF010;
 pub const WM_SETICON = 0x0080;
 pub const ICON_SMALL = 0;
 pub const ICON_BIG = 1;
@@ -77,14 +92,6 @@ pub const WM_DPICHANGED = 0x02E0;
 pub const WM_COPYDATA = 0x004A;
 pub const WM_USER = 0x0400;
 pub const WM_APP = 0x8000;
-pub const WM_TRAYICON = WM_USER + 1;
-pub const WM_SWITCH_PROFILE = WM_APP + 4;
-pub const WM_HOTKEYS_STATE_CHANGED = WM_APP + 12;
-pub const WM_KNOTS_COMMAND = WM_APP + 16;
-/// Posted to the hotkey hook thread, with a request in lParam.
-pub const WM_HOOK_REQUEST = WM_APP + 20;
-/// Posted to the timer window when the config dialog records a bare Win press; wParam holds the other held modifiers.
-pub const WM_WIN_KEY_CAPTURED = WM_APP + 21;
 pub const WM_QUIT = 0x0012;
 pub const WM_COMMAND = 0x0111;
 
@@ -94,6 +101,7 @@ pub const SPI_SETANIMATION = 0x0049;
 pub const SW_HIDE = 0;
 pub const SW_SHOWNOACTIVATE = 4;
 pub const SW_SHOW = 5;
+pub const SW_SHOWNA = 8;
 pub const SW_SHOWMINIMIZED = 2;
 pub const SW_SHOWMAXIMIZED = 3;
 pub const SW_RESTORE = 9;
@@ -108,6 +116,7 @@ pub const INVALID_HANDLE_VALUE = @as(HANDLE, @ptrFromInt(@as(usize, @bitCast(@as
 pub const FILE_NOTIFY_CHANGE_FILE_NAME = 0x00000001;
 pub const WAIT_OBJECT_0 = 0x00000000;
 pub const WAIT_TIMEOUT = 0x00000102;
+pub const WAIT_FAILED = 0xFFFFFFFF;
 
 pub const HWND_TOPMOST: HWND = @ptrFromInt(@as(usize, @bitCast(@as(isize, -1))));
 pub const HWND_NOTOPMOST: HWND = @ptrFromInt(@as(usize, @bitCast(@as(isize, -2))));
@@ -132,8 +141,6 @@ pub const IDC_SIZENS: LPCSTR = @ptrFromInt(32645);
 pub const IDC_SIZEALL: LPCSTR = @ptrFromInt(32646);
 pub const IDC_HAND: LPCSTR = @ptrFromInt(32649);
 pub const IDC_HELP: LPCSTR = @ptrFromInt(32651);
-
-pub const PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
 
 pub const ERROR_ALREADY_EXISTS = 183;
 
@@ -190,7 +197,7 @@ pub const KBDLLHOOKSTRUCT = extern struct {
     dwExtraInfo: usize,
 };
 pub const LLKHF_EXTENDED: DWORD = 0x01;
-/// nCode value meaning a WH_KEYBOARD_LL/WH_MOUSE_LL hook must process the event
+/// nCode value meaning a WH_KEYBOARD_LL/WH_MOUSE_LL hook must process the event.
 pub const HC_ACTION: c_int = 0;
 pub const RECT = extern struct {
     left: LONG,
@@ -219,8 +226,8 @@ pub fn rectCenter(rect: RECT) POINT {
 }
 
 /// Half-open like GDI: the left/top edges are inside, right/bottom aren't.
-pub fn rectContains(rect: RECT, pt: POINT) bool {
-    return pt.x >= rect.left and pt.x < rect.right and pt.y >= rect.top and pt.y < rect.bottom;
+pub fn rectContains(rect: RECT, point: POINT) bool {
+    return point.x >= rect.left and point.x < rect.right and point.y >= rect.top and point.y < rect.bottom;
 }
 
 pub fn clampRect(rect: RECT, bounds: RECT) RECT {
@@ -258,6 +265,24 @@ pub const COPYDATASTRUCT = extern struct {
     dwData: usize,
     cbData: DWORD,
     lpData: ?*const anyopaque,
+};
+
+pub const PAINTSTRUCT = extern struct {
+    hdc: HDC,
+    fErase: BOOL,
+    rcPaint: RECT,
+    fRestore: BOOL,
+    fIncUpdate: BOOL,
+    rgbReserved: [32]BYTE,
+};
+
+/// WM_GETMINMAXINFO's lParam.
+pub const MINMAXINFO = extern struct {
+    ptReserved: POINT,
+    ptMaxSize: POINT,
+    ptMaxPosition: POINT,
+    ptMinTrackSize: POINT,
+    ptMaxTrackSize: POINT,
 };
 
 pub const WNDPROC = *const fn (HWND, UINT, WPARAM, LPARAM) callconv(.c) LRESULT;
@@ -390,7 +415,7 @@ comptime {
     std.debug.assert(@offsetOf(MINIDUMP_EXCEPTION_INFORMATION, "ExceptionPointers") == 4);
     std.debug.assert(@sizeOf(MINIDUMP_EXCEPTION_INFORMATION) == 16);
 }
-// Stack traces for every thread, without memory contents.
+/// Stack traces for every thread, without memory contents.
 pub const MiniDumpNormal: DWORD = 0x00000000;
 pub extern "dbghelp" fn MiniDumpWriteDump(
     hProcess: HANDLE,
@@ -453,12 +478,17 @@ pub extern "user32" fn IsIconic(hWnd: HWND) callconv(.c) BOOL;
 pub extern "user32" fn IsZoomed(hWnd: HWND) callconv(.c) BOOL;
 pub extern "user32" fn GetWindowTextA(hWnd: HWND, lpString: LPSTR, nMaxCount: c_int) callconv(.c) c_int;
 pub extern "user32" fn GetWindowTextW(hWnd: HWND, lpString: [*:0]u16, nMaxCount: c_int) callconv(.c) c_int;
+pub extern "user32" fn SetWindowTextA(hWnd: HWND, lpString: LPCSTR) callconv(.c) BOOL;
 pub extern "user32" fn GetWindowThreadProcessId(hWnd: HWND, lpdwProcessId: ?*DWORD) callconv(.c) DWORD;
 pub extern "user32" fn IsWindowVisible(hWnd: HWND) callconv(.c) BOOL;
 pub extern "user32" fn GetClassNameA(hWnd: HWND, lpClassName: LPSTR, nMaxCount: c_int) callconv(.c) c_int;
 pub extern "user32" fn EnumWindows(lpEnumFunc: WNDENUMPROC, lParam: LPARAM) callconv(.c) BOOL;
+pub extern "user32" fn EnumThreadWindows(dwThreadId: DWORD, lpfn: WNDENUMPROC, lParam: LPARAM) callconv(.c) BOOL;
 pub extern "user32" fn GetClientRect(hWnd: HWND, lpRect: *RECT) callconv(.c) BOOL;
 pub extern "user32" fn GetWindowRect(hWnd: HWND, lpRect: *RECT) callconv(.c) BOOL;
+pub extern "user32" fn AdjustWindowRectExForDpi(lpRect: *RECT, dwStyle: DWORD, bMenu: BOOL, dwExStyle: DWORD, dpi: UINT) callconv(.c) BOOL;
+pub extern "user32" fn BeginPaint(hWnd: HWND, lpPaint: *PAINTSTRUCT) callconv(.c) ?HDC;
+pub extern "user32" fn EndPaint(hWnd: HWND, lpPaint: *const PAINTSTRUCT) callconv(.c) BOOL;
 pub extern "user32" fn InvalidateRect(hWnd: HWND, lpRect: ?*const RECT, bErase: BOOL) callconv(.c) BOOL;
 pub extern "user32" fn GetDC(hWnd: ?HWND) callconv(.c) ?HDC;
 pub extern "user32" fn ReleaseDC(hWnd: ?HWND, hDC: HDC) callconv(.c) c_int;
@@ -528,18 +558,23 @@ pub extern "user32" fn SetWindowLongPtrW(hWnd: HWND, nIndex: c_int, dwNewLong: i
 pub extern "user32" fn CallWindowProcW(lpPrevWndFunc: isize, hWnd: HWND, Msg: UINT, wParam: WPARAM, lParam: LPARAM) callconv(.c) LRESULT;
 pub extern "user32" fn SetPropA(hWnd: HWND, lpString: LPCSTR, hData: HANDLE) callconv(.c) BOOL;
 pub extern "user32" fn GetPropA(hWnd: HWND, lpString: LPCSTR) callconv(.c) ?HANDLE;
+pub extern "user32" fn RemovePropA(hWnd: HWND, lpString: LPCSTR) callconv(.c) ?HANDLE;
 pub extern "user32" fn SetTimer(hWnd: ?HWND, nIDEvent: usize, uElapse: UINT, lpTimerFunc: ?*const anyopaque) callconv(.c) usize;
 pub extern "user32" fn KillTimer(hWnd: ?HWND, uIDEvent: usize) callconv(.c) BOOL;
 pub extern "user32" fn SetCapture(hWnd: HWND) callconv(.c) ?HWND;
 pub extern "user32" fn ReleaseCapture() callconv(.c) BOOL;
+pub extern "user32" fn ScreenToClient(hWnd: HWND, lpPoint: *POINT) callconv(.c) BOOL;
 pub extern "user32" fn TrackMouseEvent(lpEventTrack: *TRACKMOUSEEVENT) callconv(.c) BOOL;
 pub extern "user32" fn GetParent(hWnd: HWND) callconv(.c) ?HWND;
 pub extern "user32" fn GetSystemMetrics(nIndex: c_int) callconv(.c) c_int;
 pub extern "user32" fn GetAsyncKeyState(vKey: c_int) callconv(.c) c_short;
+pub extern "user32" fn MapVirtualKeyW(uCode: UINT, uMapType: UINT) callconv(.c) UINT;
+pub extern "user32" fn VkKeyScanW(ch: u16) callconv(.c) c_short;
+pub const MAPVK_VK_TO_CHAR: UINT = 2;
 pub extern "user32" fn keybd_event(bVk: BYTE, bScan: BYTE, dwFlags: DWORD, dwExtraInfo: usize) callconv(.c) void;
 pub const KEYEVENTF_KEYUP: DWORD = 0x0002;
 
-// Only for focus_grant.zig's foreground-lock workaround; real hotkeys go through the low-level hooks.
+/// Only for focus_grant.zig's foreground-lock workaround; real hotkeys go through the low-level hooks.
 pub extern "user32" fn RegisterHotKey(hWnd: ?HWND, id: c_int, fsModifiers: UINT, vk: UINT) callconv(.c) BOOL;
 pub extern "user32" fn UnregisterHotKey(hWnd: ?HWND, id: c_int) callconv(.c) BOOL;
 
@@ -660,11 +695,6 @@ pub const SM_YVIRTUALSCREEN = 77;
 pub const SM_CXVIRTUALSCREEN = 78;
 pub const SM_CYVIRTUALSCREEN = 79;
 
-pub const MOD_ALT = 0x0001;
-pub const MOD_CONTROL = 0x0002;
-pub const MOD_SHIFT = 0x0004;
-pub const MOD_WIN = 0x0008;
-
 pub const NIM_ADD = 0x00000000;
 pub const NIM_MODIFY = 0x00000001;
 pub const NIM_DELETE = 0x00000002;
@@ -681,44 +711,17 @@ pub const MF_CHECKED = 0x00000008;
 pub const MF_GRAYED = 0x00000001;
 /// IDI_ICON1 in app.rc: the icon built into the exe.
 pub const APP_ICON_ID = 101;
-pub const IDM_EXIT = 1001;
-pub const IDM_UPDATE = 1002;
-pub const IDM_TOGGLE_DRAGGING = 1003;
-pub const IDM_SUSPEND_HOTKEYS = 1004;
-pub const IDM_TOGGLE_AUTO_MINIMIZE = 1005;
-pub const IDM_TOGGLE_VISIBILITY = 1006;
-pub const IDM_OPEN_CONFIG = 1007;
-pub const IDM_CLOSE_ALL_CLIENTS = 1008;
-pub const IDM_TOGGLE_NOTIF_HISTORY = 1009;
-pub const IDM_CLEAR_NOTIF_HISTORY = 1010;
-pub const IDM_TOGGLE_TRAVEL_MODE = 1011;
-pub const IDM_RESTORE_SAVED_POSITIONS = 1012;
-pub const IDM_TOGGLE_ALERT_MUTE = 1013;
-pub const IDM_PROFILE_BASE = 2000;
-pub const IDM_CLOSE_GROUP_BASE = 3000;
-pub const IDM_MINIMIZE_GROUP_BASE = 4000;
 
 pub const IDI_APPLICATION: LPCSTR = @ptrFromInt(32512);
 pub const IMAGE_ICON = 1;
 
+// Only the modifiers isCtrlPressed and its siblings read; virtual_keys.zig holds every key code and aliases these.
 pub const VK_SHIFT = 0x10;
 pub const VK_CONTROL = 0x11;
-// Alt
+/// Alt.
 pub const VK_MENU = 0x12;
 pub const VK_LWIN = 0x5B;
 pub const VK_RWIN = 0x5C;
-pub const VK_ESCAPE = 0x1B;
-pub const VK_RETURN = 0x0D;
-pub const VK_BACK = 0x08;
-pub const VK_TAB = 0x09;
-pub const VK_NUMPAD0 = 0x60;
-// WH_KEYBOARD_LL reports these side-specific codes for Ctrl/Alt/Shift, never the generic ones above.
-pub const VK_LSHIFT = 0xA0;
-pub const VK_RSHIFT = 0xA1;
-pub const VK_LCONTROL = 0xA2;
-pub const VK_RCONTROL = 0xA3;
-pub const VK_LMENU = 0xA4;
-pub const VK_RMENU = 0xA5;
 
 // The side button, in the high word of WM_XBUTTON*'s wParam or MSLLHOOKSTRUCT's mouseData.
 pub const XBUTTON1: WORD = 0x0001;
@@ -730,6 +733,27 @@ pub const GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS: DWORD = 0x4;
 pub extern "kernel32" fn GetModuleHandleExA(dwFlags: DWORD, lpModuleName: ?*const anyopaque, phModule: *?HMODULE) callconv(.c) BOOL;
 pub extern "kernel32" fn OpenProcess(dwDesiredAccess: DWORD, bInheritHandle: BOOL, dwProcessId: DWORD) callconv(.c) ?HANDLE;
 pub extern "kernel32" fn CloseHandle(hObject: HANDLE) callconv(.c) BOOL;
+
+// Process access rights, priority and efficiency mode.
+pub const PROCESS_QUERY_LIMITED_INFORMATION: DWORD = 0x1000;
+pub const PROCESS_SET_INFORMATION: DWORD = 0x0200;
+pub const NORMAL_PRIORITY_CLASS: DWORD = 0x0020;
+pub const BELOW_NORMAL_PRIORITY_CLASS: DWORD = 0x4000;
+pub const ABOVE_NORMAL_PRIORITY_CLASS: DWORD = 0x8000;
+pub extern "kernel32" fn SetPriorityClass(hProcess: HANDLE, dwPriorityClass: DWORD) callconv(.c) BOOL;
+/// 0 on failure.
+pub extern "kernel32" fn GetPriorityClass(hProcess: HANDLE) callconv(.c) DWORD;
+/// SetProcessInformation's class for power throttling.
+pub const PROCESS_POWER_THROTTLING_CLASS: c_int = 4;
+pub const PROCESS_POWER_THROTTLING_CURRENT_VERSION: ULONG = 1;
+pub const PROCESS_POWER_THROTTLING_EXECUTION_SPEED: ULONG = 0x1;
+/// ControlMask says which bits are ours to set, StateMask turns them on; a bit in neither is left to Windows.
+pub const PROCESS_POWER_THROTTLING_STATE = extern struct {
+    Version: ULONG = PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+    ControlMask: ULONG = 0,
+    StateMask: ULONG = 0,
+};
+pub extern "kernel32" fn SetProcessInformation(hProcess: HANDLE, ProcessInformationClass: c_int, ProcessInformation: *const anyopaque, ProcessInformationSize: DWORD) callconv(.c) BOOL;
 
 pub extern "kernel32" fn GetModuleFileNameExA(hProcess: HANDLE, hModule: ?HMODULE, lpFilename: LPSTR, nSize: DWORD) callconv(.c) DWORD;
 pub extern "kernel32" fn GetModuleFileNameA(hModule: ?HMODULE, lpFilename: LPSTR, nSize: DWORD) callconv(.c) DWORD;
@@ -778,6 +802,48 @@ pub extern "pdh" fn PdhAddEnglishCounterA(hQuery: PDH_HQUERY, szFullCounterPath:
 pub extern "pdh" fn PdhCollectQueryData(hQuery: PDH_HQUERY) callconv(.c) PDH_STATUS;
 pub extern "pdh" fn PdhGetFormattedCounterArrayA(hCounter: PDH_HCOUNTER, dwFormat: DWORD, lpdwBufferSize: *DWORD, lpdwItemCount: *DWORD, ItemBuffer: ?[*]u8) callconv(.c) PDH_STATUS;
 pub extern "pdh" fn PdhCloseQuery(hQuery: PDH_HQUERY) callconv(.c) PDH_STATUS;
+
+// DPAPI - secrets encrypted to the Windows account, for the settings files.
+pub const CRYPTPROTECT_UI_FORBIDDEN: DWORD = 0x1;
+
+pub const DATA_BLOB = extern struct {
+    cbData: DWORD = 0,
+    pbData: ?[*]u8 = null,
+};
+
+extern "crypt32" fn CryptProtectData(pDataIn: *const DATA_BLOB, szDataDescr: ?[*:0]const u16, pOptionalEntropy: ?*const DATA_BLOB, pvReserved: ?*anyopaque, pPromptStruct: ?*anyopaque, dwFlags: DWORD, pDataOut: *DATA_BLOB) callconv(.c) BOOL;
+extern "crypt32" fn CryptUnprotectData(pDataIn: *const DATA_BLOB, ppszDataDescr: ?*?[*:0]u16, pOptionalEntropy: ?*const DATA_BLOB, pvReserved: ?*anyopaque, pPromptStruct: ?*anyopaque, dwFlags: DWORD, pDataOut: *DATA_BLOB) callconv(.c) BOOL;
+extern "kernel32" fn LocalFree(hMem: ?*anyopaque) callconv(.c) ?*anyopaque;
+
+/// Caller frees; only the same Windows account, passing the same `entropy`, can read it back.
+pub fn protectData(allocator: std.mem.Allocator, plain: []const u8, entropy: []const u8) ![]u8 {
+    const input = constBlob(plain);
+    const entropy_blob = constBlob(entropy);
+    var output: DATA_BLOB = .{};
+    if (!toBool(CryptProtectData(&input, null, &entropy_blob, null, null, CRYPTPROTECT_UI_FORBIDDEN, &output))) return error.ProtectDataFailed;
+    defer _ = LocalFree(output.pbData);
+    const data = output.pbData orelse return error.ProtectDataFailed;
+    return allocator.dupe(u8, data[0..output.cbData]);
+}
+
+/// Caller frees; fails for data another Windows account or a different `entropy` protected.
+pub fn unprotectData(allocator: std.mem.Allocator, protected: []const u8, entropy: []const u8) ![]u8 {
+    const input = constBlob(protected);
+    const entropy_blob = constBlob(entropy);
+    var output: DATA_BLOB = .{};
+    if (!toBool(CryptUnprotectData(&input, null, &entropy_blob, null, null, CRYPTPROTECT_UI_FORBIDDEN, &output))) return error.UnprotectDataFailed;
+    defer _ = LocalFree(output.pbData);
+    const data = output.pbData orelse return error.UnprotectDataFailed;
+    const plain = data[0..output.cbData];
+    // Wiped before LocalFree returns the memory to the heap.
+    defer std.crypto.secureZero(u8, plain);
+    return allocator.dupe(u8, plain);
+}
+
+/// DPAPI never writes through an input blob, which only the C signature makes mutable.
+fn constBlob(bytes: []const u8) DATA_BLOB {
+    return .{ .cbData = @intCast(bytes.len), .pbData = @constCast(bytes.ptr) };
+}
 
 // IP Helper - which server each client is connected to, and an ICMP echo to it.
 pub const AF_INET = 2;
@@ -835,23 +901,16 @@ pub extern "iphlpapi" fn IcmpSendEcho2(
 ) callconv(.c) DWORD;
 pub extern "iphlpapi" fn IcmpParseReplies(ReplyBuffer: *anyopaque, ReplySize: DWORD) callconv(.c) DWORD;
 
-// WinHTTP - HTTPS requests and WebSockets.
+// WinHTTP - HTTPS requests.
 pub const HINTERNET = *anyopaque;
 pub const WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY: DWORD = 4;
 pub const WINHTTP_FLAG_SECURE: DWORD = 0x00800000;
 pub const WINHTTP_QUERY_STATUS_CODE: DWORD = 19;
+pub const WINHTTP_QUERY_RETRY_AFTER: DWORD = 36;
 pub const WINHTTP_QUERY_FLAG_NUMBER: DWORD = 0x20000000;
 pub const WINHTTP_OPTION_URL: DWORD = 34;
-pub const WINHTTP_OPTION_UPGRADE_TO_WEB_SOCKET: DWORD = 114;
 pub const INTERNET_SCHEME_HTTPS: c_int = 2;
-pub const INTERNET_DEFAULT_HTTPS_PORT: u16 = 443;
 pub const ERROR_WINHTTP_TIMEOUT: DWORD = 12002;
-pub const WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE: c_int = 0;
-pub const WINHTTP_WEB_SOCKET_BINARY_FRAGMENT_BUFFER_TYPE: c_int = 1;
-pub const WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE: c_int = 2;
-pub const WINHTTP_WEB_SOCKET_UTF8_FRAGMENT_BUFFER_TYPE: c_int = 3;
-pub const WINHTTP_WEB_SOCKET_CLOSE_BUFFER_TYPE: c_int = 4;
-pub const WINHTTP_WEB_SOCKET_SUCCESS_CLOSE_STATUS: u16 = 1000;
 
 pub const URL_COMPONENTS = extern struct {
     dwStructSize: DWORD = @sizeOf(URL_COMPONENTS),
@@ -876,19 +935,12 @@ pub extern "winhttp" fn WinHttpSetTimeouts(handle: HINTERNET, resolve_ms: c_int,
 pub extern "winhttp" fn WinHttpCrackUrl(url: [*]const u16, url_length: DWORD, flags: DWORD, components: *URL_COMPONENTS) callconv(.c) BOOL;
 pub extern "winhttp" fn WinHttpConnect(session: HINTERNET, server_name: [*:0]const u16, server_port: u16, reserved: DWORD) callconv(.c) ?HINTERNET;
 pub extern "winhttp" fn WinHttpOpenRequest(connection: HINTERNET, verb: [*:0]const u16, object_name: [*:0]const u16, version: ?[*:0]const u16, referrer: ?[*:0]const u16, accept_types: ?*const ?[*:0]const u16, flags: DWORD) callconv(.c) ?HINTERNET;
-pub extern "winhttp" fn WinHttpSetOption(handle: HINTERNET, option: DWORD, buffer: ?*anyopaque, buffer_length: DWORD) callconv(.c) BOOL;
 pub extern "winhttp" fn WinHttpSendRequest(request: HINTERNET, headers: ?[*]const u16, headers_length: DWORD, optional: ?*const anyopaque, optional_length: DWORD, total_length: DWORD, context: usize) callconv(.c) BOOL;
 pub extern "winhttp" fn WinHttpReceiveResponse(request: HINTERNET, reserved: ?*anyopaque) callconv(.c) BOOL;
 pub extern "winhttp" fn WinHttpQueryHeaders(request: HINTERNET, info_level: DWORD, name: ?[*:0]const u16, buffer: ?*anyopaque, buffer_length: *DWORD, index: ?*DWORD) callconv(.c) BOOL;
 pub extern "winhttp" fn WinHttpQueryOption(handle: HINTERNET, option: DWORD, buffer: ?*anyopaque, buffer_length: *DWORD) callconv(.c) BOOL;
 pub extern "winhttp" fn WinHttpReadData(request: HINTERNET, buffer: [*]u8, bytes_to_read: DWORD, bytes_read: *DWORD) callconv(.c) BOOL;
 pub extern "winhttp" fn WinHttpCloseHandle(handle: HINTERNET) callconv(.c) BOOL;
-pub extern "winhttp" fn WinHttpWebSocketCompleteUpgrade(request: HINTERNET, context: usize) callconv(.c) ?HINTERNET;
-/// These four return a Win32 error code, 0 on success, rather than a BOOL.
-pub extern "winhttp" fn WinHttpWebSocketSend(web_socket: HINTERNET, buffer_type: c_int, buffer: ?*const anyopaque, buffer_length: DWORD) callconv(.c) DWORD;
-pub extern "winhttp" fn WinHttpWebSocketReceive(web_socket: HINTERNET, buffer: *anyopaque, buffer_length: DWORD, bytes_read: *DWORD, buffer_type: *c_int) callconv(.c) DWORD;
-pub extern "winhttp" fn WinHttpWebSocketShutdown(web_socket: HINTERNET, status: u16, reason: ?*const anyopaque, reason_length: DWORD) callconv(.c) DWORD;
-pub extern "winhttp" fn WinHttpWebSocketClose(web_socket: HINTERNET, status: u16, reason: ?*const anyopaque, reason_length: DWORD) callconv(.c) DWORD;
 
 pub const FILETIME = extern struct {
     dwLowDateTime: DWORD,
@@ -904,6 +956,15 @@ pub const FILETIME = extern struct {
         return seconds + std.time.epoch.windows;
     }
 };
+pub extern "kernel32" fn GetSystemTimeAsFileTime(lpSystemTimeAsFileTime: *FILETIME) callconv(.c) void;
+
+/// The wall clock, UTC.
+pub fn unixSecondsNow() i64 {
+    var now: FILETIME = undefined;
+    GetSystemTimeAsFileTime(&now);
+    return now.toUnixSeconds();
+}
+
 pub extern "kernel32" fn GetProcessTimes(hProcess: HANDLE, lpCreationTime: *FILETIME, lpExitTime: *FILETIME, lpKernelTime: *FILETIME, lpUserTime: *FILETIME) callconv(.c) BOOL;
 
 pub const SYSTEMTIME = extern struct {
@@ -918,9 +979,40 @@ pub const SYSTEMTIME = extern struct {
 };
 pub extern "kernel32" fn GetLocalTime(lpSystemTime: *SYSTEMTIME) callconv(.c) void;
 pub extern "kernel32" fn GetTickCount64() callconv(.c) u64;
+pub extern "kernel32" fn QueryPerformanceCounter(lpPerformanceCount: *i64) callconv(.c) BOOL;
+pub extern "kernel32" fn QueryPerformanceFrequency(lpFrequency: *i64) callconv(.c) BOOL;
 
+pub extern "gdi32" fn GdiFlush() callconv(.c) BOOL;
+pub extern "gdi32" fn GetDeviceCaps(hdc: ?HDC, index: c_int) callconv(.c) c_int;
+pub const VREFRESH: c_int = 116;
+pub const SRCCOPY: DWORD = 0x00CC0020;
+pub extern "gdi32" fn BitBlt(hdc: HDC, x: c_int, y: c_int, cx: c_int, cy: c_int, hdcSrc: HDC, x1: c_int, y1: c_int, rop: DWORD) callconv(.c) BOOL;
 pub extern "gdi32" fn TextOutA(hdc: HDC, x: c_int, y: c_int, lpString: LPCSTR, c: c_int) callconv(.c) BOOL;
 pub extern "gdi32" fn GetTextFaceA(hdc: HDC, c: c_int, lpName: [*]u8) callconv(.c) c_int;
+pub const LF_FACESIZE = 32;
+pub const TEXTMETRICA = extern struct {
+    tmHeight: LONG,
+    tmAscent: LONG,
+    tmDescent: LONG,
+    tmInternalLeading: LONG,
+    tmExternalLeading: LONG,
+    tmAveCharWidth: LONG,
+    tmMaxCharWidth: LONG,
+    tmWeight: LONG,
+    tmOverhang: LONG,
+    tmDigitizedAspectX: LONG,
+    tmDigitizedAspectY: LONG,
+    tmFirstChar: BYTE,
+    tmLastChar: BYTE,
+    tmDefaultChar: BYTE,
+    tmBreakChar: BYTE,
+    tmItalic: BYTE,
+    tmUnderlined: BYTE,
+    tmStruckOut: BYTE,
+    tmPitchAndFamily: BYTE,
+    tmCharSet: BYTE,
+};
+pub extern "gdi32" fn GetTextMetricsA(hdc: HDC, lptm: *TEXTMETRICA) callconv(.c) BOOL;
 pub extern "gdi32" fn GetTextExtentPoint32A(hdc: HDC, lpString: LPCSTR, c: c_int, psizl: *SIZE) callconv(.c) BOOL;
 pub const CP_UTF8: UINT = 65001;
 pub extern "kernel32" fn MultiByteToWideChar(CodePage: UINT, dwFlags: DWORD, lpMultiByteStr: [*]const u8, cbMultiByte: c_int, lpWideCharStr: [*]u16, cchWideChar: c_int) callconv(.c) c_int;
@@ -928,6 +1020,8 @@ pub extern "gdi32" fn TextOutW(hdc: HDC, x: c_int, y: c_int, lpString: [*]const 
 pub extern "gdi32" fn GetTextExtentPoint32W(hdc: HDC, lpString: [*]const u16, c: c_int, psizl: *SIZE) callconv(.c) BOOL;
 pub extern "gdi32" fn SetBkMode(hdc: HDC, mode: c_int) callconv(.c) c_int;
 pub extern "gdi32" fn SetTextColor(hdc: HDC, color: DWORD) callconv(.c) DWORD;
+/// Returns the previous spacing, or 0x80000000 on failure.
+pub extern "gdi32" fn SetTextCharacterExtra(hdc: HDC, extra: c_int) callconv(.c) c_int;
 pub extern "gdi32" fn AddFontMemResourceEx(pFileView: [*]const u8, cjSize: DWORD, pvReserved: ?*anyopaque, pNumFonts: *DWORD) callconv(.c) ?HANDLE;
 pub extern "gdi32" fn CreateFontA(
     cHeight: c_int,
@@ -958,6 +1052,12 @@ pub extern "gdi32" fn CreateDIBSection(
 ) callconv(.c) ?HANDLE;
 pub extern "gdi32" fn DeleteDC(hdc: HDC) callconv(.c) BOOL;
 pub extern "gdi32" fn CreateSolidBrush(color: DWORD) callconv(.c) ?HBRUSH;
+pub extern "gdi32" fn GetStockObject(i: c_int) callconv(.c) ?HANDLE;
+/// Returns the previous colour, not success.
+pub extern "gdi32" fn SetDCBrushColor(hdc: HDC, color: DWORD) callconv(.c) DWORD;
+pub extern "user32" fn FillRect(hDC: HDC, lprc: *const RECT, hbr: HBRUSH) callconv(.c) c_int;
+/// GetStockObject's brush whose colour SetDCBrushColor sets, so a fill needs no brush of its own.
+pub const DC_BRUSH = 18;
 
 pub extern "dwmapi" fn DwmRegisterThumbnail(
     hwndDestination: HWND,
@@ -975,7 +1075,14 @@ pub extern "dwmapi" fn DwmSetWindowAttribute(
     pvAttribute: *const anyopaque,
     cbAttribute: DWORD,
 ) callconv(.c) LONG;
+pub extern "dwmapi" fn DwmGetWindowAttribute(
+    hwnd: HWND,
+    dwAttribute: DWORD,
+    pvAttribute: *anyopaque,
+    cbAttribute: DWORD,
+) callconv(.c) LONG;
 
+pub const DWMWA_EXTENDED_FRAME_BOUNDS: DWORD = 9;
 pub const DWMWA_USE_IMMERSIVE_DARK_MODE: DWORD = 20;
 /// Windows 11 only, like the two after it; earlier versions reject them.
 pub const DWMWA_BORDER_COLOR: DWORD = 34;
@@ -989,7 +1096,7 @@ pub const FW_BOLD = 700;
 pub const DEFAULT_CHARSET = 1;
 pub const OUT_DEFAULT_PRECIS = 0;
 pub const CLIP_DEFAULT_PRECIS = 0;
-pub const CLEARTYPE_QUALITY = 5;
+pub const ANTIALIASED_QUALITY = 4;
 pub const DEFAULT_PITCH = 0;
 
 pub const LWA_ALPHA = 0x00000002;
@@ -1079,13 +1186,13 @@ pub const MONITORINFO = extern struct {
     dwFlags: DWORD,
 };
 
-/// The monitor containing `pt`, or the closest one if it's off every screen.
-pub fn nearestMonitor(pt: POINT) ?HMONITOR {
-    return MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+/// The monitor containing `point`, or the closest one if it's off every screen.
+pub fn nearestMonitor(point: POINT) ?HMONITOR {
+    return MonitorFromPoint(point, MONITOR_DEFAULTTONEAREST);
 }
 
-pub fn isOnMonitor(pt: POINT) bool {
-    return MonitorFromPoint(pt, MONITOR_DEFAULTTONULL) != null;
+pub fn isOnMonitor(point: POINT) bool {
+    return MonitorFromPoint(point, MONITOR_DEFAULTTONULL) != null;
 }
 
 /// Effective DPI, or USER_DEFAULT_SCREEN_DPI if the query fails.
@@ -1096,17 +1203,26 @@ pub fn monitorDpi(monitor: HMONITOR) u32 {
     return dpi_x;
 }
 
-/// Effective DPI of the monitor nearest `pt`, or USER_DEFAULT_SCREEN_DPI if there's none.
-pub fn dpiForPoint(pt: POINT) u32 {
-    const monitor = nearestMonitor(pt) orelse return USER_DEFAULT_SCREEN_DPI;
+/// Effective DPI of the monitor nearest `point`, or USER_DEFAULT_SCREEN_DPI if there's none.
+pub fn dpiForPoint(point: POINT) u32 {
+    const monitor = nearestMonitor(point) orelse return USER_DEFAULT_SCREEN_DPI;
     return monitorDpi(monitor);
 }
 
 /// Taskbar included; null if the lookup fails.
 pub fn monitorRect(monitor: HMONITOR) ?RECT {
-    var info = MONITORINFO{ .cbSize = @sizeOf(MONITORINFO), .rcMonitor = undefined, .rcWork = undefined, .dwFlags = 0 };
+    return (monitorInfo(monitor) orelse return null).rcMonitor;
+}
+
+/// Without the taskbar; null if the lookup fails.
+pub fn monitorWorkRect(monitor: HMONITOR) ?RECT {
+    return (monitorInfo(monitor) orelse return null).rcWork;
+}
+
+fn monitorInfo(monitor: HMONITOR) ?MONITORINFO {
+    var info: MONITORINFO = .{ .cbSize = @sizeOf(MONITORINFO), .rcMonitor = undefined, .rcWork = undefined, .dwFlags = 0 };
     if (GetMonitorInfoA(monitor, &info) == FALSE) return null;
-    return info.rcMonitor;
+    return info;
 }
 
 pub const MONITORENUMPROC = *const fn (
@@ -1148,7 +1264,7 @@ pub extern "shcore" fn GetDpiForMonitor(hMonitor: HMONITOR, dpiType: c_int, dpiX
 pub extern "user32" fn GetDpiForWindow(hWnd: HWND) callconv(.c) UINT;
 pub extern "user32" fn GetDpiForSystem() callconv(.c) UINT;
 
-// Sentinel pointer value, not a real pointer, like HWND_TOPMOST/HWND_NOTOPMOST.
+/// Sentinel pointer value, not a real pointer, like HWND_TOPMOST/HWND_NOTOPMOST.
 pub const DPI_AWARENESS_CONTEXT = *opaque {};
 pub const DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2: DPI_AWARENESS_CONTEXT = @ptrFromInt(@as(usize, @bitCast(@as(isize, -4))));
 pub extern "user32" fn SetProcessDpiAwarenessContext(value: DPI_AWARENESS_CONTEXT) callconv(.c) BOOL;
@@ -1171,12 +1287,12 @@ pub extern "kernel32" fn GetStdHandle(nStdHandle: DWORD) callconv(.c) ?HANDLE;
 pub extern "kernel32" fn GetConsoleMode(hConsoleHandle: HANDLE, lpMode: *DWORD) callconv(.c) BOOL;
 pub extern "kernel32" fn SetConsoleMode(hConsoleHandle: HANDLE, dwMode: DWORD) callconv(.c) BOOL;
 
-pub fn getWindowTitleBuf(hwnd: HWND, buffer: []u8) ![]const u8 {
+pub fn getWindowTitle(hwnd: HWND, buffer: []u8) ![]const u8 {
     if (buffer.len == 0) return error.BufferTooSmall;
-    const buf_ptr: [*:0]u8 = @ptrCast(buffer.ptr);
-    const title_len = GetWindowTextA(hwnd, buf_ptr, @intCast(buffer.len));
-    if (title_len == 0) return error.MissingWindowTitle;
-    return buffer[0..@intCast(title_len)];
+    const buffer_ptr: [*:0]u8 = @ptrCast(buffer.ptr);
+    const title_length = GetWindowTextA(hwnd, buffer_ptr, @intCast(buffer.len));
+    if (title_length == 0) return error.MissingWindowTitle;
+    return buffer[0..@intCast(title_length)];
 }
 
 /// Longest title getWindowTitleUtf8 reads, in UTF-16 units; its buffer needs 3 bytes per unit.
@@ -1185,27 +1301,27 @@ pub const WINDOW_TITLE_MAX_UNITS = 512;
 /// The title as UTF-8, read as UTF-16 since GetWindowTextA's code-page text isn't UTF-8 past ASCII; null if there's none or it can't be converted.
 pub fn getWindowTitleUtf8(hwnd: HWND, buffer: *[WINDOW_TITLE_MAX_UNITS * 3]u8) ?[]const u8 {
     var wide: [WINDOW_TITLE_MAX_UNITS:0]u16 = undefined;
-    const wide_len = GetWindowTextW(hwnd, &wide, wide.len);
-    if (wide_len <= 0) return null;
-    const len = std.unicode.utf16LeToUtf8(buffer, wide[0..@intCast(wide_len)]) catch return null;
-    return buffer[0..len];
+    const wide_length = GetWindowTextW(hwnd, &wide, wide.len);
+    if (wide_length <= 0) return null;
+    const length = std.unicode.utf16LeToUtf8(buffer, wide[0..@intCast(wide_length)]) catch return null;
+    return buffer[0..length];
 }
 
-pub fn getClassNameBuf(hwnd: HWND, buffer: []u8) ?[]const u8 {
+pub fn getClassName(hwnd: HWND, buffer: []u8) ?[]const u8 {
     if (buffer.len == 0) return null;
-    const buf_ptr: [*:0]u8 = @ptrCast(buffer.ptr);
-    const class_len = GetClassNameA(hwnd, buf_ptr, @intCast(buffer.len));
-    if (class_len <= 0) return null;
-    return buffer[0..@intCast(class_len)];
+    const buffer_ptr: [*:0]u8 = @ptrCast(buffer.ptr);
+    const class_length = GetClassNameA(hwnd, buffer_ptr, @intCast(buffer.len));
+    if (class_length <= 0) return null;
+    return buffer[0..@intCast(class_length)];
 }
 
-/// Borrows executable_path_buf; null if the process can't be opened or queried.
-pub fn queryProcessExecutablePath(process_id: DWORD, executable_path_buf: *[MAX_PATH:0]u8) ?[]const u8 {
+/// Borrows executable_path_buffer; null if the process can't be opened or queried.
+pub fn queryProcessExecutablePath(process_id: DWORD, executable_path_buffer: *[MAX_PATH:0]u8) ?[]const u8 {
     const handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, process_id) orelse return null;
     defer _ = CloseHandle(handle);
-    const path_len = GetModuleFileNameExA(handle, null, executable_path_buf, executable_path_buf.len);
-    if (path_len == 0) return null;
-    return executable_path_buf[0..@intCast(path_len)];
+    const path_length = GetModuleFileNameExA(handle, null, executable_path_buffer, executable_path_buffer.len);
+    if (path_length == 0) return null;
+    return executable_path_buffer[0..@intCast(path_length)];
 }
 
 pub fn processStartTime(process_id: DWORD) ?FILETIME {
@@ -1217,12 +1333,12 @@ pub fn processStartTime(process_id: DWORD) ?FILETIME {
     return created;
 }
 
-/// The file name alone, borrowing executable_path_buf; null if its process can't be queried.
-pub fn windowExecutableName(hwnd: HWND, executable_path_buf: *[MAX_PATH:0]u8) ?[]const u8 {
+/// The file name alone, borrowing executable_path_buffer; null if its process can't be queried.
+pub fn windowExecutableName(hwnd: HWND, executable_path_buffer: *[MAX_PATH:0]u8) ?[]const u8 {
     var process_id: DWORD = 0;
     _ = GetWindowThreadProcessId(hwnd, &process_id);
     if (process_id == 0) return null;
-    const path = queryProcessExecutablePath(process_id, executable_path_buf) orelse return null;
+    const path = queryProcessExecutablePath(process_id, executable_path_buffer) orelse return null;
     return std.Io.Dir.path.basename(path);
 }
 
@@ -1243,8 +1359,8 @@ pub fn isOwnProcessWindow(hwnd: HWND) bool {
 
 /// Progman or a WorkerW.
 pub fn isDesktopShellWindow(hwnd: HWND) bool {
-    var class_buf: [32]u8 = undefined;
-    const class_name = getClassNameBuf(hwnd, &class_buf) orelse return false;
+    var class_buffer: [32]u8 = undefined;
+    const class_name = getClassName(hwnd, &class_buffer) orelse return false;
     return std.mem.eql(u8, class_name, "Progman") or std.mem.eql(u8, class_name, "WorkerW");
 }
 
@@ -1254,38 +1370,44 @@ pub fn isExplorerOwned(hwnd: HWND) bool {
     _ = GetWindowThreadProcessId(hwnd, &process_id);
     if (process_id == 0) return false;
 
-    var executable_path_buf: [MAX_PATH:0]u8 = undefined;
-    const executable_path = queryProcessExecutablePath(process_id, &executable_path_buf) orelse return false;
+    var executable_path_buffer: [MAX_PATH:0]u8 = undefined;
+    const executable_path = queryProcessExecutablePath(process_id, &executable_path_buffer) orelse return false;
     const suffix = "\\explorer.exe";
     if (executable_path.len < suffix.len) return false;
     return std.ascii.eqlIgnoreCase(executable_path[executable_path.len - suffix.len ..], suffix);
 }
 
 /// Stands in for std.fs.selfExecutablePath, which Zig 0.16 removed.
-pub fn selfExecutablePath(buf: []u8) ![]const u8 {
-    const len = GetModuleFileNameA(null, @ptrCast(buf.ptr), @intCast(buf.len));
-    if (len == 0) return error.GetModuleFileNameFailed;
-    if (len == buf.len) return error.NameTooLong;
-    return buf[0..@intCast(len)];
+pub fn selfExecutablePath(buffer: []u8) ![]const u8 {
+    const length = GetModuleFileNameA(null, @ptrCast(buffer.ptr), @intCast(buffer.len));
+    if (length == 0) return error.GetModuleFileNameFailed;
+    if (length == buffer.len) return error.NameTooLong;
+    return buffer[0..@intCast(length)];
 }
 
 /// Stands in for std.fs.selfExecutableDirPath, which Zig 0.16 removed.
-pub fn selfExecutableDirPath(buf: []u8) ![]const u8 {
-    const full_path = try selfExecutablePath(buf);
+pub fn selfExecutableDirPath(buffer: []u8) ![]const u8 {
+    const full_path = try selfExecutablePath(buffer);
     return std.Io.Dir.path.dirname(full_path) orelse return error.MissingDirname;
 }
 
 /// `target` is a file path or URL, opened with its default handler.
-pub fn shellOpen(target: [*:0]const u8, workdir: ?[*:0]const u8) bool {
-    const result = ShellExecuteA(null, "open", target, null, workdir, SW_SHOW);
+pub fn shellOpen(target: [*:0]const u8, working_directory: ?[*:0]const u8) bool {
+    const result = ShellExecuteA(null, "open", target, null, working_directory, SW_SHOW);
     return @intFromPtr(result) > 32;
 }
 
-/// shellOpen for an unterminated URL; false if it's too long to terminate or the shell refuses it.
+/// Whether `url` is http(s), so the shell opens it in a browser rather than running a file or another handler.
+pub fn isWebUrl(url: []const u8) bool {
+    return std.ascii.startsWithIgnoreCase(url, "https://") or std.ascii.startsWithIgnoreCase(url, "http://");
+}
+
+/// shellOpen for an unterminated web URL; false if it isn't isWebUrl, is too long to terminate, or the shell refuses it.
 pub fn shellOpenUrl(url: []const u8) bool {
-    var buf: [1024]u8 = undefined;
-    const url_z = std.mem.printSentinel(&buf, "{s}", .{url}, 0) catch return false;
-    return shellOpen(url_z.ptr, null);
+    if (!isWebUrl(url)) return false;
+    var buffer: [1024]u8 = undefined;
+    const terminated_url = std.mem.printSentinel(&buffer, "{s}", .{url}, 0) catch return false;
+    return shellOpen(terminated_url.ptr, null);
 }
 
 pub extern "user32" fn OpenClipboard(hWndNewOwner: ?HWND) callconv(.c) BOOL;
@@ -1308,10 +1430,10 @@ pub fn getClipboardText(allocator: std.mem.Allocator) ?[]u8 {
     defer _ = CloseClipboard();
 
     const handle = GetClipboardData(CF_UNICODETEXT) orelse return null;
-    const ptr = GlobalLock(handle) orelse return null;
+    const locked = GlobalLock(handle) orelse return null;
     defer _ = GlobalUnlock(handle);
 
-    const text: [*:0]const u16 = @ptrCast(@alignCast(ptr));
+    const text: [*:0]const u16 = @ptrCast(@alignCast(locked));
     return std.unicode.utf16LeToUtf8Alloc(allocator, std.mem.span(text)) catch null;
 }
 
@@ -1322,17 +1444,17 @@ pub fn setClipboardText(text: []const u8) bool {
     defer _ = CloseClipboard();
 
     const handle = GlobalAlloc(GMEM_MOVEABLE, (unit_count + 1) * @sizeOf(u16)) orelse return false;
-    const ptr = GlobalLock(handle) orelse {
+    const locked = GlobalLock(handle) orelse {
         _ = GlobalFree(handle);
         return false;
     };
-    const dest: [*]u16 = @ptrCast(@alignCast(ptr));
-    _ = std.unicode.utf8ToUtf16Le(dest[0..unit_count], text) catch {
+    const units: [*]u16 = @ptrCast(@alignCast(locked));
+    _ = std.unicode.utf8ToUtf16Le(units[0..unit_count], text) catch {
         _ = GlobalUnlock(handle);
         _ = GlobalFree(handle);
         return false;
     };
-    dest[unit_count] = 0;
+    units[unit_count] = 0;
     _ = GlobalUnlock(handle);
 
     _ = EmptyClipboard();
@@ -1350,18 +1472,18 @@ pub const GUID = extern struct {
     Data4: [8]u8,
 };
 
-const CLSID_FileOpenDialog = GUID{
+const CLSID_FileOpenDialog: GUID = .{
     .Data1 = 0xDC1C5A9C,
     .Data2 = 0xE88A,
     .Data3 = 0x4dde,
-    .Data4 = [8]u8{ 0xA5, 0xA1, 0x60, 0xF8, 0x2A, 0x20, 0xAE, 0xF7 },
+    .Data4 = .{ 0xA5, 0xA1, 0x60, 0xF8, 0x2A, 0x20, 0xAE, 0xF7 },
 };
 
-const IID_IFileOpenDialog = GUID{
+const IID_IFileOpenDialog: GUID = .{
     .Data1 = 0xD57C7288,
     .Data2 = 0xD4AD,
     .Data3 = 0x4768,
-    .Data4 = [8]u8{ 0xBE, 0x02, 0x9D, 0x96, 0x95, 0x32, 0xD9, 0x60 },
+    .Data4 = .{ 0xBE, 0x02, 0x9D, 0x96, 0x95, 0x32, 0xD9, 0x60 },
 };
 
 const FOS_PICKFOLDERS: u32 = 0x00000020;
@@ -1383,6 +1505,7 @@ pub extern "ole32" fn CoCreateInstance(
     riid: *const GUID,
     ppv: *?*anyopaque,
 ) callconv(.c) c_long;
+pub extern "ole32" fn CLSIDFromProgID(lpszProgID: [*:0]const u16, lpclsid: *GUID) callconv(.c) c_long;
 extern "ole32" fn CoTaskMemFree(pv: ?*anyopaque) callconv(.c) void;
 
 const IFileOpenDialog = extern struct {
@@ -1444,6 +1567,10 @@ const IFileOpenDialog = extern struct {
     fn setFileTypes(self: *IFileOpenDialog, specs: []const COMDLG_FILTERSPEC) c_long {
         return self.vtable.SetFileTypes(self, @intCast(specs.len), specs.ptr);
     }
+
+    fn setFolder(self: *IFileOpenDialog, folder: *IShellItem) c_long {
+        return self.vtable.SetFolder(self, folder);
+    }
 };
 
 const COMDLG_FILTERSPEC = extern struct {
@@ -1477,6 +1604,15 @@ const IShellItem = extern struct {
     }
 };
 
+const IID_IShellItem: GUID = .{
+    .Data1 = 0x43826D1E,
+    .Data2 = 0xE718,
+    .Data3 = 0x42EE,
+    .Data4 = .{ 0xBC, 0x55, 0xA1, 0xE2, 0x61, 0xC3, 0x7B, 0xFE },
+};
+
+extern "shell32" fn SHCreateItemFromParsingName(pszPath: [*:0]const u16, pbc: ?*anyopaque, riid: *const GUID, ppv: *?*IShellItem) callconv(.c) c_long;
+
 /// The folder the user picks (caller frees), or null if cancelled; a given `owner` keeps the picker above it, even when the owner is topmost.
 pub fn showFolderPicker(allocator: std.mem.Allocator, title: []const u8, owner: ?HWND) !?[]const u8 {
     try initDialogCom();
@@ -1492,12 +1628,25 @@ pub fn showFolderPicker(allocator: std.mem.Allocator, title: []const u8, owner: 
     return showAndGetPath(allocator, dialog, owner);
 }
 
-/// Restricted to `filter_spec` (e.g. "*.wav;*.mp3"); otherwise like showFolderPicker.
-pub fn showFilePicker(allocator: std.mem.Allocator, title: []const u8, filter_name: []const u8, filter_spec: []const u8, owner: ?HWND) !?[]const u8 {
+/// Restricted to `filter_spec` (e.g. "*.wav;*.mp3") and opened in `start_folder` when it exists.
+pub fn showFilePicker(allocator: std.mem.Allocator, title: []const u8, filter_name: []const u8, filter_spec: []const u8, start_folder: ?[]const u8, owner: ?HWND) !?[]const u8 {
     try initDialogCom();
     defer CoUninitialize();
     const dialog = try createFileOpenDialog();
     defer dialog.release();
+
+    if (start_folder) |folder| {
+        const folder_wide = try std.unicode.utf8ToUtf16LeAllocZ(allocator, folder);
+        defer allocator.free(folder_wide);
+        var folder_item: ?*IShellItem = null;
+        // A missing folder leaves the picker where Windows last left it.
+        if (SHCreateItemFromParsingName(folder_wide.ptr, null, &IID_IShellItem, &folder_item) >= 0) {
+            if (folder_item) |item| {
+                defer item.release();
+                _ = dialog.setFolder(item);
+            }
+        }
+    }
 
     const title_wide = try std.unicode.utf8ToUtf16LeAllocZ(allocator, title);
     defer allocator.free(title_wide);
@@ -1538,6 +1687,69 @@ fn showAndGetPath(allocator: std.mem.Allocator, dialog: *IFileOpenDialog, owner:
     return try std.unicode.utf16LeToUtf8Alloc(allocator, std.mem.span(path_wide));
 }
 
+/// CoInitializeEx's "already initialized as multithreaded", which still lets this thread use COM.
+const RPC_E_CHANGED_MODE: c_long = @bitCast(@as(u32, 0x80010106));
+
+const CLSID_TaskbarList: GUID = .{
+    .Data1 = 0x56FDF344,
+    .Data2 = 0xFD6D,
+    .Data3 = 0x11D0,
+    .Data4 = .{ 0x95, 0x8A, 0x00, 0x60, 0x97, 0xC9, 0xA0, 0x90 },
+};
+
+const IID_ITaskbarList2: GUID = .{
+    .Data1 = 0x602D4995,
+    .Data2 = 0xB13A,
+    .Data3 = 0x429B,
+    .Data4 = .{ 0xA6, 0x6E, 0x19, 0x35, 0xE4, 0x4F, 0x43, 0x17 },
+};
+
+const ITaskbarList2 = extern struct {
+    vtable: *const ITaskbarList2Vtbl,
+
+    const ITaskbarList2Vtbl = extern struct {
+        QueryInterface: *const fn (*ITaskbarList2, *const GUID, *?*anyopaque) callconv(.c) c_long,
+        AddRef: *const fn (*ITaskbarList2) callconv(.c) u32,
+        Release: *const fn (*ITaskbarList2) callconv(.c) u32,
+        HrInit: *const fn (*ITaskbarList2) callconv(.c) c_long,
+        AddTab: *const fn (*ITaskbarList2, HWND) callconv(.c) c_long,
+        DeleteTab: *const fn (*ITaskbarList2, HWND) callconv(.c) c_long,
+        ActivateTab: *const fn (*ITaskbarList2, HWND) callconv(.c) c_long,
+        SetActiveAlt: *const fn (*ITaskbarList2, HWND) callconv(.c) c_long,
+        MarkFullscreenWindow: *const fn (*ITaskbarList2, HWND, BOOL) callconv(.c) c_long,
+    };
+};
+
+/// Explorer's taskbar, for marking windows it treats as fullscreen; init and deinit on the same thread.
+pub const TaskbarList = struct {
+    list: *ITaskbarList2,
+    /// False when the thread already ran multithreaded COM, which deinit then leaves alone.
+    owns_com: bool,
+
+    pub fn init() !TaskbarList {
+        const hr = CoInitializeEx(null, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+        if (hr < 0 and hr != RPC_E_CHANGED_MODE) return error.ComInitFailed;
+        const owns_com = hr >= 0;
+        errdefer if (owns_com) CoUninitialize();
+        var list_ptr: ?*anyopaque = null;
+        if (CoCreateInstance(&CLSID_TaskbarList, null, CLSCTX_INPROC_SERVER, &IID_ITaskbarList2, &list_ptr) < 0) return error.CreateTaskbarListFailed;
+        const list: *ITaskbarList2 = @ptrCast(@alignCast(list_ptr orelse return error.CreateTaskbarListFailed));
+        errdefer _ = list.vtable.Release(list);
+        if (list.vtable.HrInit(list) < 0) return error.TaskbarListInitFailed;
+        return .{ .list = list, .owns_com = owns_com };
+    }
+
+    pub fn deinit(self: *TaskbarList) void {
+        _ = self.list.vtable.Release(self.list);
+        if (self.owns_com) CoUninitialize();
+    }
+
+    /// While a marked window is active, Explorer puts the taskbar behind it, whatever its size.
+    pub fn markFullscreen(self: *const TaskbarList, hwnd: HWND, is_fullscreen: bool) !void {
+        if (self.list.vtable.MarkFullscreenWindow(self.list, hwnd, if (is_fullscreen) TRUE else FALSE) < 0) return error.MarkFullscreenFailed;
+    }
+};
+
 extern "shell32" fn SHGetKnownFolderPath(
     rfid: *const GUID,
     dwFlags: u32,
@@ -1545,21 +1757,23 @@ extern "shell32" fn SHGetKnownFolderPath(
     ppszPath: *?[*:0]u16,
 ) callconv(.c) c_long;
 
-pub const FOLDERID_Documents = GUID{
+pub const FOLDERID_Documents: GUID = .{
     .Data1 = 0xFDD39AD0,
     .Data2 = 0x238F,
     .Data3 = 0x46AF,
-    .Data4 = [8]u8{ 0xAD, 0xB4, 0x6C, 0x85, 0x48, 0x03, 0x69, 0xC7 },
+    .Data4 = .{ 0xAD, 0xB4, 0x6C, 0x85, 0x48, 0x03, 0x69, 0xC7 },
 };
 
 /// Caller frees; backslash-separated, as Windows returns it.
 pub fn getKnownFolderPath(allocator: std.mem.Allocator, folder_id: GUID) ![]u8 {
     var path_ptr: ?[*:0]u16 = null;
     const hr = SHGetKnownFolderPath(&folder_id, 0, null, &path_ptr);
-    if (hr < 0 or path_ptr == null) return error.KnownFolderFailed;
+    // Freed even on failure, as SHGetKnownFolderPath's contract asks.
     defer CoTaskMemFree(path_ptr);
+    if (hr < 0) return error.KnownFolderFailed;
+    const path = path_ptr orelse return error.KnownFolderFailed;
 
-    return std.unicode.utf16LeToUtf8Alloc(allocator, std.mem.span(path_ptr.?));
+    return std.unicode.utf16LeToUtf8Alloc(allocator, std.mem.span(path));
 }
 
 /// Monotonic milliseconds since boot, a type of its own so a wall-clock time can't be compared against it by mistake.
@@ -1580,12 +1794,28 @@ pub const Ticks = struct {
     }
 };
 
+/// Monotonic microseconds, for timing work too short for Ticks; 0 if the counter can't be read.
+pub fn microsecondsNow() u64 {
+    var count: i64 = 0;
+    var frequency: i64 = 0;
+    if (!toBool(QueryPerformanceCounter(&count)) or !toBool(QueryPerformanceFrequency(&frequency)) or frequency <= 0 or count < 0) return 0;
+    return @intCast(@divTrunc(@as(i128, count) * std.time.us_per_s, frequency));
+}
+
 pub inline fn toBool(value: BOOL) bool {
     return value != 0;
 }
 
 pub inline fn isWindowVisible(hwnd: HWND) bool {
     return toBool(IsWindowVisible(hwnd));
+}
+
+/// The window's drawn frame, without a normal window's invisible resize borders; null if neither DWM nor GetWindowRect can read it.
+pub fn visibleWindowRect(hwnd: HWND) ?RECT {
+    var rect: RECT = undefined;
+    if (DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &rect, @sizeOf(RECT)) == 0) return rect;
+    if (toBool(GetWindowRect(hwnd, &rect))) return rect;
+    return null;
 }
 
 /// Null if the batch failed.
@@ -1595,7 +1825,7 @@ pub fn deferRaiseTopmost(hdwp: HDWP, hwnd: HWND) ?HDWP {
 
 /// Asks for one WM_MOUSELEAVE when the cursor next leaves `hwnd`; false if it couldn't be armed.
 pub fn trackMouseLeave(hwnd: HWND) bool {
-    var event = TRACKMOUSEEVENT{ .cbSize = @sizeOf(TRACKMOUSEEVENT), .dwFlags = TME_LEAVE, .hwndTrack = hwnd, .dwHoverTime = 0 };
+    var event: TRACKMOUSEEVENT = .{ .cbSize = @sizeOf(TRACKMOUSEEVENT), .dwFlags = TME_LEAVE, .hwndTrack = hwnd, .dwHoverTime = 0 };
     return toBool(TrackMouseEvent(&event));
 }
 
@@ -1636,40 +1866,56 @@ pub inline fn lparamY(lParam: LPARAM) i32 {
     return @as(i16, @truncate(lParam >> 16));
 }
 
-/// `ptr` is any pointer.
-pub inline fn ptrToLparam(ptr: anytype) LPARAM {
-    return @as(LPARAM, @bitCast(@intFromPtr(ptr)));
+/// `pointer` is any pointer.
+pub inline fn ptrToLparam(pointer: anytype) LPARAM {
+    return @as(LPARAM, @bitCast(@intFromPtr(pointer)));
 }
 
 pub inline fn lparamToPtr(comptime T: type, lParam: LPARAM) *T {
     return @ptrFromInt(@as(usize, @bitCast(lParam)));
 }
 
-const VK_DOWN_FLAG: c_short = @bitCast(@as(c_ushort, 0x8000));
+const KEY_DOWN_BIT: c_short = @bitCast(@as(c_ushort, 0x8000));
+
+/// Whether `virtual_key`, a key or mouse button, is held now.
+pub inline fn isKeyDown(virtual_key: c_int) bool {
+    return (GetAsyncKeyState(virtual_key) & KEY_DOWN_BIT) != 0;
+}
 
 pub inline fn isCtrlPressed() bool {
-    return (GetAsyncKeyState(VK_CONTROL) & VK_DOWN_FLAG) != 0;
+    return isKeyDown(VK_CONTROL);
 }
 
 pub inline fn isAltPressed() bool {
-    return (GetAsyncKeyState(VK_MENU) & VK_DOWN_FLAG) != 0;
+    return isKeyDown(VK_MENU);
 }
 
 pub inline fn isShiftPressed() bool {
-    return (GetAsyncKeyState(VK_SHIFT) & VK_DOWN_FLAG) != 0;
+    return isKeyDown(VK_SHIFT);
 }
 
 // No one VK code covers both Win keys.
 pub inline fn isWinPressed() bool {
-    return (GetAsyncKeyState(VK_LWIN) & VK_DOWN_FLAG) != 0 or
-        (GetAsyncKeyState(VK_RWIN) & VK_DOWN_FLAG) != 0;
+    return isKeyDown(VK_LWIN) or isKeyDown(VK_RWIN);
 }
 
 pub inline fn getXButton(mouse_data: DWORD) WORD {
     return @truncate(mouse_data >> 16);
 }
 
+/// One notch of a mouse wheel, as getWheelDelta reports it.
+pub const WHEEL_DELTA = 120;
+
 /// The signed wheel delta in a MSLLHOOKSTRUCT's mouseData high word, in multiples of WHEEL_DELTA, positive scrolling up.
 pub inline fn getWheelDelta(mouse_data: DWORD) i16 {
     return @bitCast(@as(u16, @truncate(mouse_data >> 16)));
+}
+
+test "isWebUrl takes http and https links in any case, and nothing else" {
+    try std.testing.expect(isWebUrl("https://adashboard.info/intel"));
+    try std.testing.expect(isWebUrl("HTTP://example.com"));
+    try std.testing.expect(!isWebUrl("opened.cmd"));
+    try std.testing.expect(!isWebUrl("file:///C:/Windows/notepad.exe"));
+    try std.testing.expect(!isWebUrl("C:\\Windows\\notepad.exe"));
+    try std.testing.expect(!isWebUrl("https:"));
 }

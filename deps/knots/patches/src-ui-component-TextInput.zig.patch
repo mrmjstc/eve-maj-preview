@@ -1,0 +1,43 @@
+diff --git a/src/ui/component/TextInput.zig b/src/ui/component/TextInput.zig
+index 75eba32..4e8f5f0 100644
+--- a/src/ui/component/TextInput.zig
++++ b/src/ui/component/TextInput.zig
+@@ -39,7 +39,8 @@ pub const base = struct {
+         .width = .grow(),
+         .@"align" = .center,
+         .padding = .init(6, 10, 6, 10),
+-        .overflow = .scroll_x,
++        // EVE-Maj patch: scrolls to keep the caret in view without a scrollbar, which a one-line box has no room for.
++        .overflow = .scroll_x_bare,
+         .background = .elevated,
+         .border_width = .all(1),
+         .border_color = .toned,
+@@ -94,9 +95,12 @@ pub fn close(self: *const TextInput, frame: *Frame) !void {
+         const line_h = text_layout.line_height / scale;
+         const measured = try ui.state.getOrCreate(.measured, ui.allocator, id);
+         const scroll = try ui.state.getOrCreate(.scroll, ui.allocator, id);
++        // EVE-Maj patch: the root centres its line, so the caret and selection are offset to match it.
++        const content_h = measured.height - padding.top() - padding.bottom();
++        const line_y = @max(0, (content_h - line_h) / 2);
+         const content_origin = [2]f32{
+             measured.box.x() + padding.left(),
+-            measured.box.y() + padding.top(),
++            measured.box.y() + padding.top() + line_y,
+         };
+ 
+         edit.processMouse(ui, id, self.buf.items, s, text_layout, content_origin, scroll.offset, scale);
+@@ -125,12 +129,12 @@ pub fn close(self: *const TextInput, frame: *Frame) !void {
+             defer spans.deinit(ui.allocator);
+             try text_layout.selectionRects(ui.allocator, sel_lo, sel_hi, &spans);
+             for (spans.items, 0..) |sp, i| {
+-                _ = try ui.open(self.key.indexed(SELECTION_BASE + i), .at(sp.x / scale - scroll_x, sp.y / scale, sp.w / scale, line_h), .{ .rect = selection.surface });
++                _ = try ui.open(self.key.indexed(SELECTION_BASE + i), .at(sp.x / scale - scroll_x, sp.y / scale + line_y, sp.w / scale, line_h), .{ .rect = selection.surface });
+                 ui.close();
+             }
+         } else {
+             const caret = ui.resolveStyle(self.key.indexed(CURSOR_INDEX).hash(), .{ .base = &base.caret, .user = self.parts.caret }, .{}, null);
+-            _ = try ui.open(self.key.indexed(CURSOR_INDEX), .at(cursor_pos.x - scroll_x, cursor_pos.y, 1, line_h), .{ .rect = caret.surface });
++            _ = try ui.open(self.key.indexed(CURSOR_INDEX), .at(cursor_pos.x - scroll_x, cursor_pos.y + line_y, 1, line_h), .{ .rect = caret.surface });
+             ui.close();
+         }
+ 

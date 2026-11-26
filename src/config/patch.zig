@@ -1,4 +1,4 @@
-//! Edits to a settings document by path, the one way the config dialog changes settings and hears about the app's own changes.
+//! Edits to a settings document by path, as an import applies them, and the ids keyed lists are addressed by.
 const std = @import("std");
 const wire = @import("wire.zig");
 const key_list = @import("key_list.zig");
@@ -16,15 +16,25 @@ pub const Op = struct {
 
 const Kind = enum { set, insert, remove, move };
 
+/// Hands out the ids keyed list items are addressed by, never the same one twice.
+pub const Ids = struct {
+    next: u32 = 1,
+
+    fn take(self: *Ids) u32 {
+        const id = self.next;
+        self.next += 1;
+        return id;
+    }
+};
+
 pub const Context = struct {
     /// Parsing scratch, freed after the call.
     arena: std.mem.Allocator,
     /// The document's own allocator, which owns everything an edit stores.
     allocator: std.mem.Allocator,
+    /// Borrowed from whoever owns the document; what an `insert` gives its item.
+    ids: *Ids,
 };
-
-/// Main thread only, like everything that edits a document.
-var g_next_id: u32 = 1;
 
 /// Whether `path` names a section (or keyed map child) whose fields can be set one by one, rather than a value set whole.
 pub fn isSection(comptime T: type, path: []const []const u8) bool {
@@ -38,21 +48,21 @@ pub fn isSection(comptime T: type, path: []const []const u8) bool {
 }
 
 /// Gives every keyed list item still at id 0 a fresh one.
-pub fn assignIds(comptime T: type, value: *T) void {
+pub fn assignIds(comptime T: type, value: *T, ids: *Ids) void {
     inline for (comptime wire.savedFields(T)) |f| {
         if (comptime wire.ListItem(f.type)) |Item| {
             if (comptime hasId(Item)) {
                 for (@field(value, f.name).items) |*item| {
-                    if (item.id == 0) item.id = nextId();
+                    if (item.id == 0) item.id = ids.take();
                 }
             }
         } else if (comptime isStruct(f.type)) {
-            assignIds(f.type, &@field(value, f.name));
+            assignIds(f.type, &@field(value, f.name), ids);
         }
     }
 }
 
-/// `value` in the dialog's shape: the saved JSON plus each keyed list item's `id`.
+/// `value` as saved, plus each keyed list item's `id`, so ops can address what's read back.
 pub fn write(json_writer: anytype, comptime T: type, value: *const T) !void {
     return writeValue(json_writer, T, "", value);
 }
@@ -100,12 +110,6 @@ fn OptionalStruct(comptime T: type) ?type {
     const info = @typeInfo(T);
     if (info != .optional or !isStruct(info.optional.child)) return null;
     return info.optional.child;
-}
-
-fn nextId() u32 {
-    const id = g_next_id;
-    g_next_id += 1;
-    return id;
 }
 
 fn writeValue(json_writer: anytype, comptime T: type, comptime name: []const u8, value: *const T) !void {
@@ -228,7 +232,7 @@ fn insertItem(comptime Item: type, list: *std.ArrayList(Item), op: Op, context: 
     const saved = std.json.parseFromValueLeaky(wire.WireOf(Item), context.arena, json, .{ .ignore_unknown_fields = true }) catch return error.InvalidValue;
     var fresh = try wire.decode(Item, saved, context.allocator);
     errdefer wire.free(Item, &fresh, context.allocator);
-    fresh.id = nextId();
+    fresh.id = context.ids.take();
     try list.insert(context.allocator, @min(op.index orelse list.items.len, list.items.len), fresh);
     return fresh.id;
 }
@@ -284,10 +288,11 @@ const TestDocument = struct {
     pub const Wire = wire.Wire(TestDocument);
 };
 
-/// A document edited the way the config window does, by JSON ops; deinit frees it, so a leaked edit fails the test.
+/// A document edited by JSON ops, as an import does; deinit frees it, so a leaked edit fails the test.
 const Fixture = struct {
     arena_state: std.heap.ArenaAllocator,
     document: TestDocument = .{},
+    ids: Ids = .{},
 
     fn init() Fixture {
         return .{ .arena_state = .init(testing.allocator) };
@@ -301,14 +306,14 @@ const Fixture = struct {
     /// `op_format` is an Op as JSON, formatted with `args` so a test can name an item by the id it was given.
     fn edit(self: *Fixture, comptime op_format: []const u8, args: anytype) !?u32 {
         const arena = self.arena_state.allocator();
-        const op = try std.json.parseFromSliceLeaky(Op, arena, try std.fmt.allocPrint(arena, op_format, args), .{});
-        return apply(TestDocument, &self.document, op, .{ .arena = arena, .allocator = testing.allocator });
+        const op = try std.json.parseFromSliceLeaky(Op, arena, try arena.print(op_format, args), .{});
+        return apply(TestDocument, &self.document, op, .{ .arena = arena, .allocator = testing.allocator, .ids = &self.ids });
     }
 
-    /// The value at the path in `path_format`, a JSON array, in the dialog's shape.
+    /// The value at the path in `path_format`, a JSON array, as writeAt gives it.
     fn read(self: *Fixture, comptime path_format: []const u8, args: anytype) ![]const u8 {
         const arena = self.arena_state.allocator();
-        const path = try std.json.parseFromSliceLeaky([]const std.json.Value, arena, try std.fmt.allocPrint(arena, path_format, args), .{});
+        const path = try std.json.parseFromSliceLeaky([]const std.json.Value, arena, try arena.print(path_format, args), .{});
         var out: std.Io.Writer.Allocating = .init(arena);
         var json_writer: std.json.Stringify = .{ .writer = &out.writer };
         try writeAt(&json_writer, TestDocument, &self.document, path);
@@ -387,7 +392,7 @@ test "insert gives each item its own id, appending unless given an index" {
 test "an item is reached by its id, wherever it has moved" {
     var fixture: Fixture = .init();
     defer fixture.deinit();
-    const a = (try fixture.edit(
+    const added = (try fixture.edit(
         \\{{"op":"insert","path":["items"],"value":{{"name":"A"}}}}
     , .{})).?;
     _ = try fixture.edit(
@@ -398,13 +403,13 @@ test "an item is reached by its id, wherever it has moved" {
     , .{});
     _ = try fixture.edit(
         \\{{"op":"move","path":["items",{d}],"index":2}}
-    , .{a});
+    , .{added});
     var buf: [3][]const u8 = undefined;
     try testing.expectEqualDeep(&[_][]const u8{ "B", "C", "A" }, fixture.names(&buf));
 
     _ = try fixture.edit(
         \\{{"op":"set","path":["items",{d},"opacity"],"value":100}}
-    , .{a});
+    , .{added});
     try testing.expectEqual(100, fixture.document.items.items[2].opacity);
 }
 
@@ -475,18 +480,18 @@ test "assignIds gives only the items still at 0 an id" {
     defer fixture.deinit();
     try fixture.document.items.append(testing.allocator, .{ .id = 7 });
     try fixture.document.items.append(testing.allocator, .{});
-    assignIds(TestDocument, &fixture.document);
+    assignIds(TestDocument, &fixture.document, &fixture.ids);
     try testing.expectEqual(7, fixture.document.items.items[0].id);
     try testing.expect(fixture.document.items.items[1].id != 0);
 }
 
-test "writeAt reads a value back in the dialog's shape, with each keyed item's id" {
+test "writeAt reads a value back as saved, with each keyed item's id" {
     var fixture: Fixture = .init();
     defer fixture.deinit();
     const id = (try fixture.edit(
         \\{{"op":"insert","path":["items"],"value":{{"name":"A","opacity":9}}}}
     , .{})).?;
-    const expected = try std.fmt.allocPrint(fixture.arena_state.allocator(),
+    const expected = try fixture.arena_state.allocator().print(
         \\{{"id":{d},"name":"A","opacity":9}}
     , .{id});
     try testing.expectEqualStrings(expected, try fixture.read(

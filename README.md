@@ -1,7 +1,9 @@
 
 # EVE-Maj Preview
 
-![EVE-Maj Preview screenshot](http://i.mjst.cc/zQyi49T8lB.png)
+[![CI](https://github.com/mrmjstc/eve-maj-preview/actions/workflows/ci.yml/badge.svg)](https://github.com/mrmjstc/eve-maj-preview/actions/workflows/ci.yml)
+
+![EVE-Maj Preview screenshot](http://i.mjst.cc/vu8k3B8w9p.png)
 ![EVE-Maj Preview thumbnails](http://i.mjst.cc/BGIojpNJon.gif)
 
 A *very* lightweight Windows tool for displaying DWM-based thumbnail previews of EVE Online client windows with customizable borders, text overlays, and advanced configuration options.
@@ -10,13 +12,17 @@ A *very* lightweight Windows tool for displaying DWM-based thumbnail previews of
 
 It's **never** going to let you input broadcast, display cropped portions of your eve client, manipulate your eve client in any way or intentionally help you break the EVE Online EULA/TOS. 
 
+The one file of EVE's it will touch is its graphics settings file (`core_public__.yaml`), and only if you run the optional Ultra Potato Mode tool, which sets the graphics quality options to their lowest and keeps a `.bak` of the original.
+
+> **Not publicly supported.** This is built for my corporation, friends, and anyone brave enough to run it - not a supported public release. Use it as-is, no guarantees, no support whatsoever.
+
 ## Features
 
 - **Live Thumbnails**: Real-time DWM thumbnails of EVE client windows
 - **Configuration Editor**: A settings window for editing profiles without touching files directly
 - **Compact List View**: Single-panel alternative to thumbnails, one row per client with state, name, and system/notification text
 - **Multi-Application Support**: Configurable window filters to track any Windows app
-- **Notification System**: Per-type event alerts with suppression, border color/flash, and text-to-speech options
+- **Alerts**: Per-type game event alerts with suppression, border color/flash, and text-to-speech options
 - **Text-to-Speech Alerts**: Speaks notifications via Windows SAPI, with per-type opt-in and adjustable volume/rate
 - **Profile System**: Multiple configs with hotkey-based cycling
 - **Hotkey Groups**: Cycle or switch clients via keyboard shortcuts
@@ -74,7 +80,7 @@ Right-click the system tray icon and choose **Open Configuration** (or double-cl
 
 ### Protocol Handler
 
-EVE-Maj Preview registers a `evemajpreview://` URL protocol for external control - character switching, profile loading, and hotkey actions - useful for Stream Deck buttons, etc. The application must already be running for a protocol URL to have any effect.
+EVE-Maj Preview registers a `evemajpreview://` URL protocol for external control - character switching, profile loading, and hotkey actions - useful for Stream Deck buttons, etc. The application must already be running for a protocol URL to have any effect. URLs that close clients or exit the app are refused unless their own setting is on in General > Protocol Links, since any web page can open a link.
 
 ```
 evemajpreview://switch/Character%20Name

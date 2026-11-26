@@ -2,13 +2,15 @@ pub const UI = @import("UI.zig");
 pub const Context = @import("Context.zig");
 pub const Frame = @import("Frame.zig");
 pub const Decoration = @import("decoration.zig").Decoration;
+pub const text = @import("text");
+pub const TextRun = text.TextSystem.StyleRun;
+pub const Feature = text.shape.Plan.Feature;
 pub const style = @import("style");
 pub const Style = style.Style;
 pub const Input = @import("Input.zig");
 pub const Key = @import("Key.zig");
 pub const Layer = @import("layout").Layer;
 pub const State = @import("State.zig");
-pub const StateBridge = @import("StateBridge.zig");
 pub const Theme = style.Theme;
 pub const Accessibility = @import("Accessibility.zig");
 pub const Color = style.Color;
@@ -21,7 +23,6 @@ pub const animation = @import("animation.zig");
 
 test {
     _ = State;
-    _ = StateBridge;
     _ = UI;
     _ = Context;
     _ = @import("scrollbar.zig");

@@ -33,7 +33,7 @@ pub fn build(b: *std.Build) void {
         .win32_manifest = null,
     });
 
-    // Windows subsystem hides the console window; main.zig calls AllocConsole() itself when logLevel == .debug, so debug builds still get a console.
+    // Windows subsystem hides the console window; log.openDebugConsole opens one when logLevel is debug.
     exe.subsystem = .windows;
 
     // Default Windows stack size is often too small.
@@ -65,6 +65,7 @@ pub fn build(b: *std.Build) void {
     });
 
     exe.root_module.linkSystemLibrary("advapi32", .{});
+    exe.root_module.linkSystemLibrary("crypt32", .{});
 
     // The configuration window is drawn with knots (src/dialog/knots/).
     const knots = b.dependency("knots", .{ .target = target, .optimize = optimize });
@@ -72,6 +73,8 @@ pub fn build(b: *std.Build) void {
     exe.root_module.addImport("ui", knots.module("ui"));
 
     b.installArtifact(exe);
+    // The bundled alert sounds, which the sound picker opens on.
+    b.installDirectory(.{ .source_dir = b.path("sounds"), .install_dir = .bin, .install_subdir = "sounds" });
 
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
@@ -88,7 +91,42 @@ pub fn build(b: *std.Build) void {
     const config_step = b.step("config", "Run the app with the configuration window open");
     config_step.dependOn(&config_run.step);
 
-    // Debug, for the safety checks the release build's default optimize mode leaves out.
+    // Stands in for EVE clients, so the app can be tested without the game.
+    const sim = b.addExecutable(.{
+        .name = "eve-maj-sim",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/sim.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    sim.subsystem = .windows;
+    sim.stack_size = 16 * 1024 * 1024;
+    for ([_][]const u8{ "c", "user32", "gdi32", "dwmapi", "shell32", "ole32", "advapi32" }) |library| sim.root_module.linkSystemLibrary(library, .{});
+    sim.root_module.addWin32ResourceFile(.{ .file = b.path("sim.rc") });
+    sim.root_module.addImport("knots", knots.module("knots"));
+    sim.root_module.addImport("ui", knots.module("ui"));
+    b.installArtifact(sim);
+    const sim_run = b.addRunArtifact(sim);
+    sim_run.step.dependOn(b.getInstallStep());
+    const sim_step = b.step("sim", "Build and run the client simulator");
+    sim_step.dependOn(&sim_run.step);
+
+    // ZLS runs this on save; a separate, uninstalled artifact lets Zig skip code generation.
+    const exe_check = b.addExecutable(.{
+        .name = "eve-maj-preview",
+        .root_module = exe.root_module,
+    });
+    // Zig skips code nothing references, so the simulator needs its own check to catch breaks in sim-only files.
+    const sim_check = b.addExecutable(.{
+        .name = "eve-maj-sim",
+        .root_module = sim.root_module,
+    });
+    const check_step = b.step("check", "Type-check the app and the simulator without building them");
+    check_step.dependOn(&exe_check.step);
+    check_step.dependOn(&sim_check.step);
+
+    // Debug whatever -Doptimize says: only Debug fills undefined memory with 0xAA, so a read of it shows up.
     const tests = b.addTest(.{
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/tests.zig"),

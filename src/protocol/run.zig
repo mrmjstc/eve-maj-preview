@@ -1,6 +1,7 @@
 //! Runs a forwarded protocol command in the running instance, through the same code as its hotkey or tray item.
 const win32 = @import("../platform/win32.zig");
 const app_mod = @import("../app.zig");
+const config = @import("../config.zig");
 const activation = @import("../control/activation.zig");
 const knots_host = @import("../dialog/knots/host.zig");
 const ipc = @import("ipc.zig");
@@ -20,7 +21,22 @@ pub fn handleCopyData(app: *App, copy_data: *const win32.COPYDATASTRUCT) void {
     // parse logs its own failures.
     const command = url.parse(app.allocator, text) catch return;
     defer command.deinit(app.allocator);
+    if (command.closeAction()) |action| {
+        if (!isAllowed(&app.global_settings.protocolLinks, action)) {
+            slog.warn("Failed to run protocol command '{s}': links aren't allowed to {s}, which General > Protocol Links can change", .{ text, @tagName(action) });
+            return;
+        }
+    }
     run(app, command);
+}
+
+fn isAllowed(links: *const config.ProtocolLinksConfig, action: url.CloseAction) bool {
+    return switch (action) {
+        .close_all => links.allowCloseAll,
+        .close_active => links.allowCloseActive,
+        .close_group => links.allowCloseGroup,
+        .exit_app => links.allowExitApp,
+    };
 }
 
 fn run(app: *App, command: url.Command) void {
@@ -33,20 +49,8 @@ fn run(app: *App, command: url.Command) void {
             activation.activate(app, hwnd);
         },
         .profile => |profile_name| app.switchProfile(profile_name),
-        .hotkey => |action| {
-            const manager = app.hotkey_manager orelse {
-                slog.warn("Failed to run '{s}': the hotkey manager isn't ready", .{@tagName(action)});
-                return;
-            };
-            manager.runGlobalAction(action);
-        },
-        .group => |group| {
-            const manager = app.hotkey_manager orelse {
-                slog.warn("Failed to run group '{s}' on '{s}': the hotkey manager isn't ready", .{ @tagName(group.action), group.name });
-                return;
-            };
-            manager.runGroupAction(group.action, group.name);
-        },
+        .hotkey => |action| app.runHotkeyOutcome(app.commands().runGlobal(action, app.rebuilt.thumbnail_set)),
+        .group => |group| app.runHotkeyOutcome(app.commands().runGroup(group.action, group.name, app.rebuilt.thumbnail_set)),
         .open_config => knots_host.open(),
     }
 }

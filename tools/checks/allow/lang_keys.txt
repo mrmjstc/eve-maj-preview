@@ -1,0 +1,8 @@
+# Deliberate exceptions to lang_keys.py, one per line: <rule> <the whole text, part of the src/ path, or *>  # reason
+missing-key px  # the unit reads the same in every language
+missing-key https://example.com  # a placeholder URL, not words
+missing-key evestars_...  # the shape of an Eve Stars token
+missing-key src/sim/  # the client simulator is a developer tool, English only
+raw-text EVE-Maj Preview  # the app's name
+raw-text All alerts filtered  # the history preview copies the panel, which isn't translated
+raw-text Excluded  # the Client List preview copies the list, which isn't translated

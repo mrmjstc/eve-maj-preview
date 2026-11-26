@@ -1,4 +1,4 @@
-//! The order a reload tears down and rebuilds what's set up from the profile, decided from facts about the running app; no I/O.
+//! The order startup builds, and a reload tears down and rebuilds, what's set up from the profile, decided from facts about the app; no I/O.
 const std = @import("std");
 
 /// Every step at most once.
@@ -12,28 +12,31 @@ const RESTORES = [_]Restore{
 /// A step that takes a subsystem down, and the later one that brings it back.
 const Restore = struct { down: Step, up: Step };
 
-/// What App.restartSubsystems runs, in plan order.
+/// What control/restart.zig runs, in plan order.
 pub const Step = enum {
     /// Stops the chatlog worker but keeps the monitor and its scan state, so it must be started again.
     pause_monitor,
     destroy_monitor,
-    /// The chatlog worker reads the global settings' ore prices, so they're replaced only while it's stopped.
+    /// The chatlog worker reads the global settings, its own and the ore prices, so they're replaced only while it's stopped.
     adopt_global_draft,
     destroy_hotkey_manager,
-    /// Keeps each client's system name for build_thumbnail_set to seed the new set with.
     teardown_thumbnail_set,
     install_profile,
     record_last_used_profile,
     rescan_windows,
+    /// Re-reads each client's display name, character colour and minimize exclusion from the profile now running.
+    refresh_roster_config,
     build_thumbnail_set,
     /// Adds thumbnails for windows the new filters admit, keeping the set.
     populate_thumbnail_set,
-    /// Drops the kept set's system names, rates and log alerts once monitoring is off, since nothing would update them.
+    /// Drops the roster's systems, rates and log alerts once monitoring is off, since nothing would update them.
     clear_log_readings,
     apply_monitor_settings,
     create_monitor,
     /// Wires the trackers into the monitor, which must not be running.
     setup_trackers,
+    /// Hands a kept or new monitor the profile's chat-alert rules and weapon filter, likewise only while it's stopped.
+    apply_monitor_profile,
     /// Skipped when there's no monitor, as after a failed create_monitor.
     start_monitor,
     add_monitor_characters,
@@ -46,7 +49,7 @@ pub const Facts = struct {
     is_profile_replaced: bool,
     has_thumbnail_set: bool,
     has_monitor: bool,
-    /// The running monitor follows the log folders the next profile does, so it can be paused and kept rather than rebuilt.
+    /// The running monitor follows the log folders the next settings do, so it can be paused and kept rather than rebuilt.
     is_monitor_on_next_folders: bool,
     is_chatlog_enabled_next: bool,
     has_global_draft: bool,
@@ -71,12 +74,16 @@ pub const Plan = struct {
         plan.add(.record_last_used_profile);
         // Windows the new filters drop are reported closed, and leave the thumbnail set and chatlog on the next tick.
         plan.add(.rescan_windows);
+        plan.add(.refresh_roster_config);
         plan.add(if (rebuilds_thumbnail_set) .build_thumbnail_set else .populate_thumbnail_set);
-        if (!rebuilds_thumbnail_set and !facts.is_chatlog_enabled_next) plan.add(.clear_log_readings);
+        if (!facts.is_chatlog_enabled_next) plan.add(.clear_log_readings);
         if (keeps_monitor) plan.add(.apply_monitor_settings);
         if (creates_monitor) plan.add(.create_monitor);
         plan.add(.setup_trackers);
-        if (keeps_monitor or creates_monitor) plan.add(.start_monitor);
+        if (keeps_monitor or creates_monitor) {
+            plan.add(.apply_monitor_profile);
+            plan.add(.start_monitor);
+        }
         // A kept monitor still follows its characters' logs.
         if (creates_monitor) plan.add(.add_monitor_characters);
         plan.add(.create_hotkey_manager);
@@ -102,7 +109,7 @@ pub const Plan = struct {
     }
 
     fn indexOf(self: *const Plan, step: Step) ?usize {
-        return std.mem.indexOfScalar(Step, self.steps(), step);
+        return std.mem.findScalar(Step, self.steps(), step);
     }
 
     fn add(self: *Plan, step: Step) void {
@@ -131,6 +138,25 @@ fn expectBefore(plan: *const Plan, first: Step, second: Step) !void {
     const first_index = plan.indexOf(first) orelse return error.TestExpectedStep;
     const second_index = plan.indexOf(second) orelse return error.TestExpectedStep;
     try testing.expect(first_index < second_index);
+}
+
+test "startup from nothing builds every subsystem and stops none" {
+    const plan: Plan = .init(.{
+        .is_profile_replaced = false,
+        .has_thumbnail_set = false,
+        .has_monitor = false,
+        .is_monitor_on_next_folders = false,
+        .is_chatlog_enabled_next = true,
+        .has_global_draft = false,
+    });
+    try expectBefore(&plan, .rescan_windows, .build_thumbnail_set);
+    try expectBefore(&plan, .create_monitor, .start_monitor);
+    try expectBefore(&plan, .start_monitor, .add_monitor_characters);
+    try expectBefore(&plan, .create_hotkey_manager, .set_tick_interval);
+    try testing.expect(!has(&plan, .pause_monitor));
+    try testing.expect(!has(&plan, .destroy_monitor));
+    try testing.expect(!has(&plan, .install_profile));
+    try testing.expect(!has(&plan, .clear_log_readings));
 }
 
 test "a Save on the same log folders pauses the monitor and keeps the thumbnail set" {
@@ -183,17 +209,20 @@ test "a Save that turns chatlog monitoring off clears what the logs last showed"
     try expectBefore(&plan, .populate_thumbnail_set, .clear_log_readings);
 }
 
-test "a rebuilt thumbnail set or monitoring left on clears nothing" {
-    var switch_facts = SAVE;
-    switch_facts.is_profile_replaced = true;
-    switch_facts.is_chatlog_enabled_next = false;
-    const switch_plan: Plan = .init(switch_facts);
-    try testing.expect(!has(&switch_plan, .clear_log_readings));
-    const save_plan: Plan = .init(SAVE);
-    try testing.expect(!has(&save_plan, .clear_log_readings));
+test "a profile switch with monitoring off clears what the logs last showed once the new set is built" {
+    var facts = SAVE;
+    facts.is_profile_replaced = true;
+    facts.is_chatlog_enabled_next = false;
+    const plan: Plan = .init(facts);
+    try expectBefore(&plan, .build_thumbnail_set, .clear_log_readings);
 }
 
-test "every plan stops the worker before what it reads changes, and starts it only once wired" {
+test "monitoring left on clears nothing" {
+    const plan: Plan = .init(SAVE);
+    try testing.expect(!has(&plan, .clear_log_readings));
+}
+
+test "every plan stops the worker before what it reads changes, starts it only once wired, and refreshes the roster before the set" {
     var bits: u7 = 0;
     while (bits < 1 << 6) : (bits += 1) {
         const plan: Plan = .init(.{
@@ -211,11 +240,17 @@ test "every plan stops the worker before what it reads changes, and starts it on
         if (stop) |stop_step| {
             if (has(&plan, .adopt_global_draft)) try expectBefore(&plan, stop_step, .adopt_global_draft);
             try expectBefore(&plan, stop_step, .setup_trackers);
+            if (has(&plan, .apply_monitor_profile)) try expectBefore(&plan, stop_step, .apply_monitor_profile);
         }
         if (has(&plan, .pause_monitor)) try expectBefore(&plan, .apply_monitor_settings, .start_monitor);
         if (has(&plan, .create_monitor)) try expectBefore(&plan, .create_monitor, .setup_trackers);
-        if (has(&plan, .start_monitor)) try expectBefore(&plan, .setup_trackers, .start_monitor);
+        if (has(&plan, .start_monitor)) {
+            try expectBefore(&plan, .setup_trackers, .start_monitor);
+            try expectBefore(&plan, .apply_monitor_profile, .start_monitor);
+        }
         try testing.expect(has(&plan, .build_thumbnail_set) != has(&plan, .populate_thumbnail_set));
+        if (has(&plan, .install_profile)) try expectBefore(&plan, .install_profile, .refresh_roster_config);
+        try expectBefore(&plan, .refresh_roster_config, if (has(&plan, .build_thumbnail_set)) .build_thumbnail_set else .populate_thumbnail_set);
         try expectBefore(&plan, .destroy_hotkey_manager, .create_hotkey_manager);
     }
 }

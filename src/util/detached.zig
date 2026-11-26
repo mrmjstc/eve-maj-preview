@@ -1,5 +1,6 @@
 //! One-shot background threads that nothing joins, counted so shutdown can give them time to finish.
 const std = @import("std");
+const threads = @import("threads.zig");
 const log = @import("../log.zig");
 
 const slog = log.Scoped("detached");
@@ -9,27 +10,28 @@ const WAIT_POLL_MS = 10;
 /// Raised by the spawning thread, lowered by each thread as it returns.
 var g_running_count: std.atomic.Value(u32) = .init(0);
 
-/// `std.Thread.spawn` then detach, counted until `function` returns; `function` returns void.
+/// `threads.spawn` then detach, counted until `function` returns; `function` returns void.
 pub fn spawn(comptime function: anytype, args: anytype) !void {
     _ = g_running_count.fetchAdd(1, .monotonic);
     errdefer _ = g_running_count.fetchSub(1, .monotonic);
-    const thread = try std.Thread.spawn(.{}, Counted(function, @TypeOf(args)).run, .{args});
+    const thread = try threads.spawn(Counted(function, @TypeOf(args)).run, .{args});
     thread.detach();
 }
 
-/// At shutdown, before what the threads use is torn down; exitIfAnyRunning ends any still running after `timeout_ms`.
-pub fn waitForAll(io: std.Io, timeout_ms: u32) void {
+/// At shutdown, before what the threads use is torn down; false if any are still running after `timeout_ms`, when the caller mustn't tear that down.
+pub fn waitForAll(io: std.Io, timeout_ms: u32) bool {
     var waited_ms: u32 = 0;
     while (g_running_count.load(.acquire) > 0) : (waited_ms += WAIT_POLL_MS) {
         if (waited_ms >= timeout_ms) {
             slog.info("Exiting with {d} background thread(s) still running", .{g_running_count.load(.acquire)});
-            return;
+            return false;
         }
         std.Io.sleep(io, .fromMilliseconds(WAIT_POLL_MS), .awake) catch |err| {
             slog.warn("Failed to wait for background threads to finish: {}", .{err});
-            return;
+            return false;
         };
     }
+    return true;
 }
 
 /// Last thing before main returns: ends the process at once if a thread outlived waitForAll, since returning frees the allocator and Io it still uses.

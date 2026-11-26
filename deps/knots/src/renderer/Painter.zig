@@ -1,14 +1,18 @@
 const std = @import("std");
 const gpu = @import("gpu");
+const render = @import("render");
+const Vertex = render.Vertex;
+const Instance = render.Instance;
+const SlugInstance = render.SlugInstance;
 const gpu_impl = @import("gpu_impl");
-const Packet = @import("render").Packet;
-const GlyphAtlas = @import("render").GlyphAtlas;
+const Packet = render.Packet;
+const GlyphAtlas = render.GlyphAtlas;
 const GlyphAtlasCache = @import("GlyphAtlasCache.zig");
 const math = @import("math");
 
-const Command = @import("render").Command;
-const TextureSource = @import("render").TextureSource;
-const Clip = @import("render").Clip;
+const Command = render.Command;
+const TextureSource = render.TextureSource;
+const Clip = render.Clip;
 const pipelines = @import("pipelines.zig");
 const FrameUploads = @import("FrameUploads.zig");
 const Context = @import("Context.zig");
@@ -23,20 +27,15 @@ const DrawContext = @import("gpu.zig").DrawContext;
 const PixelTextureKey = u64;
 const PIXEL_TEXTURE_TTL_FRAMES: u64 = 2;
 
-const CURVE_TEX_WIDTH: u32 = GlyphAtlas.width;
-const BAND_TEX_WIDTH: u32 = GlyphAtlas.width;
-// Start with one row and grow geometrically in uploadGlyphAtlas. A 256-row
-// pair reserves 32 MiB per painter even for an empty or single-line panel.
-const INITIAL_TEX_HEIGHT: u32 = 1;
+const glyph_words_initial_bytes: usize = 64 * GlyphAtlas.word_bytes;
+const glyph_table_initial_bytes: usize = 16 * GlyphAtlas.entry_bytes;
 
 allocator: std.mem.Allocator,
 context: *Context,
-text_curveband_bg: gpu_impl.BindGroup,
+text_glyph_bg: gpu_impl.BindGroup,
 frame_uploads: []FrameUploads,
-curve_texture: gpu_impl.Texture,
-band_texture: gpu_impl.Texture,
-curve_tex_height: u32,
-band_tex_height: u32,
+glyph_words: gpu_impl.Buffer,
+glyph_table: gpu_impl.Buffer,
 pixel_textures: std.AutoHashMapUnmanaged(PixelTextureKey, PixelTextureEntry),
 pixel_texture_scratch: std.ArrayList(PixelTextureKey),
 retired_resources: std.ArrayList(RetiredResource),
@@ -74,15 +73,30 @@ const PixelTextureEntry = struct {
     len: usize,
     width: u32,
     height: u32,
-    format: gpu.Texture.Format,
+    format: render.PixelFormat,
     bytes_per_row: ?u32,
     version: u64,
     last_seen: u64,
 };
+
+/// Packet pixel formats are API-neutral; each one has a sampled `gpu` format.
+fn gpuTextureFormat(format: render.PixelFormat) gpu.Texture.Format {
+    const result: gpu.Texture.Format = switch (format) {
+        .rgba8 => .rgba8,
+        .rgba8_srgb => .rgba8_srgb,
+        .bgra8 => .bgra8,
+        .bgra8_srgb => .bgra8_srgb,
+        .r8 => .r8,
+        .rgba32f => .rgba32f,
+    };
+    std.debug.assert(result.bytesPerPixel() == format.bytesPerPixel());
+    std.debug.assert(result != .depth24_plus);
+    return result;
+}
 const RetiredGlyphResources = struct {
     bind_group: gpu_impl.BindGroup,
-    curve_texture: ?gpu_impl.Texture,
-    band_texture: ?gpu_impl.Texture,
+    words: gpu_impl.Buffer,
+    table: gpu_impl.Buffer,
 };
 const RetiredValue = union(enum) {
     pixel_texture: *Texture,
@@ -98,34 +112,12 @@ pub fn create(allocator: std.mem.Allocator, context: *Context, upload_slots: u32
     std.debug.assert(upload_slots > 0);
     std.debug.assert(upload_slots <= slots_max);
     const device = context.device;
-    var curve_texture = try device.createTexture(.{
-        .width = CURVE_TEX_WIDTH,
-        .height = INITIAL_TEX_HEIGHT,
-        .format = .rgba32f,
-        .usage = .{ .texture_binding = true, .copy_dst = true },
-        .label = "glyph_curves",
-    });
-    errdefer curve_texture.deinit();
-
-    var band_texture = try device.createTexture(.{
-        .width = BAND_TEX_WIDTH,
-        .height = INITIAL_TEX_HEIGHT,
-        .format = .rgba32u,
-        .usage = .{ .texture_binding = true, .copy_dst = true },
-        .label = "glyph_bands",
-    });
-    errdefer band_texture.deinit();
-
-    var text_curveband_bg = try device.createBindGroup(.{
-        .label = "text_curveband_bg",
-        .pipeline = &context.text_pipeline,
-        .layout_index = 1,
-        .entries = &.{
-            .{ .binding = 0, .resource = .{ .texture_view = &curve_texture } },
-            .{ .binding = 1, .resource = .{ .texture_view = &band_texture } },
-        },
-    });
-    errdefer text_curveband_bg.deinit();
+    var glyph_words = try createGlyphBuffer(device, glyph_words_initial_bytes, "glyph_words");
+    errdefer glyph_words.deinit();
+    var glyph_table = try createGlyphBuffer(device, glyph_table_initial_bytes, "glyph_table");
+    errdefer glyph_table.deinit();
+    var text_glyph_bg = try createGlyphBindGroup(context, &glyph_words, &glyph_table);
+    errdefer text_glyph_bg.deinit();
 
     const uploads = try allocator.alloc(FrameUploads, upload_slots);
     errdefer allocator.free(uploads);
@@ -140,12 +132,10 @@ pub fn create(allocator: std.mem.Allocator, context: *Context, upload_slots: u32
     self.* = .{
         .allocator = allocator,
         .context = context,
-        .text_curveband_bg = text_curveband_bg,
+        .text_glyph_bg = text_glyph_bg,
         .frame_uploads = uploads,
-        .curve_texture = curve_texture,
-        .band_texture = band_texture,
-        .curve_tex_height = INITIAL_TEX_HEIGHT,
-        .band_tex_height = INITIAL_TEX_HEIGHT,
+        .glyph_words = glyph_words,
+        .glyph_table = glyph_table,
         .pixel_textures = .empty,
         .pixel_texture_scratch = .empty,
         .retired_resources = .empty,
@@ -167,11 +157,11 @@ pub fn destroyAfterWait(self: *Painter) void {
     self.pixel_texture_scratch.deinit(self.allocator);
     for (&self.backdrop_targets) |*targets| targets.deinit();
     self.backdrop_glass_scratch.deinit(self.allocator);
-    self.text_curveband_bg.deinit();
+    self.text_glyph_bg.deinit();
     for (self.frame_uploads) |*upload| upload.deinit();
     self.allocator.free(self.frame_uploads);
-    self.curve_texture.deinit();
-    self.band_texture.deinit();
+    self.glyph_words.deinit();
+    self.glyph_table.deinit();
     self.allocator.destroy(self);
 }
 pub fn prepare(self: *Painter, packet: *const Packet, options: *const PrepareOptions) !Prepared {
@@ -323,7 +313,7 @@ pub fn encodeSegment(self: *Painter, prepared: *const Prepared, pass: *gpu_impl.
         if (!context.atlas.isReady()) continue;
 
         if (state.kind != kind) {
-            bindKind(context, &self.text_curveband_bg, pass, upload, kind, sizes, use_linear_target);
+            bindKind(context, &self.text_glyph_bg, pass, upload, kind, sizes, use_linear_target);
             state.texture = null;
             state.kind = kind;
         }
@@ -419,16 +409,10 @@ fn destroyRetiredResource(value: RetiredValue) void {
             old.deinit();
         },
         .glyph_resources => |resources| {
-            var bind_group = resources.bind_group;
-            bind_group.deinit();
-            if (resources.curve_texture) |texture| {
-                var old = texture;
-                old.deinit();
-            }
-            if (resources.band_texture) |texture| {
-                var old = texture;
-                old.deinit();
-            }
+            var old = resources;
+            old.bind_group.deinit();
+            old.words.deinit();
+            old.table.deinit();
         },
     }
 }
@@ -439,7 +423,7 @@ fn textureFromPixels(
     data: []const u8,
     width: u32,
     height: u32,
-    format: gpu.Texture.Format,
+    format: render.PixelFormat,
     bytes_per_row: ?u32,
     version: u64,
     force_upload: bool,
@@ -447,7 +431,7 @@ fn textureFromPixels(
     if (self.pixel_textures.getPtr(id)) |entry| {
         if (entry.width != width or entry.height != height or entry.format != format) {
             try self.reserveRetiredResources(1);
-            const replacement = try self.context.createTexture(width, height, format);
+            const replacement = try self.context.createTexture(width, height, gpuTextureFormat(format));
             errdefer replacement.destroyAfterWait();
             try replacement.write(data, width, height, bytes_per_row);
             const old_texture = entry.texture;
@@ -484,7 +468,7 @@ fn textureFromPixels(
     }
 
     if (self.pixel_textures.count() == textures_max) return error.TooManyTextures;
-    const texture = try self.context.createTexture(width, height, format);
+    const texture = try self.context.createTexture(width, height, gpuTextureFormat(format));
     errdefer texture.destroyAfterWait();
     try texture.write(data, width, height, bytes_per_row);
     try self.pixel_textures.put(self.allocator, id, .{
@@ -600,23 +584,23 @@ fn uploadFrameData(context: *Context, uploads: *FrameUploads, dl: *const Packet)
     const text_instances = dl.textInstances();
     const empty_clip_nodes = [_]Clip.Node{Clip.Node.empty};
     const clip_nodes = if (dl.clipNodes().len > 0) dl.clipNodes() else empty_clip_nodes[0..];
-    try ensureAndLoad(&uploads.vertex_buf, gpu.Vertex, verts);
-    try ensureAndLoad(&uploads.instance_buf, gpu.Instance, insts);
+    try ensureAndLoad(&uploads.vertex_buf, Vertex, verts);
+    try ensureAndLoad(&uploads.instance_buf, Instance, insts);
     try ensureAndLoad(&uploads.index_buf, u32, dl.primitiveIndices());
-    try ensureAndLoad(&uploads.text_instance_buf, gpu.SlugInstance, text_instances);
+    try ensureAndLoad(&uploads.text_instance_buf, SlugInstance, text_instances);
     try uploads.ensureClipNodeCapacity(context, clip_nodes.len * @sizeOf(Clip.Node));
     uploads.clip_node_buf.load(Clip.Node, clip_nodes);
     return .{
-        .verts_bytes = verts.len * @sizeOf(gpu.Vertex),
-        .insts_bytes = insts.len * @sizeOf(gpu.Instance),
+        .verts_bytes = verts.len * @sizeOf(Vertex),
+        .insts_bytes = insts.len * @sizeOf(Instance),
         .indices_bytes = dl.primitiveIndices().len * @sizeOf(u32),
-        .text_instances_bytes = text_instances.len * @sizeOf(gpu.SlugInstance),
+        .text_instances_bytes = text_instances.len * @sizeOf(SlugInstance),
     };
 }
 
 fn bindKind(
     context: *Context,
-    text_curveband_bg: *gpu_impl.BindGroup,
+    text_glyph_bg: *gpu_impl.BindGroup,
     pass: *gpu_impl.RenderPass,
     uploads: *FrameUploads,
     kind: Command.Kind,
@@ -646,7 +630,7 @@ fn bindKind(
             const pipeline = if (linear_target) &context.linear_text_pipeline.? else &context.text_pipeline;
             pass.bindPipeline(pipeline);
             pass.setBindGroup(0, &uploads.text_uniform_bg);
-            pass.setBindGroup(1, text_curveband_bg);
+            pass.setBindGroup(1, text_glyph_bg);
             pass.setBindGroup(2, &uploads.text_clip_bg);
             pass.setVertexBuffer(0, &uploads.text_instance_buf, 0, sizes.text_instances_bytes);
             pass.setIndexBuffer(&context.unit_index_buf, 0, 6 * @sizeOf(u32));
@@ -749,123 +733,58 @@ fn physicalScissor(rect: math.Rect, content_scale: f32, phys_w: u32, phys_h: u32
     };
 }
 
-fn uploadGlyphAtlas(self: *Painter, atlas: *const GlyphAtlas) !void {
-    atlas.validate();
+/// Deltas only append or rewrite unused slots, so they go into the live buffers.
+/// Anything else, eviction included, goes into fresh buffers: frames in flight keep the old ones.
+fn uploadGlyphAtlas(self: *Painter, atlas: *const GlyphAtlas, delta: bool) !void {
+    if (delta and atlas.words.len <= self.glyph_words.getSize() and atlas.table.len <= self.glyph_table.getSize()) {
+        loadRange(&self.glyph_words, atlas.words, atlas.words_dirty);
+        loadRange(&self.glyph_table, atlas.table, atlas.table_dirty);
+        return;
+    }
     const device = self.context.device;
-    const context = self.context;
-    const needed_curve_h: u32 = @intCast(std.math.divCeil(u64, atlas.curve.len, GlyphAtlas.row_bytes) catch unreachable);
-    const needed_band_h: u32 = @intCast(std.math.divCeil(u64, atlas.band.len, GlyphAtlas.row_bytes) catch unreachable);
-    std.debug.assert(needed_curve_h <= GlyphAtlas.width);
-    std.debug.assert(needed_band_h <= GlyphAtlas.width);
-
-    var curve_row_start: u32 = 0;
-    var band_row_start: u32 = 0;
-    if (self.glyph_upload.canUploadDelta(atlas)) {
-        curve_row_start = atlas.curve_row_start;
-        band_row_start = atlas.band_row_start;
-    }
-
-    var new_curve_texture: ?gpu_impl.Texture = null;
-    var new_band_texture: ?gpu_impl.Texture = null;
-    var new_curve_h = self.curve_tex_height;
-    var new_band_h = self.band_tex_height;
-    var new_curveband_bg: ?gpu_impl.BindGroup = null;
-    errdefer if (new_curve_texture) |*t| t.deinit();
-    errdefer if (new_band_texture) |*t| t.deinit();
-    errdefer if (new_curveband_bg) |*bg| bg.deinit();
-
-    if (needed_curve_h > self.curve_tex_height) {
-        curve_row_start = 0;
-        new_curve_h = std.math.ceilPowerOfTwo(u32, needed_curve_h) catch needed_curve_h;
-        new_curve_texture = try device.createTexture(.{
-            .width = CURVE_TEX_WIDTH,
-            .height = new_curve_h,
-            .format = .rgba32f,
-            .usage = .{ .texture_binding = true, .copy_dst = true },
-            .label = "glyph_curves",
-        });
-    }
-    if (needed_band_h > self.band_tex_height) {
-        band_row_start = 0;
-        new_band_h = std.math.ceilPowerOfTwo(u32, needed_band_h) catch needed_band_h;
-        new_band_texture = try device.createTexture(.{
-            .width = BAND_TEX_WIDTH,
-            .height = new_band_h,
-            .format = .rgba32u,
-            .usage = .{ .texture_binding = true, .copy_dst = true },
-            .label = "glyph_bands",
-        });
-    }
-
-    if (new_curve_texture != null or new_band_texture != null) {
-        try self.reserveRetiredResources(1);
-        const curve_for_bg = if (new_curve_texture) |*t| t else &self.curve_texture;
-        const band_for_bg = if (new_band_texture) |*t| t else &self.band_texture;
-        new_curveband_bg = try device.createBindGroup(.{
-            .label = "text_curveband_bg",
-            .pipeline = &context.text_pipeline,
-            .layout_index = 1,
-            .entries = &.{
-                .{ .binding = 0, .resource = .{ .texture_view = curve_for_bg } },
-                .{ .binding = 1, .resource = .{ .texture_view = band_for_bg } },
-            },
-        });
-
-        const old_curveband_bg = self.text_curveband_bg;
-        self.text_curveband_bg = new_curveband_bg.?;
-        new_curveband_bg = null;
-
-        var old_curve_texture: ?gpu_impl.Texture = null;
-        var old_band_texture: ?gpu_impl.Texture = null;
-
-        if (new_curve_texture) |tex| {
-            old_curve_texture = self.curve_texture;
-            self.curve_texture = tex;
-            self.curve_tex_height = new_curve_h;
-            new_curve_texture = null;
-        }
-        if (new_band_texture) |tex| {
-            old_band_texture = self.band_texture;
-            self.band_texture = tex;
-            self.band_tex_height = new_band_h;
-            new_band_texture = null;
-        }
-        self.retired_resources.appendAssumeCapacity(.{
-            .slots_pending = self.upload_slots_live,
-            .value = .{ .glyph_resources = .{
-                .bind_group = old_curveband_bg,
-                .curve_texture = old_curve_texture,
-                .band_texture = old_band_texture,
-            } },
-        });
-    }
-
-    try uploadGlyphPlane(self.allocator, &self.curve_texture, atlas.curve, curve_row_start);
-    try uploadGlyphPlane(self.allocator, &self.band_texture, atlas.band, band_row_start);
+    try self.reserveRetiredResources(1);
+    var words = try createGlyphBuffer(device, grownSize(self.glyph_words.getSize(), atlas.words.len), "glyph_words");
+    errdefer words.deinit();
+    var table = try createGlyphBuffer(device, grownSize(self.glyph_table.getSize(), atlas.table.len), "glyph_table");
+    errdefer table.deinit();
+    words.load(u8, atlas.words);
+    table.load(u8, atlas.table);
+    const bind_group = try createGlyphBindGroup(self.context, &words, &table);
+    self.retired_resources.appendAssumeCapacity(.{
+        .slots_pending = self.upload_slots_live,
+        .value = .{ .glyph_resources = .{ .bind_group = self.text_glyph_bg, .words = self.glyph_words, .table = self.glyph_table } },
+    });
+    self.text_glyph_bg = bind_group;
+    self.glyph_words = words;
+    self.glyph_table = table;
 }
 
-fn uploadGlyphPlane(allocator: std.mem.Allocator, texture: anytype, bytes: []const u8, row_start: u32) !void {
-    std.debug.assert(bytes.len <= GlyphAtlas.plane_bytes_max);
-    std.debug.assert(bytes.len % GlyphAtlas.texel_bytes == 0);
-    const rows_total: u32 = @intCast(std.math.divCeil(u64, bytes.len, GlyphAtlas.row_bytes) catch unreachable);
-    std.debug.assert(row_start <= rows_total);
-    if (row_start == rows_total) return;
-    const offset: u32 = row_start * GlyphAtlas.row_bytes;
-    const rows_full: u32 = @intCast(@divFloor(bytes.len, GlyphAtlas.row_bytes));
-    const bytes_full: u32 = rows_full * GlyphAtlas.row_bytes;
-    if (row_start < rows_full) {
-        try texture.write(bytes[offset..].ptr, bytes_full - offset, 0, row_start, GlyphAtlas.width, rows_full - row_start, null);
-    }
-    if (bytes_full < bytes.len) {
-        // Copy only the final row: temporary memory stays bounded at 64 KiB.
-        const padded = try allocator.alloc(u8, GlyphAtlas.row_bytes);
-        defer allocator.free(padded);
+fn loadRange(buffer: *gpu_impl.Buffer, bytes: []const u8, range: GlyphAtlas.Range) void {
+    if (range.start == range.end) return;
+    buffer.loadOffset(u8, bytes[range.start..range.end], range.start);
+}
 
-        const tail = bytes[bytes_full..];
-        @memcpy(padded[0..tail.len], tail);
-        @memset(padded[tail.len..], 0);
-        try texture.write(padded.ptr, padded.len, 0, rows_full, GlyphAtlas.width, 1, null);
-    }
+fn grownSize(current: usize, required: usize) usize {
+    if (required <= current) return current;
+    const size = @max(required, current + current / 2);
+    // Whole words and whole table entries.
+    return (std.math.divCeil(usize, size, GlyphAtlas.entry_bytes) catch unreachable) * GlyphAtlas.entry_bytes;
+}
+
+fn createGlyphBuffer(device: *gpu_impl.Device, size: usize, label: []const u8) !gpu_impl.Buffer {
+    return device.createBuffer(.{ .size = size, .usage = .{ .storage = true, .copy_dst = true }, .label = label });
+}
+
+fn createGlyphBindGroup(context: *Context, words: *const gpu_impl.Buffer, table: *const gpu_impl.Buffer) !gpu_impl.BindGroup {
+    return context.device.createBindGroup(.{
+        .label = "text_glyph_bg",
+        .pipeline = &context.text_pipeline,
+        .layout_index = 1,
+        .entries = &.{
+            .{ .binding = 0, .resource = .{ .read_only_storage_buffer = .{ .buffer = table, .size = @intCast(table.getSize()) } } },
+            .{ .binding = 1, .resource = .{ .read_only_storage_buffer = .{ .buffer = words, .size = @intCast(words.getSize()) } } },
+        },
+    });
 }
 
 fn rectIsFinite(rect: math.Rect) bool {
@@ -884,39 +803,4 @@ fn ensureAndLoad(buf: *gpu_impl.Buffer, comptime T: type, items: []const T) !voi
     if (items.len == 0) return;
     try ensureBufferCapacity(buf, items.len * @sizeOf(T));
     buf.load(T, items);
-}
-
-test "glyph plane uploads bound padding and propagate partial upload failure" {
-    const TestTexture = struct {
-        calls: u32 = 0,
-        fail_call: u32 = 2,
-        pub fn write(self: *@This(), data: [*]const u8, len: usize, x: u32, y: u32, width: u32, height: u32, stride: ?u32) !void {
-            std.debug.assert(self.calls < 4);
-            std.debug.assert(x == 0);
-            try std.testing.expectEqual(GlyphAtlas.width, width);
-            try std.testing.expectEqual(@as(u32, 1), height);
-            try std.testing.expectEqual(@as(?u32, null), stride);
-            try std.testing.expectEqual(GlyphAtlas.row_bytes, len);
-            if (y == 1) {
-                try std.testing.expectEqual(@as(u8, 7), data[0]);
-                try std.testing.expectEqual(@as(u8, 0), data[GlyphAtlas.texel_bytes]);
-                try std.testing.expectEqual(@as(u8, 0), data[len - 1]);
-            } else {
-                try std.testing.expectEqual(@as(u32, 0), y);
-            }
-            self.calls += 1;
-            if (self.calls == self.fail_call) return error.UploadFailed;
-        }
-    };
-    const bytes = try std.testing.allocator.alloc(u8, GlyphAtlas.row_bytes + GlyphAtlas.texel_bytes);
-    defer std.testing.allocator.free(bytes);
-    @memset(bytes, 7);
-    var texture: TestTexture = .{};
-    try std.testing.expectError(error.UploadFailed, uploadGlyphPlane(std.testing.allocator, &texture, bytes, 0));
-    try std.testing.expectEqual(@as(u32, 2), texture.calls);
-    texture.fail_call = 0;
-    try uploadGlyphPlane(std.testing.allocator, &texture, bytes, 1);
-    try std.testing.expectEqual(@as(u32, 3), texture.calls);
-    try uploadGlyphPlane(std.testing.allocator, &texture, bytes, 2);
-    try std.testing.expectEqual(@as(u32, 3), texture.calls);
 }

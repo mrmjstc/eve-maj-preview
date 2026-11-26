@@ -1,4 +1,4 @@
-//! What an import brings in: a partial profile in its saved shape, and notes for the user; `toOps` turns it into edit ops (see config/patch.zig) against the profile being edited.
+//! What an import brings in: settings in their saved shape, and notes for the user; `toOps` turns them into edit ops (see config/patch.zig) against the profile being edited, `sectionOps` against another document.
 const std = @import("std");
 const config = @import("../../config.zig");
 const patch = @import("../patch.zig");
@@ -16,6 +16,7 @@ const MERGED_LISTS = [_]MergedList{
     .{ .name = "thumbnailSpaces", .key_field = "name", .keeps_ids = true },
     .{ .name = "systemColors", .key_field = "systemName", .keeps_ids = false },
     .{ .name = "windowFilters", .key_field = "name", .keeps_ids = false },
+    .{ .name = "chatAlerts", .key_field = "name", .keeps_ids = false },
 };
 
 /// A list whose items are matched on `key_field`; one that `keeps_ids` is edited item by item, any other is replaced whole.
@@ -116,8 +117,8 @@ pub const Draft = struct {
             try self.setString(prefix ++ "FontName", name);
             try self.setNumber(prefix ++ "FontSize", size);
         }
-        try self.setString("thumbnail.notifications.font_name", name);
-        try self.setNumber("thumbnail.notifications.font_size", size);
+        try self.setString("thumbnail.alertText.font_name", name);
+        try self.setNumber("thumbnail.alertText.font_size", size);
     }
 
     /// The character's entry in the draft, added the first time it's named; valid until the next item is added.
@@ -164,7 +165,7 @@ pub fn toValue(arena: std.mem.Allocator, comptime T: type, value: *const T, path
     return std.json.parseFromSliceLeaky(Value, arena, out.written(), .{});
 }
 
-/// The ops that bring `draft` into `doc`, matching list items by name (case-insensitively) and dropping the dialog's untouched placeholder once real entries arrive.
+/// The ops bringing `draft` into `doc`; list items match by name, ignoring case, and the dialog's untouched placeholder goes once real entries arrive.
 pub fn toOps(arena: std.mem.Allocator, draft: *const Draft, doc: *const Config) ![]const patch.Op {
     var ops: std.ArrayList(patch.Op) = .empty;
     var it = draft.root.iterator();
@@ -180,9 +181,16 @@ pub fn toOps(arena: std.mem.Allocator, draft: *const Draft, doc: *const Config) 
                 try ops.append(arena, try setOp(arena, &.{key}, try mergedList(arena, merged.key_field, existing.array.items, value.array.items)));
             }
         } else {
-            try fieldOps(arena, &ops, &.{key}, value);
+            try fieldOps(arena, Config, &ops, &.{key}, value);
         }
     }
+    return ops.items;
+}
+
+/// The ops that bring `value` into a `Doc`'s section `name`, field by field.
+pub fn sectionOps(arena: std.mem.Allocator, comptime Doc: type, name: []const u8, value: Value) ![]const patch.Op {
+    var ops: std.ArrayList(patch.Op) = .empty;
+    try fieldOps(arena, Doc, &ops, &.{name}, value);
     return ops.items;
 }
 
@@ -206,14 +214,14 @@ fn findMergedList(name: []const u8) ?MergedList {
 }
 
 /// Sections are set field by field; anything else, even a small struct, whole.
-fn fieldOps(arena: std.mem.Allocator, ops: *std.ArrayList(patch.Op), path: []const []const u8, value: Value) !void {
-    if (value != .object or !patch.isSection(Config, path)) return ops.append(arena, try setOp(arena, path, value));
+fn fieldOps(arena: std.mem.Allocator, comptime Doc: type, ops: *std.ArrayList(patch.Op), path: []const []const u8, value: Value) !void {
+    if (value != .object or !patch.isSection(Doc, path)) return ops.append(arena, try setOp(arena, path, value));
     var it = value.object.iterator();
     while (it.next()) |entry| {
         const child = try arena.alloc([]const u8, path.len + 1);
         @memcpy(child[0..path.len], path);
         child[path.len] = entry.key_ptr.*;
-        try fieldOps(arena, ops, child, entry.value_ptr.*);
+        try fieldOps(arena, Doc, ops, child, entry.value_ptr.*);
     }
 }
 
@@ -239,7 +247,11 @@ fn keyedListOps(arena: std.mem.Allocator, ops: *std.ArrayList(patch.Op), list_na
         const key = keyOf(item, key_field) orelse continue;
         const match = findByKey(existing, key_field, key, removed.items);
         const target = match orelse {
-            try ops.append(arena, .{ .op = "insert", .path = try arena.dupe(Value, &.{.{ .string = list_name }}), .value = try withoutId(arena, item) });
+            try ops.append(arena, .{
+                .op = "insert",
+                .path = try arena.dupe(Value, &.{.{ .string = list_name }}),
+                .value = try withoutId(arena, item),
+            });
             continue;
         };
         const id = target.object.get("id") orelse continue;

@@ -5,6 +5,7 @@ const config_mod = @import("../config.zig");
 const scout = @import("scout.zig");
 const animation = @import("animation.zig");
 const exclusions_mod = @import("exclusions.zig");
+const notifier_mod = @import("../notifications/notifier.zig");
 const strings = @import("../util/strings.zig");
 const log = @import("../log.zig");
 
@@ -77,8 +78,8 @@ pub fn moveClientToPosition(config: *const config_mod.Config, hwnd: win32.HWND, 
     _ = win32.SetWindowPos(hwnd, win32.HWND_NOTOPMOST, clamped.x, clamped.y, 0, 0, win32.SWP_NOSIZE | win32.SWP_NOZORDER | win32.SWP_NOACTIVATE | win32.SWP_ASYNCWINDOWPOS);
 }
 
-/// `thumbnail_set` is anything with ThumbnailSet.notify's signature, told about each client moved.
-pub fn moveAllClientsToSavedPositions(eve_windows: []const scout.EveWindow, config: *const config_mod.Config, thumbnail_set: anytype) void {
+/// Tells `notifier` about each client moved.
+pub fn moveAllClientsToSavedPositions(eve_windows: []const scout.EveWindow, config: *const config_mod.Config, notifier: *const notifier_mod.Notifier) void {
     slog.info("Moving all EVE clients to saved positions", .{});
 
     var moved_count: usize = 0;
@@ -86,7 +87,7 @@ pub fn moveAllClientsToSavedPositions(eve_windows: []const scout.EveWindow, conf
         if (!eve_window.is_eve_client or config.isExcludedFromAutoMove(eve_window.character_name)) continue;
         const position = config.getCharacterWindowPosition(eve_window.character_name) orelse continue;
         moveClientToPosition(config, eve_window.hwnd, position);
-        thumbnail_set.notify(eve_window.hwnd, .{ .notification_type = .SavedPositionMove });
+        notifier.notify(eve_window.hwnd, .{ .notification_type = .SavedPositionMove });
         moved_count += 1;
         slog.debug("Moved {s} to saved position ({}, {})", .{ eve_window.character_name, position.x, position.y });
     }

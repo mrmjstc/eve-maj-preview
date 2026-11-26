@@ -1,5 +1,6 @@
-//! Entry point: process setup, the single-instance check, building the App in dependency order, and the hidden timer window whose messages drive it.
+//! Entry point: process setup, the single-instance check, loading and starting the App, and the hidden timer window whose messages drive it.
 const std = @import("std");
+const builtin = @import("builtin");
 const build_options = @import("build_options");
 const win32 = @import("platform/win32.zig");
 const gdi_overlay = @import("platform/gdi_overlay.zig");
@@ -9,27 +10,25 @@ const crash = @import("crash.zig");
 const arguments = @import("arguments.zig");
 const app_mod = @import("app.zig");
 const config = @import("config.zig");
-const scout = @import("clients/scout.zig");
 const focus = @import("control/focus.zig");
-const chatlog = @import("chatlog.zig");
-const mouse_hook = @import("hotkeys/mouse_hook.zig");
+const character_ids_mod = @import("chatlog/character_ids.zig");
 const keyboard_hook = @import("hotkeys/keyboard_hook.zig");
+const hooks = @import("hotkeys/hooks.zig");
 const hook_thread = @import("hotkeys/hook_thread.zig");
 const tts = @import("notifications/tts.zig");
 const sound = @import("notifications/sound.zig");
-const tray = @import("tray.zig");
 const ipc = @import("protocol/ipc.zig");
-const registry = @import("protocol/registry.zig");
 const run = @import("protocol/run.zig");
 const url = @import("protocol/url.zig");
 const update = @import("update.zig");
 const knots_host = @import("dialog/knots/host.zig");
-const run_on_startup = @import("dialog/run_on_startup.zig");
 const lang = @import("lang/lang.zig");
 const detached = @import("util/detached.zig");
+const messages = @import("messages.zig");
 const log = @import("log.zig");
 
 const App = app_mod.App;
+const CharacterIds = character_ids_mod.CharacterIds;
 const slog = log.Scoped("main");
 
 const INSTANCE_WAIT_ATTEMPTS = 100;
@@ -60,23 +59,17 @@ pub fn main(init: std.process.Init) void {
 }
 
 fn mainImpl(init: std.process.Init) !void {
-    const allocator = init.gpa;
-    tts.setIo(init.io);
-    sound.setIo(init.io);
+    // Release builds swap the leak-checking default for one that reuses freed memory, so a long session doesn't creep up.
+    const allocator = if (builtin.mode == .debug) init.gpa else std.heap.smp_allocator;
+    tts.setup(init.io, allocator);
+    sound.setup(init.io, allocator);
     config.setEnvironMap(init.environ_map);
 
-    var app: App = .init(allocator, init.io);
-    // Registered first, so callbacks lose the app only once everything below is torn down.
-    app_mod.g_app = &app;
-    defer app_mod.g_app = null;
-    knots_host.init(&app);
-    defer knots_host.deinit();
-
-    setCwdToExecutableDir();
+    const is_in_executable_dir = setCwdToExecutableDir();
     config.migrateLegacyLayout(init.io);
 
     // toSlice's result spans several allocations, so it takes an arena.
-    var args_arena = std.heap.ArenaAllocator.init(allocator);
+    var args_arena: std.heap.ArenaAllocator = .init(allocator);
     defer args_arena.deinit();
     const parsed = arguments.parse(try init.minimal.args.toSlice(args_arena.allocator()));
 
@@ -98,109 +91,43 @@ fn mainImpl(init: std.process.Init) !void {
     }
 
     slog.info("EVE-Maj Preview v{s}", .{build_options.version});
+    // Elsewhere, the folders it would sweep might not be the app's.
+    if (is_in_executable_dir) config.sweepTempFiles(init.io);
 
     fonts.loadBundled();
 
-    app.global_settings = try config.GlobalConfig.load(allocator, init.io);
-    defer app.global_settings.deinit();
-    // Before the chatlog monitor, whose shutdown defer then runs first.
-    app.character_ids = .load(allocator, init.io);
-    defer app.character_ids.deinit();
-    log.setLevel(app.global_settings.logLevel);
-    app.global_settings.logSettings();
-    // Every launch, since the Run value can be lost or point at a moved exe while the setting stays on.
-    if (app.global_settings.runOnStartup) run_on_startup.apply(true);
+    const instance = win32.GetModuleHandleA(null) orelse return error.GetModuleHandleFailed;
+
+    // Before the App, whose deinit unregisters the hotkey manager's hooks through this thread.
+    hooks.setAllocator(allocator);
+    hook_thread.start();
+    defer {
+        hooks.deinit();
+        hook_thread.stop();
+    }
+
+    var app: App = .init(allocator, init.io, instance, try loadFromDisk(allocator, init.io, parsed.profile));
+    // Registered before app.deinit, so callbacks lose the app only once it's torn down.
+    app_mod.g_app = &app;
+    defer app_mod.g_app = null;
+    defer app.deinit();
+    app.dialog = knots_host.init(app.dialogContext(), app_mod.DIALOG_HOST);
+    defer knots_host.deinit();
     lang.init(allocator, app.global_settings.language);
     defer lang.deinit();
-
-    const last_used = app.global_settings.lastUsedProfile;
-    const profile_name = parsed.profile orelse if (last_used.len > 0) last_used else config.DEFAULT_PROFILE;
-    app.store = try config.ProfileStore.init(try config.loadProfile(allocator, init.io, profile_name), init.io);
-    defer app.store.deinit();
-
-    // Not profile_name: loadProfile() may have fallen back to default, and this heals global settings to match.
-    try app.global_settings.updateLastUsed(init.io, app.store.live.profile_name);
-
-    app.store.live.logSettings();
-
-    app.instance = win32.GetModuleHandleA(null) orelse return error.GetModuleHandleFailed;
-    app.notifications.start(allocator, &app.store, app.instance);
-    defer app.notifications.deinit(allocator);
-
-    if (app.global_settings.autoRegisterProtocol) registry.ensureRegistered();
+    defer update.g_update_status.deinit(init.io);
+    // Before anything starts a thread, so it runs before the deinits of the state they use, even on a failed startup.
+    defer waitForBackgroundThreads(&app, init.io);
 
     defer tts.shutdown();
     defer sound.shutdown();
 
-    if (app.global_settings.logLevel == .debug) log.openDebugConsole();
-
-    app.scout = scout.Scout.init(allocator, &app.store.saved);
-    app.scout.listenForEvents();
-    defer app.scout.deinit();
-
-    // Before the thumbnail set, whose thumbnails read them as they're created.
-    defer app.exclusions.deinit();
-    defer app.auto_minimizer.deinit();
-
-    const thumbnail_set = try app.createThumbnailSet();
-    defer app.destroyThumbnailSet();
-
-    if (app.store.live.chatlog.enabled) {
-        app.chatlog_monitor = try app.createChatlogMonitor();
-    } else {
-        slog.info("Chatlog monitoring disabled", .{});
-    }
-
-    app.trackers.setup(&app.store.saved, app.chatlog_monitor);
-    defer app.trackers.deinit();
-
-    // After the trackers' defer, so the worker stops before they're freed.
-    defer app.destroyChatlogMonitor();
-
-    // Once the trackers are wired in, so the worker never sees them unset.
-    if (app.chatlog_monitor) |monitor| startChatlogMonitoring(monitor, app.store.live.characters.items);
-
     const timer_hwnd = try createTimerWindow();
-    defer _ = win32.DestroyWindow(timer_hwnd);
-    app.timer_hwnd = timer_hwnd;
-
-    app.focus.start();
-    defer app.focus.deinit(timer_hwnd);
-
-    app.tray_icon = try tray.TrayIcon.init(allocator, timer_hwnd);
-    defer if (app.tray_icon) |*icon| icon.deinit();
-
-    defer update.g_update_status.deinit(init.io);
-    // After the defers of what the threads use, so it runs before those.
-    defer detached.waitForAll(init.io, DETACHED_EXIT_WAIT_MS);
-    if (app.global_settings.disableUpdateChecks) slog.info("Update checks are disabled", .{}) else startUpdateCheck(allocator, init.io);
-
-    try app.scout.scanForEveWindows();
-
-    // Thumbnails first, since they need no I/O; the chatlog monitor's slower log discovery follows.
-    const eve_windows = app.scout.getWindows();
-    thumbnail_set.populate(eve_windows, .{ .should_move_to_saved = app.store.live.autoMovePosition.moveOnStartup });
-
-    if (app.chatlog_monitor) |monitor| app_mod.addChatlogCharacters(monitor, eve_windows);
-
-    keyboard_hook.setAllocator(allocator);
-    mouse_hook.setAllocator(allocator);
-    hook_thread.start();
-    try app.createHotkeyManager(timer_hwnd);
+    try app.start(timer_hwnd);
     focus_grant.install(timer_hwnd);
-    defer {
-        app.destroyHotkeyManager();
-        mouse_hook.deinit();
-        keyboard_hook.deinit();
-        hook_thread.stop();
-        focus_grant.uninstall();
-    }
+    defer focus_grant.uninstall();
 
-    if (!app.setTickInterval(timer_hwnd, app.tickIntervalFor(eve_windows.len))) {
-        slog.err("Failed to create timer", .{});
-        return error.SetTimerFailed;
-    }
-    defer _ = win32.KillTimer(timer_hwnd, app_mod.TICK_TIMER_ID);
+    if (app.global_settings.disableUpdateChecks) slog.info("Update checks are disabled", .{}) else startUpdateCheck(allocator, init.io);
 
     if (parsed.should_open_config) knots_host.open();
 
@@ -211,7 +138,24 @@ fn mainImpl(init: std.process.Init) !void {
     }
 }
 
-/// The instance mutex, for the caller to close at exit; null when another instance is running, which has been asked to open its configuration window instead.
+/// Each after what it needs: the global settings before anything else logs, the last used profile before the profile; `profile_arg` is --profile's.
+fn loadFromDisk(allocator: std.mem.Allocator, io: std.Io, profile_arg: ?[]const u8) !app_mod.Loaded {
+    var global_settings: config.GlobalConfig = try .load(allocator, io);
+    errdefer global_settings.deinit();
+    app_mod.applyGlobalSettings(&global_settings);
+    // Before the dump, so it shows any Log Monitoring a profile brings along.
+    global_settings.finishLoading(io);
+    global_settings.logSettings();
+    var character_ids: CharacterIds = .load(allocator, io);
+    errdefer character_ids.deinit();
+
+    const last_used = global_settings.lastUsedProfile;
+    const profile_name = profile_arg orelse if (last_used.len > 0) last_used else config.DEFAULT_PROFILE;
+    const store: config.ProfileStore = try .init(try config.loadProfile(allocator, io, profile_name), io);
+    return .{ .global_settings = global_settings, .character_ids = character_ids, .store = store };
+}
+
+/// The instance mutex, which the caller closes at exit; null when another instance runs, now asked to open its configuration window.
 fn claimSingleInstance(io: std.Io) !?win32.HANDLE {
     const mutex_name = std.unicode.utf8ToUtf16LeStringLiteral("Global\\EVE-Maj-Preview-SingleInstance");
     const instance_mutex = win32.CreateMutexW(null, win32.TRUE, mutex_name) orelse {
@@ -254,14 +198,11 @@ fn createTimerWindow() !win32.HWND {
     return hwnd;
 }
 
-fn startChatlogMonitoring(monitor: *chatlog.ChatlogMonitor, characters: []const config.CharacterConfig) void {
-    app_mod.startChatlogWorker(monitor);
-    slog.debug("Chatlog monitoring enabled", .{});
-    for (characters) |character_config| {
-        monitor.resolveCharacterId(character_config.name) catch |err| {
-            slog.warn("Failed to queue ID backfill for '{s}': {}", .{ character_config.name, err });
-        };
-    }
+/// Past the wait, ending the process is safer than tearing down what a thread still uses.
+fn waitForBackgroundThreads(app: *App, io: std.Io) void {
+    if (detached.waitForAll(io, DETACHED_EXIT_WAIT_MS)) return;
+    app.saveBeforeAbruptExit();
+    std.process.exit(0);
 }
 
 fn startUpdateCheck(allocator: std.mem.Allocator, io: std.Io) void {
@@ -270,29 +211,31 @@ fn startUpdateCheck(allocator: std.mem.Allocator, io: std.Io) void {
     };
 }
 
-/// Run-key startup entries launch with an arbitrary working directory, not the exe's folder.
-fn setCwdToExecutableDir() void {
+/// Run-key startup entries launch with an arbitrary working directory, not the exe's folder; false if it couldn't be changed.
+fn setCwdToExecutableDir() bool {
     var executable_dir_buf: [std.Io.Dir.max_path_bytes]u8 = undefined;
     const executable_dir = win32.selfExecutableDirPath(&executable_dir_buf) catch |err| {
         slog.warn("Failed to resolve the executable directory: {}", .{err});
-        return;
+        return false;
     };
 
-    var dir_z_buf: [std.Io.Dir.max_path_bytes + 1]u8 = undefined;
-    const executable_dir_z = std.mem.printSentinel(&dir_z_buf, "{s}", .{executable_dir}, 0) catch |err| {
+    var terminated_dir_buf: [std.Io.Dir.max_path_bytes + 1]u8 = undefined;
+    const terminated_dir = std.mem.printSentinel(&terminated_dir_buf, "{s}", .{executable_dir}, 0) catch |err| {
         slog.warn("Failed to null-terminate the executable directory path: {}", .{err});
-        return;
+        return false;
     };
 
-    if (!win32.toBool(win32.SetCurrentDirectoryA(executable_dir_z))) {
+    if (!win32.toBool(win32.SetCurrentDirectoryA(terminated_dir))) {
         slog.warn("Failed to set the working directory to '{s}': error {d}", .{ executable_dir, win32.GetLastError() });
+        return false;
     }
+    return true;
 }
 
 fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
     const app = app_mod.g_app orelse return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
     switch (msg) {
-        win32.WM_TRAYICON => {
+        messages.WM_TRAYICON => {
             if (app.tray_icon) |*icon| icon.handleTrayMessage(lParam, app);
             return 0;
         },
@@ -301,29 +244,31 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
             return 0;
         },
         win32.WM_TIMER => {
-            if (wParam == app_mod.TICK_TIMER_ID) {
+            if (wParam == messages.TICK_TIMER_ID) {
                 app.tick();
-            } else if (wParam == focus.HIDE_DEBOUNCE_TIMER_ID) {
+            } else if (wParam == messages.HIDE_DEBOUNCE_TIMER_ID) {
                 focus.onHideTimer(app);
             }
             return 0;
         },
         win32.WM_HOTKEY => {
-            const id: c_int = @intCast(wParam);
+            // Any process can post here; an id out of range is none of ours.
+            const id = std.math.cast(c_int, wParam) orelse return 0;
             if (!focus_grant.handleWmHotkey(id)) {
-                if (app.hotkey_manager) |manager| manager.handleHotkeyPress(id, lParam);
+                if (app.rebuilt.hotkey_manager) |manager| app.runHotkeyOutcome(manager.handleHotkeyPress(id, lParam, &app.commands(), app.rebuilt.thumbnail_set));
             }
             return 0;
         },
-        win32.WM_HOTKEYS_STATE_CHANGED => {
-            if (app.thumbnail_set) |thumbnail_set| {
-                if (app.hotkey_manager) |manager| {
-                    thumbnail_set.notifyAll(.{ .notification_type = .HotkeySuspend, .state = if (manager.areHotkeysSuspended()) .suspended else .resumed });
-                }
+        messages.WM_HOTKEYS_STATE_CHANGED => {
+            if (app.rebuilt.hotkey_manager) |manager| {
+                app.notifier().notifyAll(.{
+                    .notification_type = .HotkeySuspend,
+                    .state = if (manager.areHotkeysSuspended()) .suspended else .resumed,
+                });
             }
             return 0;
         },
-        win32.WM_SWITCH_PROFILE => {
+        messages.WM_SWITCH_PROFILE => {
             app.runPendingProfileSwitch();
             return 0;
         },
@@ -331,21 +276,28 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
             run.handleCopyData(app, win32.lparamToPtr(win32.COPYDATASTRUCT, lParam));
             return 0;
         },
-        win32.WM_WIN_KEY_CAPTURED => {
+        messages.WM_WIN_KEY_CAPTURED => {
             keyboard_hook.onWinKeyCaptured(wParam);
             return 0;
         },
-        win32.WM_KNOTS_COMMAND => {
-            knots_host.onCommand(wParam, lParam);
+        messages.WM_KNOTS_COMMAND => {
+            knots_host.onCommand(wParam);
             return 0;
         },
         win32.WM_ENDSESSION => {
-            if (wParam != win32.FALSE) app.saveForSessionEnd();
+            // Windows may end the process as soon as this returns, skipping teardown.
+            if (wParam != win32.FALSE) {
+                slog.info("Windows session ending, saving state", .{});
+                app.saveBeforeAbruptExit();
+            }
             return 0;
         },
         else => {
             if (app.tray_icon) |*icon| {
-                if (icon.handleTaskbarCreated(msg)) return 0;
+                if (icon.handleTaskbarCreated(msg)) {
+                    app.taskbar_marks = null;
+                    return 0;
+                }
             }
             return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
         },

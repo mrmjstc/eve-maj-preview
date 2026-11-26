@@ -1,11 +1,37 @@
 const std = @import("std");
 const web_build = @import("web_build.zig");
 const build_zon = @import("build.zig.zon");
-const WaylandScanner = @import("wayland").Scanner;
 
 pub const GPUBackend = @import("src/gpu/backend/root.zig").Backend;
 
-pub const HMR = @import("HMR.zig");
+/// What Knots builds around its UI core (`-Dbackend`). The default is the target's GPU
+/// backend (`defaultGpuBackend`).
+pub const Backend = enum {
+    /// Only the UI core: `ui`, `input`, `text_edit`, `text`, `render` and `math`. No window,
+    /// GPU, renderer or `knots` app module, and no third-party package is fetched. For a host
+    /// that owns its window and renderer and draws `render.Packet` itself.
+    none,
+    /// The core, the window, and the bundled renderer on Vulkan.
+    vulkan,
+    /// The core, the window, and the bundled renderer on WebGPU.
+    webgpu,
+
+    pub fn fromGpu(gpu: GPUBackend) Backend {
+        return switch (gpu) {
+            .vulkan => .vulkan,
+            .webgpu => .webgpu,
+        };
+    }
+
+    /// The GPU backend to compile, or null for `none`.
+    pub fn gpuBackend(backend: Backend) ?GPUBackend {
+        return switch (backend) {
+            .none => null,
+            .vulkan => .vulkan,
+            .webgpu => .webgpu,
+        };
+    }
+};
 
 /// Source files for knots' Vulkan UI-rendering shaders, written as comptime Zig and
 /// compiled to SPIR-V at build time. Consumers driving their own Vulkan renderer for
@@ -47,36 +73,250 @@ pub const WebInstallOptions = struct {
     extra_export_symbol_names: []const []const u8 = &.{},
 };
 
+pub const Platform = enum {
+    native,
+    browser,
+};
+
+/// Modules that need no window system, graphics API or third-party package. A host
+/// with its own window and renderer uses only these (`-Dbackend=none`).
+const Core = struct {
+    input: *std.Build.Module,
+    math: *std.Build.Module,
+    render: *std.Build.Module,
+    unicode: *std.Build.Module,
+    text_edit: *std.Build.Module,
+    font: *std.Build.Module,
+    shape: *std.Build.Module,
+    text: *std.Build.Module,
+    layout: *std.Build.Module,
+    style: *std.Build.Module,
+    ui: *std.Build.Module,
+};
+
 pub fn build(b: *std.Build) void {
     var target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    if (b.option(bool, "module_guest", "Build portable UI module dependencies.") orelse false) {
-        buildModuleDependencies(b, target, optimize);
-        return;
+    const platform: Platform = if (target.result.cpu.arch.isWasm()) .browser else .native;
+    const web_threads_option = b.option(bool, "web_threads", "Enable worker threads in browser WebAssembly builds.") orelse true;
+    const web_threads = web_threads_option and platform == .browser;
+    if (platform == .browser) web_build.configureWasmTarget(&target, web_threads, optimize);
+
+    const backend = backendOption(b, target.result);
+
+    const core = addCoreModules(b, target, optimize);
+    const test_step = b.step("test", "Run tests");
+    addCoreTests(b, test_step, &core, target, optimize);
+    // With `none`, the modules of `addBackends` do not exist: `module("knots")`,
+    // `module("window")`, `module("gpu")` and `module("renderer")` fail by name.
+    const gpu_backend = backend.gpuBackend() orelse return;
+
+    addBackends(b, test_step, &core, target, optimize, platform, web_threads, gpu_backend);
+}
+
+/// `-Dbackend`, or the target's default. `-Dgpu_backend` is the older name of the same choice,
+/// without `none`; it stays accepted so that existing builds keep working.
+fn backendOption(b: *std.Build, target: std.Target) Backend {
+    const backend = b.option(Backend, "backend", "What to build around the UI core: none (core only), vulkan or webgpu. Default: the target's GPU backend.");
+    const legacy = b.option(GPUBackend, "gpu_backend", "Deprecated: use -Dbackend.");
+    if (backend) |chosen| {
+        if (legacy) |old| {
+            if (Backend.fromGpu(old) != chosen) std.debug.panic("knots: -Dbackend={t} and -Dgpu_backend={t} disagree; set only -Dbackend", .{ chosen, old });
+        }
+        return chosen;
     }
-    const browser_wasm = target.result.cpu.arch.isWasm();
-    const web_threads = b.option(bool, "web_threads", "Enable worker threads in browser WebAssembly builds.") orelse true;
-    if (browser_wasm) web_build.configureTarget(&target, web_threads);
+    if (legacy) |old| return .fromGpu(old);
+    return .fromGpu(defaultGpuBackend(target));
+}
 
-    const accesskit_dep = if (browser_wasm)
-        null
+fn addCoreModules(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) Core {
+    const test_font = b.path("src/ui/fonts/default.ttf");
+
+    const input_mod = b.addModule("input", .{
+        .target = target,
+        .optimize = optimize,
+        .root_source_file = b.path("src/input/root.zig"),
+    });
+
+    const math_mod = b.addModule("math", .{
+        .target = target,
+        .optimize = optimize,
+        .root_source_file = b.path("src/math/root.zig"),
+    });
+
+    const render_mod = b.addModule("render", .{
+        .target = target,
+        .optimize = optimize,
+        .root_source_file = b.path("src/render/root.zig"),
+        .imports = &.{
+            .{ .name = "math", .module = math_mod },
+        },
+    });
+    addRenderShaderSources(b, render_mod);
+
+    const unicode_mod = b.createModule(.{
+        .target = target,
+        .optimize = optimize,
+        .root_source_file = b.path("src/unicode/root.zig"),
+    });
+
+    const text_edit_mod = b.addModule("text_edit", .{
+        .target = target,
+        .optimize = optimize,
+        .root_source_file = b.path("src/text_edit/root.zig"),
+        .imports = &.{
+            .{ .name = "input", .module = input_mod },
+            .{ .name = "unicode", .module = unicode_mod },
+        },
+    });
+
+    const font_mod = b.createModule(.{
+        .target = target,
+        .optimize = optimize,
+        .root_source_file = b.path("src/font/root.zig"),
+    });
+    font_mod.addAnonymousImport("test_font", .{ .root_source_file = test_font });
+
+    const shape_mod = b.createModule(.{
+        .target = target,
+        .optimize = optimize,
+        .root_source_file = b.path("src/shape/root.zig"),
+        .imports = &.{
+            .{ .name = "font", .module = font_mod },
+            .{ .name = "unicode", .module = unicode_mod },
+        },
+    });
+
+    const text_mod = b.addModule("text", .{
+        .target = target,
+        .optimize = optimize,
+        .root_source_file = b.path("src/text/root.zig"),
+        .imports = &.{
+            .{ .name = "font", .module = font_mod },
+            .{ .name = "shape", .module = shape_mod },
+            .{ .name = "unicode", .module = unicode_mod },
+            .{ .name = "render", .module = render_mod },
+        },
+    });
+    text_mod.addAnonymousImport("test_font", .{ .root_source_file = test_font });
+
+    const layout_mod = b.createModule(.{
+        .target = target,
+        .optimize = optimize,
+        .root_source_file = b.path("src/layout/root.zig"),
+        .imports = &.{.{ .name = "math", .module = math_mod }},
+    });
+
+    const style_mod = b.createModule(.{
+        .target = target,
+        .optimize = optimize,
+        .root_source_file = b.path("src/style/root.zig"),
+        .imports = &.{
+            .{ .name = "layout", .module = layout_mod },
+            .{ .name = "math", .module = math_mod },
+            .{ .name = "render", .module = render_mod },
+        },
+    });
+
+    const ui_mod = b.addModule("ui", .{
+        .target = target,
+        .optimize = optimize,
+        .root_source_file = b.path("src/ui/root.zig"),
+        .imports = &.{
+            .{ .name = "layout", .module = layout_mod },
+            .{ .name = "style", .module = style_mod },
+            .{ .name = "text", .module = text_mod },
+            .{ .name = "input", .module = input_mod },
+            .{ .name = "text_edit", .module = text_edit_mod },
+            .{ .name = "render", .module = render_mod },
+            .{ .name = "math", .module = math_mod },
+        },
+    });
+
+    return .{
+        .input = input_mod,
+        .math = math_mod,
+        .render = render_mod,
+        .unicode = unicode_mod,
+        .text_edit = text_edit_mod,
+        .font = font_mod,
+        .shape = shape_mod,
+        .text = text_mod,
+        .layout = layout_mod,
+        .style = style_mod,
+        .ui = ui_mod,
+    };
+}
+
+fn addCoreTests(
+    b: *std.Build,
+    test_step: *std.Build.Step,
+    core: *const Core,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+) void {
+    const modules = [_]*std.Build.Module{
+        core.render,
+        core.layout,
+        core.style,
+        core.ui,
+        core.text,
+        core.unicode,
+        core.font,
+        core.shape,
+        core.math,
+        core.input,
+        core.text_edit,
+    };
+    for (modules) |module| {
+        test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = module })).step);
+    }
+
+    const public_render_consumer_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+            .root_source_file = b.path("tests/public_render_consumer.zig"),
+            .imports = &.{
+                .{ .name = "render", .module = core.render },
+            },
+        }),
+    });
+    test_step.dependOn(&b.addRunArtifact(public_render_consumer_tests).step);
+}
+
+/// The window, GPU and renderer modules, the `knots` app module and their tests.
+/// Each third-party package here is lazy, so a `-Dbackend=none` build never fetches it.
+fn addBackends(
+    b: *std.Build,
+    test_step: *std.Build.Step,
+    core: *const Core,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    platform: Platform,
+    web_threads: bool,
+    gpu_backend: GPUBackend,
+) void {
+    const input_mod = core.input;
+    const math_mod = core.math;
+    const render_mod = core.render;
+    const text_mod = core.text;
+    const layout_mod = core.layout;
+    const ui_mod = core.ui;
+
+    const accesskit_dep = if (platform == .native)
+        b.dependency("accesskit", .{ .target = target, .optimize = optimize })
     else
-        b.dependency("accesskit", .{ .target = target, .optimize = optimize });
+        null;
 
-    const gpu_backend =
-        b.option(GPUBackend, "gpu_backend", "GPU backend to compile into knots.") orelse
-        defaultGpuBackend(target.result);
-
-    const truetype_dep = b.dependency("TrueType", .{ .target = target, .optimize = optimize });
-
-    const js_bridge_mod = if (browser_wasm)
+    const js_bridge_mod = if (platform == .browser)
         b.dependency("js_bridge", .{ .target = target, .optimize = optimize }).module("js-bridge")
     else
         null;
 
     if (js_bridge_mod) |m| b.modules.put(b.graph.arena, "js-bridge", m) catch @panic("OOM");
-    if (browser_wasm) {
+    if (platform == .browser) {
         b.addNamedLazyPath("web-host-js", b.path("src/web/host.js"));
         b.addNamedLazyPath("web-bridge-js", b.path("lib/js-bridge/src/runtime.js"));
         b.addNamedLazyPath("web-wasi-js", b.path("src/web/wasi.js"));
@@ -86,18 +326,34 @@ pub fn build(b: *std.Build) void {
         }
     }
 
-    const browser_exports_mod = if (browser_wasm) blk: {
-        const mod = b.createModule(.{
+    const wasm_threads_mod = if (web_threads) b.createModule(.{
+        .target = target,
+        .optimize = optimize,
+        .root_source_file = b.path("src/wasm/threads.zig"),
+        .imports = &.{.{ .name = "worker_host", .module = b.createModule(.{
             .target = target,
             .optimize = optimize,
-            .root_source_file = b.path("src/web/main.zig"),
+            .root_source_file = b.path("src/web/worker_host.zig"),
             .imports = &.{.{ .name = "js-bridge", .module = js_bridge_mod.? }},
-        });
-        var web_config = b.addOptions();
-        web_config.addOption(bool, "worker_concurrency_enabled", web_threads);
-        mod.addOptions("web_config", web_config);
-        break :blk mod;
-    } else null;
+        }) }},
+    }) else null;
+
+    const platform_impl_mod = switch (platform) {
+        .native => null,
+        .browser => blk: {
+            const mod = b.createModule(.{
+                .target = target,
+                .optimize = optimize,
+                .root_source_file = b.path("src/web/main.zig"),
+                .imports = &.{.{ .name = "js-bridge", .module = js_bridge_mod.? }},
+            });
+            var web_config = b.addOptions();
+            web_config.addOption(bool, "worker_concurrency_enabled", web_threads);
+            mod.addOptions("web_config", web_config);
+            break :blk mod;
+        },
+    };
+    if (wasm_threads_mod) |threads| platform_impl_mod.?.addImport("wasm_threads", threads);
 
     const gpu_impl_mod = blk: switch (gpu_backend) {
         .webgpu => {
@@ -107,7 +363,7 @@ pub fn build(b: *std.Build) void {
                 .root_source_file = b.path("src/gpu/backend/webgpu/root.zig"),
             });
 
-            if (browser_wasm)
+            if (platform == .browser)
                 webgpu_mod.addImport("js-bridge", js_bridge_mod.?)
             else {
                 const wgpu = b.dependency("wgpu", .{ .target = target, .optimize = optimize });
@@ -132,24 +388,12 @@ pub fn build(b: *std.Build) void {
         },
     };
 
-    const render_types_mod = b.createModule(.{
-        .target = target,
-        .optimize = optimize,
-        .root_source_file = b.path("src/render/types/root.zig"),
-    });
     const gpu_mod = b.addModule("gpu", .{
         .target = target,
         .optimize = optimize,
         .root_source_file = b.path("src/gpu/root.zig"),
     });
-    gpu_mod.addImport("render_types", render_types_mod);
     gpu_impl_mod.addImport("gpu", gpu_mod);
-
-    const input_mod = b.addModule("input", .{
-        .target = target,
-        .optimize = optimize,
-        .root_source_file = b.path("src/input/root.zig"),
-    });
 
     var gpu_opts = b.addOptions();
     gpu_opts.addOption(GPUBackend, "backend", gpu_backend);
@@ -194,10 +438,13 @@ pub fn build(b: *std.Build) void {
                 });
             },
             .linux => {
-                const scanner = WaylandScanner.create(b, .{});
+                // Lazy, so that a `-Dbackend=none` build never fetches zig-wayland.
+                const wayland_build = b.lazyImport(@This(), "wayland") orelse return;
+                const scanner = wayland_build.Scanner.create(b, .{});
                 buildTool(scanner.run.producer.?);
                 scanner.addSystemProtocol("stable/xdg-shell/xdg-shell.xml");
                 scanner.addSystemProtocol("unstable/xdg-decoration/xdg-decoration-unstable-v1.xml");
+                scanner.addSystemProtocol("unstable/text-input/text-input-unstable-v3.xml");
                 scanner.generate("wl_compositor", 6);
                 scanner.generate("wl_shm", 1);
                 scanner.generate("wl_seat", 8);
@@ -205,6 +452,7 @@ pub fn build(b: *std.Build) void {
                 scanner.generate("wl_data_device_manager", 3);
                 scanner.generate("xdg_wm_base", 3);
                 scanner.generate("zxdg_decoration_manager_v1", 1);
+                scanner.generate("zwp_text_input_manager_v3", 1);
 
                 const wayland_mod = b.createModule(.{
                     .target = target,
@@ -227,20 +475,15 @@ pub fn build(b: *std.Build) void {
                 m.linkSystemLibrary("xkbcommon", .{});
                 break :blk m;
             },
-            .freestanding, .wasi => {
-                if (browser_wasm) {
-                    break :blk b.createModule(.{
-                        .target = target,
-                        .optimize = optimize,
-                        .root_source_file = b.path("src/window/backend/wasm/root.zig"),
-                        .imports = &.{
-                            .{ .name = "gpu", .module = gpu_mod },
-                            .{ .name = "js-bridge", .module = js_bridge_mod.? },
-                        },
-                    });
-                }
-                @panic("expected wasm arch for freestanding or wasi target");
-            },
+            .freestanding, .wasi => break :blk b.createModule(.{
+                .target = target,
+                .optimize = optimize,
+                .root_source_file = b.path("src/window/backend/wasm/root.zig"),
+                .imports = &.{
+                    .{ .name = "gpu", .module = gpu_mod },
+                    .{ .name = "js-bridge", .module = js_bridge_mod.? },
+                },
+            }),
             else => |os| std.debug.panic("windowing implementation for {s} is not yet implemented", .{@tagName(os)}),
         }
     };
@@ -259,34 +502,7 @@ pub fn build(b: *std.Build) void {
     window_impl_mod.addImport("input", input_mod);
     window_mod.addImport("input", input_mod);
 
-    const math_mod = b.addModule("math", .{
-        .target = target,
-        .optimize = optimize,
-        .root_source_file = b.path("src/math/root.zig"),
-    });
-
-    const signal_mod = b.addModule("signal", .{
-        .target = target,
-        .optimize = optimize,
-        .root_source_file = b.path("src/signal/root.zig"),
-    });
-
-    const text_mod = b.createModule(.{
-        .target = target,
-        .optimize = optimize,
-        .root_source_file = b.path("src/text/root.zig"),
-        .imports = &.{.{ .name = "TrueType", .module = truetype_dep.module("TrueType") }},
-    });
-
-    const render_mod = b.addModule("render", .{
-        .target = target,
-        .optimize = optimize,
-        .root_source_file = b.path("src/render/root.zig"),
-        .imports = &.{
-            .{ .name = "render_types", .module = render_types_mod },
-            .{ .name = "math", .module = math_mod },
-        },
-    });
+    window_mod.addImport("text_edit", core.text_edit);
 
     const renderer_mod = b.addModule("renderer", .{
         .target = target,
@@ -304,56 +520,20 @@ pub fn build(b: *std.Build) void {
     // Shader sources are always attached and gated by lazy analysis; only the
     // build-step SPIR-V blobs need a compile-time flag.
     render_shader_opts.addOption(bool, "has_spirv_shaders", gpu_backend == .vulkan);
-    render_mod.addOptions("shader_config", render_shader_opts);
+    renderer_mod.addOptions("shader_config", render_shader_opts);
 
-    addRenderShaderSources(b, render_mod);
     if (gpu_backend == .vulkan) {
-        embedSpirV(b, optimize, render_mod, "primitives_vert_spv", b.path("src/gpu/backend/vulkan/shaders/ui_primitives_vertex.zig"));
-        embedSpirV(b, optimize, render_mod, "primitives_instance_vert_spv", b.path("src/gpu/backend/vulkan/shaders/ui_primitives_instance_vertex.zig"));
-        embedSpirV(b, optimize, render_mod, "slug_vert_spv", b.path("src/gpu/backend/vulkan/shaders/slug_vertex.zig"));
-        embedSpirV(b, optimize, render_mod, "primitives_frag_spv", b.path("src/gpu/backend/vulkan/shaders/ui_primitives_fragment.zig"));
-        embedSpirV(b, optimize, render_mod, "slug_frag_spv", b.path("src/gpu/backend/vulkan/shaders/slug_fragment.zig"));
-        embedSpirV(b, optimize, render_mod, "backdrop_blur_vert_spv", b.path("src/gpu/backend/vulkan/shaders/backdrop_blur_vertex.zig"));
-        embedSpirV(b, optimize, render_mod, "backdrop_blur_frag_spv", b.path("src/gpu/backend/vulkan/shaders/backdrop_blur_fragment.zig"));
-        embedSpirV(b, optimize, render_mod, "backdrop_glass_vert_spv", b.path("src/gpu/backend/vulkan/shaders/backdrop_glass_vertex.zig"));
-        embedSpirV(b, optimize, render_mod, "backdrop_glass_frag_spv", b.path("src/gpu/backend/vulkan/shaders/backdrop_glass_fragment.zig"));
+        embedSpirV(b, optimize, renderer_mod, "primitives_vert_spv", b.path("src/gpu/backend/vulkan/shaders/ui_primitives_vertex.zig"));
+        embedSpirV(b, optimize, renderer_mod, "primitives_instance_vert_spv", b.path("src/gpu/backend/vulkan/shaders/ui_primitives_instance_vertex.zig"));
+        embedSpirV(b, optimize, renderer_mod, "slug_vert_spv", b.path("src/gpu/backend/vulkan/shaders/slug_vertex.zig"));
+        embedSpirV(b, optimize, renderer_mod, "primitives_frag_spv", b.path("src/gpu/backend/vulkan/shaders/ui_primitives_fragment.zig"));
+        embedSpirV(b, optimize, renderer_mod, "slug_frag_spv", b.path("src/gpu/backend/vulkan/shaders/slug_fragment.zig"));
+        embedSpirV(b, optimize, renderer_mod, "backdrop_blur_vert_spv", b.path("src/gpu/backend/vulkan/shaders/backdrop_blur_vertex.zig"));
+        embedSpirV(b, optimize, renderer_mod, "backdrop_blur_frag_spv", b.path("src/gpu/backend/vulkan/shaders/backdrop_blur_fragment.zig"));
+        embedSpirV(b, optimize, renderer_mod, "backdrop_glass_vert_spv", b.path("src/gpu/backend/vulkan/shaders/backdrop_glass_vertex.zig"));
+        embedSpirV(b, optimize, renderer_mod, "backdrop_glass_frag_spv", b.path("src/gpu/backend/vulkan/shaders/backdrop_glass_fragment.zig"));
     }
 
-    const layout_mod = b.createModule(.{
-        .target = target,
-        .optimize = optimize,
-        .root_source_file = b.path("src/layout/root.zig"),
-        .imports = &.{.{ .name = "math", .module = math_mod }},
-    });
-
-    const style_mod = b.createModule(.{
-        .target = target,
-        .optimize = optimize,
-        .root_source_file = b.path("src/style/root.zig"),
-        .imports = &.{
-            .{ .name = "layout", .module = layout_mod },
-            .{ .name = "math", .module = math_mod },
-            .{ .name = "render_types", .module = render_types_mod },
-        },
-    });
-
-    var state_bridge_config = b.addOptions();
-    state_bridge_config.addOption(bool, "host_graph_enabled", true);
-    const ui_mod = b.addModule("ui", .{
-        .target = target,
-        .optimize = optimize,
-        .root_source_file = b.path("src/ui/root.zig"),
-        .imports = &.{
-            .{ .name = "layout", .module = layout_mod },
-            .{ .name = "style", .module = style_mod },
-            .{ .name = "text", .module = text_mod },
-            .{ .name = "input", .module = input_mod },
-            .{ .name = "render_types", .module = render_types_mod },
-            .{ .name = "render", .module = render_mod },
-            .{ .name = "math", .module = math_mod },
-            .{ .name = "signal", .module = signal_mod },
-        },
-    });
     const native_accessibility_mod = if (accesskit_dep) |accesskit| blk: {
         const native_accessibility = b.addModule("native_accessibility", .{
             .target = target,
@@ -368,16 +548,6 @@ pub fn build(b: *std.Build) void {
         window_mod.addImport("native_accessibility", native_accessibility);
         break :blk native_accessibility;
     } else null;
-    ui_mod.addOptions("state_bridge_config", state_bridge_config);
-
-    const portable = b.createModule(.{ .root_source_file = b.path("src/portable.zig"), .target = target, .optimize = optimize, .imports = &.{.{ .name = "ui", .module = ui_mod }} });
-    const hmr_mod = b.addModule("hmr", .{
-        .target = target,
-        .optimize = optimize,
-        .root_source_file = b.path("src/hmr/root.zig"),
-        .imports = &.{ .{ .name = "ui", .module = ui_mod }, .{ .name = "input", .module = input_mod }, .{ .name = "render", .module = render_mod }, .{ .name = "math", .module = math_mod }, .{ .name = "knots", .module = portable } },
-    });
-    hmr_mod.addImport("pack", b.dependency("pack", .{ .target = target, .optimize = optimize }).module("pack"));
 
     var debug_opts = b.addOptions();
     debug_opts.addOption([]const u8, "version", build_zon.version);
@@ -399,29 +569,16 @@ pub fn build(b: *std.Build) void {
         },
     });
     mod.addOptions("debug_config", debug_opts);
-    if (browser_wasm) mod.addImport("browser_exports", browser_exports_mod.?);
+    const platform_opts = b.addOptions();
+    platform_opts.addOption(Platform, "platform", platform);
+    mod.addOptions("platform_config", platform_opts);
+    if (platform_impl_mod) |platform_impl| mod.addImport("platform_impl", platform_impl);
     if (accesskit_dep) |accesskit| mod.addImport("accesskit", accesskit.module("accesskit"));
     if (native_accessibility_mod) |native_accessibility| mod.addImport("native_accessibility", native_accessibility);
 
     const mod_tests = b.addTest(.{ .root_module = mod });
-    const layout_tests = b.addTest(.{ .root_module = layout_mod });
-    const style_tests = b.addTest(.{ .root_module = style_mod });
-    const ui_tests = b.addTest(.{ .root_module = ui_mod });
-    const text_tests = b.addTest(.{ .root_module = text_mod });
-    const math_tests = b.addTest(.{ .root_module = math_mod });
-    const input_tests = b.addTest(.{ .root_module = input_mod });
-    const signal_tests = b.addTest(.{ .root_module = signal_mod });
-    const public_render_consumer_tests = b.addTest(.{
-        .root_module = b.createModule(.{
-            .target = target,
-            .optimize = optimize,
-            .root_source_file = b.path("tests/public_render_consumer.zig"),
-            .imports = &.{
-                .{ .name = "render", .module = render_mod },
-            },
-        }),
-    });
-
+    const window_tests = b.addTest(.{ .root_module = window_mod });
+    const window_impl_tests = b.addTest(.{ .root_module = window_impl_mod });
     const embedded_view_consumer_tests = b.addTest(.{
         .root_module = b.createModule(.{
             .target = target,
@@ -435,28 +592,20 @@ pub fn build(b: *std.Build) void {
             },
         }),
     });
-    const render_tests = b.addTest(.{ .root_module = render_mod });
     const renderer_tests = b.addTest(.{ .root_module = renderer_mod });
 
-    const test_step = b.step("test", "Run tests");
-    test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = hmr_mod })).step);
-    test_step.dependOn(&b.addRunArtifact(render_tests).step);
     test_step.dependOn(&b.addRunArtifact(renderer_tests).step);
     test_step.dependOn(&b.addRunArtifact(mod_tests).step);
+    if (platform == .native and gpu_backend == .vulkan) {
+        test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = gpu_impl_mod })).step);
+    }
     if (native_accessibility_mod) |native_accessibility| {
         test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = native_accessibility })).step);
     }
-    test_step.dependOn(&b.addRunArtifact(layout_tests).step);
-    test_step.dependOn(&b.addRunArtifact(style_tests).step);
-    test_step.dependOn(&b.addRunArtifact(ui_tests).step);
-    test_step.dependOn(&b.addRunArtifact(text_tests).step);
-    test_step.dependOn(&b.addRunArtifact(math_tests).step);
-    test_step.dependOn(&b.addRunArtifact(input_tests).step);
-    test_step.dependOn(&b.addRunArtifact(signal_tests).step);
-    test_step.dependOn(&b.addRunArtifact(public_render_consumer_tests).step);
+    test_step.dependOn(&b.addRunArtifact(window_tests).step);
+    test_step.dependOn(&b.addRunArtifact(window_impl_tests).step);
     test_step.dependOn(&b.addRunArtifact(embedded_view_consumer_tests).step);
-
-    if (!browser_wasm) {
+    if (platform == .native) {
         const snapshot_exe = b.addExecutable(.{
             .name = "knots-snapshots",
             .root_module = b.createModule(.{
@@ -470,6 +619,7 @@ pub fn build(b: *std.Build) void {
                 },
             }),
         });
+        snapshot_exe.root_module.addAnonymousImport("snapshot_mono", .{ .root_source_file = b.path("examples/playground/src/fonts/JetBrainsMono-VariableFont_wght.ttf") });
 
         const run_snapshots = b.addRunArtifact(snapshot_exe);
         run_snapshots.addArg(@tagName(gpu_backend));
@@ -501,9 +651,17 @@ pub fn addWebInstall(
     exe: *std.Build.Step.Compile,
     options: WebInstallOptions,
 ) *std.Build.Step {
-    const web_threads = knots.builder.named_lazy_paths.contains("web-worker-js");
     configureWebExecutable(b, knots, root_module, exe, options);
     const install = b.step(b.fmt("install-web-{s}-{s}", .{ options.dir, exe.name }), "Install a browser application");
+    install.dependOn(addWebHostInstall(b, knots, options));
+    const install_wasm = b.addInstallFileWithDir(exe.getEmittedBin(), .{ .custom = options.dir }, options.wasm_name);
+    install.dependOn(&install_wasm.step);
+    return install;
+}
+
+pub fn addWebHostInstall(b: *std.Build, knots: *std.Build.Dependency, options: WebInstallOptions) *std.Build.Step {
+    const web_threads = knots.builder.named_lazy_paths.contains("web-worker-js");
+    const install = b.step(b.fmt("install-web-host-{s}", .{options.dir}), "Install the page of a browser application");
     if (options.index_html) |index_html| {
         const install_index = b.addInstallFileWithDir(index_html, .{ .custom = options.dir }, options.index_name);
         install.dependOn(&install_index.step);
@@ -511,13 +669,10 @@ pub fn addWebInstall(
 
     const install_host_js = b.addInstallFileWithDir(knots.namedLazyPath("web-host-js"), .{ .custom = options.dir }, options.host_js_name);
     const install_bridge_js = b.addInstallFileWithDir(knots.namedLazyPath("web-bridge-js"), .{ .custom = options.dir }, options.bridge_js_name);
-    const install_wasm = b.addInstallFileWithDir(exe.getEmittedBin(), .{ .custom = options.dir }, options.wasm_name);
-
     install.dependOn(&install_host_js.step);
     install.dependOn(&install_bridge_js.step);
     const install_wasi_js = b.addInstallFileWithDir(knots.namedLazyPath("web-wasi-js"), .{ .custom = options.dir }, "knots-wasi.js");
     install.dependOn(&install_wasi_js.step);
-    install.dependOn(&install_wasm.step);
     if (web_threads) {
         const install_worker_pool_js = b.addInstallFileWithDir(knots.namedLazyPath("web-worker-pool-js"), .{ .custom = options.dir }, "knots-worker-pool.js");
         const install_worker_js = b.addInstallFileWithDir(knots.namedLazyPath("web-worker-js"), .{ .custom = options.dir }, "knots-worker.js");
@@ -535,7 +690,57 @@ pub fn configureWebExecutable(b: *std.Build, knots: *std.Build.Dependency, root_
     });
 }
 
-fn defaultGpuBackend(target: std.Target) GPUBackend {
+pub const DevWatcherOptions = struct {
+    /// The step that installs the app, as `zig build <step>` runs it.
+    step: []const u8 = "install",
+    /// Where `step` installs a browser app.
+    web: WebInstallOptions = .{},
+    port: u16 = 8000,
+};
+
+/// Makes `step` build like `zig build`, then rebuild on every save and restart
+/// `exe`, or reload the page when `exe` is a browser app. The app is the one
+/// `options.step` installs, with nothing added for dev.
+pub fn addDevWatcher(b: *std.Build, knots: *std.Build.Dependency, step: *std.Build.Step, exe: *std.Build.Step.Compile, options: DevWatcherOptions) void {
+    const knots_builder = knots.builder;
+    const tool = b.addExecutable(.{
+        .name = "knots-dev",
+        .root_module = b.createModule(.{
+            .root_source_file = knots_builder.path("src/dev/main.zig"),
+            .target = b.graph.host,
+            .optimize = .Debug,
+            .imports = &.{.{
+                .name = "celer",
+                .module = knots_builder.dependency("celer", .{ .target = b.graph.host, .optimize = .ReleaseFast }).module("celer"),
+            }},
+        }),
+    });
+
+    const run = b.addRunArtifact(tool);
+    run.addPrefixedFileArg("--zig=", .zig_exe);
+    run.addPrefixedFileArg("--build-file=", b.path("build.zig"));
+    run.addPrefixedDirectoryArg("--prefix=", b.graph.path(.install_prefix, ""));
+    run.addArg(b.fmt("--step={s}", .{options.step}));
+    if (exe.root_module.resolved_target.?.result.cpu.arch.isWasm()) {
+        run.addArg(b.fmt("--artifact={s}/{s}", .{ options.web.dir, options.web.wasm_name }));
+        run.addArg(b.fmt("--serve={s}", .{options.web.dir}));
+        run.addArg(b.fmt("--port={d}", .{options.port}));
+    } else run.addArg(b.fmt("--artifact=bin/{s}", .{exe.out_filename}));
+    // The Zig compiler does not support incremental compilation for macOS
+    // yet: as of 0.17, its Mach-O linker panics ("TODO(MachO2): load archive")
+    // on aarch64 and x86_64 alike.
+    if (exe.root_module.resolved_target.?.result.ofmt != .macho)
+        run.addArg("--watch-arg=-fincremental");
+    for (b.user_input_options.keys(), b.user_input_options.values()) |key, value| switch (value) {
+        .flag => run.addArg(b.fmt("--build-arg=-D{s}", .{key})),
+        .scalar => |scalar| run.addArg(b.fmt("--build-arg=-D{s}={s}", .{ key, scalar })),
+        else => std.debug.panic("knots: `zig build dev` passes on -D{s}, which is not a flag or a scalar", .{key}),
+    };
+
+    step.dependOn(&run.step);
+}
+
+pub fn defaultGpuBackend(target: std.Target) GPUBackend {
     if (target.cpu.arch.isWasm()) return .webgpu;
     return switch (target.os.tag) {
         .macos => .webgpu,
@@ -576,7 +781,15 @@ fn addShaderSource(b: *std.Build, module: *std.Build.Module, name: []const u8, p
     module.addAnonymousImport(name, .{ .root_source_file = b.path(path) });
 }
 
+pub fn addSpirV(knots: *std.Build.Dependency, optimize: std.builtin.OptimizeMode, path: std.Build.LazyPath) std.Build.LazyPath {
+    return compileSpirV(knots.builder, optimize, "shader", path);
+}
+
 fn embedSpirV(b: *std.Build, optimize: std.builtin.OptimizeMode, mod: *std.Build.Module, name: []const u8, path: std.Build.LazyPath) void {
+    mod.addAnonymousImport(name, .{ .root_source_file = compileSpirV(b, optimize, name, path) });
+}
+
+fn compileSpirV(b: *std.Build, optimize: std.builtin.OptimizeMode, name: []const u8, path: std.Build.LazyPath) std.Build.LazyPath {
     const vk_target = b.resolveTargetQuery(.{
         .cpu_arch = .spirv32,
         .os_tag = .vulkan,
@@ -589,121 +802,19 @@ fn embedSpirV(b: *std.Build, optimize: std.builtin.OptimizeMode, mod: *std.Build
             .target = vk_target,
             .optimize = optimize,
             .root_source_file = path,
-            .imports = &.{.{ .name = "shader_common", .module = b.createModule(.{
+            .imports = &.{.{ .name = "spirv", .module = b.createModule(.{
                 .target = vk_target,
                 .optimize = optimize,
-                .root_source_file = b.path("src/gpu/backend/vulkan/shaders/common.zig"),
+                .root_source_file = b.path("src/spirv/root.zig"),
             }) }},
         }),
         .use_llvm = false,
     });
     buildTool(spv);
-
-    mod.addAnonymousImport(name, .{ .root_source_file = spv.getEmittedBin() });
+    return spv.getEmittedBin();
 }
 
 /// Outside `--watch`, incremental compiles skip the build cache and would rebuild these tools every time.
 fn buildTool(compile: *std.Build.Step.Compile) void {
     compile.incremental = false;
-}
-
-/// Portable modules have no window, GPU, JavaScript, or operating-system imports.
-fn buildModuleDependencies(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) void {
-    const math = b.addModule("math", .{
-        .root_source_file = b.path("src/math/root.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    const signal = b.addModule("signal", .{
-        .root_source_file = b.path("src/signal/root.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    const input = b.addModule("input", .{
-        .root_source_file = b.path("src/input/root.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    const types = b.createModule(.{
-        .root_source_file = b.path("src/render/types/root.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    const layout = b.createModule(.{
-        .root_source_file = b.path("src/layout/root.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{.{ .name = "math", .module = math }},
-    });
-    const style = b.createModule(.{
-        .root_source_file = b.path("src/style/root.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{
-            .{ .name = "layout", .module = layout },
-            .{ .name = "math", .module = math },
-            .{ .name = "render_types", .module = types },
-        },
-    });
-    const truetype = b.dependency("TrueType", .{ .target = target, .optimize = optimize });
-    const text = b.createModule(.{
-        .root_source_file = b.path("src/text/root.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{.{ .name = "TrueType", .module = truetype.module("TrueType") }},
-    });
-    const render = b.addModule("render", .{
-        .root_source_file = b.path("src/render/root.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{
-            .{ .name = "math", .module = math },
-            .{ .name = "render_types", .module = types },
-        },
-    });
-    const shader_config = b.addOptions();
-    shader_config.addOption(bool, "has_spirv_shaders", false);
-    render.addOptions("shader_config", shader_config);
-    addRenderShaderSources(b, render);
-    var state_bridge_config = b.addOptions();
-    state_bridge_config.addOption(bool, "host_graph_enabled", false);
-    const ui = b.addModule("ui", .{
-        .root_source_file = b.path("src/ui/root.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{
-            .{ .name = "math", .module = math },
-            .{ .name = "input", .module = input },
-            .{ .name = "render_types", .module = types },
-            .{ .name = "layout", .module = layout },
-            .{ .name = "style", .module = style },
-            .{ .name = "render", .module = render },
-            .{ .name = "text", .module = text },
-            .{ .name = "signal", .module = signal },
-        },
-    });
-    ui.addOptions("state_bridge_config", state_bridge_config);
-    const portable = b.addModule("knots", .{
-        .root_source_file = b.path("src/portable.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{.{ .name = "ui", .module = ui }},
-    });
-    const hmr = b.addModule("hmr", .{
-        .root_source_file = b.path("src/hmr/root.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{
-            .{ .name = "ui", .module = ui },
-            .{ .name = "input", .module = input },
-            .{ .name = "render", .module = render },
-            .{ .name = "math", .module = math },
-        },
-    });
-    hmr.addImport("knots", portable);
-    hmr.addImport("pack", b.dependency("pack", .{ .target = target, .optimize = optimize }).module("pack"));
-    if (!target.result.cpu.arch.isWasm()) {
-        const tests = b.addTest(.{ .root_module = hmr });
-        b.step("test", "Test the portable HMR boundary").dependOn(&b.addRunArtifact(tests).step);
-    }
 }

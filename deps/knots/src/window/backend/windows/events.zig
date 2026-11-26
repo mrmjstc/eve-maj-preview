@@ -4,11 +4,12 @@ const win32 = @import("win32").everything;
 const window = @import("window");
 
 const keymap = @import("keymap.zig");
+const ime = @import("ime.zig");
 
 const Backend = @import("root.zig").Backend;
 
 fn keyDown(vk: anytype) bool {
-    return win32.GetKeyState(@intFromEnum(vk)) < 0;
+    return win32.GetKeyState(@backingInt(vk)) < 0;
 }
 
 pub fn modsFromKeyState() input_types.Mods {
@@ -22,12 +23,54 @@ pub fn modsFromKeyState() input_types.Mods {
 
 pub fn onKey(owner: *window.Window, wparam: win32.WPARAM, lparam: win32.LPARAM, pressed: bool) void {
     const vk: u32 = @intCast(wparam);
+    // The input method took the key, or it belongs to its composition.
+    if (pressed and (vk == @backingInt(win32.VK_PROCESSKEY) or owner.backend.ime.composing)) return;
     const key = keymap.translateVk(vk, lparam);
     const lp: u64 = @bitCast(@as(i64, lparam));
+    // After a dead key, a key that types nothing (an arrow, Escape) ends it.
+    if (pressed and owner.backend.ime.dead_key and !isModifier(vk) and
+        typedChar(vk, @intCast((lp >> 16) & 0xFF)) == null) ime.endDeadKey(owner);
     const repeat_bit: u1 = @intCast((lp >> 30) & 1);
     const action: input_types.KeyAction =
-        if (!pressed) .release else if (repeat_bit == 1) .repeat else .press;
-    owner.pushKey(@intFromEnum(key), action, modsFromKeyState());
+        if (!pressed)
+            .release
+        else if (repeat_bit == 1)
+            .repeat
+        else
+            .press;
+
+    const typed = if (pressed) typedChar(vk, @intCast((lp >> 16) & 0xFF)) orelse 0 else 0;
+    owner.pushKeyText(@backingInt(key), action, modsFromKeyState(), typed);
+}
+
+fn isModifier(vk: u32) bool {
+    inline for (.{ win32.VK_SHIFT, win32.VK_CONTROL, win32.VK_MENU, win32.VK_LSHIFT, win32.VK_RSHIFT, win32.VK_LCONTROL, win32.VK_RCONTROL, win32.VK_LMENU, win32.VK_RMENU, win32.VK_CAPITAL, win32.VK_LWIN, win32.VK_RWIN }) |modifier| {
+        if (vk == @backingInt(modifier)) return true;
+    }
+    return false;
+}
+
+fn typedChar(vk: u32, scancode: u32) ?u21 {
+    var state: [256]u8 = undefined;
+    if (win32.GetKeyboardState(&state) == 0)
+        return null;
+
+    const altgr = state[@backingInt(win32.VK_RMENU)] & 0x80 != 0;
+    if (!altgr) {
+        for ([_]u32{ @backingInt(win32.VK_CONTROL), @backingInt(win32.VK_LCONTROL), @backingInt(win32.VK_RCONTROL), @backingInt(win32.VK_MENU), @backingInt(win32.VK_LMENU) }) |k| {
+            state[k] = 0;
+        }
+    }
+
+    var buf: [4:0]u16 = @splat(0);
+    if (win32.ToUnicode(vk, scancode, &state, &buf, 4, 0x4) != 1)
+        return null;
+
+    const w = buf[0];
+    if (w < 0x20 or w == 0x7F or (w >= 0xD800 and w <= 0xDFFF))
+        return null;
+
+    return w;
 }
 
 pub fn onChar(owner: *window.Window, high_surrogate: *u16, w: u16) void {
@@ -51,7 +94,11 @@ pub fn onChar(owner: *window.Window, high_surrogate: *u16, w: u16) void {
     const ctrl = keyDown(win32.VK_CONTROL);
     const alt = keyDown(win32.VK_MENU);
     if ((ctrl and !alt) or keyDown(win32.VK_LWIN) or keyDown(win32.VK_RWIN)) return;
-    owner.pushChar(cp);
+    // The composed character replaces the dead key's accent.
+    owner.backend.ime.dead_key = false;
+    var encoded: [4]u8 = undefined;
+    const n = std.unicode.utf8Encode(cp, &encoded) catch return;
+    owner.pushText(encoded[0..n]);
 }
 
 pub fn onDropFiles(self: *Backend, owner: *window.Window, hdrop: win32.HDROP) void {

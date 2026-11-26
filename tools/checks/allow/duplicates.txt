@@ -1,0 +1,68 @@
+# Deliberate repeats for duplicates.py, one per line: <path glob under src/> <text in the match, or *>  # reason
+# A match is dropped once both of its sides are covered, so an entry survives line shifts but not a rewrite of the code.
+
+# COM vtables: every slot is listed in Windows' order, so two interfaces from the same base repeat it.
+notifications/sound.zig const anyopaque  # IMFMediaType/IMFAttributes vtable slots
+
+# The client simulator's window copies the configuration window's chrome, so the dialog's files stay untouched.
+dialog/knots/host.zig fn styleTitleBar(  # app icon and dark title bar
+sim/window.zig fn styleTitleBar(  # app icon and dark title bar
+dialog/knots/host.zig fn setWindowAttribute(  # DWM attribute helper
+sim/window.zig fn setWindowAttribute(  # DWM attribute helper
+dialog/knots/host.zig style.FONT_SEMIBOLD_DATA  # knots theme and fonts
+sim/window.zig style.FONT_SEMIBOLD_DATA  # knots theme and fonts
+dialog/knots/form.zig ui.Key.str("knots.tab.glyph")  # sidebar tab item
+sim/view.zig ui.Key.str("sim.tab.glyph")  # sidebar tab item
+dialog/knots/form.zig const root_style = try context.arena().create(ui.Style);  # frame root
+sim/view.zig const root_style = try context.arena().create(ui.Style);  # frame root
+dialog/knots/form.zig try sidebar(window, context, offered);  # body row
+sim/view.zig try sidebar(context, controls);  # body row
+
+# The map's ESI and EVE-Scout parsers each open by reading their rows into an arena; a helper saved a line apiece.
+map/*.zig std.json.parseFromSliceLeaky([]const Row, arena.allocator(), body  # parse/apply/add preambles
+
+# Each importer lists the sections its source app has, in the same shape but with that app's own titles and hints.
+config/import/*.zig .title = "Character Colors & Hotkeys"  # importer section tables
+
+# Filling and outlining a mask walk its pixels alike, but each works out a pixel's coverage its own way.
+util/pixel_buffer.zig const steps = mask.depth[pixel_y * mask.width + pixel_x];  # fillMask/outlineMask
+
+# The detail pages open with the same header, over different fields.
+dialog/knots/tabs/system_colors.zig widgets.openDetailHeader  # detail
+dialog/knots/tabs/window_filters.zig widgets.openDetailHeader  # filterDetail
+
+# A one-setting row is open, its box, close; rgb and choice differ only in the box.
+dialog/knots/bind.zig const row = try self.widgets.openBinding(context, fieldKey(ref, field), label);  # rgb/choice
+
+# The name and confirm prompts end in the same Cancel row, each closing its own prompt.
+dialog/knots/header.zig const actions = Rect{ .key = .src(@src()), .style = &style.modal_actions };  # namePrompt/confirmPrompt
+
+# Each panel tab's Layout section opens with the size row, then its own settings.
+dialog/knots/tabs/map_panel.zig try window.bind.sizeBoxes(context, ref, "width", "height");  # layout
+
+# Each collapsed panel's summary is its own runs, handed to panel_chrome.drawSummary.
+panels/history_panel.zig panel_chrome.drawSummary  # drawSummary
+panels/intel_panel.zig panel_chrome.drawSummary  # drawSummary
+
+# The standard cleanup for a list of owned strings.
+config/profiles.zig for (names.items) |name| allocator.free(name);  # list/listBackups
+
+# Each map test file finds its regions by name; a shared lookup would be public code only tests use.
+map/layout.zig fn regionNamed  # test helper
+map/overview.zig fn regionNamed  # test helper
+
+# WinEvent callbacks share Windows' signature and its child-control check.
+clients/scout.zig if (id_object != 0) return;  # nameChange/windowDestroy callbacks
+
+# Both lookups take a custom colour first and honour the unique-colours switch, then differ.
+clients/auto_colors.zig if (config.findSystemColor(system_name)) |custom_color| return custom_color;  # systemNameColor/knownSystemNameColor
+
+# Each modal's actions row holds its own buttons.
+dialog/knots/form.zig style.modal_actions  # prompts
+dialog/knots/update_notice.zig style.modal_actions  # show
+
+# STYLE.md §6: switches on project enums list every variant, so two that return early for the same ones repeat the list.
+panels/map/paint.zig .none, .title, .toggle, .bar, .metric  # tooltipFor/tooltipAnchor
+
+# Incoming and outgoing DPS chips share their rows by design, each for its own fields.
+dialog/knots/tabs/thumbnails/chips.zig .chatlog_notice = NEEDS_LOGS,  # combat chips

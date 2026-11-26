@@ -4,7 +4,7 @@ const log = @import("../log.zig");
 
 const slog = log.Scoped("protocol");
 
-pub const SCHEME = "evemajpreview://";
+const SCHEME = "evemajpreview://";
 /// Sent by any second launch so the running instance opens its configuration window.
 pub const OPEN_CONFIG_URL = SCHEME ++ "config";
 
@@ -37,6 +37,8 @@ pub const GlobalAction = enum {
     toggle_travel_mode,
     toggle_notification_history,
     clear_notification_history,
+    toggle_map_panel,
+    toggle_intel_panel,
 };
 
 pub const GroupAction = enum { next, previous, assign, minimize, close };
@@ -61,7 +63,26 @@ pub const Command = union(enum) {
             .hotkey, .open_config => {},
         }
     }
+
+    /// What it closes, which any web page could otherwise do with a link; null for a command that closes nothing.
+    pub fn closeAction(self: Command) ?CloseAction {
+        return switch (self) {
+            .switch_character, .profile, .open_config => null,
+            .group => |group| switch (group.action) {
+                .close => .close_group,
+                .next, .previous, .assign, .minimize => null,
+            },
+            .hotkey => |action| switch (action) {
+                .close_all => .close_all,
+                .close_active => .close_active,
+                .exit_app => .exit_app,
+                .minimize_all, .toggle_visibility, .next_profile, .previous_profile, .toggle_exclusion, .next_excluded, .previous_excluded, .suspend_hotkeys, .toggle_auto_minimize, .toggle_alert_mute, .cycle_notified, .previous_notified, .next_all_clients, .previous_all_clients, .next_not_logged_in, .previous_not_logged_in, .move_to_saved_positions, .return_to_last_app, .next_app, .previous_app, .toggle_dragging, .toggle_travel_mode, .toggle_notification_history, .clear_notification_history, .toggle_map_panel, .toggle_intel_panel => null,
+            },
+        };
+    }
 };
+
+pub const CloseAction = enum { close_all, close_active, close_group, exit_app };
 
 /// `evemajpreview://action/params`; logs each failure, and the result is freed with Command.deinit.
 pub fn parse(allocator: std.mem.Allocator, text: []const u8) !Command {
@@ -195,6 +216,21 @@ test "parse rejects other schemes, unknown actions and missing parameters" {
     try testing.expectError(error.MissingParameter, parse(testing.allocator, "evemajpreview://group/close"));
     try testing.expectError(error.MissingParameter, parse(testing.allocator, "evemajpreview://group/close/"));
     try testing.expectError(error.InvalidParameter, parse(testing.allocator, "evemajpreview://group/explode/Miners"));
+}
+
+test "closeAction names what a closing command closes" {
+    try testing.expectEqual(@as(?CloseAction, .close_all), (Command{ .hotkey = .close_all }).closeAction());
+    try testing.expectEqual(@as(?CloseAction, .close_active), (Command{ .hotkey = .close_active }).closeAction());
+    try testing.expectEqual(@as(?CloseAction, .exit_app), (Command{ .hotkey = .exit_app }).closeAction());
+    try testing.expectEqual(@as(?CloseAction, .close_group), (Command{ .group = .{ .action = .close, .name = "Miners" } }).closeAction());
+}
+
+test "closeAction is null for commands that close nothing" {
+    try testing.expectEqual(@as(?CloseAction, null), (Command{ .hotkey = .minimize_all }).closeAction());
+    try testing.expectEqual(@as(?CloseAction, null), (Command{ .group = .{ .action = .minimize, .name = "Miners" } }).closeAction());
+    try testing.expectEqual(@as(?CloseAction, null), (Command{ .switch_character = "Pilot" }).closeAction());
+    try testing.expectEqual(@as(?CloseAction, null), (Command{ .profile = "pvp.json" }).closeAction());
+    try testing.expectEqual(@as(?CloseAction, null), (Command{ .open_config = {} }).closeAction());
 }
 
 test "urlDecode decodes percent escapes and keeps plus signs" {

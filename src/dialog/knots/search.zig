@@ -12,113 +12,114 @@ const Entry = struct {
     text: std.ArrayList(u8) = .empty,
 };
 
-var g_allocator: std.mem.Allocator = undefined;
-/// The search box's text; owned, freed in reset.
-pub var g_query: std.ArrayList(u8) = .empty;
-var g_entries: std.ArrayList(Entry) = .empty;
-var g_is_indexed: bool = false;
-/// The tab being drawn for the index, while it's being built.
-var g_capture_tab: ?usize = null;
+pub const Search = struct {
+    allocator: std.mem.Allocator,
+    /// The search box's text; owned, freed in deinit.
+    query_text: std.ArrayList(u8) = .empty,
+    /// Owned; freed in clearIndex.
+    entries: std.ArrayList(Entry) = .empty,
+    is_indexed: bool = false,
+    /// The tab being drawn for the index, while it's being built.
+    capture_tab: ?usize = null,
 
-pub fn init(allocator: std.mem.Allocator) void {
-    g_allocator = allocator;
-}
-
-/// Once the window has closed.
-pub fn reset() void {
-    clearIndex();
-    g_query.deinit(g_allocator);
-    g_query = .empty;
-}
-
-/// The trimmed query, empty while there's no search.
-pub fn query() []const u8 {
-    return std.mem.trim(u8, g_query.items, " ");
-}
-
-pub fn isActive() bool {
-    return query().len > 0;
-}
-
-/// Each search starts from a fresh index, so names and sections added since show up.
-pub fn beginFrame() void {
-    if (!isActive() and g_is_indexed) clearIndex();
-}
-
-pub fn needsIndex() bool {
-    return isActive() and !g_is_indexed;
-}
-
-pub fn beginCapture(tab: usize) void {
-    g_capture_tab = tab;
-}
-
-pub fn endIndex() void {
-    g_capture_tab = null;
-    g_is_indexed = true;
-}
-
-/// From widgets.openSection while the index is built: what's captured next belongs to this section.
-pub fn captureSection(id: u64) void {
-    const tab = g_capture_tab orelse return;
-    g_entries.append(g_allocator, .{ .tab = tab, .id = id }) catch |err| {
-        slog.warn("Failed to index a section for search: {}", .{err});
-    };
-}
-
-/// From the widgets that draw a section's text while the index is built.
-pub fn captureText(text: []const u8) void {
-    if (g_capture_tab == null or g_entries.items.len == 0) return;
-    const entry = &g_entries.items[g_entries.items.len - 1];
-    entry.text.ensureUnusedCapacity(g_allocator, text.len + 1) catch |err| {
-        slog.warn("Failed to index a section for search: {}", .{err});
-        return;
-    };
-    for (text) |byte| entry.text.appendAssumeCapacity(std.ascii.toLower(byte));
-    entry.text.appendAssumeCapacity('\n');
-}
-
-/// Shown while there's no search, or it matches; a section the index never saw stays shown.
-pub fn sectionMatches(id: u64) bool {
-    if (!isActive() or !g_is_indexed) return true;
-    for (g_entries.items) |*entry| {
-        if (entry.id == id) return matches(entry);
+    pub fn init(allocator: std.mem.Allocator) Search {
+        return .{ .allocator = allocator };
     }
-    return true;
-}
 
-pub fn tabHasMatches(tab: usize) bool {
-    if (!isActive() or !g_is_indexed) return true;
-    for (g_entries.items) |*entry| {
-        if (entry.tab == tab and matches(entry)) return true;
+    pub fn deinit(self: *Search) void {
+        self.clearIndex();
+        self.query_text.deinit(self.allocator);
     }
-    return false;
-}
 
-/// The first tab, in sidebar order, with a matching section.
-pub fn firstMatchingTab() ?usize {
-    var first: ?usize = null;
-    for (g_entries.items) |*entry| {
-        if (!matches(entry)) continue;
-        first = if (first) |current| @min(current, entry.tab) else entry.tab;
+    /// The trimmed query, empty while there's no search.
+    pub fn query(self: *const Search) []const u8 {
+        return std.mem.trim(u8, self.query_text.items, " ");
     }
-    return first;
-}
 
-pub fn matchCount() usize {
-    var count: usize = 0;
-    for (g_entries.items) |*entry| {
-        if (matches(entry)) count += 1;
+    pub fn isActive(self: *const Search) bool {
+        return self.query().len > 0;
     }
-    return count;
-}
 
-fn matches(entry: *const Entry) bool {
-    return std.ascii.findIgnoreCase(entry.text.items, query()) != null;
-}
+    /// Each search starts from a fresh index, so names and sections added since show up.
+    pub fn beginFrame(self: *Search) void {
+        if (!self.isActive() and self.is_indexed) self.clearIndex();
+    }
 
-fn clearIndex() void {
-    for (g_entries.items) |*entry| entry.text.deinit(g_allocator);
-    g_entries.clearAndFree(g_allocator);
-    g_is_indexed = false;
-}
+    pub fn needsIndex(self: *const Search) bool {
+        return self.isActive() and !self.is_indexed;
+    }
+
+    pub fn beginCapture(self: *Search, tab: usize) void {
+        self.capture_tab = tab;
+    }
+
+    pub fn endIndex(self: *Search) void {
+        self.capture_tab = null;
+        self.is_indexed = true;
+    }
+
+    /// From widgets.openSection while the index is built: what's captured next belongs to this section.
+    pub fn captureSection(self: *Search, id: u64) void {
+        const tab = self.capture_tab orelse return;
+        self.entries.append(self.allocator, .{ .tab = tab, .id = id }) catch |err| {
+            slog.warn("Failed to index a section for search: {}", .{err});
+        };
+    }
+
+    /// From the widgets that draw a section's text while the index is built.
+    pub fn captureText(self: *Search, text: []const u8) void {
+        if (self.capture_tab == null or self.entries.items.len == 0) return;
+        const entry = &self.entries.items[self.entries.items.len - 1];
+        entry.text.ensureUnusedCapacity(self.allocator, text.len + 1) catch |err| {
+            slog.warn("Failed to index a section for search: {}", .{err});
+            return;
+        };
+        for (text) |byte| entry.text.appendAssumeCapacity(std.ascii.toLower(byte));
+        entry.text.appendAssumeCapacity('\n');
+    }
+
+    /// Shown while there's no search, or it matches; a section the index never saw stays shown.
+    pub fn sectionMatches(self: *const Search, id: u64) bool {
+        if (!self.isActive() or !self.is_indexed) return true;
+        for (self.entries.items) |*entry| {
+            if (entry.id == id) return self.matches(entry);
+        }
+        return true;
+    }
+
+    pub fn tabHasMatches(self: *const Search, tab: usize) bool {
+        if (!self.isActive() or !self.is_indexed) return true;
+        for (self.entries.items) |*entry| {
+            if (entry.tab == tab and self.matches(entry)) return true;
+        }
+        return false;
+    }
+
+    /// The first tab, in sidebar order, with a matching section.
+    pub fn firstMatchingTab(self: *const Search) ?usize {
+        var first: ?usize = null;
+        for (self.entries.items) |*entry| {
+            if (!self.matches(entry)) continue;
+            first = if (first) |current| @min(current, entry.tab) else entry.tab;
+        }
+        return first;
+    }
+
+    pub fn matchCount(self: *const Search) usize {
+        var count: usize = 0;
+        for (self.entries.items) |*entry| {
+            if (self.matches(entry)) count += 1;
+        }
+        return count;
+    }
+
+    fn matches(self: *const Search, entry: *const Entry) bool {
+        return std.ascii.findIgnoreCase(entry.text.items, self.query()) != null;
+    }
+
+    fn clearIndex(self: *Search) void {
+        for (self.entries.items) |*entry| entry.text.deinit(self.allocator);
+        self.entries.clearAndFree(self.allocator);
+        self.is_indexed = false;
+    }
+};

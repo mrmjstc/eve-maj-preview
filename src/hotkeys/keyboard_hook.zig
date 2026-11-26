@@ -1,15 +1,11 @@
 //! Keyboard hotkeys through WH_KEYBOARD_LL, which unlike RegisterHotKey can bind a bare modifier; matches post WM_HOTKEY like mouse_hook.zig's, from hook_thread.zig's thread.
-const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const vk = @import("../platform/virtual_keys.zig");
 const hook_bindings = @import("hook_bindings.zig");
+const press_rules = @import("press_rules.zig");
+const messages = @import("../messages.zig");
 
 const HookBindings = hook_bindings.HookBindings;
-
-/// How a key's current press was decided at its first key-down; its repeats and release follow, so an app sees whole presses or none.
-const Press = enum { released, swallowed, passed };
-
-const ShiftRelease = struct { timestamp_ms: u32, is_extended: bool };
 
 /// Hook thread only; pinned while the config dialog records, to capture a bare Win press.
 var g_hook: HookBindings = .{
@@ -18,41 +14,14 @@ var g_hook: HookBindings = .{
     .name = "keyboard",
     .on_uninstall = releaseAll,
 };
-/// Hook thread only; indexed by the raw vk code.
-var g_presses: [256]Press = @splat(.released);
-/// Hook thread only; the last event, if it was a Shift release.
-var g_shift_release: ?ShiftRelease = null;
-/// Hook thread only; the navigation key pressed as Shift+Numpad.
-var g_shifted_navigation_vk: ?u32 = null;
+/// Hook thread only.
+var g_presses: press_rules.KeyPresses = .{};
 /// Main thread only: given the modifiers held with a bare Win press while the config dialog records; set by the dialog.
 pub var g_on_win_key: ?*const fn (modifiers: u32) void = null;
 
-/// Once at startup, before hook_thread.start.
-pub fn setAllocator(allocator: std.mem.Allocator) void {
-    g_hook.setAllocator(allocator);
-}
-
-/// Installs the hook on first registration; logs its own failure.
-pub fn register(target_hwnd: win32.HWND, combined_vk: u32, id: c_int) !void {
-    try g_hook.register(target_hwnd, combined_vk, id);
-}
-
-pub fn unregister(combined_vk: u32) void {
-    g_hook.unregister(combined_vk);
-}
-
-pub fn setExactModifiers(is_exact: bool) void {
-    g_hook.setExactModifiers(is_exact);
-}
-
-/// Safe to call even if nothing was ever registered.
-pub fn unregisterAll() void {
-    g_hook.unregisterAll();
-}
-
-/// Call only once at true process shutdown, before hook_thread.stop, never from a reload path that may register() again.
-pub fn deinit() void {
-    g_hook.deinit();
+/// For hooks.zig, which sends each binding to the hook that sees it.
+pub fn bindings() *HookBindings {
+    return &g_hook;
 }
 
 /// Keeps the hook alive while the dialog records a binding, to swallow Win and report it to `hwnd`; otherwise the Start Menu opens first.
@@ -71,22 +40,20 @@ pub fn onWinKeyCaptured(wParam: win32.WPARAM) void {
 }
 
 fn releaseAll() void {
-    g_presses = @splat(.released);
-    g_shift_release = null;
-    g_shifted_navigation_vk = null;
+    g_presses = .{};
 }
 
 fn isWinVk(vk_code: u32) bool {
-    return vk_code == win32.VK_LWIN or vk_code == win32.VK_RWIN;
+    return vk_code == vk.VK_LWIN or vk_code == vk.VK_RWIN;
 }
 
 /// WH_KEYBOARD_LL reports the side-specific vk for Ctrl/Alt/Shift/Win (e.g. VK_LSHIFT), never the generic one.
 fn normalizeModifierVk(raw_vk: u32) u32 {
     return switch (raw_vk) {
-        win32.VK_LSHIFT, win32.VK_RSHIFT => vk.VK_SHIFT,
-        win32.VK_LCONTROL, win32.VK_RCONTROL => vk.VK_CONTROL,
-        win32.VK_LMENU, win32.VK_RMENU => vk.VK_MENU,
-        win32.VK_LWIN, win32.VK_RWIN => vk.VK_LWIN,
+        vk.VK_LSHIFT, vk.VK_RSHIFT => vk.VK_SHIFT,
+        vk.VK_LCONTROL, vk.VK_RCONTROL => vk.VK_CONTROL,
+        vk.VK_LMENU, vk.VK_RMENU => vk.VK_MENU,
+        vk.VK_LWIN, vk.VK_RWIN => vk.VK_LWIN,
         else => raw_vk,
     };
 }
@@ -103,7 +70,7 @@ fn selfModifierBit(base_vk: u32) u32 {
 }
 
 fn dispatchIfBound(raw_vk: u32, is_repeat: bool) bool {
-    if (isShiftedNavigation(raw_vk)) {
+    if (g_presses.isShiftedNavigation(raw_vk)) {
         if (vk.numpadForNavigation(raw_vk)) |numpad| return g_hook.dispatch(numpad, vk.currentModifiers() | vk.MOD_SHIFT, is_repeat);
     }
     const base_vk = normalizeModifierVk(raw_vk);
@@ -112,59 +79,45 @@ fn dispatchIfBound(raw_vk: u32, is_repeat: bool) bool {
 
 /// Whether to swallow it; a repeat follows its press even if the key's binding changed meanwhile.
 fn onKeyDown(vk_code: u8, is_shifted_numpad: bool) bool {
-    if (is_shifted_numpad) g_shifted_navigation_vk = vk_code;
-    switch (g_presses[vk_code]) {
-        .passed => return false,
-        .swallowed => {
+    switch (g_presses.keyDown(vk_code, is_shifted_numpad)) {
+        .pass => return false,
+        .repeat => {
             _ = dispatchIfBound(vk_code, true);
             return true;
         },
-        .released => {
+        .first => {
             const is_swallowed = (g_hook.is_pinned and isWinVk(vk_code)) or dispatchIfBound(vk_code, false);
-            g_presses[vk_code] = if (is_swallowed) .swallowed else .passed;
+            g_presses.decide(vk_code, is_swallowed);
             return is_swallowed;
         },
     }
 }
 
-/// Whether to swallow it: a client given a key-up it never saw go down drops its held modifiers, which would break holding Ctrl through a cycle.
+/// Whether to swallow it; see press_rules.KeyPresses.keyUp.
 fn onKeyUp(vk_code: u8) bool {
-    const press = g_presses[vk_code];
-    g_presses[vk_code] = .released;
-    if (isShiftedNavigation(vk_code)) g_shifted_navigation_vk = null;
-    // The conduit hotkey only consumes the down; a stray up reaching the new client makes it drop held modifiers.
-    if (vk_code == vk.VK_FOCUS_GRANT) return true;
     if (g_hook.is_pinned and isWinVk(vk_code)) {
-        if (g_hook.target_hwnd) |hwnd| _ = win32.PostMessageA(hwnd, win32.WM_WIN_KEY_CAPTURED, vk.currentModifiers() & ~vk.MOD_WIN, 0);
+        if (g_hook.target_hwnd) |hwnd| _ = win32.PostMessageA(hwnd, messages.WM_WIN_KEY_CAPTURED, vk.currentModifiers() & ~vk.MOD_WIN, 0);
     }
-    return press == .swallowed;
-}
-
-/// Windows marks the fake Shift release extended, or stamps it with this key's time.
-fn isShiftedNumpad(info: *const win32.KBDLLHOOKSTRUCT) bool {
-    if (info.flags & win32.LLKHF_EXTENDED != 0 or vk.numpadForNavigation(info.vkCode) == null) return false;
-    const release = g_shift_release orelse return false;
-    return release.is_extended or release.timestamp_ms == info.time;
-}
-
-fn isShiftedNavigation(vk_code: u32) bool {
-    const shifted = g_shifted_navigation_vk orelse return false;
-    return shifted == vk_code;
+    return g_presses.keyUp(vk_code);
 }
 
 fn lowLevelKeyboardProc(nCode: c_int, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
     // A negative nCode must go straight to CallNextHookEx, untouched.
     if (nCode == win32.HC_ACTION) {
         const info = win32.lparamToPtr(win32.KBDLLHOOKSTRUCT, lParam);
-        if (info.vkCode < g_presses.len) {
-            const vk_code: u8 = @intCast(info.vkCode);
+        if (info.vkCode < g_presses.presses.len) {
+            const event: press_rules.KeyEvent = .{
+                .vk_code = @intCast(info.vkCode),
+                .is_key_up = wParam == win32.WM_KEYUP or wParam == win32.WM_SYSKEYUP,
+                .is_extended = info.flags & win32.LLKHF_EXTENDED != 0,
+                .timestamp_ms = info.time,
+            };
             const is_swallowed = switch (wParam) {
-                win32.WM_KEYDOWN, win32.WM_SYSKEYDOWN => onKeyDown(vk_code, isShiftedNumpad(info)),
-                win32.WM_KEYUP, win32.WM_SYSKEYUP => onKeyUp(vk_code),
+                win32.WM_KEYDOWN, win32.WM_SYSKEYDOWN => onKeyDown(event.vk_code, g_presses.isShiftedNumpad(event)),
+                win32.WM_KEYUP, win32.WM_SYSKEYUP => onKeyUp(event.vk_code),
                 else => false,
             };
-            const is_shift_release = (wParam == win32.WM_KEYUP or wParam == win32.WM_SYSKEYUP) and (vk_code == win32.VK_LSHIFT or vk_code == win32.VK_RSHIFT);
-            g_shift_release = if (is_shift_release) .{ .timestamp_ms = info.time, .is_extended = info.flags & win32.LLKHF_EXTENDED != 0 } else null;
+            g_presses.noteEvent(event);
             if (is_swallowed) return 1;
         }
     }

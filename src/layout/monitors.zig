@@ -30,12 +30,6 @@ pub fn nearestMonitorBounds(hwnd: win32.HWND) MonitorBounds {
     return monitorBounds(win32.MonitorFromWindow(hwnd, win32.MONITOR_DEFAULTTONEAREST));
 }
 
-pub fn cursorMonitorBounds() MonitorBounds {
-    var cursor = win32.POINT{ .x = 0, .y = 0 };
-    _ = win32.GetCursorPos(&cursor);
-    return monitorBounds(win32.nearestMonitor(cursor));
-}
-
 /// DPI of whichever monitor a window currently sits on; queried live, nothing to invalidate.
 pub fn getWindowDpi(hwnd: win32.HWND) u32 {
     return win32.GetDpiForWindow(hwnd);
@@ -48,7 +42,7 @@ pub fn dpiForMonitor(monitor: ?win32.HMONITOR) u32 {
 
 /// Every monitor's full bounds, up to `buffer.len` of them, primary first; borrows from `buffer`.
 pub fn monitorRects(buffer: []win32.RECT) []win32.RECT {
-    var list = RectList{ .buffer = buffer };
+    var list: RectList = .{ .buffer = buffer };
     if (!win32.toBool(win32.EnumDisplayMonitors(null, null, rectEnumProc, win32.ptrToLparam(&list)))) {
         slog.warn("Failed to enumerate monitors", .{});
     }
@@ -76,7 +70,7 @@ fn defaultDpi() u32 {
 
 /// By 0-based index; null if out of range.
 fn getMonitorPlacement(monitor_index: u32, should_use_work_area: bool) ?MonitorPlacement {
-    var enum_data = MonitorEnumData{
+    var enum_data: MonitorEnumData = .{
         .target_index = monitor_index,
         .current_index = 0,
         .found_monitor = null,
@@ -90,7 +84,7 @@ fn getMonitorPlacement(monitor_index: u32, should_use_work_area: bool) ?MonitorP
         return null;
     };
 
-    var monitor_info = win32.MONITORINFO{
+    var monitor_info: win32.MONITORINFO = .{
         .cbSize = @sizeOf(win32.MONITORINFO),
         .rcMonitor = undefined,
         .rcWork = undefined,
@@ -109,7 +103,7 @@ fn getMonitorPlacement(monitor_index: u32, should_use_work_area: bool) ?MonitorP
 }
 
 fn monitorBounds(nearest: ?win32.HMONITOR) MonitorBounds {
-    var bounds = win32.RECT{
+    var bounds: win32.RECT = .{
         .left = 0,
         .top = 0,
         .right = win32.GetSystemMetrics(win32.SM_CXSCREEN),

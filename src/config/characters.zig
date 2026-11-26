@@ -1,6 +1,6 @@
 //! Per-character overrides and the helpers that rank characters by the configured list.
 const std = @import("std");
-const win32 = @import("../platform/win32.zig");
+const types = @import("types.zig");
 const wire = @import("wire.zig");
 const key_list = @import("key_list.zig");
 const ranges_mod = @import("ranges.zig");
@@ -12,12 +12,6 @@ const ThumbnailConfig = thumbnail.ThumbnailConfig;
 pub const Position = struct {
     x: i32,
     y: i32,
-
-    /// For positions saved by a DPI-unaware process (old saves, EVE-O/EVE-X/EVE-APM imports).
-    pub fn scaleFromLegacyDpiUnaware(self: Position) Position {
-        const scale = win32.dpiToScale(win32.dpiForPoint(.{ .x = self.x, .y = self.y }));
-        return .{ .x = win32.scalePixels(self.x, scale), .y = win32.scalePixels(self.y, scale) };
-    }
 };
 
 pub const WindowSize = struct {
@@ -60,9 +54,14 @@ pub const CharacterConfig = struct {
     excludeFromMinimize: bool = false,
     excludeFromCloseAll: bool = false,
     excludeFromAutoMove: bool = false,
+    excludeFromChatAlerts: bool = false,
+    keepFullSpeed: bool = false,
     hideThumbnail: bool = false,
+    hideFromClientList: bool = false,
     notificationsMuted: bool = false,
     opacity: ?u8 = null,
+    preview: types.PreviewOverride = .Default,
+    blankThumbnailColor: ?u32 = null,
     /// The dialog's handle across renames and reorders; 0 until assigned (see config/patch.zig).
     id: u32 = 0,
 
@@ -71,6 +70,11 @@ pub const CharacterConfig = struct {
     pub const ranges = .{
         .opacity = ranges_mod.OPACITY,
     };
+
+    /// Never receives a chat alert, so another client must.
+    pub fn mutesChatAlerts(self: *const CharacterConfig) bool {
+        return self.notificationsMuted or self.excludeFromChatAlerts;
+    }
 
     /// ThumbnailConfig.validate() skips these overrides, and a negative size would panic as a usize.
     pub fn validate(self: *CharacterConfig) void {
@@ -92,15 +96,15 @@ pub fn buildCharacterOrderMap(characters: []const CharacterConfig, allocator: st
 }
 
 /// Names missing from order_map sort last; ties fall back to array position.
-pub fn orderMapLessThan(order_map: *const std.StringHashMap(usize), a_name: []const u8, b_name: []const u8, a_index: usize, b_index: usize) bool {
-    const a_order = order_map.get(a_name);
-    const b_order = order_map.get(b_name);
-    if (a_order) |a_rank| {
-        if (b_order) |b_rank| {
-            if (a_rank != b_rank) return a_rank < b_rank;
+pub fn orderMapLessThan(order_map: *const std.StringHashMap(usize), first_name: []const u8, second_name: []const u8, first_index: usize, second_index: usize) bool {
+    const first_order = order_map.get(first_name);
+    const second_order = order_map.get(second_name);
+    if (first_order) |first_rank| {
+        if (second_order) |second_rank| {
+            if (first_rank != second_rank) return first_rank < second_rank;
         } else return true;
-    } else if (b_order != null) return false;
-    return a_index < b_index;
+    } else if (second_order != null) return false;
+    return first_index < second_index;
 }
 
 const testing = std.testing;

@@ -1,8 +1,12 @@
-//! Enums used by settings; their tag names are saved in profiles, so renaming a tag breaks existing profiles.
+//! The types and defaults settings share; enum tag names are saved in profiles, so renaming a tag breaks existing profiles.
 const fonts = @import("../platform/fonts.zig");
 
 /// Kept with the other setting types, though defined where platform/ can use it.
 pub const FontWeight = fonts.FontWeight;
+/// Every font setting's default: the dialog's bundled face, so all text matches it.
+pub const DEFAULT_FONT = fonts.UI_FACE;
+/// Every font setting's default size, the dialog's body text's.
+pub const DEFAULT_FONT_SIZE: i32 = 12;
 
 pub const BorderStyle = enum {
     Solid,
@@ -57,6 +61,31 @@ pub const TextPosition = enum {
     BottomRight,
 };
 
+/// What the Map Panel's markers show; saved into profiles by name.
+pub const MapMetric = enum { Security, ShipKills, PodKills, NpcKills, NpcDelta, Jumps, Sovereignty, FactionWarfare };
+/// How far from the nearest client the Intel Panel lists reports; saved into profiles by name.
+pub const IntelRange = enum { OneJump, FiveJumps, TenJumps, All };
+/// How routes sent from the Map Panel are planned, as the game's autopilot words it; saved into profiles by name.
+pub const RoutePreference = enum { Shorter, Safer, LessSecure };
+/// How far back the map's kills and jumps reach, past Hour with an Eve Stars token; saved into profiles by name.
+pub const TrafficSpan = enum { Hour, Day, Week };
+
+/// A character's own choice of live or blank thumbnail; saved into profiles by name.
+pub const PreviewOverride = enum {
+    Default,
+    Live,
+    Blank,
+
+    /// Default follows `is_profile_live`, the profile's own showLivePreview.
+    pub fn showsLive(self: PreviewOverride, is_profile_live: bool) bool {
+        return switch (self) {
+            .Default => is_profile_live,
+            .Live => true,
+            .Blank => false,
+        };
+    }
+};
+
 /// In the order the Display tab offers them.
 pub const ViewMode = enum {
     Thumbnails,
@@ -80,10 +109,11 @@ pub const ViewMode = enum {
     }
 };
 
+/// In the order the panel menu and the configuration window offer them.
 pub const ListViewOrder = enum {
-    Tracked,
-    Alphabetical,
     ConfiguredCharacters,
+    Alphabetical,
+    Tracked,
 };
 
 pub const ListIndicatorStyle = enum {

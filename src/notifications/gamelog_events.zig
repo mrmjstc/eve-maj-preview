@@ -1,6 +1,7 @@
 //! Which gamelog lines raise a notification, and of what type.
 const std = @import("std");
 const notification = @import("notification.zig");
+const lines = @import("../chatlog/lines.zig");
 
 const Notification = notification.Notification;
 const NotificationType = notification.NotificationType;
@@ -28,17 +29,6 @@ pub fn classify(event_text: []const u8) ?Notification {
     }
 
     return genericEvent(remaining);
-}
-
-/// "A Conduit Field activated by X jumps you to [System]."; the activator's own line continues ", bringing along N passengers.", so a comma ends the name too.
-pub fn conduitDestination(text: []const u8) ?[]const u8 {
-    if (std.mem.find(u8, text, "Conduit Field") == null) return null;
-    const needle = "jumps you to ";
-    const match_index = std.mem.find(u8, text, needle) orelse return null;
-    const after = text[match_index + needle.len ..];
-    const end = std.mem.findAny(u8, after, "\r\n.,") orelse after.len;
-    const system = std.mem.trim(u8, after[0..end], " \t");
-    return if (system.len == 0) null else system;
 }
 
 fn textBefore(text: []const u8, suffix: []const u8) ?[]const u8 {
@@ -112,7 +102,11 @@ fn parseNotifyEvent(message: []const u8) ?Notification {
 
     // "Successfully compressed [ore] into [count] [compressed]"
     if (std.mem.find(u8, trimmed, "Successfully compressed") != null) {
-        return .{ .notification_type = .MiningCompression, .source = textBetween(trimmed, "compressed ", " into "), .target = textAfter(trimmed, " into ") };
+        return .{
+            .notification_type = .MiningCompression,
+            .source = textBetween(trimmed, "compressed ", " into "),
+            .target = textAfter(trimmed, " into "),
+        };
     }
 
     // "[miner] deactivates as it finds the resource it was harvesting a pale shadow of its former glory."
@@ -144,7 +138,11 @@ fn parseNotifyEvent(message: []const u8) ?Notification {
 
     // "[module] deactivates due to the destruction of the [crystal]"
     if (std.mem.find(u8, trimmed, "deactivates due to the destruction") != null) {
-        return .{ .notification_type = .CrystalBroke, .source = withoutYour(textBefore(trimmed, " deactivates due to the destruction")), .target = textAfter(trimmed, "destruction of the ") };
+        return .{
+            .notification_type = .CrystalBroke,
+            .source = withoutYour(textBefore(trimmed, " deactivates due to the destruction")),
+            .target = textAfter(trimmed, "destruction of the "),
+        };
     }
 
     // "Bomb Launcher II has run out of charges"
@@ -187,7 +185,11 @@ fn parseNotifyEvent(message: []const u8) ?Notification {
         return .{ .notification_type = .AggressionCantJump };
     }
 
-    if (conduitDestination(trimmed)) |system| return .{ .notification_type = .ConduitJump, .target = system };
+    if (std.mem.find(u8, trimmed, "You cannot warp while you are cloaked") != null) {
+        return .{ .notification_type = .CloakedCantWarp };
+    }
+
+    if (lines.conduitDestination(trimmed)) |system| return .{ .notification_type = .ConduitJump, .target = system };
     if (std.mem.find(u8, trimmed, "Conduit Field") != null and std.mem.find(u8, trimmed, "jumps you to") != null) {
         return .{ .notification_type = .ConduitJump };
     }
@@ -219,7 +221,7 @@ fn parseCombatEvent(message: []const u8) ?Notification {
 fn parseNoneEvent(message: []const u8) ?Notification {
     const trimmed = std.mem.trim(u8, message, " \t\r\n");
 
-    // ChatlogMonitor.parseLine handles system jumps.
+    // The chatlog interpreter reads jumps as system changes.
     if (std.mem.startsWith(u8, trimmed, "Jumping from")) {
         return null;
     }
@@ -258,6 +260,7 @@ test "classify maps each notify wording to its type" {
         .{ "[ 2026.09.06 16:13:00 ] (notify) Please get within 2500 meters of the stargate to jump.", .JumpRange },
         .{ "[ 2026.09.06 16:13:00 ] (notify) You are within a warp disruption zone. Get 20000.0 meters from Warp Disrupt Probe to warp.", .WarpBubble },
         .{ "[ 2026.09.06 16:13:00 ] (notify) The stargate denies you permission to jump for the moment due to your recent acts of aggression.", .AggressionCantJump },
+        .{ "[ 2026.09.06 16:13:00 ] (notify) You cannot warp while you are cloaked.", .CloakedCantWarp },
     };
     for (cases) |case| {
         try testing.expectEqual(case[1], classifiedType(case[0]).?);
@@ -352,10 +355,4 @@ test "classify reads the conduit destination" {
     const conduit = classify("[ 2026.09.06 16:13:01 ] (notify) The Conduit Field activated by Some Pilot jumps you to Ahbazon.").?;
     try testing.expectEqual(NotificationType.ConduitJump, conduit.notification_type);
     try testing.expectEqualStrings("Ahbazon", conduit.target.?);
-}
-
-test "conduitDestination stops at the activator's passenger count" {
-    try testing.expectEqualStrings("Ahbazon", conduitDestination("A Conduit Field activated by you jumps you to Ahbazon, bringing along 3 passengers.").?);
-    try testing.expect(conduitDestination("A Conduit Field activated by you jumps you to .") == null);
-    try testing.expect(conduitDestination("Something jumps you to Ahbazon.") == null);
 }

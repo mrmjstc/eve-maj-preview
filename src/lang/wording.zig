@@ -15,14 +15,14 @@ const Placeholders = struct {
     }
 
     fn next(self: *Placeholders) ?[]const u8 {
-        const open = std.mem.indexOfScalar(u8, self.rest, '{') orelse return null;
-        const close = std.mem.indexOfScalarPos(u8, self.rest, open + 1, '}') orelse return null;
+        const open = std.mem.findScalar(u8, self.rest, '{') orelse return null;
+        const close = std.mem.findScalarPos(u8, self.rest, open + 1, '}') orelse return null;
         defer self.rest = self.rest[close + 1 ..];
         return self.rest[open + 1 .. close];
     }
 
     fn contains(text: []const u8, wanted: []const u8) bool {
-        var names = Placeholders.init(text);
+        var names: Placeholders = .init(text);
         while (names.next()) |name| {
             if (std.mem.eql(u8, name, wanted)) return true;
         }
@@ -46,8 +46,8 @@ pub fn file(language: Language) []const u8 {
 /// Writes `template` with each {name} replaced by `args`' field of that name, a string, integer or error; other braces stay as they are.
 pub fn fill(writer: *std.Io.Writer, template: []const u8, args: anytype) std.Io.Writer.Error!void {
     var rest = template;
-    while (std.mem.indexOfScalar(u8, rest, '{')) |open| {
-        const close = std.mem.indexOfScalarPos(u8, rest, open + 1, '}') orelse break;
+    while (std.mem.findScalar(u8, rest, '{')) |open| {
+        const close = std.mem.findScalarPos(u8, rest, open + 1, '}') orelse break;
         try writer.writeAll(rest[0..open]);
         if (!try writeArgument(writer, rest[open + 1 .. close], args)) try writer.writeAll(rest[open .. close + 1]);
         rest = rest[close + 1 ..];
@@ -57,11 +57,11 @@ pub fn fill(writer: *std.Io.Writer, template: []const u8, args: anytype) std.Io.
 
 /// Whether `template`'s placeholders are the same set as `english`'s, so a translation can't lose or invent one.
 fn hasSamePlaceholders(english: []const u8, template: []const u8) bool {
-    var english_names = Placeholders.init(english);
+    var english_names: Placeholders = .init(english);
     while (english_names.next()) |name| {
         if (!Placeholders.contains(template, name)) return false;
     }
-    var names = Placeholders.init(template);
+    var names: Placeholders = .init(template);
     while (names.next()) |name| {
         if (!Placeholders.contains(english, name)) return false;
     }

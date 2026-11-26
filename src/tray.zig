@@ -3,15 +3,34 @@ const std = @import("std");
 const win32 = @import("platform/win32.zig");
 const config_mod = @import("config.zig");
 const update = @import("update.zig");
-const actions = @import("clients/actions.zig");
 const app_mod = @import("app.zig");
 const knots_host = @import("dialog/knots/host.zig");
 const scout = @import("clients/scout.zig");
-const alert_effects = @import("notifications/alert_effects.zig");
+const url = @import("protocol/url.zig");
+const messages = @import("messages.zig");
 const log = @import("log.zig");
 
 const App = app_mod.App;
 const slog = log.Scoped("tray");
+
+const IDM_EXIT = 1001;
+const IDM_UPDATE = 1002;
+const IDM_TOGGLE_DRAGGING = 1003;
+const IDM_SUSPEND_HOTKEYS = 1004;
+const IDM_TOGGLE_AUTO_MINIMIZE = 1005;
+const IDM_TOGGLE_VISIBILITY = 1006;
+const IDM_OPEN_CONFIG = 1007;
+const IDM_CLOSE_ALL_CLIENTS = 1008;
+const IDM_TOGGLE_NOTIFICATION_HISTORY = 1009;
+const IDM_CLEAR_NOTIFICATION_HISTORY = 1010;
+const IDM_TOGGLE_TRAVEL_MODE = 1011;
+const IDM_RESTORE_SAVED_POSITIONS = 1012;
+const IDM_TOGGLE_ALERT_MUTE = 1013;
+const IDM_TOGGLE_MAP_PANEL = 1014;
+const IDM_TOGGLE_INTEL_PANEL = 1015;
+const IDM_PROFILE_BASE = 2000;
+const IDM_CLOSE_GROUP_BASE = 3000;
+const IDM_MINIMIZE_GROUP_BASE = 4000;
 
 /// Keeps profile item IDs inside their range above IDM_PROFILE_BASE.
 const MAX_PROFILE_ITEMS = 1000;
@@ -22,15 +41,51 @@ const MAX_GROUP_ITEMS = 1000;
 /// How often a missing icon is added again, in case Explorer's TaskbarCreated never arrives.
 const RETRY_INTERVAL_MS: u64 = 5000;
 
+/// The items that run a global action, as a hotkey or protocol link would; the rest the tray handles itself.
+const MENU_ACTIONS = [_]MenuAction{
+    .{ .id = IDM_TOGGLE_DRAGGING, .action = .toggle_dragging },
+    .{ .id = IDM_TOGGLE_AUTO_MINIMIZE, .action = .toggle_auto_minimize },
+    .{ .id = IDM_TOGGLE_TRAVEL_MODE, .action = .toggle_travel_mode },
+    .{ .id = IDM_TOGGLE_VISIBILITY, .action = .toggle_visibility },
+    .{ .id = IDM_RESTORE_SAVED_POSITIONS, .action = .move_to_saved_positions },
+    .{ .id = IDM_TOGGLE_NOTIFICATION_HISTORY, .action = .toggle_notification_history },
+    .{ .id = IDM_CLEAR_NOTIFICATION_HISTORY, .action = .clear_notification_history },
+    .{ .id = IDM_TOGGLE_MAP_PANEL, .action = .toggle_map_panel },
+    .{ .id = IDM_TOGGLE_INTEL_PANEL, .action = .toggle_intel_panel },
+    .{ .id = IDM_TOGGLE_ALERT_MUTE, .action = .toggle_alert_mute },
+    .{ .id = IDM_SUSPEND_HOTKEYS, .action = .suspend_hotkeys },
+    .{ .id = IDM_CLOSE_ALL_CLIENTS, .action = .close_all },
+};
+/// The items handleMenuCommand runs itself, which no menu action may take.
+const OWN_ITEMS = [_]u16{ IDM_EXIT, IDM_OPEN_CONFIG, IDM_UPDATE };
+
+comptime {
+    for (MENU_ACTIONS, 0..) |item, index| {
+        const id_text = std.fmt.comptimePrint("{d}", .{item.id});
+        if (item.id >= IDM_PROFILE_BASE) @compileError("tray item " ++ id_text ++ " runs into the profile and group submenus' IDs");
+        if (std.mem.findScalar(u16, &OWN_ITEMS, item.id) != null) @compileError("tray item " ++ id_text ++ " is one the tray handles itself");
+        for (MENU_ACTIONS[index + 1 ..]) |other| {
+            if (other.id == item.id) @compileError("tray item " ++ id_text ++ " runs two actions");
+            if (other.action == item.action) @compileError("tray action " ++ @tagName(item.action) ++ " has two items");
+        }
+    }
+}
+
+/// A menu item and the global action it runs.
+const MenuAction = struct {
+    id: u16,
+    action: url.GlobalAction,
+};
+
 /// An item in one of the group submenus.
 const GroupCommand = struct {
     group_index: usize,
-    action: actions.GroupAction,
+    action: url.GroupAction,
 };
 
 pub const TrayIcon = struct {
     hwnd: win32.HWND,
-    nid: win32.NOTIFYICONDATAA,
+    icon_data: win32.NOTIFYICONDATAA,
     allocator: std.mem.Allocator,
     owns_icon: bool,
     /// The profiles the menu last listed, which a profile item's ID indexes into; owned, freed by freeProfiles.
@@ -45,19 +100,19 @@ pub const TrayIcon = struct {
     pub fn init(allocator: std.mem.Allocator, hwnd: win32.HWND) !TrayIcon {
         var tray: TrayIcon = .{
             .hwnd = hwnd,
-            .nid = std.mem.zeroes(win32.NOTIFYICONDATAA),
+            .icon_data = std.mem.zeroes(win32.NOTIFYICONDATAA),
             .allocator = allocator,
             .owns_icon = false,
         };
 
-        tray.nid.cbSize = @sizeOf(win32.NOTIFYICONDATAA);
-        tray.nid.hWnd = hwnd;
-        tray.nid.uID = 1;
-        tray.nid.uFlags = win32.NIF_MESSAGE | win32.NIF_ICON | win32.NIF_TIP;
-        tray.nid.uCallbackMessage = win32.WM_TRAYICON;
+        tray.icon_data.cbSize = @sizeOf(win32.NOTIFYICONDATAA);
+        tray.icon_data.hWnd = hwnd;
+        tray.icon_data.uID = 1;
+        tray.icon_data.uFlags = win32.NIF_MESSAGE | win32.NIF_ICON | win32.NIF_TIP;
+        tray.icon_data.uCallbackMessage = messages.WM_TRAYICON;
 
         const app_icon = win32.LoadImageA(win32.GetModuleHandleA(null), @ptrFromInt(win32.APP_ICON_ID), win32.IMAGE_ICON, 16, 16, 0);
-        tray.nid.hIcon = if (app_icon) |icon| blk: {
+        tray.icon_data.hIcon = if (app_icon) |icon| blk: {
             tray.owns_icon = true;
             break :blk @ptrCast(icon);
         } else blk: {
@@ -68,12 +123,12 @@ pub const TrayIcon = struct {
             };
         };
         errdefer if (tray.owns_icon) {
-            _ = win32.DestroyIcon(tray.nid.hIcon);
+            _ = win32.DestroyIcon(tray.icon_data.hIcon);
         };
 
         const tip = "EVE-Maj Preview";
-        @memcpy(tray.nid.szTip[0..tip.len], tip);
-        tray.nid.szTip[tip.len] = 0;
+        @memcpy(tray.icon_data.szTip[0..tip.len], tip);
+        tray.icon_data.szTip[tip.len] = 0;
 
         tray.listenForTaskbarCreated();
         tray.show();
@@ -86,8 +141,8 @@ pub const TrayIcon = struct {
     }
 
     pub fn deinit(self: *TrayIcon) void {
-        if (self.is_shown) _ = win32.Shell_NotifyIconA(win32.NIM_DELETE, &self.nid);
-        if (self.owns_icon) _ = win32.DestroyIcon(self.nid.hIcon);
+        if (self.is_shown) _ = win32.Shell_NotifyIconA(win32.NIM_DELETE, &self.icon_data);
+        if (self.owns_icon) _ = win32.DestroyIcon(self.icon_data.hIcon);
         self.freeProfiles();
         slog.debug("System tray icon removed", .{});
     }
@@ -114,8 +169,8 @@ pub const TrayIcon = struct {
     /// NIM_MODIFY catches an add Explorer reported as failed but kept, which happens while it's busy at logon.
     fn show(self: *TrayIcon) void {
         self.last_show_attempt = win32.Ticks.now();
-        self.is_shown = win32.toBool(win32.Shell_NotifyIconA(win32.NIM_ADD, &self.nid)) or
-            win32.toBool(win32.Shell_NotifyIconA(win32.NIM_MODIFY, &self.nid));
+        self.is_shown = win32.toBool(win32.Shell_NotifyIconA(win32.NIM_ADD, &self.icon_data)) or
+            win32.toBool(win32.Shell_NotifyIconA(win32.NIM_MODIFY, &self.icon_data));
     }
 
     fn listenForTaskbarCreated(self: *TrayIcon) void {
@@ -167,41 +222,45 @@ pub const TrayIcon = struct {
         self.appendProfiles(app.io, profile_menu, config.profile_name);
 
         _ = win32.AppendMenuA(menu, win32.MF_POPUP, @intFromPtr(profile_menu), "Load Profile");
-        _ = win32.AppendMenuA(menu, win32.MF_STRING, win32.IDM_OPEN_CONFIG, "Open Configuration...");
+        _ = win32.AppendMenuA(menu, win32.MF_STRING, IDM_OPEN_CONFIG, "Open Configuration...");
         _ = win32.AppendMenuA(menu, win32.MF_SEPARATOR, 0, null);
 
-        const thumbnail_set = app.thumbnail_set;
-        appendChecked(menu, config.interaction.enableDragging, win32.IDM_TOGGLE_DRAGGING, "Enable Dragging");
-        appendChecked(menu, app.auto_minimizer.isEnabled(config), win32.IDM_TOGGLE_AUTO_MINIMIZE, "Enable Auto-Minimize");
-        appendChecked(menu, config.travel.enabled, win32.IDM_TOGGLE_TRAVEL_MODE, "Enable Travel Mode");
+        const thumbnail_set = app.rebuilt.thumbnail_set;
+        appendChecked(menu, config.interaction.enableDragging, IDM_TOGGLE_DRAGGING, "Enable Dragging");
+        appendChecked(menu, app.persistent.auto_minimizer.isEnabled(config), IDM_TOGGLE_AUTO_MINIMIZE, "Enable Auto-Minimize");
+        appendChecked(menu, config.travel.enabled, IDM_TOGGLE_TRAVEL_MODE, "Enable Travel Mode");
         if (config.display.viewMode == .Nothing) {
-            _ = win32.AppendMenuA(menu, win32.MF_STRING | win32.MF_GRAYED, win32.IDM_TOGGLE_VISIBILITY, "Show Thumbnails");
+            _ = win32.AppendMenuA(menu, win32.MF_STRING | win32.MF_GRAYED, IDM_TOGGLE_VISIBILITY, "Show Thumbnails");
         } else {
-            appendChecked(menu, if (thumbnail_set) |p| p.thumbnailsShown() else false, win32.IDM_TOGGLE_VISIBILITY, "Show Thumbnails");
+            appendChecked(menu, if (thumbnail_set) |p| p.thumbnailsShown() else false, IDM_TOGGLE_VISIBILITY, "Show Thumbnails");
         }
-        _ = win32.AppendMenuA(menu, win32.MF_STRING, win32.IDM_RESTORE_SAVED_POSITIONS, "Restore Saved Positions");
+        _ = win32.AppendMenuA(menu, win32.MF_STRING, IDM_RESTORE_SAVED_POSITIONS, "Restore Saved Positions");
         _ = win32.AppendMenuA(menu, win32.MF_SEPARATOR, 0, null);
 
-        appendChecked(menu, app.notifications.panel.isVisible(config, scout.anyCharacterLoggedIn(app.scout.getWindows())), win32.IDM_TOGGLE_NOTIF_HISTORY, "Show Notification History");
-        _ = win32.AppendMenuA(menu, win32.MF_STRING, win32.IDM_CLEAR_NOTIF_HISTORY, "Clear Notification History");
-        appendChecked(menu, alert_effects.isMuted(), win32.IDM_TOGGLE_ALERT_MUTE, "Mute Audio Alerts");
+        appendChecked(menu, app.persistent.notifications.panel.isVisible(config, scout.anyCharacterLoggedIn(app.scout.getWindows())), IDM_TOGGLE_NOTIFICATION_HISTORY, "Show Alert History");
+        _ = win32.AppendMenuA(menu, win32.MF_STRING, IDM_CLEAR_NOTIFICATION_HISTORY, "Clear Alert History");
+        appendChecked(menu, app.persistent.map_panel.isVisible(config, scout.anyCharacterLoggedIn(app.scout.getWindows())), IDM_TOGGLE_MAP_PANEL, "Show Map");
+        appendChecked(menu, app.isIntelPanelVisible(), IDM_TOGGLE_INTEL_PANEL, "Show Intel Panel");
+        appendChecked(menu, app.persistent.notifications.alert_effects.is_muted, IDM_TOGGLE_ALERT_MUTE, "Mute Audio Alerts");
         _ = win32.AppendMenuA(menu, win32.MF_SEPARATOR, 0, null);
 
-        if (app.hotkey_manager) |manager| {
-            appendChecked(menu, manager.areHotkeysSuspended(), win32.IDM_SUSPEND_HOTKEYS, "Suspend Hotkeys");
+        if (app.rebuilt.hotkey_manager) |manager| {
+            appendChecked(menu, manager.areHotkeysSuspended(), IDM_SUSPEND_HOTKEYS, "Suspend Hotkeys");
             _ = win32.AppendMenuA(menu, win32.MF_SEPARATOR, 0, null);
         }
 
         if (update.g_update_status.isAvailable(app.io)) {
-            _ = win32.AppendMenuA(menu, win32.MF_STRING, win32.IDM_UPDATE, "Update Available!");
+            _ = win32.AppendMenuA(menu, win32.MF_STRING, IDM_UPDATE, "Update Available!");
             _ = win32.AppendMenuA(menu, win32.MF_SEPARATOR, 0, null);
         }
 
-        _ = win32.AppendMenuA(menu, win32.MF_STRING, win32.IDM_CLOSE_ALL_CLIENTS, "Close All Clients");
-        self.appendGroupMenu(menu, config.hotkeyGroups.items, win32.IDM_MINIMIZE_GROUP_BASE, "Minimize Group");
-        self.appendGroupMenu(menu, config.hotkeyGroups.items, win32.IDM_CLOSE_GROUP_BASE, "Close Group");
+        _ = win32.AppendMenuA(menu, win32.MF_STRING, IDM_CLOSE_ALL_CLIENTS, "Close All Clients");
+        // The saved groups, which a group command runs against, as from a hotkey or link.
+        const saved_groups = app.store.saved.hotkeyGroups.items;
+        self.appendGroupMenu(menu, saved_groups, IDM_MINIMIZE_GROUP_BASE, "Minimize Group");
+        self.appendGroupMenu(menu, saved_groups, IDM_CLOSE_GROUP_BASE, "Close Group");
         _ = win32.AppendMenuA(menu, win32.MF_SEPARATOR, 0, null);
-        _ = win32.AppendMenuA(menu, win32.MF_STRING, win32.IDM_EXIT, "Exit");
+        _ = win32.AppendMenuA(menu, win32.MF_STRING, IDM_EXIT, "Exit");
 
         // Without this the menu stays open when clicking elsewhere.
         _ = win32.SetForegroundWindow(self.hwnd);
@@ -222,12 +281,12 @@ pub const TrayIcon = struct {
         }
         const shown = self.profiles.items[0..@min(self.profiles.items.len, MAX_PROFILE_ITEMS)];
         for (shown, 0..) |profile, i| {
-            const profile_z = self.allocator.dupeSentinel(u8, profile, 0) catch |err| {
+            const terminated_profile = self.allocator.dupeSentinel(u8, profile, 0) catch |err| {
                 slog.warn("Failed to copy profile name '{s}' for tray menu: {}", .{ profile, err });
                 continue;
             };
-            defer self.allocator.free(profile_z);
-            appendChecked(profile_menu, std.mem.eql(u8, profile, current_profile), win32.IDM_PROFILE_BASE + i, profile_z);
+            defer self.allocator.free(terminated_profile);
+            appendChecked(profile_menu, std.mem.eql(u8, profile, current_profile), IDM_PROFILE_BASE + i, terminated_profile);
         }
     }
 
@@ -244,19 +303,19 @@ pub const TrayIcon = struct {
         };
         for (groups[0..@min(groups.len, MAX_GROUP_ITEMS)], 0..) |*group, i| {
             var name_buf: [config_mod.HotkeyGroupConfig.DISPLAY_NAME_SIZE]u8 = undefined;
-            const name_z = self.allocator.dupeSentinel(u8, group.displayName(&name_buf, i), 0) catch |err| {
+            const terminated_name = self.allocator.dupeSentinel(u8, group.displayName(&name_buf, i), 0) catch |err| {
                 slog.warn("Failed to copy group name '{s}' for tray menu: {}", .{ group.name, err });
                 continue;
             };
-            defer self.allocator.free(name_z);
-            _ = win32.AppendMenuA(group_menu, win32.MF_STRING, id_base + i, name_z);
+            defer self.allocator.free(terminated_name);
+            _ = win32.AppendMenuA(group_menu, win32.MF_STRING, id_base + i, terminated_name);
         }
         _ = win32.AppendMenuA(menu, win32.MF_POPUP, @intFromPtr(group_menu), label);
     }
 
     pub fn handleMenuCommand(self: *const TrayIcon, command_id: u16, app: *App) void {
-        if (command_id >= win32.IDM_PROFILE_BASE and command_id < win32.IDM_PROFILE_BASE + MAX_PROFILE_ITEMS) {
-            const index = command_id - win32.IDM_PROFILE_BASE;
+        if (command_id >= IDM_PROFILE_BASE and command_id < IDM_PROFILE_BASE + MAX_PROFILE_ITEMS) {
+            const index = command_id - IDM_PROFILE_BASE;
             if (index >= self.profiles.items.len) return;
             slog.info("Profile selected from menu: {s}", .{self.profiles.items[index]});
             app.requestProfileSwitch(self.profiles.items[index]);
@@ -264,56 +323,26 @@ pub const TrayIcon = struct {
         }
         if (groupCommand(command_id)) |command| {
             slog.info("Group {s} requested from system tray", .{@tagName(command.action)});
-            actions.applyToGroup(app.scout.getWindows(), &app.store.live, app.store.live.hotkeyGroups.items, command.group_index, command.action);
+            app.runHotkeyOutcome(app.commands().runGroupAt(command.action, command.group_index, app.rebuilt.thumbnail_set));
             return;
         }
 
-        const config = &app.store.live;
+        if (globalAction(command_id)) |action| {
+            slog.info("Running {s} from the system tray", .{@tagName(action)});
+            app.runHotkeyOutcome(app.commands().runGlobal(action, app.rebuilt.thumbnail_set));
+            return;
+        }
+
         switch (command_id) {
-            win32.IDM_EXIT => {
+            IDM_EXIT => {
                 slog.info("Exit requested from system tray", .{});
                 app_mod.requestExit();
             },
-            win32.IDM_OPEN_CONFIG => {
+            IDM_OPEN_CONFIG => {
                 slog.info("Opening configuration dialog from system tray", .{});
                 knots_host.open();
             },
-            win32.IDM_TOGGLE_DRAGGING => app.toggleDragging(),
-            win32.IDM_TOGGLE_AUTO_MINIMIZE => app.toggleAutoMinimize(),
-            win32.IDM_TOGGLE_TRAVEL_MODE => app.toggleTravelMode(),
-            win32.IDM_TOGGLE_VISIBILITY => {
-                slog.info("Toggle visibility requested from system tray", .{});
-                const thumbnail_set = app.thumbnail_set orelse {
-                    slog.err("Failed to toggle visibility: the thumbnail set isn't ready", .{});
-                    return;
-                };
-                thumbnail_set.toggleAllThumbnailsVisibility();
-            },
-            win32.IDM_TOGGLE_NOTIF_HISTORY => {
-                slog.info("Toggle history panel requested from system tray", .{});
-                app.toggleNotificationHistory();
-            },
-            win32.IDM_CLEAR_NOTIF_HISTORY => {
-                slog.info("Clear notification history requested from system tray", .{});
-                app.notifications.history.clear();
-            },
-            win32.IDM_TOGGLE_ALERT_MUTE => alert_effects.toggleMuted(),
-            win32.IDM_SUSPEND_HOTKEYS => {
-                if (app.hotkey_manager) |manager| manager.runGlobalAction(.suspend_hotkeys);
-            },
-            win32.IDM_RESTORE_SAVED_POSITIONS => {
-                slog.info("Restore saved positions requested from system tray", .{});
-                const manager = app.hotkey_manager orelse {
-                    slog.err("Failed to restore saved positions: the hotkey manager isn't ready", .{});
-                    return;
-                };
-                manager.runGlobalAction(.move_to_saved_positions);
-            },
-            win32.IDM_CLOSE_ALL_CLIENTS => {
-                slog.info("Close all clients requested from system tray", .{});
-                actions.closeAllClients(app.scout.getWindows(), config, &app.exclusions);
-            },
-            win32.IDM_UPDATE => {
+            IDM_UPDATE => {
                 slog.info("Opening releases page from tray menu", .{});
                 update.openReleasesPage(app.io);
             },
@@ -322,13 +351,21 @@ pub const TrayIcon = struct {
     }
 };
 
+/// Null for the items the tray handles itself.
+fn globalAction(command_id: u16) ?url.GlobalAction {
+    for (MENU_ACTIONS) |item| {
+        if (item.id == command_id) return item.action;
+    }
+    return null;
+}
+
 /// Null when `command_id` is outside both group submenus' ranges.
 fn groupCommand(command_id: u16) ?GroupCommand {
-    if (command_id >= win32.IDM_MINIMIZE_GROUP_BASE and command_id < win32.IDM_MINIMIZE_GROUP_BASE + MAX_GROUP_ITEMS) {
-        return .{ .group_index = command_id - win32.IDM_MINIMIZE_GROUP_BASE, .action = .minimize };
+    if (command_id >= IDM_MINIMIZE_GROUP_BASE and command_id < IDM_MINIMIZE_GROUP_BASE + MAX_GROUP_ITEMS) {
+        return .{ .group_index = command_id - IDM_MINIMIZE_GROUP_BASE, .action = .minimize };
     }
-    if (command_id >= win32.IDM_CLOSE_GROUP_BASE and command_id < win32.IDM_CLOSE_GROUP_BASE + MAX_GROUP_ITEMS) {
-        return .{ .group_index = command_id - win32.IDM_CLOSE_GROUP_BASE, .action = .close };
+    if (command_id >= IDM_CLOSE_GROUP_BASE and command_id < IDM_CLOSE_GROUP_BASE + MAX_GROUP_ITEMS) {
+        return .{ .group_index = command_id - IDM_CLOSE_GROUP_BASE, .action = .close };
     }
     return null;
 }

@@ -1,0 +1,14 @@
+diff --git a/lib/accesskit/build.zig.zon b/lib/accesskit/build.zig.zon
+index 8d6b4fd..86ce292 100644
+--- a/lib/accesskit/build.zig.zon
++++ b/lib/accesskit/build.zig.zon
+@@ -1,7 +1,8 @@
+ .{
+     .name = .accesskit,
+     .version = "0.23.0",
+-    .minimum_zig_version = "0.17.0",
++    // EVE-Maj patch: matches the app's minimum.
++    .minimum_zig_version = "0.17.1",
+     .dependencies = .{
+         .release = .{
+             .url = "https://github.com/AccessKit/accesskit-c/releases/download/0.23.0/accesskit-c-0.23.0.zip",

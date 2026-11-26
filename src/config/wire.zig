@@ -2,6 +2,7 @@
 const std = @import("std");
 const key_list = @import("key_list.zig");
 const readable = @import("readable.zig");
+const field_strings = @import("field_strings.zig");
 const log = @import("../log.zig");
 
 const KeyList = key_list.KeyList;
@@ -159,7 +160,7 @@ pub fn freeField(comptime T: type, value: *T, default: ?T, allocator: std.mem.Al
     } else if (comptime ListItem(T)) |Item| {
         freeList(Item, value, allocator);
     } else if (T == []const u8) {
-        freeOwnedString(allocator, value.*, default orelse "");
+        if (field_strings.isOwned(value.*, default orelse "")) allocator.free(value.*);
     } else if (T == ?[]const u8) {
         if (value.*) |s| allocator.free(s);
     }
@@ -244,7 +245,8 @@ pub fn clone(comptime T: type, value: T, allocator: std.mem.Allocator) !T {
     return out;
 }
 
-/// `out` must hold its defaults, and on failure holds only what was copied, for `deinit`; runtime fields without pointers (a list item's id) are copied, and the caller sets the rest.
+/// Runtime fields without pointers, like a list item's id, are copied; the caller sets the rest.
+/// `out`: holds its defaults, and on failure only what was copied, for `deinit`.
 pub fn cloneInto(comptime R: type, value: *const R, allocator: std.mem.Allocator, out: *R) !void {
     const info = @typeInfo(R).@"struct";
     inline for (info.field_names, info.field_types) |name, F| {
@@ -280,7 +282,7 @@ pub fn parseMigrated(comptime T: type, allocator: std.mem.Allocator, json_text: 
     var tree = try std.json.parseFromSlice(std.json.Value, allocator, json_text, .{ .duplicate_field_behavior = .use_last });
     defer tree.deinit();
 
-    var scratch = std.heap.ArenaAllocator.init(allocator);
+    var scratch: std.heap.ArenaAllocator = .init(allocator);
     defer scratch.deinit();
     if (migrate) |upgrade| try upgrade(scratch.allocator(), &tree.value);
     if (!readable.dropUnreadable(T, scratch.allocator(), &tree.value, null)) return error.UnexpectedToken;
@@ -289,7 +291,7 @@ pub fn parseMigrated(comptime T: type, allocator: std.mem.Allocator, json_text: 
 
 /// The indented JSON of `settings.toWire(arena)`, as saved to disk; caller owns the result.
 pub fn toJsonAlloc(allocator: std.mem.Allocator, settings: anytype) ![]u8 {
-    var arena = std.heap.ArenaAllocator.init(allocator);
+    var arena: std.heap.ArenaAllocator = .init(allocator);
     defer arena.deinit();
     const saved = try settings.toWire(arena.allocator());
     return std.json.Stringify.valueAlloc(allocator, saved, .{
@@ -384,18 +386,22 @@ fn cloneField(comptime T: type, value: T, allocator: std.mem.Allocator) !T {
         for (value.items) |item| list.appendAssumeCapacity(try cloneField(Item, item, allocator));
         return list;
     }
-    // Empty stays a literal, which freeOwnedString skips.
+    // Empty stays a literal, which freeField skips.
     if (T == []const u8) return if (value.len == 0) "" else try allocator.dupe(u8, value);
     if (T == ?[]const u8) return if (value) |s| try allocator.dupe(u8, s) else null;
     if (comptime hasPointers(T)) @compileError(@typeName(T) ++ " holds pointers, so it needs its own clone to avoid sharing them");
     return value;
 }
 
-fn freeOwnedString(allocator: std.mem.Allocator, text: []const u8, default: []const u8) void {
-    if (text.len != 0 and text.ptr != default.ptr) allocator.free(text);
-}
-
 const testing = std.testing;
+
+const TestWire = struct {
+    size: i32 = 5,
+    mode: enum { a, b } = .a,
+    color: Argb = .{ .value = 1 },
+    names: []const []const u8 = &.{},
+    inner: struct { x: i32 = 1, y: i32 = 2 } = .{},
+};
 
 test "parseHexColor reads 0x, # and bare hex" {
     try testing.expectEqual(@as(u32, 0xFF112233), try parseHexColor("0xFF112233"));
@@ -410,14 +416,6 @@ test "parseHexColor rejects short and non-hex input" {
     try testing.expectError(error.InvalidColorFormat, parseHexColor("0xZZZ"));
     try testing.expectError(error.InvalidColorFormat, parseHexColor("0x1FFFFFFFF"));
 }
-
-const TestWire = struct {
-    size: i32 = 5,
-    mode: enum { a, b } = .a,
-    color: Argb = .{ .value = 1 },
-    names: []const []const u8 = &.{},
-    inner: struct { x: i32 = 1, y: i32 = 2 } = .{},
-};
 
 test "parse keeps each readable setting and defaults the ones that aren't" {
     const json =

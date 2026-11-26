@@ -65,6 +65,13 @@ pub fn applyHoverCursor() bool {
 pub fn windowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
     switch (msg) {
         win32.WM_ACTIVATE => raiseTextOverlay(hwnd),
+        // The hover zoom shares the class but isn't a thumbnail, so it keeps the class's black brush.
+        win32.WM_ERASEBKGND => if (wParam != 0) {
+            const thumbnail_set = app.currentThumbnailSet() orelse return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
+            const thumbnail = thumbnail_set.getThumbnailByOverlayHwnd(hwnd) orelse return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
+            thumbnail.fillBackground(@ptrFromInt(wParam));
+            return 1;
+        },
         win32.WM_DPICHANGED => {
             // Position only; resizeThumbnailIfNeeded re-derives the size from our own scale formula.
             const suggested = win32.lparamToPtr(win32.RECT, lParam);
@@ -109,7 +116,7 @@ fn raiseTextOverlay(hwnd: win32.HWND) void {
         return;
     };
     if (app.currentThumbnailSet()) |thumbnail_set| {
-        hdwp = thumbnail_set.renderer.hover_zoom.deferRaise(hdwp) orelse {
+        hdwp = thumbnail_set.deferRaiseHoverZoom(hdwp) orelse {
             slog.debug("Failed to raise the hover zoom with the text overlay", .{});
             return;
         };
@@ -118,7 +125,7 @@ fn raiseTextOverlay(hwnd: win32.HWND) void {
 }
 
 fn handleThumbnailShiftClick(running: *app.App, source_hwnd: win32.HWND) void {
-    const thumbnail_set = running.thumbnail_set orelse return;
+    const thumbnail_set = running.rebuilt.thumbnail_set orelse return;
 
     if (!thumbnail_set.config.exclusion.enableShiftClickExclude) {
         // A plain click rather than swallowing the input.
@@ -126,7 +133,9 @@ fn handleThumbnailShiftClick(running: *app.App, source_hwnd: win32.HWND) void {
         return;
     }
 
-    if (running.hotkey_manager) |manager| membership.toggleThumbnailExclusion(manager, source_hwnd);
+    membership.toggleExclusion(&running.commands(), source_hwnd);
+    // Now rather than on the next tick, so the exclusion shows at once.
+    thumbnail_set.renderDirtyThumbnails(null);
 }
 
 fn dispatchClick(source_hwnd: win32.HWND, is_shift_pressed: bool) void {
@@ -152,7 +161,7 @@ fn handleMouseMove(hwnd: win32.HWND) void {
 
     // Re-armed on every move, since the cursor crosses between the thumbnail and its text overlay.
     if (!win32.trackMouseLeave(hwnd)) slog.debug("Failed to track mouse leave for '{s}'", .{thumbnail.character_name});
-    thumbnail_set.renderer.hover_zoom.show(thumbnail_set.instance, &thumbnail_set.renderer.font_cache, thumbnail, thumbnail_set.config);
+    thumbnail_set.showHoverZoom(thumbnail);
 }
 
 /// Messages the thumbnail and its text overlay handle identically; null for anything else.
@@ -161,7 +170,8 @@ fn handleSharedMessage(hwnd: win32.HWND, msg: win32.UINT, lParam: win32.LPARAM, 
         win32.WM_LBUTTONDOWN => handleLButtonDown(hwnd),
         win32.WM_LBUTTONUP => release(hwnd),
         win32.WM_RBUTTONDOWN => if (app.currentThumbnailSet()) |thumbnail_set| thumbnail_drag.start(thumbnail_set, hwnd, lParam),
-        win32.WM_RBUTTONUP => {
+        // Capture lost mid-drag, e.g. to UAC or Win+L, ends it where it got to; end ignores the one ReleaseCapture sends.
+        win32.WM_RBUTTONUP, win32.WM_CAPTURECHANGED => {
             // A drag started on the text overlay still saves the thumbnail's position.
             const thumbnail_hwnd = (if (is_text_overlay) win32.linkedWindow(hwnd) else hwnd) orelse return 0;
             const thumbnail_set = app.currentThumbnailSet() orelse return 0;

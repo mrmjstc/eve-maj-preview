@@ -3,6 +3,7 @@ const std = @import("std");
 const values = @import("values.zig");
 const draft_mod = @import("draft.zig");
 const config = @import("../../config.zig");
+const legacy_dpi = @import("../legacy_dpi.zig");
 
 const Value = std.json.Value;
 const Draft = draft_mod.Draft;
@@ -86,7 +87,7 @@ pub fn defaultProfile(root: Value) ?[]const u8 {
 }
 
 pub fn sections(draft: *Draft, root: Value, profile_name: []const u8) ![]const Section {
-    const source = Source.init(root, profile_name);
+    const source: Source = .init(root, profile_name);
     const position_count = countPositions(values.objectAt(source.profile, "Thumbnail Positions"));
     const color_count = if (source.areColorsActive()) countNames(values.arrayAt(source.customColors(), "CharNames")) else 0;
     const hotkey_count = countHotkeys(source.characterHotkeys());
@@ -115,7 +116,10 @@ pub fn sections(draft: *Draft, root: Value, profile_name: []const u8) ![]const S
 }
 
 pub fn colorsHint(draft: *Draft, color_count: usize, hotkey_count: usize) !draft_mod.Text {
-    return draft.text("{colors} custom color(s), {hotkeys} character hotkey(s)", &.{ .{ .name = "colors", .value = try draft.format(color_count) }, .{ .name = "hotkeys", .value = try draft.format(hotkey_count) } });
+    return draft.text("{colors} custom color(s), {hotkeys} character hotkey(s)", &.{
+        .{ .name = "colors", .value = try draft.format(color_count) },
+        .{ .name = "hotkeys", .value = try draft.format(hotkey_count) },
+    });
 }
 
 pub fn hasText(text: ?[]const u8) bool {
@@ -124,7 +128,7 @@ pub fn hasText(text: ?[]const u8) bool {
 }
 
 pub fn build(draft: *Draft, root: Value, profile_name: []const u8, chosen: []const []const u8) !void {
-    const source = Source.init(root, profile_name);
+    const source: Source = .init(root, profile_name);
     if (draft_mod.isChosen(chosen, "thumbnailAppearance")) try appearance(draft, source);
     if (draft_mod.isChosen(chosen, "characterPositions")) try characterPositions(draft, source);
     if (draft_mod.isChosen(chosen, "characterColorsHotkeys")) try colorsAndHotkeys(draft, source);
@@ -138,7 +142,7 @@ pub fn build(draft: *Draft, root: Value, profile_name: []const u8, chosen: []con
 /// EVE-X ran DPI-unaware, so its positions are in a 96-DPI space Windows scaled for it.
 pub fn putPosition(draft: *Draft, character: *std.json.ObjectMap, x: f64, y: f64) !void {
     const legacy: config.Position = .{ .x = std.math.lossyCast(i32, @round(x)), .y = std.math.lossyCast(i32, @round(y)) };
-    const position = legacy.scaleFromLegacyDpiUnaware();
+    const position = legacy_dpi.scalePosition(legacy);
     try draft.put(character, "position.x", .{ .integer = position.x });
     try draft.put(character, "position.y", .{ .integer = position.y });
 }
@@ -352,4 +356,54 @@ fn chatlog(draft: *Draft, source: Source) !void {
 fn setDirectory(draft: *Draft, path: []const u8, raw: ?[]const u8) !void {
     if (!hasText(raw)) return;
     try draft.setString(path, std.mem.trim(u8, raw.?, " \t"));
+}
+
+const testing = std.testing;
+
+fn parseTestObject(arena: std.mem.Allocator, text: []const u8) !Value {
+    return std.json.parseFromSliceLeaky(Value, arena, text, .{});
+}
+
+test "defaultProfile takes LastUsedProfile from global_Settings, or the top level in version 3" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const older = try parseTestObject(arena,
+        \\{"global_Settings":{"LastUsedProfile":"Mining"},"_Profiles":{"Default":{},"Mining":{}}}
+    );
+    try testing.expectEqualStrings("Mining", defaultProfile(older).?);
+    const version_3 = try parseTestObject(arena,
+        \\{"LastUsedProfile":"PvP","_Profiles":{"Default":{},"PvP":{}}}
+    );
+    try testing.expectEqualStrings("PvP", defaultProfile(version_3).?);
+}
+
+test "defaultProfile falls back to the first profile when the last used one is gone" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const root = try parseTestObject(arena,
+        \\{"LastUsedProfile":"Deleted","_Profiles":{"Default":{},"Mining":{}}}
+    );
+    try testing.expectEqualStrings("Default", defaultProfile(root).?);
+    try testing.expect(defaultProfile(try parseTestObject(arena, "{\"_Profiles\":{}}")) == null);
+    try testing.expect(defaultProfile(try parseTestObject(arena, "{}")) == null);
+}
+
+test "countHotkeys and countPositions skip placeholder names" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const root = try parseTestObject(arena,
+        \\{"Hotkeys":[{"Pilot A":"F1"},{"Example Name1":"F2","Pilot B":"^F3"}],
+        \\ "Positions":{"Pilot A":{},"EVE":{},"Cycle Group 1":{}}}
+    );
+    try testing.expectEqual(@as(usize, 2), countHotkeys(values.arrayAt(root, "Hotkeys")));
+    try testing.expectEqual(@as(usize, 1), countPositions(values.objectAt(root, "Positions")));
+}
+
+test "hasText is false for null and whitespace" {
+    try testing.expect(hasText("F1"));
+    try testing.expect(!hasText(" \t"));
+    try testing.expect(!hasText(null));
 }

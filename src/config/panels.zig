@@ -1,0 +1,278 @@
+//! Client List, History Panel, Map Panel and Intel Panel settings, each its own profile section.
+const std = @import("std");
+const types = @import("types.zig");
+const activity = @import("activity.zig");
+const wire = @import("wire.zig");
+const ranges_mod = @import("ranges.zig");
+
+const SCREEN_X = ranges_mod.SCREEN_X;
+const SCREEN_Y = ranges_mod.SCREEN_Y;
+const HIDE_DEBOUNCE_MS = .{ 0, 5000 };
+const MERGE_WINDOW_SEC = .{ 1, 300 };
+
+pub const ListViewConfig = struct {
+    x: i32 = 10,
+    y: i32 = 10,
+    order: types.ListViewOrder = .ConfiguredCharacters,
+    /// Folded to its header by the header's chevron.
+    collapsed: bool = false,
+    /// Rows under a heading per system, from the panel's menu.
+    groupBySystem: bool = false,
+    /// Its header no longer drags it.
+    lockPosition: bool = false,
+    rememberPosition: bool = true,
+    alwaysOnTop: bool = true,
+    opacity: u8 = 255,
+    columns: u32 = 1,
+    columnWidth: i32 = 230,
+    fontName: []const u8 = types.DEFAULT_FONT,
+    fontSize: i32 = types.DEFAULT_FONT_SIZE,
+    fontWeight: types.FontWeight = .Regular,
+    indicatorStyle: types.ListIndicatorStyle = .Dot,
+    showSystemName: bool = true,
+    /// Beside each system's name, in EVE's security colours.
+    showSystemSecurity: bool = false,
+    systemNameColor: u32 = 0xFF8B8F96,
+    useUniqueSystemColors: bool = false,
+    useUniqueCharacterNameColors: bool = false,
+    /// The active client's dot, row tint and name; null follows accentColor, see Config.listActiveColor.
+    activeColor: ?u32 = null,
+    useUniqueActiveColors: bool = false,
+    showNotifications: bool = true,
+    /// A notification type without a text colour of its own uses this.
+    notificationColor: u32 = 0xFFFFFFFF,
+    showIncomingDps: bool = false,
+    showIncomingPrefix: bool = true,
+    incomingDpsColor: u32 = activity.INCOMING_COLOR,
+    showOutgoingDps: bool = false,
+    showOutgoingPrefix: bool = true,
+    outgoingDpsColor: u32 = activity.OUTGOING_COLOR,
+    showMiningRate: bool = false,
+    showMiningPrefix: bool = true,
+    miningRateColor: u32 = activity.MINING_COLOR,
+    showBountyRate: bool = false,
+    showBountyPrefix: bool = true,
+    bountyRateColor: u32 = activity.BOUNTY_COLOR,
+    /// A line under the rows adding up their shown rates.
+    showTotals: bool = false,
+    hideWhenNoEveFocus: bool = false,
+    hideDebounceMs: u32 = 500,
+
+    pub const ranges = .{
+        .x = SCREEN_X,
+        .y = SCREEN_Y,
+        .columns = .{ 1, 6 },
+        .columnWidth = .{ 120, 500 },
+        .fontSize = ranges_mod.FONT_SIZE,
+        .opacity = ranges_mod.OPACITY,
+        .hideDebounceMs = HIDE_DEBOUNCE_MS,
+    };
+
+    pub fn validate(self: *ListViewConfig) void {
+        ranges_mod.clamp(ListViewConfig, self);
+    }
+
+    pub const Wire = wire.Wire(ListViewConfig);
+};
+
+/// The panel listing recent notifications.
+pub const HistoryPanelConfig = struct {
+    show: bool = false,
+    x: i32 = 10,
+    y: i32 = 250,
+    width: i32 = 300,
+    height: i32 = 400,
+    /// Folded to its header by the header's chevron.
+    collapsed: bool = false,
+    /// Its header no longer drags it.
+    lockPosition: bool = false,
+    rememberPosition: bool = true,
+    alwaysOnTop: bool = true,
+    hideWhenNoCharacters: bool = true,
+    hideWhenNoEveFocus: bool = false,
+    hideDebounceMs: u32 = 500,
+    opacity: u8 = 255,
+    fontName: []const u8 = types.DEFAULT_FONT,
+    fontSize: i32 = types.DEFAULT_FONT_SIZE,
+    fontWeight: types.FontWeight = .Regular,
+    maxRows: i32 = 15,
+    showTimestamp: bool = false,
+    mergeEnabled: bool = false,
+    mergeWindowSec: i32 = 10,
+    showCategoryFilters: bool = true,
+    showFleet: bool = true,
+    showMining: bool = true,
+    showCombat: bool = true,
+    showNavigation: bool = true,
+    showChat: bool = true,
+    showGeneral: bool = true,
+
+    pub const MAX_ROWS = .{ 1, 30 };
+
+    pub const ranges = .{
+        .x = SCREEN_X,
+        .y = SCREEN_Y,
+        .width = .{ 100, ranges_mod.MAX_WINDOW_WIDTH },
+        .height = .{ 60, ranges_mod.MAX_WINDOW_HEIGHT },
+        .maxRows = MAX_ROWS,
+        .mergeWindowSec = MERGE_WINDOW_SEC,
+        .fontSize = ranges_mod.FONT_SIZE,
+        .opacity = ranges_mod.OPACITY,
+        .hideDebounceMs = HIDE_DEBOUNCE_MS,
+    };
+
+    pub fn validate(self: *HistoryPanelConfig) void {
+        ranges_mod.clamp(HistoryPanelConfig, self);
+    }
+
+    pub const Wire = wire.Wire(HistoryPanelConfig);
+};
+
+pub const MapPanelConfig = struct {
+    show: bool = false,
+    x: i32 = 330,
+    y: i32 = 60,
+    width: i32 = 760,
+    height: i32 = 600,
+    /// Keeps the map's window above others, game clients included.
+    alwaysOnTop: bool = true,
+    /// Its title bar no longer drags it.
+    lockPosition: bool = false,
+    rememberPosition: bool = true,
+    hideWhenNoCharacters: bool = false,
+    hideWhenNoEveFocus: bool = false,
+    hideDebounceMs: u32 = 500,
+    opacity: u8 = 255,
+    /// For the names on the map; its cards, buttons and tooltips use the configuration window's font.
+    fontName: []const u8 = types.DEFAULT_FONT,
+    fontSize: i32 = types.DEFAULT_FONT_SIZE,
+    fontWeight: types.FontWeight = .Regular,
+    /// The first region shown, by CCP's ID, which outlasts a map update; The Forge by default.
+    regionId: u32 = 10000002,
+    /// A second region shown beside regionId, by CCP's ID; 0 for none.
+    extraRegionId1: u32 = 0,
+    /// A third region shown, by CCP's ID; 0 for none.
+    extraRegionId2: u32 = 0,
+    /// A fourth region shown, by CCP's ID; 0 for none.
+    extraRegionId3: u32 = 0,
+    /// Opens the active client's region whenever it leaves those shown.
+    followActive: bool = true,
+    /// Scrolling out past the fit opens New Eden; its title and the zoom-out button do either way.
+    wheelOpensNewEden: bool = true,
+    metric: types.MapMetric = .Security,
+    /// Eve Stars sums the longer spans; without a token the map shows ESI's last hour whatever this holds.
+    trafficSpan: types.TrafficSpan = .Hour,
+    /// Names the characters in a system beside it, as well as ringing it.
+    showCharacterNames: bool = true,
+    /// Asks ESI and EVE-Scout, and with a token Eve Stars, for the map's figures while the panel shows.
+    liveStats: bool = true,
+    /// Off only hides them; liveStats is what fetches them.
+    showStorms: bool = true,
+    /// Off only hides them; liveStats is what fetches them.
+    showIncursions: bool = true,
+    /// Off only hides them; liveStats is what fetches them.
+    showSovTimers: bool = true,
+    /// Thera's and Turnur's connections; off only hides them, and liveStats is what fetches them.
+    showWormholes: bool = true,
+    /// The Eve Stars account's Ansiblex gates; fetched only while shown, with a token.
+    showAnsiblex: bool = true,
+    /// zKillboard's live kills, followed only while shown.
+    showKills: bool = true,
+    /// How long a kill stays on the map and in the Kills list.
+    killLifetimeMin: i32 = 30,
+    /// Off only hides the pins, so turning it back on shows those still live.
+    showIntel: bool = true,
+    routePreference: types.RoutePreference = .Shorter,
+    /// Plans routes through the Eve Stars account's Ansiblex gates.
+    routeAnsiblex: bool = false,
+    /// Sets every system on a route as a waypoint, so the game's autopilot settings can't change the way it flies.
+    routeEveryWaypoint: bool = false,
+    /// With routeAnsiblex: refuses gates landing within 5 ly of their alliance's capital.
+    routeAvoidZone1: bool = false,
+    /// With routeAnsiblex: refuses gates landing 5 to 10 ly from their alliance's capital.
+    routeAvoidZone2: bool = false,
+    /// With routeAnsiblex: refuses gates landing 10 to 15 ly from their alliance's capital.
+    routeAvoidZone3: bool = false,
+    /// With routeAnsiblex: refuses gates landing 15 to 20 ly from their alliance's capital.
+    routeAvoidZone4: bool = false,
+    /// With routeAnsiblex: refuses gates landing over 20 ly from their alliance's capital.
+    routeAvoidZone5: bool = false,
+
+    /// Also the smallest the map's window can be dragged to; the bars along the bottom keep clear of the zoom controls.
+    pub const MIN_WIDTH = 520;
+    /// Also the smallest the map's window can be dragged to; the Intel card's least rows keep clear of the map controls.
+    pub const MIN_HEIGHT = 330;
+
+    pub const ranges = .{
+        .x = SCREEN_X,
+        .y = SCREEN_Y,
+        .width = .{ MIN_WIDTH, ranges_mod.MAX_WINDOW_WIDTH },
+        .height = .{ MIN_HEIGHT, ranges_mod.MAX_WINDOW_HEIGHT },
+        .fontSize = ranges_mod.FONT_SIZE,
+        .opacity = ranges_mod.OPACITY,
+        .killLifetimeMin = .{ 1, 120 },
+        .hideDebounceMs = HIDE_DEBOUNCE_MS,
+    };
+
+    pub fn validate(self: *MapPanelConfig) void {
+        ranges_mod.clamp(MapPanelConfig, self);
+    }
+
+    pub fn killLifetimeSeconds(self: *const MapPanelConfig) i64 {
+        return @as(i64, @max(1, self.killLifetimeMin)) * std.time.s_per_min;
+    }
+
+    pub const Wire = wire.Wire(MapPanelConfig);
+};
+
+pub const IntelPanelConfig = struct {
+    show: bool = false,
+    /// Draws it as a card inside the Map Panel, which then decides its size, position and when it shows.
+    attached: bool = true,
+    x: i32 = 1100,
+    y: i32 = 60,
+    width: i32 = 340,
+    /// While detached.
+    height: i32 = 400,
+    /// Folded to its header by the header's chevron, while detached.
+    collapsed: bool = false,
+    /// Its header no longer drags it, while detached.
+    lockPosition: bool = false,
+    rememberPosition: bool = true,
+    /// While detached; inside the map it follows mapPanel.alwaysOnTop.
+    alwaysOnTop: bool = true,
+    hideWhenNoCharacters: bool = false,
+    hideWhenNoEveFocus: bool = false,
+    hideDebounceMs: u32 = 500,
+    opacity: u8 = 255,
+    /// While detached; the map's Intel card uses the configuration window's font.
+    fontName: []const u8 = types.DEFAULT_FONT,
+    fontSize: i32 = types.DEFAULT_FONT_SIZE,
+    fontWeight: types.FontWeight = .Regular,
+    showTimestamp: bool = false,
+    mergeEnabled: bool = false,
+    mergeWindowSec: i32 = 10,
+    /// Draws each row's system in its name colour, whatever the chat rule's color_system_name says.
+    colorSystemNames: bool = true,
+    /// Set by the range filter over the rows.
+    range: types.IntelRange = .All,
+    /// Silences intel alerts' sounds and speech, from the header's speaker.
+    muteSounds: bool = false,
+
+    pub const ranges = .{
+        .x = SCREEN_X,
+        .y = SCREEN_Y,
+        .width = .{ 160, ranges_mod.MAX_WINDOW_WIDTH },
+        .height = .{ 120, ranges_mod.MAX_WINDOW_HEIGHT },
+        .mergeWindowSec = MERGE_WINDOW_SEC,
+        .fontSize = ranges_mod.FONT_SIZE,
+        .hideDebounceMs = HIDE_DEBOUNCE_MS,
+        .opacity = ranges_mod.OPACITY,
+    };
+
+    pub fn validate(self: *IntelPanelConfig) void {
+        ranges_mod.clamp(IntelPanelConfig, self);
+    }
+
+    pub const Wire = wire.Wire(IntelPanelConfig);
+};

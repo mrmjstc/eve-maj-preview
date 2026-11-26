@@ -14,13 +14,16 @@ pub const ProfileStore = struct {
     live: Config,
     saved: Config,
     io: std.Io,
+    /// Shared by both copies, so a character takes the same id in each.
+    ids: patch_mod.Ids = .{},
 
     /// Takes ownership of `config`, freeing it on failure.
     pub fn init(config: Config, io: std.Io) !ProfileStore {
         var live = config;
         errdefer live.deinit();
-        patch_mod.assignIds(Config, &live);
-        return .{ .live = live, .saved = try live.clone(live.allocator), .io = io };
+        var ids: patch_mod.Ids = .{};
+        patch_mod.assignIds(Config, &live, &ids);
+        return .{ .live = live, .saved = try live.clone(live.allocator), .io = io, .ids = ids };
     }
 
     pub fn deinit(self: *ProfileStore) void {
@@ -28,78 +31,66 @@ pub const ProfileStore = struct {
         self.saved.deinit();
     }
 
-    /// A runtime change (drag, tray or panel toggle) saved to both copies, which Save and Discard can't undo; `patch` mirrors Config's nesting, e.g. `.{ .display = .{ .startX = 10 } }`.
+    /// A runtime change, e.g. a drag or a toggle, saved to both copies so Save and Discard can't undo it.
+    /// `patch`: mirrors Config's nesting, e.g. `.{ .display = .{ .startX = 10 } }`.
     pub fn update(self: *ProfileStore, patch: anytype) void {
         assign(Config, &self.live, patch);
         assign(Config, &self.saved, patch);
         self.persist();
     }
 
+    /// update for the Config field `section` names; `patch` mirrors that section, e.g. `.{ .collapsed = true }`.
+    pub fn updateSection(self: *ProfileStore, comptime section: []const u8, patch: anytype) void {
+        assign(@FieldType(Config, section), &@field(self.live, section), patch);
+        assign(@FieldType(Config, section), &@field(self.saved, section), patch);
+        self.persist();
+    }
+
+    /// Live only and unsaved, for a drag whose last step is an updateSection; `patch` is as updateSection's.
+    pub fn previewSection(self: *ProfileStore, comptime section: []const u8, patch: anytype) void {
+        assign(@FieldType(Config, section), &@field(self.live, section), patch);
+    }
+
     pub const CharacterPosition = struct { name: []const u8, position: config_mod.Position };
 
     /// Saved once for the whole batch, so a group drag writes the profile once rather than per thumbnail.
     pub fn setCharacterPositions(self: *ProfileStore, entries: []const CharacterPosition) void {
-        for (entries) |entry| {
-            setPosition(&self.live, entry) catch |err| {
-                slog.err("Failed to add '{s}' to profile '{s}' for its position: {}", .{ entry.name, self.live.profile_name, err });
-                continue;
-            };
-            setPosition(&self.saved, entry) catch |err| {
-                slog.err("Failed to add '{s}' to profile '{s}' for its position: {}", .{ entry.name, self.saved.profile_name, err });
-                continue;
-            };
-        }
-        // A character this created needs an id, which the config dialog tracks it by.
-        patch_mod.assignIds(Config, &self.live);
+        setCharacterPositionsInBoth(&self.live, &self.saved, &self.ids, entries);
         self.persist();
-    }
-
-    fn setPosition(config: *Config, entry: CharacterPosition) !void {
-        const character = try config.getOrCreateCharacter(entry.name);
-        character.position = entry.position;
     }
 
     /// A null name sets every character's; clearing a missing character is a no-op.
     pub fn setWindowPosition(self: *ProfileStore, character_name: ?[]const u8, position: ?config_mod.Position, size: ?config_mod.WindowSize) !void {
-        try applyWindowPosition(&self.live, character_name, position, size);
-        try applyWindowPosition(&self.saved, character_name, position, size);
-        // A character this created needs an id, which the config dialog tracks it by.
-        patch_mod.assignIds(Config, &self.live);
+        try setWindowPositionInBoth(&self.live, &self.saved, &self.ids, character_name, position, size);
         self.persist();
     }
 
     /// `group_index` is into `saved`; returns whether `character_name` is now a member, never saving a temporary group's.
     pub fn toggleGroupMember(self: *ProfileStore, group_index: usize, character_name: []const u8) !bool {
-        if (group_index >= self.saved.hotkeyGroups.items.len) return error.InvalidGroupIndex;
-        const group = &self.saved.hotkeyGroups.items[group_index];
-        const is_member = strings.indexOfString(group.characters.items, character_name) == null;
-        try setMembership(&self.saved, group, character_name, is_member);
-        // Unsaved dialog edits may have moved or removed the group in `live`.
-        for (self.live.hotkeyGroups.items) |*live_group| {
-            if (live_group.id != group.id) continue;
-            try setMembership(&self.live, live_group, character_name, is_member);
-        }
-        if (!group.temporaryMembership) self.persist();
-        return is_member;
+        const toggle = try toggleGroupMemberInBoth(&self.live, &self.saved, group_index, character_name);
+        if (toggle.should_save) self.persist();
+        return toggle.is_member;
     }
 
+    /// Leaves `saved` as it was if the write fails, so the edits stay unsaved.
     pub fn commit(self: *ProfileStore) !void {
-        const fresh = try self.live.clone(self.live.allocator);
+        var fresh = try self.live.clone(self.live.allocator);
+        errdefer fresh.deinit();
+        try self.saveConfig(&fresh);
         self.saved.deinit();
         self.saved = fresh;
-        try self.save();
     }
 
     /// Makes `live` what was last saved, dropping unsaved dialog edits; callers refresh whatever borrowed from the old `live`.
     pub fn discard(self: *ProfileStore) !void {
         var fresh = try self.saved.clone(self.saved.allocator);
-        patch_mod.assignIds(Config, &fresh);
+        patch_mod.assignIds(Config, &fresh, &self.ids);
         self.live.deinit();
         self.live = fresh;
     }
 
     pub fn isDirty(self: *const ProfileStore) bool {
-        var arena = std.heap.ArenaAllocator.init(self.live.allocator);
+        var arena: std.heap.ArenaAllocator = .init(self.live.allocator);
         defer arena.deinit();
         const live = self.live.toJsonString(arena.allocator()) catch |err| {
             slog.err("Failed to serialize the running profile to compare it: {}", .{err});
@@ -113,18 +104,50 @@ pub const ProfileStore = struct {
     }
 
     fn persist(self: *ProfileStore) void {
-        self.save() catch |err| {
+        self.saveConfig(&self.saved) catch |err| {
             slog.err("Failed to save profile '{s}': {}", .{ self.saved.profile_name, err });
         };
     }
 
-    fn save(self: *ProfileStore) !void {
-        const allocator = self.saved.allocator;
-        const path = try profiles.path(allocator, self.saved.profile_name);
+    fn saveConfig(self: *const ProfileStore, config: *const Config) !void {
+        const allocator = config.allocator;
+        const path = try profiles.path(allocator, config.profile_name);
         defer allocator.free(path);
-        try profiles.save(&self.saved, allocator, self.io, path);
+        try profiles.save(config, allocator, self.io, path);
     }
 };
+
+/// What a group toggle changed, for its caller to save.
+const GroupToggle = struct {
+    is_member: bool,
+    /// False for a temporary group, whose membership is never saved.
+    should_save: bool,
+};
+
+fn setCharacterPositionsInBoth(live: *Config, saved: *Config, ids: *patch_mod.Ids, entries: []const ProfileStore.CharacterPosition) void {
+    for (entries) |entry| {
+        setPosition(live, entry) catch |err| {
+            slog.err("Failed to add '{s}' to profile '{s}' for its position: {}", .{ entry.name, live.profile_name, err });
+            continue;
+        };
+        setPosition(saved, entry) catch |err| {
+            slog.err("Failed to add '{s}' to profile '{s}' for its position: {}", .{ entry.name, saved.profile_name, err });
+            continue;
+        };
+    }
+    giveNewCharactersIds(live, saved, ids);
+}
+
+fn setPosition(config: *Config, entry: ProfileStore.CharacterPosition) !void {
+    const character = try config.getOrCreateCharacter(entry.name);
+    character.position = entry.position;
+}
+
+fn setWindowPositionInBoth(live: *Config, saved: *Config, ids: *patch_mod.Ids, character_name: ?[]const u8, position: ?config_mod.Position, size: ?config_mod.WindowSize) !void {
+    try applyWindowPosition(live, character_name, position, size);
+    try applyWindowPosition(saved, character_name, position, size);
+    giveNewCharactersIds(live, saved, ids);
+}
 
 fn applyWindowPosition(config: *Config, character_name: ?[]const u8, position: ?config_mod.Position, size: ?config_mod.WindowSize) !void {
     if (character_name) |name| {
@@ -138,6 +161,29 @@ fn applyWindowPosition(config: *Config, character_name: ?[]const u8, position: ?
             character.windowSize = size;
         }
     }
+}
+
+/// The config dialog tracks characters by id, so a character created in both copies takes the same one in each, which a later discard keeps.
+fn giveNewCharactersIds(live: *Config, saved: *Config, ids: *patch_mod.Ids) void {
+    patch_mod.assignIds(Config, live, ids);
+    for (saved.characters.items) |*character| {
+        if (character.id != 0) continue;
+        const live_character = live.findCharacterConst(character.name) orelse continue;
+        character.id = live_character.id;
+    }
+}
+
+fn toggleGroupMemberInBoth(live: *Config, saved: *Config, group_index: usize, character_name: []const u8) !GroupToggle {
+    if (group_index >= saved.hotkeyGroups.items.len) return error.InvalidGroupIndex;
+    const group = &saved.hotkeyGroups.items[group_index];
+    const is_member = strings.indexOfString(group.characters.items, character_name) == null;
+    try setMembership(saved, group, character_name, is_member);
+    // Unsaved dialog edits may have moved or removed the group in `live`.
+    for (live.hotkeyGroups.items) |*live_group| {
+        if (live_group.id != group.id) continue;
+        try setMembership(live, live_group, character_name, is_member);
+    }
+    return .{ .is_member = is_member, .should_save = !group.temporaryMembership };
 }
 
 /// Idempotent, so both copies end up agreeing even if they didn't before.
@@ -161,8 +207,161 @@ fn assign(comptime T: type, target: *T, patch: anytype) void {
         if (@TypeOf(value) != Field and @typeInfo(Field) == .@"struct") {
             assign(Field, &@field(target, name), value);
         } else {
-            if (comptime wire.hasPointers(Field)) @compileError(name ++ " holds pointers, so it can't be set through ProfileStore.update");
+            if (comptime wire.hasPointers(Field)) @compileError(name ++ " holds pointers, so it can't be set through a ProfileStore update");
             @field(target, name) = value;
         }
     }
+}
+
+const testing = std.testing;
+
+/// Built from `json_text` without touching the disk; nothing here saves.
+fn testStore(json_text: []const u8) !ProfileStore {
+    return ProfileStore.init(try Config.buildConfigFromJson(testing.allocator, json_text, "Test"), testing.io);
+}
+
+fn expectMembers(group: *const config_mod.HotkeyGroupConfig, expected: []const []const u8) !void {
+    try testing.expectEqual(expected.len, group.characters.items.len);
+    for (expected, group.characters.items) |expected_name, actual_name| try testing.expectEqualStrings(expected_name, actual_name);
+}
+
+test "a group toggle adds the character to both copies, and a second toggle removes it from both" {
+    var store = try testStore(
+        \\{"hotkeyGroups": [{"name": "Miners"}]}
+    );
+    defer store.deinit();
+
+    const added = try toggleGroupMemberInBoth(&store.live, &store.saved, 0, "Alpha");
+    try testing.expect(added.is_member and added.should_save);
+    try expectMembers(&store.live.hotkeyGroups.items[0], &.{"Alpha"});
+    try expectMembers(&store.saved.hotkeyGroups.items[0], &.{"Alpha"});
+
+    const removed = try toggleGroupMemberInBoth(&store.live, &store.saved, 0, "Alpha");
+    try testing.expect(!removed.is_member);
+    try expectMembers(&store.live.hotkeyGroups.items[0], &.{});
+    try expectMembers(&store.saved.hotkeyGroups.items[0], &.{});
+}
+
+test "a group toggle reaches the live group by id after the dialog reordered the groups" {
+    var store = try testStore(
+        \\{"hotkeyGroups": [{"name": "Miners"}, {"name": "Scouts"}]}
+    );
+    defer store.deinit();
+    std.mem.swap(config_mod.HotkeyGroupConfig, &store.live.hotkeyGroups.items[0], &store.live.hotkeyGroups.items[1]);
+
+    _ = try toggleGroupMemberInBoth(&store.live, &store.saved, 0, "Alpha");
+    try expectMembers(&store.live.hotkeyGroups.items[1], &.{"Alpha"});
+    try expectMembers(&store.live.hotkeyGroups.items[0], &.{});
+}
+
+test "a group toggle for a group the dialog removed changes only the saved copy" {
+    var store = try testStore(
+        \\{"hotkeyGroups": [{"name": "Miners"}, {"name": "Scouts"}]}
+    );
+    defer store.deinit();
+    var removed = store.live.hotkeyGroups.orderedRemove(0);
+    wire.free(config_mod.HotkeyGroupConfig, &removed, store.live.allocator);
+
+    _ = try toggleGroupMemberInBoth(&store.live, &store.saved, 0, "Alpha");
+    try expectMembers(&store.saved.hotkeyGroups.items[0], &.{"Alpha"});
+    try expectMembers(&store.live.hotkeyGroups.items[0], &.{});
+}
+
+test "a temporary group's toggle isn't saved" {
+    var store = try testStore(
+        \\{"hotkeyGroups": [{"name": "Fleet", "temporaryMembership": true}]}
+    );
+    defer store.deinit();
+
+    const toggle = try toggleGroupMemberInBoth(&store.live, &store.saved, 0, "Alpha");
+    try testing.expect(toggle.is_member and !toggle.should_save);
+    try expectMembers(&store.live.hotkeyGroups.items[0], &.{"Alpha"});
+}
+
+test "a group index past the saved groups is an error" {
+    var store = try testStore("{}");
+    defer store.deinit();
+
+    try testing.expectError(error.InvalidGroupIndex, toggleGroupMemberInBoth(&store.live, &store.saved, 0, "Alpha"));
+}
+
+test "clearing a missing character's window position adds no character" {
+    var store = try testStore("{}");
+    defer store.deinit();
+
+    try setWindowPositionInBoth(&store.live, &store.saved, &store.ids, "Alpha", null, null);
+    try testing.expectEqual(@as(usize, 0), store.live.characters.items.len);
+    try testing.expectEqual(@as(usize, 0), store.saved.characters.items.len);
+}
+
+test "a window position without a name sets every character's" {
+    var store = try testStore(
+        \\{"characters": [{"name": "Alpha"}, {"name": "Beta"}]}
+    );
+    defer store.deinit();
+    const position: config_mod.Position = .{ .x = 10, .y = 20 };
+
+    try setWindowPositionInBoth(&store.live, &store.saved, &store.ids, null, position, .{ .width = 800, .height = 600 });
+    for ([_]*const Config{ &store.live, &store.saved }) |config| {
+        for (config.characters.items) |character| try testing.expectEqual(@as(?config_mod.Position, position), character.windowPosition);
+    }
+}
+
+test "a character created by a position has the same id in both copies" {
+    var store = try testStore("{}");
+    defer store.deinit();
+
+    setCharacterPositionsInBoth(&store.live, &store.saved, &store.ids, &.{.{ .name = "Alpha", .position = .{ .x = 1, .y = 2 } }});
+    try setWindowPositionInBoth(&store.live, &store.saved, &store.ids, "Beta", .{ .x = 3, .y = 4 }, null);
+    for ([_][]const u8{ "Alpha", "Beta" }) |name| {
+        const live_id = (store.live.findCharacterConst(name) orelse return error.MissingCharacter).id;
+        const saved_id = (store.saved.findCharacterConst(name) orelse return error.MissingCharacter).id;
+        try testing.expect(live_id != 0);
+        try testing.expectEqual(live_id, saved_id);
+    }
+}
+
+test "discard keeps the id of a character a position created" {
+    var store = try testStore("{}");
+    defer store.deinit();
+    setCharacterPositionsInBoth(&store.live, &store.saved, &store.ids, &.{.{ .name = "Alpha", .position = .{ .x = 1, .y = 2 } }});
+    const id = (store.live.findCharacterConst("Alpha") orelse return error.MissingCharacter).id;
+
+    try store.discard();
+    try testing.expectEqual(id, (store.live.findCharacterConst("Alpha") orelse return error.MissingCharacter).id);
+}
+
+test "a nested patch sets only the fields it names" {
+    var store = try testStore("{}");
+    defer store.deinit();
+    const start_y = store.live.display.startY;
+
+    assign(Config, &store.live, .{ .display = .{ .startX = 42 } });
+    try testing.expectEqual(@as(i32, 42), store.live.display.startX);
+    try testing.expectEqual(start_y, store.live.display.startY);
+}
+
+test "a section preview sets only the fields it names, and only in the live copy" {
+    var store = try testStore("{}");
+    defer store.deinit();
+    const width = store.live.historyPanel.width;
+
+    store.previewSection("historyPanel", .{ .opacity = 90 });
+    try testing.expectEqual(@as(u8, 90), store.live.historyPanel.opacity);
+    try testing.expectEqual(width, store.live.historyPanel.width);
+    try testing.expect(store.saved.historyPanel.opacity != 90);
+}
+
+test "a new store isn't dirty, a live edit makes it dirty, and discard undoes it" {
+    var store = try testStore("{}");
+    defer store.deinit();
+    const start_x = store.live.display.startX;
+    try testing.expect(!store.isDirty());
+
+    store.live.display.startX = start_x + 5;
+    try testing.expect(store.isDirty());
+
+    try store.discard();
+    try testing.expect(!store.isDirty());
+    try testing.expectEqual(start_x, store.live.display.startX);
 }

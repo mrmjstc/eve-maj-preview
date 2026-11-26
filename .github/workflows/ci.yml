@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: 0.17.1
+
+      - name: Check formatting
+        run: zig fmt --check src build.zig build.zig.zon
+
+      - name: Run the source checks
+        run: python tools/checks/run_all.py
+
+      - name: Type-check the app and the simulator
+        run: zig build check
+
+      - name: Run the unit tests
+        run: zig build test

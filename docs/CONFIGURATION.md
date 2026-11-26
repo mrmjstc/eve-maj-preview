@@ -7,8 +7,8 @@ Every setting EVE-Maj Preview reads, by file and JSON key. The config dialog wri
 - [Files](#files)
 - [Loading rules](#loading-rules)
 - [Value formats](#value-formats)
-- [Profile](#profile): [top level](#top-level) · [thumbnail](#thumbnail) · [thumbnail.notifications](#thumbnailnotifications) · [timer](#timer) · [display](#display) · [thumbnailSpaces](#thumbnailspaces) · [snapping](#snapping) · [interaction](#interaction) · [exclusion](#exclusion) · [autoMinimize](#autominimize) · [autoMovePosition](#automoveposition) · [closeAll](#closeall) · [chatlog](#chatlog) · [combat](#combat) · [mining](#mining) · [bounty](#bounty) · [resources](#resources) · [ping](#ping) · [travel](#travel) · [hotkeys](#hotkeys) · [hotkeyGroups](#hotkeygroups) · [characters](#characters) · [systemColors](#systemcolors) · [windowFilters](#windowfilters)
-- [Global settings](#global-settings)
+- [Profile](#profile): [top level](#top-level) · [thumbnail](#thumbnail) · [thumbnail.alertText](#thumbnailalerttext) · [thumbnail.combatText](#thumbnailcombattext) · [thumbnail.miningText](#thumbnailminingtext) · [thumbnail.bountyText](#thumbnailbountytext) · [thumbnail.resourcesText](#thumbnailresourcestext) · [thumbnail.pingText](#thumbnailpingtext) · [notifications](#notifications) · [timer](#timer) · [display](#display) · [listView](#listview) · [historyPanel](#historypanel) · [mapPanel](#mappanel) · [intelPanel](#intelpanel) · [intel](#intel) · [thumbnailSpaces](#thumbnailspaces) · [snapping](#snapping) · [panelSnapping](#panelsnapping) · [interaction](#interaction) · [exclusion](#exclusion) · [autoMinimize](#autominimize) · [autoMovePosition](#automoveposition) · [closeAll](#closeall) · [combat](#combat) · [mining](#mining) · [bounty](#bounty) · [resources](#resources) · [ping](#ping) · [travel](#travel) · [hotkeys](#hotkeys) · [hotkeyGroups](#hotkeygroups) · [characters](#characters) · [systemColors](#systemcolors) · [chatAlerts](#chatalerts) · [windowFilters](#windowfilters)
+- [Global settings](#global-settings): [chatlog](#chatlog)
 - [Command line and protocol](#command-line-and-protocol)
 
 ## Files
@@ -20,14 +20,15 @@ Paths are relative to the executable's folder.
 | `profiles\<name>.json` | A profile. `default.json` is created on first run and can't be deleted. |
 | `profiles\global.settings.json` | [Global settings](#global-settings), shared by all profiles. |
 | `profiles\backup\<unix time>_<name>.json` | Profiles deleted, reset, imported over or backed up by hand, and profiles that failed to parse. Listed in the dialog's Backups tab. |
-| `profiles\global.settings.json.bak` | Global settings file that failed to read or parse. |
-| `data\colors.json` | Generated unique system/character colours (64 most recent of each). Written when the last client closes or on exit. Delete to reassign. |
+| `profiles\global.settings.json.<unix time>.bak` | Global settings file that failed to read (after a few retries) or parse. One that can't be moved aside stays in place, and nothing saves over it until the next start. |
+| `data\colors.json` | Generated unique system/character colours (64 most recent of each). Written when the last client closes or on exit, but not in a run that couldn't read it. Delete to reassign. |
 | `data\character_ids.json` | Character IDs read from log file names. Rebuilt from logs if deleted. |
 | `data\portraits\<id>.jpg` | Character portraits, downloaded once. Delete one to refetch it. |
+| `data\logo_colors.json` | The Map's sovereignty colour for each alliance, picked from its logo, which is downloaded once. Starts again past 200 alliances. Delete to pick them all again. |
 | `logs\eve-maj.log`, `eve-maj.log.old` | Log, and the previous one. |
 | `logs\eve-maj-crash.dmp` | Minidump from the last crash. |
 
-Profile file names: `<name>.json` with no path separators or `:*?"<>|`, not starting with `.`. Names created in the dialog are 1–16 characters of letters, digits, space, `-`, `_`.
+Profile file names: `<name>.json` with no path separators or `:*?"<>|`, not starting with `.`, and not `global.settings.json`. Names created in the dialog are 1–16 characters of letters, digits, space, `-`, `_`.
 
 ## Loading rules
 
@@ -36,8 +37,14 @@ Profile file names: `<name>.json` with no path separators or `:*?"<>|`, not star
 - A value of the wrong type or format (bad colour, unknown enum, text for a number) is dropped with a log warning; that setting takes its default. A bad list item is dropped alone; a bad notification type resets only that type.
 - A number outside its range is clamped, with a log warning. Fields marked **0 = default** treat `0` as "use the default".
 - A file that isn't valid JSON loads as all defaults; the original is kept (see [Files](#files)).
+- A profile or the global settings file that another program holds is read again a few times, about half a second in all, before it counts as unreadable.
 - Profiles are saved with `null` optionals omitted, colours as 8-digit hex and hotkeys as hex codes.
 - `formatVersion` below 3 migrates on load: `display.layoutMode`/`regionX`/`regionY`/`regionWidth`/`regionHeight`/`spacing`/`regionFitOrder`/`regionFitDirection`/`regionFitLimitToThumbnailSize` become an `Everyone` space (enabled only if `layoutMode` was `RegionFit`, with `takesUnassigned` and `takesLoginScreen`); `display.notLoggedInSpace*` becomes a `Login Screen` space ahead of it. Below 2, character `position`s are rescaled from DPI-unaware pixels.
+- `formatVersion` below 4 migrates on load: the Client List's and panels' `display` keys move into `listView`, `historyPanel`, `mapPanel` and `intelPanel`, dropping their prefix (`display.mapPanelX` becomes `mapPanel.x`, `display.showMapPanel` becomes `mapPanel.show`, `display.notifInfoPanelX` becomes `historyPanel.x`); a key already in its section wins.
+- `formatVersion` below 5 migrates on load: a `listView.activeColor` or `thumbnail.borderColor` still at the old default `0xFFD9A441` is removed, so it follows `accentColor`.
+- `formatVersion` below 6 migrates on load: `listView.showIncomingDps`/`showOutgoingDps`/`showMiningRate`/`showBountyRate` stay on only where `combat`/`mining`/`bounty.enabled` was on, and are removed otherwise.
+- `formatVersion` below 7 migrates on load: `display.startX`/`startY` are copied into `listView.x`/`y`, which the Client List used to share with the thumbnails' start position.
+- `formatVersion` below 8 migrates on load: `thumbnail.notifications` splits, its `position`/`offset_x`/`offset_y`/`font_name`/`font_size`/`font_weight`/`bg_color` going to `thumbnail.alertText` and the rest to `notifications`; `combat`'s, `mining`'s, `bounty`'s, `resources`' and `ping`'s text settings move to `thumbnail.combatText`, `miningText`, `bountyText`, `resourcesText` and `pingText`, `enabled` becoming `shown`; `mapPanel.intelShrinkSec`/`intelShowClear` move to `intel.shrinkSec`/`showClear`, and `historyPanel`'s `fontName`/`fontSize`/`fontWeight`/`showTimestamp`/`mergeEnabled`/`mergeWindowSec` are copied into `intelPanel`; a key already in its new section wins.
 - A profile with `thumbnailSpaces` but no `display.placementMode` gets `ThumbnailSpaces` if any space is enabled.
 
 ## Value formats
@@ -45,7 +52,7 @@ Profile file names: `<name>.json` with no path separators or `:*?"<>|`, not star
 | Format | Syntax |
 |---|---|
 | **colour** | `"0xAARRGGBB"`. Also accepted: `0X`, `#`, or no prefix. Six digits read as alpha `00`. Text colours ignore alpha (always opaque); borders, backgrounds and the exclusion overlay use it, so a 6-digit colour there is invisible. |
-| **keys** | A key name (`"F9"`), a combo (`"Ctrl+Alt+F9"`), a hex code (`"0x278"`), an array of up to 3 of these (any one triggers), or `null`/omitted for unbound. Saved back as hex: low byte = virtual key, bits 8–11 = modifiers (Alt `0x1`, Ctrl `0x2`, Shift `0x4`, Win `0x8`). Unreadable keys are skipped with a warning; extra keys past 3 and duplicates are dropped. |
+| **keys** | A key name (`"F9"`), a combo (`"Ctrl+Alt+F9"`), a hex code (`"0x278"`), an array of up to 3 of these (any one triggers), or `null`/omitted for unbound. Saved back as hex: low byte = virtual key, bits 8–11 = modifiers (Alt `0x1`, Ctrl `0x2`, Shift `0x4`, Win `0x8`). Punctuation names in a profile are US-layout keys, plus `<` and `!` for the keys it lacks, so use a hex code for others; the dialog shows and takes these keys by what they type on the current layout. Unreadable keys are skipped with a warning; extra keys past 3 and duplicates are dropped. |
 | **position** | `TopLeft` `TopCenter` `TopRight` `LeftCenter` `Center` `RightCenter` `BottomLeft` `BottomCenter` `BottomRight` |
 | **weight** | `Regular` `Bold` `Italic` `BoldItalic` |
 | **font size** | 6–72 |
@@ -64,10 +71,10 @@ Profile file names: `<name>.json` with no path separators or `:*?"<>|`, not star
 | Key | Type | Default | Notes |
 |---|---|---|---|
 | `app` | string | `"eve-maj-preview"` | Rewritten on save. |
-| `formatVersion` | int | `3` | Read only to migrate; rewritten on save. |
-| `accentColor` | colour | `0xFFD9A441` | Config dialog accent for this profile. No effect on overlays. |
+| `formatVersion` | int | `8` | Read only to migrate; rewritten on save. |
+| `accentColor` | colour | `0xFFD9A441` | This profile's accent: the config dialog, the panels, and the unset `listView.activeColor` and `thumbnail.borderColor`. |
 
-Sections: `thumbnail`, `timer`, `display`, `snapping`, `interaction`, `autoMinimize`, `autoMovePosition`, `exclusion`, `closeAll`, `chatlog`, `combat`, `mining`, `bounty`, `resources`, `ping`, `travel`, `hotkeys` (objects); `windowFilters`, `characters`, `systemColors`, `hotkeyGroups`, `thumbnailSpaces` (arrays).
+Sections: `thumbnail`, `notifications`, `timer`, `display`, `listView`, `historyPanel`, `mapPanel`, `intelPanel`, `intel`, `snapping`, `panelSnapping`, `interaction`, `autoMinimize`, `autoMovePosition`, `exclusion`, `closeAll`, `combat`, `mining`, `bounty`, `resources`, `ping`, `travel`, `hotkeys` (objects); `windowFilters`, `characters`, `systemColors`, `chatAlerts`, `hotkeyGroups`, `thumbnailSpaces` (arrays).
 
 ### thumbnail
 
@@ -77,6 +84,9 @@ Sections: `thumbnail`, `timer`, `display`, `snapping`, `interaction`, `autoMinim
 |---|---|---|---|---|
 | `width` | int | `282` | 50–3840 | |
 | `height` | int | `158` | 50–2160 | |
+| `showLivePreview` | bool | `true` | | Off skips the DWM preview: a plain fill (`blankThumbnailColor`, or `blankDimsBorder`'s) under the overlay, and no hover zoom. Overridden per character by `characters[].preview`. |
+| `blankThumbnailColor` | colour | `0xFF000000` | | Fill of a thumbnail without a live preview; alpha ignored. |
+| `blankDimsBorder` | bool | `false` | | Fill with a dark shade (25%) of each character's focused border colour instead of `blankThumbnailColor`. |
 | `thumbnailOpacity` | int | `255` | opacity | Overridden per character by `characters[].opacity`. |
 | `applyOpacityToOverlayTexts` | bool | `true` | | Opacity also applies to texts, text backgrounds and borders. |
 | `activeThumbnailHidden` | bool | `false` | | Hide the focused client's thumbnail. |
@@ -90,7 +100,7 @@ Sections: `thumbnail`, `timer`, `display`, `snapping`, `interaction`, `autoMinim
 |---|---|---|---|
 | `showBorderWhenFocused` | bool | `true` | |
 | `borderWidth` | int | `2` | 1–50 |
-| `borderColor` | colour | `0xFFD9A441` | |
+| `borderColor` | colour? | `null` | `null` = `accentColor`. |
 | `borderStyle` | enum | `Solid` | `Solid` `Dashed` `Dotted` `Double` `DiagonalHatch` `DashDot` `CornerBrackets` |
 | `showBorderWhenInactive` | bool | `false` | |
 | `inactiveBorderWidth` | int | `2` | 1–50 |
@@ -106,7 +116,7 @@ Sections: `thumbnail`, `timer`, `display`, `snapping`, `interaction`, `autoMinim
 | `characterNameColor` | colour | `0x00FFFFFF` | |
 | `characterNameBgColor` | colour | `0xE6000000` | |
 | `useUniqueCharacterNameColors` | bool | `false` | Generated per-character colour. `characters[].nameColor` wins. |
-| `characterNameFontName` | string | `"Segoe UI"` | |
+| `characterNameFontName` | string | `"Geist"` | |
 | `characterNameFontSize` | int | `12` | font size |
 | `characterNameFontWeight` | enum | `Regular` | weight |
 | `characterNamePosition` | enum | `TopLeft` | position |
@@ -120,11 +130,16 @@ Sections: `thumbnail`, `timer`, `display`, `snapping`, `interaction`, `autoMinim
 | `systemNameColor` | colour | `0x00FFFFFF` | |
 | `systemNameBgColor` | colour | `0xE6000000` | |
 | `useUniqueSystemColors` | bool | `false` | Generated colour for systems without a `systemColors` entry. |
-| `systemNameFontName` | string | `"Segoe UI"` | |
+| `systemNameFontName` | string | `"Geist"` | |
 | `systemNameFontSize` | int | `12` | font size |
 | `systemNameFontWeight` | enum | `Regular` | weight |
 | `systemNamePosition` | enum | `BottomLeft` | position |
 | `systemNameOffsetX`, `systemNameOffsetY` | int | `0` | offset |
+| `showSystemConnections` | bool | `false` | Replaces the name with a small gate map of the system and its neighbours. Needs `showSystemName`; systems off the gate map (wormholes) keep the name. |
+| `systemConnectionJumps` | int | `1` | 1–3. Gates out from the system; stops at the region's edge. |
+| `systemConnectionMapWidth` | int | `180` | 80–3840 |
+| `systemConnectionMapHeight` | int | `140` | 60–2160. Names that don't fit are left out. |
+| `showSystemConnectionIntel` | bool | `true` | Circle systems named in intel channels, as the map does. Needs a `chatAlerts` intel rule. |
 
 **Group badge**: names of the character's hotkey groups that have `showBadge` (unnamed groups show their 1-based number).
 
@@ -135,7 +150,7 @@ Sections: `thumbnail`, `timer`, `display`, `snapping`, `interaction`, `autoMinim
 | `quickGroupBadgeBgColor` | colour | `0xE6000000` | |
 | `quickGroupBadgePosition` | enum | `RightCenter` | position |
 | `quickGroupBadgeOffsetX`, `quickGroupBadgeOffsetY` | int | `0` | offset |
-| `quickGroupBadgeFontName` | string | `"Segoe UI"` | |
+| `quickGroupBadgeFontName` | string | `"Geist"` | |
 | `quickGroupBadgeFontSize` | int | `12` | font size |
 | `quickGroupBadgeFontWeight` | enum | `Regular` | weight |
 
@@ -149,7 +164,7 @@ Sections: `thumbnail`, `timer`, `display`, `snapping`, `interaction`, `autoMinim
 | `sessionTimerPosition` | enum | `RightCenter` | position |
 | `sessionTimerOffsetX` | int | `0` | offset |
 | `sessionTimerOffsetY` | int | `-24` | offset |
-| `sessionTimerFontName` | string | `"Segoe UI"` | |
+| `sessionTimerFontName` | string | `"Geist"` | |
 | `sessionTimerFontSize` | int | `12` | font size |
 | `sessionTimerFontWeight` | enum | `Regular` | weight |
 
@@ -172,20 +187,113 @@ Sections: `thumbnail`, `timer`, `display`, `snapping`, `interaction`, `autoMinim
 | `showBorder` | bool | |
 | `showThumbnail` | bool | Default `true`; `active` defaults to `null` (follows `activeThumbnailHidden`). |
 
-### thumbnail.notifications
+### thumbnail.alertText
 
-Event popups on thumbnails, from game and chat logs (needs [chatlog](#chatlog)) and from your own actions.
+Where and how thumbnails draw their alerts; what an alert says and its colour are in [notifications](#notifications).
 
 | Key | Type | Default | Range | Notes |
 |---|---|---|---|---|
-| `enabled` | bool | `true` | | Thumbnail popups. Client List uses `display.listViewShowNotifications`. |
 | `position` | enum | `Center` | position | |
 | `offset_x`, `offset_y` | int | `0` | offset | |
-| `font_name` | string | `"Segoe UI"` | | |
+| `font_name` | string | `"Geist"` | | |
 | `font_size` | int | `12` | font size | |
 | `font_weight` | enum | `Regular` | weight | |
-| `color` | colour | `0xFFFFFFFF` | | Text colour for types without `text_color`. |
 | `bg_color` | colour | `0xE6000000` | | |
+
+### thumbnail.combatText
+
+The thumbnails' incoming and outgoing DPS texts; what's measured is in [combat](#combat).
+
+| Key | Type | Default | Range | Notes |
+|---|---|---|---|---|
+| `shown` | bool | `false` | | |
+| `show_incoming`, `show_outgoing` | bool | `true` | | |
+| `incoming_color` | colour | `0xFFE05A4E` | | |
+| `outgoing_color` | colour | `0xFF68CA6B` | | |
+| `incoming_bg_color`, `outgoing_bg_color` | colour | `0xE6000000` | | |
+| `incoming_font_name`, `outgoing_font_name` | string | `"Geist"` | | |
+| `incoming_font_size`, `outgoing_font_size` | int | `12` | font size | |
+| `incoming_font_weight`, `outgoing_font_weight` | enum | `Regular` | weight | |
+| `incoming_position` | enum | `TopCenter` | position | |
+| `outgoing_position` | enum | `TopCenter` | position | |
+| `incoming_offset_x`, `incoming_offset_y`, `outgoing_offset_x` | int | `0` | offset | |
+| `outgoing_offset_y` | int | `24` | offset | Below Incoming DPS. |
+| `incoming_show_prefix`, `outgoing_show_prefix` | bool | `true` | | `IN:` and `OUT:` |
+
+### thumbnail.miningText
+
+The thumbnails' mining rate text; what's measured, and the rates' units, are in [mining](#mining).
+
+| Key | Type | Default | Range | Notes |
+|---|---|---|---|---|
+| `shown` | bool | `false` | | |
+| `show_isk_rate` | bool | `true` | | Second line, priced from the [ore table](#global-settings). |
+| `color` | colour | `0xFF7E98E7` | | |
+| `bg_color` | colour | `0xE6000000` | | |
+| `font_name` | string | `"Geist"` | | |
+| `font_size` | int | `12` | font size | |
+| `font_weight` | enum | `Regular` | weight | |
+| `position` | enum | `BottomRight` | position | |
+| `offset_x`, `offset_y` | int | `0` | offset | |
+| `show_prefix` | bool | `true` | | `M:` |
+
+### thumbnail.bountyText
+
+The thumbnails' bounty rate text; what's measured, and the rate's unit, are in [bounty](#bounty).
+
+| Key | Type | Default | Range | Notes |
+|---|---|---|---|---|
+| `shown` | bool | `false` | | |
+| `color` | colour | `0xFFE1C747` | | |
+| `bg_color` | colour | `0xE6000000` | | |
+| `font_name` | string | `"Geist"` | | |
+| `font_size` | int | `12` | font size | |
+| `font_weight` | enum | `Regular` | weight | |
+| `position` | enum | `TopRight` | position | |
+| `offset_x`, `offset_y` | int | `0` | offset | |
+| `show_prefix` | bool | `true` | | `ISK:` |
+
+### thumbnail.resourcesText
+
+The thumbnails' CPU / RAM / VRAM text; how often it's sampled is in [resources](#resources).
+
+| Key | Type | Default | Range | Notes |
+|---|---|---|---|---|
+| `shown` | bool | `false` | | |
+| `show_cpu` | bool | `true` | | `GetProcessTimes`, normalised to all logical cores, 0–100 %. First sample reads 0 %. |
+| `show_ram` | bool | `true` | | Working set, MB. |
+| `show_vram` | bool | `true` | | Dedicated GPU memory, MB, via the "GPU Process Memory" perf counter. Omitted when unavailable. |
+| `color` | colour | `0xFFFFFFFF` | | |
+| `bg_color` | colour | `0xE6000000` | | |
+| `font_name` | string | `"Geist"` | | |
+| `font_size` | int | `12` | font size | |
+| `font_weight` | enum | `Regular` | weight | |
+| `position` | enum | `LeftCenter` | position | |
+| `offset_x`, `offset_y` | int | `0` | offset | |
+
+### thumbnail.pingText
+
+The thumbnails' ping text; how often it's measured is in [ping](#ping).
+
+| Key | Type | Default | Range | Notes |
+|---|---|---|---|---|
+| `shown` | bool | `false` | | |
+| `color` | colour | `0xFFFFFFFF` | | |
+| `bg_color` | colour | `0xE6000000` | | |
+| `font_name` | string | `"Geist"` | | |
+| `font_size` | int | `12` | font size | |
+| `font_weight` | enum | `Regular` | weight | |
+| `position` | enum | `RightCenter` | position | |
+| `offset_x`, `offset_y` | int | `0`, `24` | offset | |
+
+### notifications
+
+Alerts, from game and chat logs (needs [chatlog](#chatlog)) and from your own actions: on thumbnails, in the Client List and in Alert History.
+
+| Key | Type | Default | Range | Notes |
+|---|---|---|---|---|
+| `enabled` | bool | `true` | | Every alert. Client List also needs `listView.showNotifications`. |
+| `color` | colour | `0xFFFFFFFF` | | Text colour for types without `text_color`, on thumbnails and in the History and Intel panels. |
 | `suppress_click_duration_ms` | int | `2000` | 0–60000 | Window for `suppress_when_clicked`. |
 | `tts_volume` | int | `100` | 0–100 | |
 | `tts_rate` | int | `0` | −10–10 | SAPI rate. |
@@ -197,21 +305,25 @@ Event popups on thumbnails, from game and chat logs (needs [chatlog](#chatlog)) 
 
 **`type_configs.<Type>`**
 
+A key left out takes that type's own default.
+
 | Key | Type | Default | Range | Notes |
 |---|---|---|---|---|
 | `enabled` | bool | `true` | | |
+| `show_text` | bool | `true` | | Show the text on thumbnails and the client list. Off keeps the border, sound, speech and history entry. |
 | `duration_ms` | int | `10000`; `3000` for user-action types | 0–60000 | |
-| `throttle_ms` | int | `10000`; `0` for user-action types | 0–300000 | Per thumbnail, from the last one shown. `0` = off. |
-| `suppress_when_focused` | bool | `false` | | Skip while that client has focus. |
-| `suppress_when_clicked` | bool | `false` | | Skip for `suppress_click_duration_ms` after clicking the thumbnail. |
+| `throttle_ms` | int | `10000`; `60000` for `TakingDamage`; `0` for user-action and Chat types | 0–300000 | Per thumbnail, from the last one shown. `0` = off. Repeats are still listed in Alert History. |
+| `suppress_when_focused` | bool | `false` | | Skip while that client has focus. Still listed in Alert History. |
+| `suppress_when_clicked` | bool | `false` | | Skip for `suppress_click_duration_ms` after clicking the thumbnail. Still listed in Alert History. |
 | `show_hidden_thumbnail` | bool | `false` | | Show a thumbnail hidden by focus auto-hide or the visibility toggle while active. `hideThumbnail` still wins. |
 | `show_border` | bool | `false` | | Draw the alert border. |
 | `flash_border` | bool | `false` | | Blink the border 4× (150 ms phases) first. Needs `show_border`. |
 | `border_color` | colour? | `null` | | `null` = `alert` state / `borderColor`. |
-| `text_color` | colour? | `null` | | `null` = `color` (thumbnails) / `display.listViewNotificationColor` (Client List). |
+| `text_color` | colour? | `null` | | `null` = `color` (thumbnails) / `listView.notificationColor` (Client List). |
+| `color_system_name` | bool | `false` | | Chat intel only: draw the system in its usual name colour when the text starts with it. |
 | `tts_enabled` | bool | `false` | | Speak it. No global switch. |
 | `sound_enabled` | bool | `false` | | Play `sound_path`. No global switch. |
-| `sound_path` | string? | `null` | | Absolute path to `.wav` or `.mp3`. |
+| `sound_path` | string? | `null` | | Absolute path to `.wav` or `.mp3`. Bundled sounds are in `sounds\` next to the exe. |
 | `sound_volume` | int | `100` | 0–100 | |
 | `custom_text` | string? | `null` | | Replaces built-in text (shown and spoken). Supports placeholders and `\n` (max 3 lines; one line in lists). Falls back to built-in if a used placeholder has no value. |
 | `custom_text_alt` | string? | `null` | | `custom_text` for the type's second state (see table). |
@@ -244,10 +356,13 @@ Event popups on thumbnails, from game and chat logs (needs [chatlog](#chatlog)) 
 | `AutopilotApproaching` | Navigation | Autopilot approaching | | |
 | `JumpRange` | Navigation | Too far from gate | | |
 | `AggressionCantJump` | Navigation | Gate refuses jump (aggression) | | |
+| `CloakedCantWarp` | Navigation | Warp refused while cloaked | | |
 | `ConduitJump` | Navigation | Conduit Field jump | `{system}` | |
 | `JumpCloning` | Navigation | Clone jump | | |
 | `SystemChange` | Navigation | New solar system | `{system}` | |
 | `TravelLeftBehind` | Navigation | See [travel](#travel) | `{system}`, `{group_system}` | |
+| `ChatIntel` | Chat | An intel rule matched; see [chatAlerts](#chatalerts) | `{system}`, `{jumps}`, `{pilot}`, `{channel}`, `{message}` | |
+| `ChatKeyword` | Chat | A keyword rule matched; see [chatAlerts](#chatalerts) | `{keyword}`, `{pilot}`, `{channel}`, `{message}` | |
 | `ConversationInvite` | General | Conversation invite | `{pilot}` | |
 | `GroupMembership` | General | **U** Group assign key | `{group}` | removed |
 | `CycleExclusion` | General | **U** Exclusion toggled | | included |
@@ -257,7 +372,7 @@ Event popups on thumbnails, from game and chat logs (needs [chatlog](#chatlog)) 
 | `SavedPositionMove` | General | **U** Moved by `hotkeyMoveToSavedPositions` | | |
 | `Generic` | General | Other game events | `{message}` | |
 
-Every type except `HotkeySuspend`, `ProfileSwitch` and `AutoMinimizeToggle` also has `{character}`. Placeholder names are case-insensitive; unknown ones are left as typed. Category drives the History Panel filters.
+Every type except `HotkeySuspend`, `ProfileSwitch` and `AutoMinimizeToggle` also has `{character}`. Placeholder names are case-insensitive; unknown ones are left as typed. Category drives the Alert History filters. A chat alert looks and sounds as its rule's `alert` says; `type_configs.ChatIntel` and `ChatKeyword` are used only if that rule has since been removed, and the dialog doesn't show them.
 
 ### timer
 
@@ -266,8 +381,6 @@ Every type except `HotkeySuspend`, `ProfileSwitch` and `AutoMinimizeToggle` also
 | `scanIntervalMs` | int | `50` | 50–1000 | Main tick. Drops to 1 s while no client is open and the dialog is closed. |
 
 ### display
-
-**Placement**
 
 | Key | Type | Default | Range / values | Notes |
 |---|---|---|---|---|
@@ -280,56 +393,151 @@ Every type except `HotkeySuspend`, `ProfileSwitch` and `AutoMinimizeToggle` also
 | `honorSavedPositions` | bool | `true` | | Use `characters[].position`. |
 | `hideThumbnailsDuringRegionSelect` | bool | `true` | | Hide thumbnails while drawing a space's region. |
 
-**Client List** (`viewMode: ClientList` or `ThumbnailsAndList`): one row per client; click activates, Shift+click toggles exclusion, drag the header to move. With `ClientList` it uses its own colour, system name and auto-hide settings below instead of the `thumbnail` ones; with `ThumbnailsAndList` it follows the `thumbnail` ones (active colour from `borderColor`) and hides with the thumbnails. Per-character colours, display names, `systemColors` and each overlay's `enabled` are always shared. Its position is `startX`/`startY`, which thumbnails also start from.
+### listView
+
+The Client List (`viewMode: ClientList` or `ThumbnailsAndList`): one row per client; click activates, Shift+click toggles exclusion, drag the header to move. With `ClientList` it uses its own colour, system name and auto-hide settings below instead of the `thumbnail` ones; with `ThumbnailsAndList` it follows the `thumbnail` ones (active colour from `borderColor`), except `useUniqueCharacterNameColors`, and hides with the thumbnails. Per-character colours, display names, `systemColors` and the rate units are always shared.
 
 | Key | Type | Default | Range / values | Notes |
 |---|---|---|---|---|
-| `listViewOrder` | enum | `ConfiguredCharacters` | `ConfiguredCharacters` `Tracked` `Alphabetical` | |
-| `rememberListViewPosition` | bool | `true` | | |
-| `listViewOpacity` | int | `255` | opacity | |
-| `listViewColumns` | int | `1` | 1–6 | |
-| `listViewColumnWidth` | int | `230` | 120–500 | |
-| `listViewFontName` | string | `"Segoe UI"` | | Header and right-hand text are 2 px smaller. |
-| `listViewFontSize` | int | `13` | font size | |
-| `listViewFontWeight` | enum | `Regular` | weight | |
-| `listViewIndicatorStyle` | enum | `Dot` | `Dot` `Square` `None` | |
-| `listViewShowSystemName` | bool | `true` | | |
-| `listViewSystemNameColor` | colour | `0xFF8B8F96` | | |
-| `listViewUseUniqueSystemColors` | bool | `false` | | |
-| `listViewUseUniqueCharacterNameColors` | bool | `false` | | |
-| `listViewActiveColor` | colour | `0xFFD9A441` | | Active row's dot, tint and name. |
-| `listViewUseUniqueActiveColors` | bool | `false` | | Character's generated colour as its active colour. |
-| `listViewShowNotifications` | bool | `true` | | |
-| `listViewNotificationColor` | colour | `0xFFFFFFFF` | | For types without `text_color`. |
-| `listViewShowIncomingDps`, `listViewShowOutgoingDps`, `listViewShowMiningRate`, `listViewShowBountyRate` | bool | `true` | | Each also needs its overlay's `enabled`. |
-| `listViewShowIncomingPrefix`, `listViewShowOutgoingPrefix`, `listViewShowMiningPrefix`, `listViewShowBountyPrefix` | bool | `true` | | `IN:`, `OUT:`, `M:`, `ISK:`. |
-| `listViewIncomingDpsColor` | colour | `0xFFFF4444` | | |
-| `listViewOutgoingDpsColor` | colour | `0xFF44FF44` | | |
-| `listViewMiningRateColor` | colour | `0xFF44AAFF` | | |
-| `listViewBountyRateColor` | colour | `0xFFFFD700` | | |
-| `listViewHideWhenNoEveFocus` | bool | `false` | | |
-| `listViewHideDebounceMs` | int | `500` | 0–5000 | |
+| `x`, `y` | int | `10`, `10` | screen | Saved when dragged while `rememberPosition` is on. |
+| `order` | enum | `ConfiguredCharacters` | `ConfiguredCharacters` `Tracked` `Alphabetical` | Also set from the header's ⋯ menu. |
+| `collapsed` | bool | `false` | | Folded to its header, by its chevron or a double-click; the header then shows the active client and any alerts. |
+| `groupBySystem` | bool | `false` | | Rows under a heading per system, the biggest first. Also set from the header's ⋯ menu. |
+| `lockPosition` | bool | `false` | | The header no longer drags the list. Also set from the header's ⋯ menu. |
+| `rememberPosition` | bool | `true` | | |
+| `alwaysOnTop` | bool | `true` | | Keep the list above other windows, game clients included. Also the header's pin. |
+| `opacity` | int | `255` | opacity | |
+| `columns` | int | `1` | 1–6 | |
+| `columnWidth` | int | `230` | 120–500 | |
+| `fontName` | string | `"Geist"` | | Rows only; right-hand and stats text are 2 px smaller. The header uses the configuration window's font, Geist. |
+| `fontSize` | int | `12` | font size | |
+| `fontWeight` | enum | `Regular` | weight | |
+| `indicatorStyle` | enum | `Dot` | `Dot` `Square` `None` | |
+| `showSystemName` | bool | `true` | | |
+| `showSystemSecurity` | bool | `false` | | The system's security beside its name, in EVE's colours. |
+| `systemNameColor` | colour | `0xFF8B8F96` | | |
+| `useUniqueSystemColors` | bool | `false` | | |
+| `useUniqueCharacterNameColors` | bool | `false` | | The list's own in every view mode. |
+| `activeColor` | colour? | `null` | | Active row's dot, tint and name; `null` = `accentColor`. |
+| `useUniqueActiveColors` | bool | `false` | | Character's generated colour as its active colour. |
+| `showNotifications` | bool | `true` | | |
+| `notificationColor` | colour | `0xFFFFFFFF` | | For types without `text_color`. |
+| `showIncomingDps`, `showOutgoingDps`, `showMiningRate`, `showBountyRate` | bool | `false` | | Independent of the thumbnails' texts (`thumbnail.combatText.shown` and the like). While any shows, every row keeps a second line for them under its name. |
+| `showIncomingPrefix`, `showOutgoingPrefix`, `showMiningPrefix`, `showBountyPrefix` | bool | `true` | | `IN: `, `OUT: `, `M: `, `ISK: `, as on the thumbnails. |
+| `incomingDpsColor` | colour | `0xFFE05A4E` | | |
+| `outgoingDpsColor` | colour | `0xFF68CA6B` | | |
+| `miningRateColor` | colour | `0xFF7E98E7` | | |
+| `bountyRateColor` | colour | `0xFFE1C747` | | |
+| `showTotals` | bool | `false` | | A line under the rows adding up their shown rates. |
+| `hideWhenNoEveFocus` | bool | `false` | | |
+| `hideDebounceMs` | int | `500` | 0–5000 | |
 
-**History Panel**: recent notifications from all characters. Also toggled from the tray.
+### historyPanel
+
+The Alert History panel: recent alerts from all characters. Also toggled from the tray.
 
 | Key | Type | Default | Range | Notes |
 |---|---|---|---|---|
-| `showNotifInfoPanel` | bool | `false` | | |
-| `notifInfoPanelX`, `notifInfoPanelY` | int | `10`, `250` | screen | |
-| `notifInfoPanelWidth` | int | `300` | 100–3840 | |
-| `notifInfoPanelHeight` | int | `400` | 60–2160 | |
-| `rememberNotifInfoPanelPosition` | bool | `true` | | Save position on drag. |
-| `hideNotifInfoPanelWhenNoCharacters` | bool | `true` | | |
-| `notifInfoPanelOpacity` | int | `255` | opacity | |
-| `notifInfoPanelFontName` | string | `"Segoe UI"` | | |
-| `notifInfoPanelFontSize` | int | `13` | font size | |
-| `notifInfoPanelFontWeight` | enum | `Regular` | weight | |
-| `notifInfoPanelMaxRows` | int | `15` | 1–30 | |
-| `notifInfoPanelShowTimestamp` | bool | `false` | | |
-| `notifInfoPanelMergeEnabled` | bool | `false` | | Merge identical back-to-back notifications from different characters into one `+N` row. |
-| `notifInfoPanelMergeWindowSec` | int | `10` | 1–300 | Max gap to merge. |
-| `notifInfoPanelShowCategoryFilters` | bool | `true` | | |
-| `notifInfoPanelShowFleet`, `notifInfoPanelShowMining`, `notifInfoPanelShowCombat`, `notifInfoPanelShowNavigation`, `notifInfoPanelShowGeneral` | bool | `true` | | Category filters. |
+| `show` | bool | `false` | | |
+| `x`, `y` | int | `10`, `250` | screen | |
+| `width` | int | `300` | 100–3840 | |
+| `height` | int | `400` | 60–2160 | |
+| `collapsed` | bool | `false` | | Folded to its header, by its chevron or a double-click; the header then shows the newest row. |
+| `lockPosition` | bool | `false` | | The header no longer drags the panel. Also set from the header's ⋯ menu. |
+| `rememberPosition` | bool | `true` | | Save position on drag. |
+| `alwaysOnTop` | bool | `true` | | Keep the panel above other windows, game clients included. Also the header's pin. |
+| `hideWhenNoCharacters` | bool | `true` | | |
+| `hideWhenNoEveFocus` | bool | `false` | | Hide while no EVE client has focus; this app's own windows count as focus. The tray toggle or hotkey shows it until EVE next has focus. |
+| `hideDebounceMs` | int | `500` | 0–5000 | Delay before hiding. |
+| `opacity` | int | `255` | opacity | |
+| `fontName` | string | `"Geist"` | | |
+| `fontSize` | int | `12` | font size | |
+| `fontWeight` | enum | `Regular` | weight | |
+| `maxRows` | int | `15` | 1–30 | |
+| `showTimestamp` | bool | `false` | | |
+| `mergeEnabled` | bool | `false` | | Merge identical back-to-back notifications into one row marked `×N`; click it to list the characters. |
+| `mergeWindowSec` | int | `10` | 1–300 | Max gap to merge. |
+| `showCategoryFilters` | bool | `true` | | Chips above the rows, one per category with its count. |
+| `showFleet`, `showMining`, `showCombat`, `showNavigation`, `showChat`, `showGeneral` | bool | `true` | | Category filters. |
+
+### mapPanel
+
+The Map: a schematic of one region, or up to four side by side (Ctrl+click a region or an exit to add it), with live stats, client positions and chat intel. Its Layers button turns each overlay on and off; clicking Kills or NPC in the metric bar again switches to Pods or NPC delta. Also toggled from the tray.
+
+| Key | Type | Default | Range | Notes |
+|---|---|---|---|---|
+| `show` | bool | `false` | | Closing the map's window, or hiding it from the tray or a hotkey, turns this off. |
+| `x`, `y` | int | `330`, `60` | screen | |
+| `width` | int | `760` | 520–3840 | Inside the window's frame. Saved when the window is resized. |
+| `height` | int | `600` | 330–2160 | Inside the window's frame. Saved when the window is resized. |
+| `alwaysOnTop` | bool | `true` | | Keep the window above others, game clients included. |
+| `lockPosition` | bool | `false` | | Its title bar no longer drags the window. |
+| `rememberPosition` | bool | `true` | | Save position on drag. |
+| `hideWhenNoCharacters` | bool | `false` | | |
+| `hideWhenNoEveFocus` | bool | `false` | | As `historyPanel.hideWhenNoEveFocus`. |
+| `hideDebounceMs` | int | `500` | 0–5000 | Delay before hiding. |
+| `opacity` | int | `255` | opacity | |
+| `fontName` | string | `"Geist"` | | Names on the map only. Its cards, buttons and tooltips use the configuration window's font, Geist, and its colours. |
+| `fontSize` | int | `12` | font size | Names on the map only. |
+| `fontWeight` | enum | `Regular` | weight | Names on the map only. |
+| `regionId` | int | `10000002` | | The first region shown, by CCP's ID; The Forge by default. Set by picking a region. |
+| `extraRegionId1` … `3` | int | `0` | | Further regions shown beside it, by CCP's ID; `0` for none. Set by Ctrl+clicking a region or an exit. |
+| `followActive` | bool | `true` | | Open the active client's region when it leaves those shown. Needs log monitoring. |
+| `wheelOpensNewEden` | bool | `true` | | Scrolling out past the fit, after a pause in the wheel, opens New Eden. Off, only the map's title and zoom-out button open it. |
+| `metric` | enum | `Security` | `Security`, `ShipKills`, `PodKills`, `NpcKills`, `NpcDelta`, `Jumps`, `Sovereignty`, `FactionWarfare` | What the markers show. `ShipKills` counts ships only. `NpcDelta` is the change in NPC kills from the hour before, known once the panel has seen two hourly figures, or at once from Eve Stars with `evestarsToken`. `FactionWarfare` colours warzone systems by occupier, stronger the further each is contested. |
+| `trafficSpan` | enum | `Hour` | `Hour`, `Day`, `Week` | How far back ship, pod and NPC kills and jumps reach, from the span bar beside the metric bar. Past `Hour` the figures are Eve Stars' sums, so they need `evestarsToken` and `liveStats`; Eve Stars keeps kills 30 days and jumps 7, and only from 14 November 2026. `NpcDelta` always uses the last hour. |
+| `showCharacterNames` | bool | `true` | | Tag each system with a client in it; more than one shows as a count. |
+| `liveStats` | bool | `true` | | Fetch kills, jumps, sovereignty, faction warfare, sov campaigns and incursions from ESI, and storms and Thera's and Turnur's connections from EVE-Scout, every 15 minutes while the panel shows; also each sov-holding alliance's logo, once, for its colour. |
+| `showStorms` | bool | `true` | | Mark metaliminal storms and the gates they cover. Needs `liveStats`. Off only hides them. |
+| `showIncursions` | bool | `true` | | Mark incursions, the systems they infest and where they stage. Needs `liveStats`. Off only hides them. |
+| `showSovTimers` | bool | `true` | | Square each system with a sov campaign, with a countdown to its start beside its name, then the defender's score once it runs. Needs `liveStats`. Off only hides them. |
+| `showWormholes` | bool | `true` | | Draw a stub labelled Thera or Turnur from each system with a wormhole to it, and ring Turnur. A card under the Intel card lists every connection in New Eden, one tab per hub; click a row to open its system. Needs `liveStats`. Off only hides them. |
+| `showAnsiblex` | bool | `true` | | Draw the Eve Stars account's Ansiblex gates: an arc between two systems shown, or a stub naming the far end. Needs `evestarsToken`; a read-only token is enough. Fetched every 30 minutes while shown. |
+| `showKills` | bool | `true` | | Follow zKillboard's live feed while the panel shows: each kill ripples and leaves a fading mark, and the Intel card gains a Kills tab listing those in the regions shown. Kills only NPCs took part in are left out. |
+| `killLifetimeMin` | int | `30` | 1–120 | Minutes a kill stays on the map and in the Kills tab. |
+| `showIntel` | bool | `true` | | Highlight systems named in intel channels, as [intel](#intel) sets. Off only hides the pins. |
+| `routePreference` | enum | `Shorter` | `Shorter`, `Safer`, `LessSecure` | How routes sent through Eve Stars are planned. Keep it the same as the game's autopilot setting. |
+| `routeAnsiblex` | bool | `false` | | Plan routes sent through Eve Stars through the account's Ansiblex gates. Keep the game's Ansiblex setting the same. |
+| `routeEveryWaypoint` | bool | `false` | | Set every system on a route sent through Eve Stars as a waypoint, so the game's autopilot settings can't change the way it flies. Uses more of each character's ESI limit, and takes longer. |
+| `routeAvoidZone1` … `5` | bool | `false` | | With `routeAnsiblex`: refuse gates landing in that zone. Zone 1 is within 5 ly of the owning alliance's capital, each next zone 5 ly further out, and zone 5 is over 20 ly. |
+
+### intelPanel
+
+The Intel Panel lists every report that names a system in a channel an intel rule follows, at any distance, against the nearest client. It uses the default wording, whatever a rule's `custom_text` or `text_color`. A rule's exclusions don't apply here: `clr` and `nv` lines list too, though they stay off the map and don't alert. Clicking a row opens its system on the map and pings it. Also toggled from the tray. Clearing the history clears both.
+
+| Key | Type | Default | Range | Notes |
+|---|---|---|---|---|
+| `show` | bool | `false` | | Reports are collected whether or not this is on. Intel never goes to the Alert History panel. |
+| `attached` | bool | `true` | | Draw it as a card over the map, below its search, showing 2 to 6 reports as they fit, with a Kills tab beside it while `mapPanel.showKills` is on; the settings below marked *detached* don't apply. Turned off, the panel stays up with no character logged in, like the tray toggle. |
+| `x`, `y` | int | `1100`, `60` | screen | *Detached.* |
+| `width` | int | `340` | 160–3840 | *Detached.* |
+| `height` | int | `400` | 120–2160 | *Detached.* |
+| `collapsed` | bool | `false` | | *Detached.* Folded to its header, which then shows the newest report in range. |
+| `lockPosition` | bool | `false` | | *Detached.* The header no longer drags the panel. Also set from the header's ⋯ menu. |
+| `rememberPosition` | bool | `true` | | *Detached.* Save position on drag. |
+| `alwaysOnTop` | bool | `true` | | *Detached.* Keep the panel above other windows, game clients included. Also the header's pin. |
+| `hideWhenNoCharacters` | bool | `false` | | *Detached.* |
+| `hideWhenNoEveFocus` | bool | `false` | | *Detached.* As `historyPanel.hideWhenNoEveFocus`. |
+| `hideDebounceMs` | int | `500` | 0–5000 | *Detached.* Delay before hiding. |
+| `opacity` | int | `255` | opacity | *Detached.* Inside the map it takes the map's. |
+| `fontName` | string | `"Geist"` | | *Detached.* |
+| `fontSize` | int | `12` | font size | *Detached.* |
+| `fontWeight` | enum | `Regular` | weight | *Detached.* |
+| `showTimestamp` | bool | `false` | | Also the map's Intel card. |
+| `mergeEnabled` | bool | `false` | | Merge identical back-to-back reports into one row marked `×N`; also the map's Intel card. |
+| `mergeWindowSec` | int | `10` | 1–300 | Max gap to merge. |
+| `colorSystemNames` | bool | `true` | | Draw each row's system in its name colour: `systemColors`, then unique colours if on, then the default. Doesn't need a rule's `color_system_name`. |
+| `range` | enum | `All` | `OneJump` `FiveJumps` `TenJumps` `All` | *Detached.* Lists only reports this close to the nearest client; set by the range filter. Reports no client can reach show only under `All`. |
+| `muteSounds` | bool | `false` | | Silences intel alerts' sound and speech; the detached panel's speaker button. |
+
+### intel
+
+How chat intel marks systems, on the map (`mapPanel.showIntel`) and on the thumbnails' connection maps (`thumbnail.showSystemConnectionIntel`).
+
+| Key | Type | Default | Range | Notes |
+|---|---|---|---|---|
+| `shrinkSec` | int | `300` | 1–900 | Seconds an intel pin shows, its halo shrinking all the while. |
+| `showClear` | bool | `true` | | Turn a live pin yellow and restart its shrink when intel calls its system `clear` or `clr`, even if the rule excludes those words. Only the first system a message names is cleared. Off, those messages are ignored. |
 
 ### thumbnailSpaces
 
@@ -363,14 +571,29 @@ Rules:
 
 ### snapping
 
+Thumbnail drags.
+
 | Key | Type | Default | Range | Notes |
 |---|---|---|---|---|
 | `enabled` | bool | `true` | | |
 | `threshold` | int | `10` | 0–20 | Pixels. |
 | `screenEdges` | bool | `true` | | |
 | `thumbnailEdges` | bool | `true` | | |
+| `panelEdges` | bool | `true` | | Client List and the History, Map and Intel panels. |
 | `ghostPositions` | bool | `true` | | Snap to other characters' saved positions while dragging. |
 | `showGhostPositionBorders` | bool | `true` | | Outline those positions while dragging. Turned off by import. |
+
+### panelSnapping
+
+Client List and History, Map and Intel panel drags. Panels measure by their visible frame, so the Map Panel's invisible resize borders leave no gap.
+
+| Key | Type | Default | Range | Notes |
+|---|---|---|---|---|
+| `enabled` | bool | `true` | | |
+| `threshold` | int | `10` | 0–20 | Pixels. |
+| `screenEdges` | bool | `true` | | |
+| `panelEdges` | bool | `true` | | |
+| `thumbnailEdges` | bool | `true` | | |
 
 ### interaction
 
@@ -378,6 +601,7 @@ Rules:
 |---|---|---|---|---|
 | `enableDragging` | bool | `true` | | Right-drag moves a thumbnail; Ctrl+right-drag moves all. |
 | `animationStyle` | enum | `NoAnimation` | `NoAnimation` `OriginalAnimation` | `NoAnimation` disables Windows' minimize/restore animation around the app's own minimize/restore calls, then restores the setting. |
+| `hideTaskbarOverClients` | bool | `true` | | Marks EVE clients fullscreen for Explorer, so the taskbar goes behind the active one even when it doesn't cover the monitor. |
 | `clickTrigger` | enum | `MouseDown` | `MouseDown` `MouseUp` | When left-click activates. |
 | `clickThrough` | bool | `false` | | Thumbnails and Client List ignore the mouse. Disables clicking, exclusion, dragging and hover zoom. |
 | `hoverCursor` | enum | `Default` | `Default` `Hand` `Crosshair` `Move` `Help` | Over thumbnails and Client List rows. |
@@ -428,62 +652,27 @@ Per-character opt-out: `characters[].excludeFromAutoMove`.
 
 Per-character opt-out: `characters[].excludeFromCloseAll`.
 
-### chatlog
-
-Reads EVE's chat and game logs on a worker thread. Required by system names, notifications from game events, combat, mining, bounty and travel.
-
-| Key | Type | Default | Range | Notes |
-|---|---|---|---|---|
-| `enabled` | bool | `false` | | |
-| `chatlogDir` | string | `""` | | `""` = `<Documents>\EVE\logs\Chatlogs` (follows OneDrive redirection). `%VAR%` expanded; unknown variables kept literally. `/` is read as `\`. |
-| `gamelogDir` | string | `""` | | As above, `Gamelogs`. |
-| `pollIntervalMs` | int | `500` | 100–5000 | |
-| `idlePollThreshold` | int | `600` | 1–1000 | Idle polls before a file's poll interval doubles. |
-| `maxPollMultiplier` | int | `2` | 1–8 | Backoff cap. Any change resets to 1×. |
-
 ### combat
 
-Incoming/outgoing DPS labels from gamelog `(combat)` lines. Lines with `" from "` after the amount are incoming, else `" to "` outgoing. `misses you completely` counts as a 0-damage incoming hit. Repairs, boosts, transfers and outgoing misses are ignored.
+Incoming/outgoing DPS from gamelog `(combat)` lines, for [thumbnail.combatText](#thumbnailcombattext) and the Client List; the tracker and its alerts run while either shows the rate. Lines with `" from "` after the amount are incoming, else `" to "` outgoing. `misses you completely` counts as a 0-damage incoming hit. Repairs, boosts, transfers and outgoing misses are ignored.
 
 | Key | Type | Default | Range | Notes |
 |---|---|---|---|---|
-| `enabled` | bool | `false` | | |
-| `window_seconds` | int | `60` | 5–600 | **0 = default.** DPS = damage in window ÷ window. Early in a fight, damage after the first second ÷ elapsed; `??` for 3 s. |
+| `window_seconds` | int | `60` | 5–600 | **0 = default.** DPS = damage in window ÷ window. Early in a fight, damage after the first second ÷ elapsed; hidden for the first 3 s. |
 | `update_interval_ms` | int | `1000` | 1000–10000 | Display refresh. Alerts check every second. |
-| `show_incoming`, `show_outgoing` | bool | `true` | | |
-| `incoming_color` | colour | `0xFFFF4444` | | |
-| `outgoing_color` | colour | `0xFF44FF44` | | |
-| `incoming_bg_color`, `outgoing_bg_color` | colour | `0xE6000000` | | |
-| `incoming_font_name`, `outgoing_font_name` | string | `"Segoe UI"` | | |
-| `incoming_font_size`, `outgoing_font_size` | int | `12` | font size | |
-| `incoming_font_weight`, `outgoing_font_weight` | enum | `Regular` | weight | |
-| `incoming_position` | enum | `TopCenter` | position | |
-| `outgoing_position` | enum | `TopCenter` | position | |
-| `incoming_offset_x`, `incoming_offset_y`, `outgoing_offset_x` | int | `0` | offset | |
-| `outgoing_offset_y` | int | `24` | offset | Below Incoming DPS. |
-| `incoming_show_prefix`, `outgoing_show_prefix` | bool | `true` | | |
 | `damage_alert_excluded_weapons` | string | `""` | | Comma-separated, case-insensitive weapon-name substrings that count toward DPS but don't raise `TakingDamage`. |
 
 `TakingDamage` fires on incoming hits, at most once per its `throttle_ms`, and stops when the hits stop.
 
 ### mining
 
-m³/min and ISK rate from gamelog `(mining)` lines (normal and critical yields; residue ignored).
+m³ and ISK rates from gamelog `(mining)` lines (normal and critical yields; residue ignored), for [thumbnail.miningText](#thumbnailminingtext) and the Client List; the tracker and its alerts run while either shows the rate.
 
 | Key | Type | Default | Range | Notes |
 |---|---|---|---|---|
-| `enabled` | bool | `false` | | |
 | `window_seconds` | int | `60` | 30–3600 | **0 = default.** Rate = m³ in window ÷ window. Early on, units after the first cycle ÷ time from first to latest yield. |
 | `update_interval_ms` | int | `1000` | 1000–10000 | |
-| `color` | colour | `0xFF44AAFF` | | |
-| `bg_color` | colour | `0xE6000000` | | |
-| `font_name` | string | `"Segoe UI"` | | |
-| `font_size` | int | `12` | font size | |
-| `font_weight` | enum | `Regular` | weight | |
-| `position` | enum | `BottomRight` | position | |
-| `offset_x`, `offset_y` | int | `0` | offset | |
-| `show_prefix` | bool | `true` | | `M:` |
-| `show_isk_rate` | bool | `true` | | Second line, priced from the [ore table](#global-settings). |
+| `m3_rate_unit` | enum | `hour` | `hour` `minute` | The m3 rate's period, on thumbnails and the Client List. |
 | `isk_rate_unit` | enum | `hour` | `hour` `minute` | |
 | `idle_alert_window_seconds` | int | `30` | 30–600 | **0 = default.** `MiningIdle` fires once when events in this window ≤ `idle_alert_threshold`, after mining for a full window; rearms above it. |
 | `idle_alert_threshold` | int | `1` | 0–60 | |
@@ -491,57 +680,29 @@ m³/min and ISK rate from gamelog `(mining)` lines (normal and critical yields; 
 
 ### bounty
 
-ISK rate from gamelog `(bounty)` lines (`… ISK added to next bounty payout`). Same formula as mining.
+ISK rate from gamelog `(bounty)` lines (`… ISK added to next bounty payout`), for [thumbnail.bountyText](#thumbnailbountytext) and the Client List. Same formula as mining; the tracker runs while either shows the rate.
 
 | Key | Type | Default | Range | Notes |
 |---|---|---|---|---|
-| `enabled` | bool | `false` | | |
 | `window_seconds` | int | `1200` | 60–3600 | **0 = default.** |
 | `update_interval_ms` | int | `1000` | 1000–10000 | |
-| `color` | colour | `0xFFFFD700` | | |
-| `bg_color` | colour | `0xE6000000` | | |
-| `font_name` | string | `"Segoe UI"` | | |
-| `font_size` | int | `12` | font size | |
-| `font_weight` | enum | `Regular` | weight | |
-| `position` | enum | `TopRight` | position | |
-| `offset_x`, `offset_y` | int | `0` | offset | |
-| `show_prefix` | bool | `true` | | `ISK:` |
-| `isk_rate_unit` | enum | `hour` | `hour` `minute` | |
+| `isk_rate_unit` | enum | `hour` | `hour` `minute` | The ISK rate's period, on thumbnails and the Client List. |
 
 ### resources
 
-Per-client CPU / RAM / VRAM label, sampled from the OS (no logs needed).
+Per-client CPU / RAM / VRAM, sampled from the OS (no logs needed) while [thumbnail.resourcesText](#thumbnailresourcestext) shows.
 
 | Key | Type | Default | Range | Notes |
 |---|---|---|---|---|
-| `enabled` | bool | `false` | | |
-| `show_cpu` | bool | `true` | | `GetProcessTimes`, normalised to all logical cores, 0–100 %. First sample reads 0 %. |
-| `show_ram` | bool | `true` | | Working set, MB. |
-| `show_vram` | bool | `true` | | Dedicated GPU memory, MB, via the "GPU Process Memory" perf counter. Omitted when unavailable. |
 | `update_interval_ms` | int | `10000` | 1000–60000 | |
-| `color` | colour | `0xFFFFFFFF` | | |
-| `bg_color` | colour | `0xE6000000` | | |
-| `font_name` | string | `"Segoe UI"` | | |
-| `font_size` | int | `12` | font size | |
-| `font_weight` | enum | `Regular` | weight | |
-| `position` | enum | `LeftCenter` | position | |
-| `offset_x`, `offset_y` | int | `0` | offset | |
 
 ### ping
 
-Per-client round trip to its game server: an ICMP echo to the address of the client's connection on port 26000. Shows `?? ms` until the first reply and after a timeout (1 s); hidden while the client has no server connection. Tranquility connects through Cloudflare, so this is the time to the nearest Cloudflare edge, not to CCP's servers.
+Per-client round trip to its game server, measured while [thumbnail.pingText](#thumbnailpingtext) shows: an ICMP echo to the address of the client's connection on port 26000. Shows `?? ms` until the first reply and after a timeout (1 s); hidden while the client has no server connection. Tranquility connects through Cloudflare, so this is the time to the nearest Cloudflare edge, not to CCP's servers.
 
 | Key | Type | Default | Range | Notes |
 |---|---|---|---|---|
-| `enabled` | bool | `false` | | |
 | `update_interval_ms` | int | `10000` | 1000–60000 | |
-| `color` | colour | `0xFFFFFFFF` | | |
-| `bg_color` | colour | `0xE6000000` | | |
-| `font_name` | string | `"Segoe UI"` | | |
-| `font_size` | int | `12` | font size | |
-| `font_weight` | enum | `Regular` | weight | |
-| `position` | enum | `RightCenter` | position | |
-| `offset_x`, `offset_y` | int | `0`, `24` | offset | |
 
 ### travel
 
@@ -555,11 +716,11 @@ Fires `TravelLeftBehind` when a character isn't in the group's system. Checked a
 | `threshold_percent` | float | `50.0` | 1–100 | Share of eligible characters that must share a system for it to count as the group. |
 | `threshold_count` | int | `2` | 1–50 | As above, as a count. |
 
-Eligible: jumped (gate or Conduit, not undock) at least once this session and not excluded. The group system is the one most eligible characters share. A straggler is flagged once; its next jump rearms.
+Only eligible characters count: those that have jumped (by gate or Conduit, not undocking) at least once this session and aren't [excluded](#exclusion) from cycling. Exclude a character you've set aside, like a scout ahead or a parked hauler, so it isn't flagged for being on its own. The group system is the one most eligible characters share. A straggler is flagged once; its next jump rearms.
 
 ### hotkeys
 
-All values are **keys**.
+Four switches, then the global hotkeys; every `hotkey*` value is **keys**.
 
 | Key | Type | Default | Notes |
 |---|---|---|---|
@@ -581,8 +742,10 @@ All values are **keys**.
 | `hotkeyMoveToSavedPositions` | keys | | Move clients to `windowPosition`, honouring `excludeFromAutoMove`. |
 | `hotkeyToggleDragging` | keys | | Toggle `interaction.enableDragging`. |
 | `hotkeyToggleTravelMode` | keys | | Toggle `travel.enabled`. |
-| `hotkeyToggleNotificationHistory` | keys | | Show/hide the notification history panel. |
-| `hotkeyClearNotificationHistory` | keys | | Clear the notification history. |
+| `hotkeyToggleNotificationHistory` | keys | | Show/hide the Alert History panel. |
+| `hotkeyClearNotificationHistory` | keys | | Clear the alert history. |
+| `hotkeyToggleMapPanel` | keys | | Show/hide the map panel. |
+| `hotkeyToggleIntelPanel` | keys | | Show/hide the intel panel. |
 
 ### hotkeyGroups
 
@@ -616,21 +779,46 @@ Matched by exact `name`. Positions are saved automatically on drag.
 | `nameColor` | colour? | `null` | |
 | `displayName` | string? | `null` | Shown instead of `name` on thumbnails and the Client List. |
 | `opacity` | int? | `null` | opacity; `null` = `thumbnail.thumbnailOpacity`. |
+| `preview` | enum | `Default` | `Default` (= `thumbnail.showLivePreview`) `Live` `Blank` |
+| `blankThumbnailColor` | colour? | `null` | `null` = `thumbnail.blankThumbnailColor`, or the dimmed border with `thumbnail.blankDimsBorder`. |
 | `hotkey` | keys | | Activate this character. Shared keys cycle the sharers in profile order. |
 | `excludeFromMinimize` | bool | `false` | |
 | `excludeFromCloseAll` | bool | `false` | |
 | `excludeFromAutoMove` | bool | `false` | |
-| `hideThumbnail` | bool | `false` | Hide its thumbnail and list row; takes no space cell. |
-| `notificationsMuted` | bool | `false` | |
+| `excludeFromChatAlerts` | bool | `false` | This client never receives chat alerts. |
+| `keepFullSpeed` | bool | `false` | Client Speed never slows this client in the background, and Windows' efficiency mode is kept off it. |
+| `hideThumbnail` | bool | `false` | Hide its thumbnail; takes no space cell. |
+| `hideFromClientList` | bool | `false` | Hide its row in the client list. |
+| `notificationsMuted` | bool | `false` | No alerts on this character, from game events or chat. |
 
 ### systemColors
 
 | Key | Type | Default | Notes |
 |---|---|---|---|
 | `systemName` | string | `""` | Comma-separated names and patterns, case-insensitive. `*` any text, `?` one character, `#` one digit (`J######` = wormholes). |
-| `color` | colour | `0` | |
+| `color` | colour | `0x00000000` | |
 
 An exact name beats a pattern regardless of order; otherwise the first match wins. The key is `systemName`; an entry using `name` never matches.
+
+### chatAlerts
+
+Rules for chat messages that raise an alert. Needs [chatlog](#chatlog). Rules are checked intel first, then keyword, each in list order; a message alerts once, for the first rule it matches. Your own characters' messages never alert, and a line logged by several clients alerts once.
+
+| Key | Type | Default | Range | Notes |
+|---|---|---|---|---|
+| `name` | string | `""` | | |
+| `enabled` | bool | `true` | | |
+| `kind` | enum | `intel` | `intel` `keyword` | `intel`: a system named in the message within `max_jumps` of a client alerts the nearest clients. `keyword`: one of `keywords` in the message alerts the client that logged it. |
+| `channels` | string | `""` | | Comma-separated channel names, with `*` `?` `#` patterns as in `systemColors`. Empty never matches. |
+| `keywords` | string | `""` | | Keyword rules: comma-separated words or phrases, case-insensitive, matched as whole words. Empty never matches. |
+| `exclude` | string | `""` | | Comma-separated words or phrases that stop the message matching this rule. |
+| `max_jumps` | int | `5` | 0–30 | Intel rules: how far the system may be from a client. |
+| `cooldown_ms` | int | `15000` | 0–300000 | How long the same system or keyword stays quiet for this rule after alerting. |
+| `alert` | object | | | How the alert looks and sounds, as [`type_configs.<Type>`](#notifications); `throttle_ms` and `show_text` default to `0` and `false`. |
+
+System names that are ordinary words (`Pain`) only count written as spelled; names with a digit or hyphen match in any case. An intel message with no client in range doesn't alert. A client with `excludeFromChatAlerts` or `notificationsMuted` never receives an alert; a keyword alert its listener can't receive goes to another client.
+
+`custom_text` placeholders: intel `{system}` `{jumps}` `{pilot}` `{channel}` `{message}` `{character}`; keyword `{keyword}` `{pilot}` `{channel}` `{message}` `{character}`.
 
 ### windowFilters
 
@@ -658,14 +846,24 @@ A window must pass both lists; a filter with both empty matches nothing. Non-EVE
 | Key | Type | Default | Notes |
 |---|---|---|---|
 | `lastUsedProfile` | string | `"default.json"` | Set by the app. |
+| `chatlog` | object | | Log monitoring; see [chatlog](#chatlog). |
 | `logLevel` | enum | `err` | `debug` `info` `warn` `err` |
 | `language` | enum | `en` | `en` `de` `es` `fr` `pl` `pt` `ru`. Dialog and on-screen hints. |
 | `advancedMode` | bool | `false` | Show the dialog's advanced settings. |
 | `alwaysOnTop` | bool | `true` | Keep the config dialog on top. |
 | `moveOnProfileSwitch` | bool | `false` | On a profile switch, move running clients to the new profile's saved window positions. |
 | `dialogX`, `dialogY` | int? | `null` | Dialog position. Set by the app. |
-| `runOnStartup` | bool | `false` | `HKCU\…\Run` entry, re-applied each launch. |
+| `runOnStartup` | bool | `false` | `HKCU\…\Run` entry, re-applied each launch, and removed while off. |
 | `autoRegisterProtocol` | bool | `true` | Register `evemajpreview://` at startup if missing. |
+| `protocolLinks` | object | | Which closing protocol URLs may run; see [Command line and protocol](#command-line-and-protocol). |
+| `protocolLinks.allowCloseAll` | bool | `false` | Let `hotkey/close_all` URLs run. Off, they're refused and logged, since any web page can open a link. |
+| `protocolLinks.allowCloseActive` | bool | `false` | As above, `hotkey/close_active`. |
+| `protocolLinks.allowCloseGroup` | bool | `false` | As above, `group/close/<group>`. |
+| `protocolLinks.allowExitApp` | bool | `false` | As above, `hotkey/exit_app`. |
+| `clientSpeed` | object | | CPU priority and efficiency mode of EVE clients; each put back to Windows' default when turned off or the app exits. A client running as administrator needs the app to as well. |
+| `clientSpeed.raiseFocusedClient` | bool | `false` | Above Normal priority for the focused client, set before it comes forward. |
+| `clientSpeed.lowerBackgroundClients` | bool | `false` | Below Normal priority for the others, 1.5 s after focus last moved, so cycling never waits on it. |
+| `clientSpeed.backgroundEfficiencyMode` | bool | `false` | Windows' efficiency mode for the others, on the same delay. |
 | `disableUpdateChecks` | bool | `false` | |
 | `hotkeyNextProfile`, `hotkeyPreviousProfile` | keys | | Cycle profiles in directory order, wrapping. |
 | `profileSwitchHotkeys` | `[{hotkey, targetProfile}]` | `[]` | `targetProfile` is a file name, e.g. `"pvp.json"`. |
@@ -675,10 +873,26 @@ A window must pass both lists; a filter with both empty matches nothing. Non-EVE
 | `hotkeyReturnToLastApp` | keys | | Focus the last non-EVE window. |
 | `appHotkeys` | `[{hotkey, executableName}]` | `[]` | Focus the frontmost window of that executable; nothing if not running. |
 | `hotkeyCycleAppsForward`, `hotkeyCycleAppsBackward` | keys | | Step through running `appHotkeys` apps in list order. |
-| `urlHotkeys` | `[{hotkey, url, uploadClipboard}]` | `[]` | Open `url` in the default browser. |
+| `urlHotkeys` | `[{hotkey, url, uploadClipboard}]` | `[]` | Open `url` in the default browser; only `http://` and `https://` links open. |
 | `urlHotkeys[].uploadClipboard` | bool | `false` | POST clipboard text to `url` as form field `Paste anything`, put the result URL on the clipboard and open it; falls back to opening `url`. For `adashboard.info`. |
 | `oreTable` | `[{name, price}]` | `[]` | ISK/unit overrides, 0–1e12. A name also covers its grade variants (`Veldspar` → `Veldspar II-Grade`). Others use built-in Jita prices. |
 | `orePricesFetchedAtSeconds` | int | `0` | Unix time of the last Fetch Prices. |
+| `evestarsEnabled` | bool | `true` | Off, the map drops its right-click destinations and Avoid System, whatever `evestarsToken` holds. |
+| `evestarsToken` | string | `""` | Eve Stars API token. Set, it adds the map's right-click destinations, Show Route, Avoid System and Ansiblex gates. Routes avoid the account's saved avoid list, which Avoid System changes; a read-only token can't. Always saved empty: the token goes in `evestarsTokenProtected`. One typed in here by hand is read and encrypted when the app starts. Left out of the log. |
+| `evestarsTokenProtected` | string | `""` | `evestarsToken` encrypted with Windows DPAPI, in base64. Only the Windows account that saved it can decrypt it, so after moving this file to another account or PC, enter the token again. |
+
+### chatlog
+
+Reads EVE's chat and game logs on a worker thread. Required by system names, notifications from game events, combat, mining, bounty and travel. Profiles saved before it moved here kept their own; the first start after the move takes the last-used profile's.
+
+| Key | Type | Default | Range | Notes |
+|---|---|---|---|---|
+| `chatlog.enabled` | bool | `false` | | |
+| `chatlog.chatlogDir` | string | `""` | | `""` = `<Documents>\EVE\logs\Chatlogs` (follows OneDrive redirection). `%VAR%` expanded; unknown variables kept literally. `/` is read as `\`. |
+| `chatlog.gamelogDir` | string | `""` | | As above, `Gamelogs`. |
+| `chatlog.pollIntervalMs` | int | `500` | 100–5000 | |
+| `chatlog.idlePollThreshold` | int | `600` | 1–1000 | Idle polls before a file's poll interval doubles. |
+| `chatlog.maxPollMultiplier` | int | `2` | 1–8 | Backoff cap. Any change resets to 1×. |
 
 ## Command line and protocol
 
@@ -688,7 +902,7 @@ A window must pass both lists; a filter with both empty matches nothing. Non-EVE
 | `--config` | Open the config dialog. Any second launch forwards this to the running instance. |
 | `--protocol <url>` | Forward a protocol URL to the running instance and exit. |
 
-`evemajpreview://` URLs are forwarded to the running instance and dropped if none is running. Registered under `HKCU\Software\Classes\evemajpreview` (no admin) with the current executable's path; re-registered at startup if the exe has moved. Names are percent-encoded (`%20` for a space); `+` is kept as written.
+`evemajpreview://` URLs are forwarded to the running instance and dropped if none is running. Registered under `HKCU\Software\Classes\evemajpreview` (no admin) with the current executable's path; re-registered at startup if the exe has moved. Names are percent-encoded (`%20` for a space); `+` is kept as written. URLs that close clients or exit the app run only with their [`protocolLinks`](#global-settings) setting on.
 
 | URL | Effect |
 |---|---|
@@ -728,3 +942,5 @@ A window must pass both lists; a filter with both empty matches nothing. Non-EVE
 | `toggle_travel_mode` | `hotkeyToggleTravelMode` |
 | `toggle_notification_history` | `hotkeyToggleNotificationHistory` |
 | `clear_notification_history` | `hotkeyClearNotificationHistory` |
+| `toggle_map_panel` | `hotkeyToggleMapPanel` |
+| `toggle_intel_panel` | `hotkeyToggleIntelPanel` |

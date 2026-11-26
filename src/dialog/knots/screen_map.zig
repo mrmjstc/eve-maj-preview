@@ -114,12 +114,12 @@ pub const ScreenMap = struct {
             try context.e(Text{
                 .selectable = false,
                 .key = label_base.indexed(screen_index).indexed(1),
-                .content = try std.fmt.allocPrint(arena, "{d}", .{screen_index + 1}),
+                .content = try arena.print("{d}", .{screen_index + 1}),
                 .style = &style.monitor_label_text,
             });
             const size = self.screen_sizes[screen_index];
             var room = box[3] - NUMBER_LINE_HEIGHT;
-            const size_text = try std.fmt.allocPrint(arena, "{d}\u{00D7}{d}", .{ size[0], size[1] });
+            const size_text = try arena.print("{d}\u{00D7}{d}", .{ size[0], size[1] });
             if (try detail(context, label_base.indexed(screen_index).indexed(2), size_text, box, &room)) {
                 if (screen_index == 0 and self.screen_boxes.len > 1) _ = try detail(context, label_base.indexed(screen_index).indexed(3), lang.text("Primary"), box, &room);
             }

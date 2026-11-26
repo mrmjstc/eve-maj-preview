@@ -1,5 +1,11 @@
-//! Filling, outlining and alpha-fixing rects in a raw 0xAARRGGBB pixel buffer; no I/O.
+//! Drawing rects, lines and circles in a raw 0xAARRGGBB pixel buffer, and fixing GDI text's alpha; no I/O.
 const std = @import("std");
+const box_mod = @import("box.zig");
+
+const Box = box_mod.Box;
+
+/// A Mask's steps to the pixel, which caps how deep it can tell apart at about 16 pixels.
+const MASK_DEPTH_STEPS: f32 = 16;
 
 /// A `width` x `height` buffer of 0xAARRGGBB pixels, rows packed with no padding.
 pub const Canvas = struct {
@@ -9,8 +15,142 @@ pub const Canvas = struct {
     height: usize,
 };
 
+/// A shape built up from discs and bands and then painted as one, so its overlaps don't darken as separate fills would.
+pub const Mask = struct {
+    allocator: std.mem.Allocator,
+    /// By pixel, rows packed, how far in from half a pixel outside the edge in MASK_DEPTH_STEPS, 0 being outside; owned, freed in deinit.
+    depth: []u8,
+    width: usize,
+    height: usize,
+    /// The rows touched, so clearing and painting skip the rest.
+    top: usize,
+    bottom: usize = 0,
+    /// The rightmost pixel touched, one past it; empty while 0.
+    right: usize = 0,
+    /// Each row's touched pixels, so shapes far apart don't have the gap between them scanned; owned, freed in deinit.
+    row_spans: []RowSpan,
+
+    pub fn init(allocator: std.mem.Allocator, width: usize, height: usize) !Mask {
+        const depth = try allocator.alloc(u8, width * height);
+        errdefer allocator.free(depth);
+        @memset(depth, 0);
+        const row_spans = try allocator.alloc(RowSpan, height);
+        @memset(row_spans, RowSpan.empty);
+        return .{ .allocator = allocator, .depth = depth, .width = width, .height = height, .top = height, .row_spans = row_spans };
+    }
+
+    pub fn deinit(self: *Mask) void {
+        self.allocator.free(self.depth);
+        self.allocator.free(self.row_spans);
+    }
+
+    /// Kept while its size stays, so a frame needn't make and zero a whole one; returned empty.
+    pub fn ensureSize(mask: *?Mask, allocator: std.mem.Allocator, width: usize, height: usize) !*Mask {
+        if (mask.*) |*kept| {
+            if (kept.width == width and kept.height == height) {
+                kept.clear();
+                return kept;
+            }
+            kept.deinit();
+            mask.* = null;
+        }
+        mask.* = try .init(allocator, width, height);
+        return &mask.*.?;
+    }
+
+    pub fn clear(self: *Mask) void {
+        if (self.isEmpty()) return;
+        for (self.top..self.bottom) |pixel_y| {
+            const row = &self.row_spans[pixel_y];
+            @memset(self.depth[pixel_y * self.width + row.start .. pixel_y * self.width + row.end], 0);
+            row.* = .empty;
+        }
+        self.top = self.height;
+        self.right = 0;
+        self.bottom = 0;
+    }
+
+    /// Empty, its bounds run backwards, so they can't be looped over.
+    fn isEmpty(self: *const Mask) bool {
+        return self.right == 0;
+    }
+
+    /// Anti-aliased as fillCircle, and clipped to the mask.
+    pub fn addDisc(self: *Mask, center_x: i32, center_y: i32, radius: f32) void {
+        self.addBand(center_x, center_y, center_x, center_y, radius);
+    }
+
+    /// Everything within `radius` of the line, measured to it so a straight side stays straight.
+    pub fn addBand(self: *Mask, from_x: i32, from_y: i32, to_x: i32, to_y: i32, radius: f32) void {
+        const line: BandLine = .{
+            .start_x = @floatFromInt(from_x),
+            .start_y = @floatFromInt(from_y),
+            .delta_x = @floatFromInt(to_x - from_x),
+            .delta_y = @floatFromInt(to_y - from_y),
+        };
+        const length_squared = line.delta_x * line.delta_x + line.delta_y * line.delta_y;
+        const reach: i32 = @intFromFloat(@ceil(radius + 1));
+        // From here out a pixel's depth is 0, so it needn't be measured.
+        const outside_squared = (radius + 0.5) * (radius + 0.5);
+
+        for (clampedTo(@min(from_y, to_y) - reach, self.height)..clampedTo(@max(from_y, to_y) + reach + 1, self.height)) |pixel_y| {
+            const y: f32 = @floatFromInt(pixel_y);
+            const span = self.rowSpan(line, y, reach);
+            if (span.end <= span.start) continue;
+            for (span.start..span.end) |pixel_x| {
+                const depth = &self.depth[pixel_y * self.width + pixel_x];
+                if (depth.* == 255) continue;
+                const x: f32 = @floatFromInt(pixel_x);
+                const along = if (length_squared == 0) 0 else std.math.clamp(((x - line.start_x) * line.delta_x + (y - line.start_y) * line.delta_y) / length_squared, 0, 1);
+                const offset_x = x - (line.start_x + along * line.delta_x);
+                const offset_y = y - (line.start_y + along * line.delta_y);
+                const distance_squared = offset_x * offset_x + offset_y * offset_y;
+                if (distance_squared >= outside_squared) continue;
+                const steps = std.math.clamp((radius + 0.5 - @sqrt(distance_squared)) * MASK_DEPTH_STEPS, 0, 255);
+                depth.* = @max(depth.*, @as(u8, @intFromFloat(steps)));
+            }
+            self.includeRow(pixel_y, span);
+        }
+    }
+
+    fn includeRow(self: *Mask, pixel_y: usize, span: RowSpan) void {
+        const row = &self.row_spans[pixel_y];
+        row.* = if (row.end == 0) span else .{ .start = @min(row.start, span.start), .end = @max(row.end, span.end) };
+        self.top = @min(self.top, pixel_y);
+        self.right = @max(self.right, span.end);
+        self.bottom = @max(self.bottom, pixel_y + 1);
+    }
+
+    /// Which pixels of the row at `y` a band can touch, so a long diagonal doesn't measure its whole bounding box.
+    fn rowSpan(self: *const Mask, line: BandLine, y: f32, reach: i32) RowSpan {
+        const margin: f32 = @floatFromInt(reach);
+        const first = if (line.delta_y == 0) 0 else std.math.clamp((y - margin - line.start_y) / line.delta_y, 0, 1);
+        const last = if (line.delta_y == 0) 1 else std.math.clamp((y + margin - line.start_y) / line.delta_y, 0, 1);
+        const first_x = line.start_x + first * line.delta_x;
+        const last_x = line.start_x + last * line.delta_x;
+        return .{
+            .start = clampedTo(@intFromFloat(@floor(@min(first_x, last_x)) - margin), self.width),
+            .end = clampedTo(@intFromFloat(@ceil(@max(first_x, last_x)) + margin + 1), self.width),
+        };
+    }
+};
+
+/// The line down a band's middle.
+const BandLine = struct { start_x: f32, start_y: f32, delta_x: f32, delta_y: f32 };
+
+/// Pixels `start` up to `end` of a row.
+const RowSpan = struct {
+    start: usize,
+    end: usize,
+
+    const empty: RowSpan = .{ .start = 0, .end = 0 };
+};
+
 /// A rect's part inside a pixel buffer, and how thick its outline can be.
 const ClippedRect = struct { left: usize, top: usize, right: usize, bottom: usize, thickness: usize };
+
+/// A box's part inside a pixel buffer, as pixel indices.
+const ClippedBox = struct { left: usize, top: usize, right: usize, bottom: usize };
 
 /// GDI text leaves alpha at 0, so non-black pixels still at 0 become opaque; alpha other drawing set is kept.
 pub fn fixTextAlphaRect(canvas: Canvas, x: i32, y: i32, rect_width: usize, rect_height: usize) void {
@@ -47,18 +187,39 @@ pub fn fillRect(canvas: Canvas, x: usize, y: usize, rect_width: usize, rect_heig
     }
 }
 
-/// Corners are cut with per-row insets (no anti-aliasing), which is fine at the small radii UI buttons use.
-pub fn fillRoundedRect(canvas: Canvas, x: usize, y: usize, rect_width: usize, rect_height: usize, radius: usize, argb: u32) void {
-    const corner_radius = @min(radius, @min(rect_width, rect_height) / 2);
-    const radius_f: f32 = @floatFromInt(corner_radius);
-    for (0..rect_height) |row| {
-        const from_edge = @min(row, rect_height - 1 - row);
-        var inset: usize = 0;
-        if (from_edge < corner_radius) {
-            const dy = radius_f - @as(f32, @floatFromInt(from_edge)) - 0.5;
-            inset = @intFromFloat(@round(radius_f - @sqrt(radius_f * radius_f - dy * dy)));
+/// Clipped to the canvas; an empty box draws nothing.
+pub fn fillBox(canvas: Canvas, box: Box, argb: u32) void {
+    const clipped = clippedBox(canvas, box) orelse return;
+    fillRect(canvas, clipped.left, clipped.top, clipped.right - clipped.left, clipped.bottom - clipped.top, argb);
+}
+
+/// Corners anti-aliased as fillCircle; clipped to the canvas, keeping the corners that fall on it.
+pub fn fillRoundedBox(canvas: Canvas, box: Box, radius: usize, argb: u32) void {
+    if (box.right <= box.left or box.bottom <= box.top) return;
+    const box_width: usize = @intCast(box.right - box.left);
+    const box_height: usize = @intCast(box.bottom - box.top);
+    const corner_radius = @min(radius, @min(box_width, box_height) / 2);
+    const corner: i32 = @intCast(corner_radius);
+    const arc_radius: f32 = @floatFromInt(corner_radius);
+    for (0..box_height) |row| {
+        const y = box.top + @as(i32, @intCast(row));
+        if (y < 0) continue;
+        if (y >= canvas.height) break;
+        const from_edge = @min(row, box_height - 1 - row);
+        if (from_edge >= corner_radius) {
+            fillBox(canvas, .{ .left = box.left, .top = y, .right = box.right, .bottom = y + 1 }, argb);
+            continue;
         }
-        fillRect(canvas, x + inset, y + row, rect_width - 2 * inset, 1, argb);
+        fillBox(canvas, .{ .left = box.left + corner, .top = y, .right = box.right - corner, .bottom = y + 1 }, argb);
+        const offset_y = arc_radius - @as(f32, @floatFromInt(from_edge)) - 0.5;
+        for (0..corner_radius) |column| {
+            // From the corner arc's centre to this pixel's centre.
+            const offset_x = arc_radius - @as(f32, @floatFromInt(column)) - 0.5;
+            const coverage = std.math.clamp(arc_radius + 0.5 - @sqrt(offset_x * offset_x + offset_y * offset_y), 0, 1);
+            const column_offset: i32 = @intCast(column);
+            blendPixel(canvas, box.left + column_offset, y, argb, coverage);
+            blendPixel(canvas, box.right - 1 - column_offset, y, argb, coverage);
+        }
     }
 }
 
@@ -91,31 +252,227 @@ pub fn drawDashedRectOutline(canvas: Canvas, x: i32, y: i32, rect_width: usize, 
     }
 }
 
-/// A 1px border round the whole canvas with `radius` rounded corners; outside them the pixels are cleared so the desktop shows through.
+/// A 1px border round the whole canvas with `radius` rounded, anti-aliased corners; outside them the desktop shows through.
 pub fn drawRoundedFrame(canvas: Canvas, radius: usize, argb: u32) void {
     const pixels = canvas.pixels;
     const width = canvas.width;
     const height = canvas.height;
-    fillRect(canvas, 0, 0, width, 1, argb);
-    fillRect(canvas, 0, height - 1, width, 1, argb);
-    fillRect(canvas, 0, 0, 1, height, argb);
-    fillRect(canvas, width - 1, 0, 1, height, argb);
-    if (width < 2 * radius or height < 2 * radius) return;
+    const corner = if (width < 2 * radius or height < 2 * radius) 0 else radius;
+    fillRect(canvas, corner, 0, width - 2 * corner, 1, argb);
+    fillRect(canvas, corner, height - 1, width - 2 * corner, 1, argb);
+    fillRect(canvas, 0, corner, 1, height - 2 * corner, argb);
+    fillRect(canvas, width - 1, corner, 1, height - 2 * corner, argb);
+    if (corner == 0) return;
 
-    const radius_f: f32 = @floatFromInt(radius);
-    for (0..radius) |dy| {
-        for (0..radius) |dx| {
+    const arc_radius: f32 = @floatFromInt(radius);
+    for (0..radius) |row| {
+        for (0..radius) |column| {
             // From the corner arc's centre to this pixel's centre.
-            const offset_x = radius_f - @as(f32, @floatFromInt(dx)) - 0.5;
-            const offset_y = radius_f - @as(f32, @floatFromInt(dy)) - 0.5;
+            const offset_x = arc_radius - @as(f32, @floatFromInt(column)) - 0.5;
+            const offset_y = arc_radius - @as(f32, @floatFromInt(row)) - 0.5;
             const distance = @sqrt(offset_x * offset_x + offset_y * offset_y);
-            const pixel: u32 = if (distance > radius_f) 0 else if (distance > radius_f - 1) argb else continue;
-            pixels[dy * width + dx] = pixel;
-            pixels[dy * width + width - 1 - dx] = pixel;
-            pixels[(height - 1 - dy) * width + dx] = pixel;
-            pixels[(height - 1 - dy) * width + width - 1 - dx] = pixel;
+            const inside_frame = std.math.clamp(arc_radius + 0.5 - distance, 0, 1);
+            const inside_border = std.math.clamp(arc_radius - 0.5 - distance, 0, 1);
+            for ([_]usize{ row * width + column, row * width + width - 1 - column, (height - 1 - row) * width + column, (height - 1 - row) * width + width - 1 - column }) |index| {
+                pixels[index] = framedPixel(pixels[index], argb, inside_border, inside_frame - inside_border);
+            }
         }
     }
+}
+
+/// Anti-aliased, and clipped to the canvas; only the stretch over it is walked, as a zoomed map runs gates far off it.
+pub fn drawLine(canvas: Canvas, from_x: i32, from_y: i32, to_x: i32, to_y: i32, argb: u32) void {
+    drawLineExact(canvas, @floatFromInt(from_x), @floatFromInt(from_y), @floatFromInt(to_x), @floatFromInt(to_y), argb);
+}
+
+/// drawLine between sub-pixel ends, so short pieces of a curve keep its slope.
+pub fn drawLineExact(canvas: Canvas, from_x: f32, from_y: f32, to_x: f32, to_y: f32, argb: u32) void {
+    const is_steep = @abs(to_y - from_y) > @abs(to_x - from_x);
+    var start_major = if (is_steep) from_y else from_x;
+    var start_minor = if (is_steep) from_x else from_y;
+    var end_major = if (is_steep) to_y else to_x;
+    var end_minor = if (is_steep) to_x else to_y;
+    if (start_major > end_major) {
+        std.mem.swap(f32, &start_major, &end_major);
+        std.mem.swap(f32, &start_minor, &end_minor);
+    }
+    const major_limit: f32 = @floatFromInt(if (is_steep) canvas.height else canvas.width);
+    const minor_limit: f32 = @floatFromInt(if (is_steep) canvas.width else canvas.height);
+    // Each step also touches the pixel after its own, so a line one short of the edge still shows.
+    if (@max(start_minor, end_minor) < -1 or @min(start_minor, end_minor) >= minor_limit) return;
+    if (end_major < 0 or start_major >= major_limit) return;
+
+    const length = end_major - start_major;
+    const gradient: f32 = if (length == 0) 0 else (end_minor - start_minor) / length;
+    var major: i32 = @intFromFloat(@max(@ceil(start_major), 0));
+    const last_major: i32 = @intFromFloat(@min(@floor(end_major), major_limit - 1));
+    while (major <= last_major) : (major += 1) {
+        const minor = start_minor + gradient * (@as(f32, @floatFromInt(major)) - start_major);
+        const floor = @floor(minor);
+        const whole: i32 = @intFromFloat(floor);
+        const fraction = minor - floor;
+        blendPixel(canvas, if (is_steep) whole else major, if (is_steep) major else whole, argb, 1 - fraction);
+        blendPixel(canvas, if (is_steep) whole + 1 else major, if (is_steep) major else whole + 1, argb, fraction);
+    }
+}
+
+/// Anti-aliased, and clipped to the canvas. `argb`'s alpha fades the whole disc.
+pub fn fillCircle(canvas: Canvas, center_x: i32, center_y: i32, radius: f32, argb: u32) void {
+    drawRing(canvas, center_x, center_y, radius, radius + 1, argb);
+}
+
+/// A band `thickness` wide inside `radius`, anti-aliased as fillCircle.
+pub fn drawRing(canvas: Canvas, center_x: i32, center_y: i32, radius: f32, thickness: f32, argb: u32) void {
+    const reach: i32 = @intFromFloat(@ceil(radius + 1));
+    const last_x: i32 = @as(i32, @intCast(canvas.width)) - 1 - center_x;
+    const last_y: i32 = @as(i32, @intCast(canvas.height)) - 1 - center_y;
+    var delta_y: i32 = @max(-reach, -center_y);
+    while (delta_y <= @min(reach, last_y)) : (delta_y += 1) {
+        var delta_x: i32 = @max(-reach, -center_x);
+        while (delta_x <= @min(reach, last_x)) : (delta_x += 1) {
+            const distance = @sqrt(@as(f32, @floatFromInt(delta_x * delta_x + delta_y * delta_y)));
+            const outer = std.math.clamp(radius + 0.5 - distance, 0, 1);
+            const inner = std.math.clamp(distance - (radius - thickness) + 0.5, 0, 1);
+            blendPixel(canvas, center_x + delta_x, center_y + delta_y, argb, outer * inner);
+        }
+    }
+}
+
+/// `mask` must be the canvas's size.
+pub fn fillMask(canvas: Canvas, mask: *const Mask, argb: u32) void {
+    if (mask.isEmpty()) return;
+    for (mask.top..mask.bottom) |pixel_y| {
+        const row = mask.row_spans[pixel_y];
+        for (row.start..row.end) |pixel_x| {
+            const steps = mask.depth[pixel_y * mask.width + pixel_x];
+            if (steps == 0) continue;
+            const depth: f32 = @as(f32, @floatFromInt(steps)) / MASK_DEPTH_STEPS;
+            blendPixel(canvas, @intCast(pixel_x), @intCast(pixel_y), argb, @min(depth, 1));
+        }
+    }
+}
+
+/// A band `thickness` wide inside the shape's edge, anti-aliased both sides, not drawn where the canvas cuts it off; `mask` is the canvas's size.
+pub fn outlineMask(canvas: Canvas, mask: *const Mask, thickness: f32, argb: u32) void {
+    if (mask.isEmpty()) return;
+    for (mask.top..mask.bottom) |pixel_y| {
+        const row = mask.row_spans[pixel_y];
+        for (row.start..row.end) |pixel_x| {
+            const steps = mask.depth[pixel_y * mask.width + pixel_x];
+            if (steps == 0) continue;
+            const depth: f32 = @as(f32, @floatFromInt(steps)) / MASK_DEPTH_STEPS;
+            const band = @min(depth, 1) * std.math.clamp(thickness + 1 - depth, 0, 1);
+            if (band > 0) blendPixel(canvas, @intCast(pixel_x), @intCast(pixel_y), argb, band);
+        }
+    }
+}
+
+/// `coverage` is rows `width` wide of 0 for none up to 255 for all of `argb`, its corner at `left` and `top`; clipped to the canvas.
+pub fn fillCoverage(canvas: Canvas, left: i32, top: i32, coverage: []const u8, width: i32, argb: u32) void {
+    for (coverage, 0..) |value, index| {
+        if (value == 0) continue;
+        const offset: i32 = @intCast(index);
+        blendPixel(canvas, left + @mod(offset, width), top + @divTrunc(offset, width), argb, @as(f32, @floatFromInt(value)) / 255);
+    }
+}
+
+/// As GDI blends grayscale text, clipped to the canvas; leaves alpha alone.
+/// `light`: rows `width` wide of 0 up to 255, cornered at `left`,`top`, for each channel of `rgb` at least the one under it.
+/// `dark`: the same for the other channels, as GDI covers dark text by another curve.
+pub fn fillGdiCoverage(canvas: Canvas, left: i32, top: i32, light: []const u8, dark: []const u8, width: usize, rgb: u32) void {
+    if (width == 0) return;
+    const first_column: usize = @intCast(@max(0, -left));
+    const end_column: usize = @intCast(std.math.clamp(@as(i32, @intCast(canvas.width)) - left, 0, @as(i32, @intCast(width))));
+    if (end_column <= first_column) return;
+    for (0..light.len / width) |row| {
+        const y = top + @as(i32, @intCast(row));
+        if (y < 0) continue;
+        if (y >= canvas.height) break;
+        const pixels = canvas.pixels[@as(usize, @intCast(y)) * canvas.width ..];
+        for (first_column..end_column) |column| {
+            const index = row * width + column;
+            if (light[index] == 0 and dark[index] == 0) continue;
+            const pixel = &pixels[@intCast(left + @as(i32, @intCast(column)))];
+            pixel.* = gdiBlend(pixel.*, rgb, light[index], dark[index]);
+        }
+    }
+}
+
+/// What four copies of `coverage`, each one pixel off a different way, cover drawn one over another; `halo` is `coverage`'s size, rows `width` wide.
+pub fn haloCoverage(coverage: []const u8, width: usize, halo: []u8) void {
+    const height = coverage.len / width;
+    for (0..height) |y| {
+        for (0..width) |x| {
+            var uncovered: u32 = 255;
+            if (x > 0) uncovered = stillUncovered(uncovered, coverage[y * width + x - 1]);
+            if (x + 1 < width) uncovered = stillUncovered(uncovered, coverage[y * width + x + 1]);
+            if (y > 0) uncovered = stillUncovered(uncovered, coverage[(y - 1) * width + x]);
+            if (y + 1 < height) uncovered = stillUncovered(uncovered, coverage[(y + 1) * width + x]);
+            halo[y * width + x] = @intCast(255 - uncovered);
+        }
+    }
+}
+
+fn stillUncovered(uncovered: u32, coverage: u8) u32 {
+    return (uncovered * (255 - coverage) + 127) / 255;
+}
+
+fn gdiBlend(under: u32, rgb: u32, light: u8, dark: u8) u32 {
+    var blended = under & 0xFF00_0000;
+    inline for (.{ 16, 8, 0 }) |shift| {
+        const over = (rgb >> shift) & 0xFF;
+        const below = (under >> shift) & 0xFF;
+        const coverage: u32 = if (over >= below) light else dark;
+        blended |= ((over * coverage + below * (255 - coverage) + 127) / 255) << shift;
+    }
+    return blended;
+}
+
+/// Over a premultiplied pixel, so it suits a transparent overlay as well as an opaque canvas; `coverage` is 0 to 1, on top of `argb`'s own alpha.
+fn blendPixel(canvas: Canvas, x: i32, y: i32, argb: u32, coverage: f32) void {
+    if (x < 0 or y < 0) return;
+    const pixel_x: usize = @intCast(x);
+    const pixel_y: usize = @intCast(y);
+    if (pixel_x >= canvas.width or pixel_y >= canvas.height) return;
+    // In 255ths from here, as whole numbers blend faster than floats; +127 rounds each division.
+    const alpha: u32 = @intFromFloat(@round(std.math.clamp(coverage, 0, 1) * @as(f32, @floatFromInt(argb >> 24))));
+    if (alpha == 0) return;
+
+    const pixel = &canvas.pixels[pixel_y * canvas.width + pixel_x];
+    const under_alpha = pixel.* >> 24;
+    var blended: u32 = (under_alpha + ((255 - under_alpha) * alpha + 127) / 255) << 24;
+    inline for (.{ 16, 8, 0 }) |shift| {
+        const over = (argb >> shift) & 0xFF;
+        const under = (pixel.* >> shift) & 0xFF;
+        blended |= ((over * alpha + under * (255 - alpha) + 127) / 255) << shift;
+    }
+    pixel.* = blended;
+}
+
+/// `content` and `border` premultiplied, weighted by how much of the pixel each covers; the rest is clear.
+fn framedPixel(content: u32, border: u32, content_weight: f32, border_weight: f32) u32 {
+    var out: u32 = 0;
+    inline for (.{ 24, 16, 8, 0 }) |shift| {
+        const content_channel: f32 = @floatFromInt((content >> shift) & 0xFF);
+        const border_channel: f32 = @floatFromInt((border >> shift) & 0xFF);
+        const channel: u32 = @intFromFloat(@round(std.math.clamp(content_channel * content_weight + border_channel * border_weight, 0, 255)));
+        out |= channel << shift;
+    }
+    return out;
+}
+
+fn clampedTo(value: i32, limit: usize) usize {
+    return @intCast(std.math.clamp(value, 0, @as(i32, @intCast(limit))));
+}
+
+/// Null when nothing of the box is inside the canvas.
+fn clippedBox(canvas: Canvas, box: Box) ?ClippedBox {
+    const left = @max(box.left, 0);
+    const top = @max(box.top, 0);
+    const right = @min(box.right, @as(i32, @intCast(canvas.width)));
+    const bottom = @min(box.bottom, @as(i32, @intCast(canvas.height)));
+    if (right <= left or bottom <= top) return null;
+    return .{ .left = @intCast(left), .top = @intCast(top), .right = @intCast(right), .bottom = @intCast(bottom) };
 }
 
 /// Null when nothing of the rect is inside the canvas.
@@ -139,6 +496,86 @@ test "fillRect fills only its rect and skips one that would overrun" {
     try testing.expectEqual(@as(u32, 0), buffer[3]);
 }
 
+test "fillCoverage paints by coverage and clips what falls off the canvas" {
+    var buffer: [3 * 2]u32 = @splat(0xFF000000);
+    const canvas: Canvas = .{ .pixels = &buffer, .width = 3, .height = 2 };
+    fillCoverage(canvas, 1, 0, &.{ 255, 0, 0, 255 }, 2, 0xFFFFFFFF);
+    try testing.expectEqualSlices(u32, &.{ 0xFF000000, 0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFF000000, 0xFFFFFFFF }, &buffer);
+    fillCoverage(canvas, 2, 1, &.{ 0, 255 }, 2, 0xFFFF0000);
+    try testing.expectEqual(@as(u32, 0xFFFFFFFF), buffer[5]);
+}
+
+test "fillGdiCoverage takes light coverage where the colour is brighter than what's under, dark where it's darker" {
+    var buffer = [_]u32{0xFF808080};
+    fillGdiCoverage(.{ .pixels = &buffer, .width = 1, .height = 1 }, 0, 0, &.{100}, &.{200}, 1, 0xFFFF0000);
+    try testing.expectEqual(@as(u32, 0xFFB21C1C), buffer[0]);
+}
+
+test "fillGdiCoverage clips at the canvas and leaves uncovered pixels alone" {
+    var buffer: [3 * 2]u32 = @splat(0x00102030);
+    const canvas: Canvas = .{ .pixels = &buffer, .width = 3, .height = 2 };
+    const full = [_]u8{ 255, 0, 255, 255 };
+    fillGdiCoverage(canvas, 2, 1, &full, &full, 2, 0xFFFFFFFF);
+    try testing.expectEqualSlices(u32, &.{ 0x00102030, 0x00102030, 0x00102030, 0x00102030, 0x00102030, 0x00FFFFFF }, &buffer);
+    fillGdiCoverage(canvas, -1, -1, &full, &full, 2, 0xFF000000);
+    try testing.expectEqual(@as(u32, 0x00000000), buffer[0]);
+    try testing.expectEqual(@as(u32, 0x00102030), buffer[1]);
+}
+
+test "a halo covers a pixel's four neighbours but not the pixel or its corners" {
+    var coverage: [3 * 3]u8 = @splat(0);
+    coverage[4] = 255;
+    var halo: [3 * 3]u8 = undefined;
+    haloCoverage(&coverage, 3, &halo);
+    try testing.expectEqualSlices(u8, &.{ 0, 255, 0, 255, 0, 255, 0, 255, 0 }, &halo);
+}
+
+test "halo copies overlapping a pixel cover it as draws stacked on one another do" {
+    const coverage = [_]u8{ 128, 0, 128 };
+    var halo: [3]u8 = undefined;
+    haloCoverage(&coverage, 3, &halo);
+    try testing.expectEqual(@as(u8, 192), halo[1]);
+}
+
+test "fillBox clips a box hanging off each edge to the part on the canvas" {
+    var buffer: [4 * 3]u32 = @splat(0);
+    const canvas: Canvas = .{ .pixels = &buffer, .width = 4, .height = 3 };
+    fillBox(canvas, .{ .left = -2, .top = -5, .right = 1, .bottom = 1 }, 1);
+    fillBox(canvas, .{ .left = 3, .top = 2, .right = 9, .bottom = 9 }, 2);
+    try testing.expectEqualSlices(u32, &.{ 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2 }, &buffer);
+}
+
+test "fillBox draws nothing for a box off the canvas, empty or inside out" {
+    var buffer: [4 * 3]u32 = @splat(0);
+    const canvas: Canvas = .{ .pixels = &buffer, .width = 4, .height = 3 };
+    fillBox(canvas, .{ .left = -4, .top = 0, .right = 0, .bottom = 3 }, 1);
+    fillBox(canvas, .{ .left = 0, .top = 3, .right = 4, .bottom = 6 }, 1);
+    fillBox(canvas, .{ .left = 2, .top = 1, .right = 2, .bottom = 2 }, 1);
+    fillBox(canvas, .{ .left = 3, .top = 2, .right = 1, .bottom = 0 }, 1);
+    for (buffer) |pixel| try testing.expectEqual(@as(u32, 0), pixel);
+}
+
+test "fillRoundedBox softens its corners alike and fills its middle" {
+    var buffer: [6 * 6]u32 = @splat(0xFF000000);
+    fillRoundedBox(.{ .pixels = &buffer, .width = 6, .height = 6 }, .{ .left = 0, .top = 0, .right = 6, .bottom = 6 }, 3, 0xFFFFFFFF);
+    try testing.expectEqual(@as(u32, 0xFF000000), buffer[0]);
+    try testing.expect(buffer[1] != 0xFF000000 and buffer[1] != 0xFFFFFFFF);
+    try testing.expectEqual(buffer[1], buffer[4]);
+    try testing.expectEqual(buffer[1], buffer[5 * 6 + 1]);
+    try testing.expectEqual(@as(u32, 0xFFFFFFFF), buffer[3 * 6 + 3]);
+}
+
+test "fillRoundedBox clipped at the canvas keeps the corners left on it" {
+    var whole: [6 * 6]u32 = @splat(0xFF000000);
+    fillRoundedBox(.{ .pixels = &whole, .width = 6, .height = 6 }, .{ .left = 0, .top = 0, .right = 6, .bottom = 6 }, 3, 0xFFFFFFFF);
+    // The same box three pixels left and up, so only its bottom-right quarter lands.
+    var clipped: [3 * 3]u32 = @splat(0xFF000000);
+    fillRoundedBox(.{ .pixels = &clipped, .width = 3, .height = 3 }, .{ .left = -3, .top = -3, .right = 3, .bottom = 3 }, 3, 0xFFFFFFFF);
+    for (0..3) |y| {
+        try testing.expectEqualSlices(u32, whole[(y + 3) * 6 + 3 .. (y + 3) * 6 + 6], clipped[y * 3 .. y * 3 + 3]);
+    }
+}
+
 test "drawRectOutline moves a rect starting off the buffer onto its edge" {
     var buffer: [4 * 4]u32 = @splat(0);
     drawRectOutline(.{ .pixels = &buffer, .width = 4, .height = 4 }, -1, -1, 3, 3, 1, 5);
@@ -151,10 +588,164 @@ test "fixTextAlphaRect makes drawn text opaque without touching blank or already
     try testing.expectEqualSlices(u32, &.{ 0x00000000, 0xFF123456, 0x80123456 }, &buffer);
 }
 
+test "drawLine lands exactly on a straight run and stays inside the canvas" {
+    var buffer: [4 * 3]u32 = @splat(0xFF000000);
+    const canvas: Canvas = .{ .pixels = &buffer, .width = 4, .height = 3 };
+    drawLine(canvas, -2, 1, 9, 1, 0xFFFFFFFF);
+    try testing.expectEqualSlices(u32, &.{ 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF }, buffer[4..8]);
+    try testing.expectEqual(@as(u32, 0xFF000000), buffer[0]);
+    try testing.expectEqual(@as(u32, 0xFF000000), buffer[8]);
+}
+
+test "drawLine splits a diagonal step's coverage between two pixels" {
+    var buffer: [3 * 3]u32 = @splat(0xFF000000);
+    drawLine(.{ .pixels = &buffer, .width = 3, .height = 3 }, 0, 0, 2, 1, 0xFFFFFFFF);
+    try testing.expectEqual(@as(u32, 0xFFFFFFFF), buffer[0]);
+    try testing.expectEqual(@as(u32, 0xFF808080), buffer[1]);
+    try testing.expectEqual(@as(u32, 0xFF808080), buffer[3 + 1]);
+}
+
+test "fillCircle fills its centre, leaves its corners and clips at the edge" {
+    var buffer: [9 * 9]u32 = @splat(0xFF000000);
+    const canvas: Canvas = .{ .pixels = &buffer, .width = 9, .height = 9 };
+    fillCircle(canvas, 4, 4, 3, 0xFFFFFFFF);
+    try testing.expectEqual(@as(u32, 0xFFFFFFFF), buffer[4 * 9 + 4]);
+    try testing.expectEqual(@as(u32, 0xFF000000), buffer[0]);
+    fillCircle(canvas, -1, -1, 2, 0xFFFFFFFF);
+    try testing.expectEqual(@as(u32, 0xFFFFFFFF), buffer[0]);
+}
+
+test "drawing over a transparent pixel leaves it as see-through as the colour" {
+    var buffer = [_]u32{0};
+    fillCircle(.{ .pixels = &buffer, .width = 1, .height = 1 }, 0, 0, 2, 0x80FFFFFF);
+    try testing.expectEqual(@as(u32, 0x80808080), buffer[0]);
+}
+
+test "drawRing leaves the middle untouched" {
+    var buffer: [11 * 11]u32 = @splat(0xFF000000);
+    drawRing(.{ .pixels = &buffer, .width = 11, .height = 11 }, 5, 5, 4, 2, 0xFFFFFFFF);
+    try testing.expectEqual(@as(u32, 0xFF000000), buffer[5 * 11 + 5]);
+    try testing.expectEqual(@as(u32, 0xFFFFFFFF), buffer[5 * 11 + 8]);
+}
+
+test "a translucent colour blends with what's under it" {
+    var buffer = [_]u32{0xFF000000};
+    fillCircle(.{ .pixels = &buffer, .width = 1, .height = 1 }, 0, 0, 2, 0x80FFFFFF);
+    try testing.expectEqual(@as(u32, 0xFF808080), buffer[0]);
+}
+
+test "overlapping discs in a mask paint no darker than one" {
+    var mask: Mask = try .init(testing.allocator, 12, 7);
+    defer mask.deinit();
+    mask.addDisc(4, 3, 3);
+    mask.addDisc(7, 3, 3);
+    var buffer: [12 * 7]u32 = @splat(0xFF000000);
+    fillMask(.{ .pixels = &buffer, .width = 12, .height = 7 }, &mask, 0x80FFFFFF);
+    try testing.expectEqual(@as(u32, 0xFF808080), buffer[3 * 12 + 5]);
+    try testing.expectEqual(@as(u32, 0xFF808080), buffer[3 * 12 + 2]);
+}
+
+test "a mask's band joins its ends with no gap" {
+    var mask: Mask = try .init(testing.allocator, 40, 9);
+    defer mask.deinit();
+    mask.addBand(2, 4, 37, 4, 2);
+    for (2..38) |pixel_x| try testing.expect(mask.depth[4 * 40 + pixel_x] >= MASK_DEPTH_STEPS);
+    try testing.expectEqual(@as(u8, 0), mask.depth[0]);
+}
+
+test "a disc at a band's end adds nothing to it" {
+    var band_only: Mask = try .init(testing.allocator, 40, 30);
+    defer band_only.deinit();
+    var with_disc: Mask = try .init(testing.allocator, 40, 30);
+    defer with_disc.deinit();
+    band_only.addBand(8, 9, 31, 22, 6.5);
+    with_disc.addBand(8, 9, 31, 22, 6.5);
+    with_disc.addDisc(8, 9, 6.5);
+    with_disc.addDisc(31, 22, 6.5);
+    try testing.expectEqualSlices(u8, band_only.depth, with_disc.depth);
+}
+
+test "a band's side is the same depth all along, with no scallops" {
+    var mask: Mask = try .init(testing.allocator, 60, 30);
+    defer mask.deinit();
+    mask.addBand(5, 15, 55, 15, 9);
+    for (6..54) |pixel_x| {
+        try testing.expectEqual(mask.depth[6 * 60 + 6], mask.depth[6 * 60 + pixel_x]);
+    }
+}
+
+test "a diagonal band measures the same to either side and reaches its far end" {
+    var mask: Mask = try .init(testing.allocator, 50, 50);
+    defer mask.deinit();
+    mask.addBand(5, 5, 44, 44, 6);
+    try testing.expectEqual(mask.depth[20 * 50 + 28], mask.depth[28 * 50 + 20]);
+    try testing.expect(mask.depth[44 * 50 + 44] > 0);
+    try testing.expectEqual(@as(u8, 0), mask.depth[5 * 50 + 44]);
+}
+
+test "clearing a mask empties all it touched, and a disc off it touches nothing" {
+    var mask: Mask = try .init(testing.allocator, 8, 8);
+    defer mask.deinit();
+    mask.addDisc(-20, 3, 2);
+    try testing.expectEqual(@as(usize, 0), mask.right);
+    mask.addDisc(3, 3, 2);
+    mask.clear();
+    for (mask.depth) |depth| try testing.expectEqual(@as(u8, 0), depth);
+    try testing.expectEqual(@as(usize, 0), mask.right);
+}
+
+test "ensureSize keeps a mask of the same size, emptied, and remakes one of another" {
+    var kept: ?Mask = null;
+    defer if (kept) |*mask| mask.deinit();
+    const first = try Mask.ensureSize(&kept, testing.allocator, 8, 8);
+    first.addDisc(3, 3, 2);
+    const depth = first.depth.ptr;
+    const second = try Mask.ensureSize(&kept, testing.allocator, 8, 8);
+    try testing.expectEqual(depth, second.depth.ptr);
+    for (second.depth) |value| try testing.expectEqual(@as(u8, 0), value);
+    const resized = try Mask.ensureSize(&kept, testing.allocator, 6, 4);
+    try testing.expectEqual(@as(usize, 6 * 4), resized.depth.len);
+}
+
+test "a mask with nothing in it clears and paints as nothing" {
+    var mask: Mask = try .init(testing.allocator, 4, 3);
+    defer mask.deinit();
+    var buffer: [4 * 3]u32 = @splat(0xFF000000);
+    const canvas: Canvas = .{ .pixels = &buffer, .width = 4, .height = 3 };
+    mask.clear();
+    fillMask(canvas, &mask, 0xFFFFFFFF);
+    outlineMask(canvas, &mask, 2, 0xFFFFFFFF);
+    for (buffer) |pixel| try testing.expectEqual(@as(u32, 0xFF000000), pixel);
+}
+
+test "outlineMask marks the edge, leaves the middle, and skips where the canvas cuts the shape" {
+    var mask: Mask = try .init(testing.allocator, 15, 15);
+    defer mask.deinit();
+    mask.addDisc(7, 7, 5);
+    var buffer: [15 * 15]u32 = @splat(0xFF000000);
+    const canvas: Canvas = .{ .pixels = &buffer, .width = 15, .height = 15 };
+    outlineMask(canvas, &mask, 1, 0xFFFFFFFF);
+    try testing.expectEqual(@as(u32, 0xFF000000), buffer[7 * 15 + 7]);
+    try testing.expect(buffer[7 * 15 + 12] != 0xFF000000);
+
+    mask.clear();
+    @memset(&buffer, 0xFF000000);
+    mask.addDisc(0, 7, 5);
+    outlineMask(canvas, &mask, 1, 0xFFFFFFFF);
+    try testing.expectEqual(@as(u32, 0xFF000000), buffer[7 * 15]);
+}
+
 test "drawRoundedFrame borders the buffer and clears outside its corners" {
     var buffer: [8 * 8]u32 = @splat(0xFFFFFFFF);
     drawRoundedFrame(.{ .pixels = &buffer, .width = 8, .height = 8 }, 3, 0xFF000000);
     try testing.expectEqual(@as(u32, 0), buffer[0]);
     try testing.expectEqual(@as(u32, 0xFF000000), buffer[4]);
     try testing.expectEqual(@as(u32, 0xFFFFFFFF), buffer[4 * 8 + 4]);
+}
+
+test "drawRoundedFrame blends a corner's edge rather than stepping it" {
+    var buffer: [16 * 16]u32 = @splat(0xFFFFFFFF);
+    drawRoundedFrame(.{ .pixels = &buffer, .width = 16, .height = 16 }, 6, 0xFF000000);
+    const edge_alpha = buffer[3] >> 24;
+    try testing.expect(edge_alpha > 0 and edge_alpha < 255);
 }
