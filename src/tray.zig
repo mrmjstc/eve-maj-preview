@@ -226,9 +226,9 @@ pub const TrayIcon = struct {
         _ = win32.AppendMenuA(menu, win32.MF_STRING, IDM_OPEN_CONFIG, "Open Configuration...");
         _ = win32.AppendMenuA(menu, win32.MF_SEPARATOR, 0, null);
 
-        const thumbnail_set = app.thumbnail_set;
+        const thumbnail_set = app.rebuilt.thumbnail_set;
         appendChecked(menu, config.interaction.enableDragging, IDM_TOGGLE_DRAGGING, "Enable Dragging");
-        appendChecked(menu, app.auto_minimizer.isEnabled(config), IDM_TOGGLE_AUTO_MINIMIZE, "Enable Auto-Minimize");
+        appendChecked(menu, app.persistent.auto_minimizer.isEnabled(config), IDM_TOGGLE_AUTO_MINIMIZE, "Enable Auto-Minimize");
         appendChecked(menu, config.travel.enabled, IDM_TOGGLE_TRAVEL_MODE, "Enable Travel Mode");
         if (config.display.viewMode == .Nothing) {
             _ = win32.AppendMenuA(menu, win32.MF_STRING | win32.MF_GRAYED, IDM_TOGGLE_VISIBILITY, "Show Thumbnails");
@@ -238,14 +238,14 @@ pub const TrayIcon = struct {
         _ = win32.AppendMenuA(menu, win32.MF_STRING, IDM_RESTORE_SAVED_POSITIONS, "Restore Saved Positions");
         _ = win32.AppendMenuA(menu, win32.MF_SEPARATOR, 0, null);
 
-        appendChecked(menu, app.notifications.panel.isVisible(config, scout.anyCharacterLoggedIn(app.scout.getWindows())), IDM_TOGGLE_NOTIFICATION_HISTORY, "Show Alert History");
+        appendChecked(menu, app.persistent.notifications.panel.isVisible(config, scout.anyCharacterLoggedIn(app.scout.getWindows())), IDM_TOGGLE_NOTIFICATION_HISTORY, "Show Alert History");
         _ = win32.AppendMenuA(menu, win32.MF_STRING, IDM_CLEAR_NOTIFICATION_HISTORY, "Clear Alert History");
-        appendChecked(menu, app.map_panel.isVisible(config, scout.anyCharacterLoggedIn(app.scout.getWindows())), IDM_TOGGLE_MAP_PANEL, "Show Map");
+        appendChecked(menu, app.persistent.map_panel.isVisible(config, scout.anyCharacterLoggedIn(app.scout.getWindows())), IDM_TOGGLE_MAP_PANEL, "Show Map");
         appendChecked(menu, app.isIntelPanelVisible(), IDM_TOGGLE_INTEL_PANEL, "Show Intel Panel");
         appendChecked(menu, alert_effects.isMuted(), IDM_TOGGLE_ALERT_MUTE, "Mute Audio Alerts");
         _ = win32.AppendMenuA(menu, win32.MF_SEPARATOR, 0, null);
 
-        if (app.hotkey_manager) |manager| {
+        if (app.rebuilt.hotkey_manager) |manager| {
             appendChecked(menu, manager.areHotkeysSuspended(), IDM_SUSPEND_HOTKEYS, "Suspend Hotkeys");
             _ = win32.AppendMenuA(menu, win32.MF_SEPARATOR, 0, null);
         }
@@ -324,13 +324,13 @@ pub const TrayIcon = struct {
         }
         if (groupCommand(command_id)) |command| {
             slog.info("Group {s} requested from system tray", .{@tagName(command.action)});
-            app.runHotkeyOutcome(app.commands().runGroupAt(command.action, command.group_index, app.thumbnail_set));
+            app.runHotkeyOutcome(app.commands().runGroupAt(command.action, command.group_index, app.rebuilt.thumbnail_set));
             return;
         }
 
         if (globalAction(command_id)) |action| {
             slog.info("Running {s} from the system tray", .{@tagName(action)});
-            app.runHotkeyOutcome(app.commands().runGlobal(action, app.thumbnail_set));
+            app.runHotkeyOutcome(app.commands().runGlobal(action, app.rebuilt.thumbnail_set));
             return;
         }
 

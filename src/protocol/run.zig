@@ -49,8 +49,8 @@ fn run(app: *App, command: url.Command) void {
             activation.activate(app, hwnd);
         },
         .profile => |profile_name| app.switchProfile(profile_name),
-        .hotkey => |action| app.runHotkeyOutcome(app.commands().runGlobal(action, app.thumbnail_set)),
-        .group => |group| app.runHotkeyOutcome(app.commands().runGroup(group.action, group.name, app.thumbnail_set)),
+        .hotkey => |action| app.runHotkeyOutcome(app.commands().runGlobal(action, app.rebuilt.thumbnail_set)),
+        .group => |group| app.runHotkeyOutcome(app.commands().runGroup(group.action, group.name, app.rebuilt.thumbnail_set)),
         .open_config => knots_host.open(),
     }
 }

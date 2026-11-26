@@ -5,5 +5,6 @@
 app.zig
 tray.zig
 control/activation.zig  # takes *App to reconcile focus
+control/restart.zig  # takes *App to rebuild its subsystems
 control/focus.zig
 control/thumbnail_input.zig  # thumbnail window procs, passed into thumbnail/ by App

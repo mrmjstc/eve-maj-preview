@@ -56,18 +56,18 @@ pub fn onClientFocused(app: *App, hwnd: win32.HWND) bool {
         return false;
     }
 
-    app.roster.setActive(hwnd);
-    if (app.thumbnail_set) |thumbnail_set| thumbnail_set.reconcileThumbnailStates();
-    if (app.roster.isEveClient(hwnd)) app.auto_minimizer.recordFocus(hwnd);
+    app.persistent.roster.setActive(hwnd);
+    if (app.rebuilt.thumbnail_set) |thumbnail_set| thumbnail_set.reconcileThumbnailStates();
+    if (app.persistent.roster.isEveClient(hwnd)) app.persistent.auto_minimizer.recordFocus(hwnd);
     syncCycles(app, hwnd);
     return true;
 }
 
 /// Per tick, after App.syncRoster: records the active client for auto-minimize, and takes up a focus or rename the focus hook missed.
 pub fn afterActiveRefresh(app: *App, name_changes: []const scout.NameChange) void {
-    const active = app.roster.active_hwnd orelse return;
-    if (app.roster.isEveClient(active)) app.auto_minimizer.recordFocus(active);
-    if (!app.roster.contains(active)) {
+    const active = app.persistent.roster.active_hwnd orelse return;
+    if (app.persistent.roster.isEveClient(active)) app.persistent.auto_minimizer.recordFocus(active);
+    if (!app.persistent.roster.contains(active)) {
         app.focus.synced_hwnd = null;
         return;
     }
@@ -86,13 +86,13 @@ pub fn afterActiveRefresh(app: *App, name_changes: []const scout.NameChange) voi
 /// The hide debounce timer fired, so no EVE window has had focus for hideDebounceMs.
 pub fn onHideTimer(app: *App) void {
     app.focus.cancelHideTimer(app.timer_hwnd);
-    const thumbnail_set = app.thumbnail_set orelse return;
+    const thumbnail_set = app.rebuilt.thumbnail_set orelse return;
     thumbnail_set.autoHideAfterFocusLoss();
 }
 
 /// Keeps cycle positions in step with the focused client.
 fn syncCycles(app: *App, hwnd: win32.HWND) void {
-    const client = app.roster.byHwnd(hwnd) orelse return;
+    const client = app.persistent.roster.byHwnd(hwnd) orelse return;
     app.focus.synced_hwnd = hwnd;
     slog.debug("Tracked window focused: {s}", .{client.character_name});
     app.syncCyclesToFocused(client.character_name, hwnd);
@@ -101,7 +101,7 @@ fn syncCycles(app: *App, hwnd: win32.HWND) void {
 fn foregroundProc(_: win32.HANDLE, _: win32.DWORD, hwnd: win32.HWND, _: win32.LONG, _: win32.LONG, _: win32.DWORD, _: win32.DWORD) callconv(.c) void {
     const app = app_mod.g_app orelse return;
 
-    if (app.thumbnail_set) |thumbnail_set| {
+    if (app.rebuilt.thumbnail_set) |thumbnail_set| {
         if (thumbnail_set.getThumbnailByOverlayHwnd(hwnd) != null) {
             slog.debug("Thumbnail window got focus (ignoring): {*}", .{hwnd});
             return;
@@ -113,7 +113,7 @@ fn foregroundProc(_: win32.HANDLE, _: win32.DWORD, hwnd: win32.HWND, _: win32.LO
         }
     }
 
-    if (!app.roster.contains(hwnd)) {
+    if (!app.persistent.roster.contains(hwnd)) {
         app.focus.synced_hwnd = null;
         // A client opens focused before a scan finds it: not another app, nor a reason to hide; afterActiveRefresh takes it up.
         if (scout.matchesFilters(app.store.saved.windowFilters.items, hwnd)) {

@@ -49,7 +49,7 @@ All paths are relative to the exe folder (`main.zig` sets the working directory 
 7. **Subsystems:**
    - Create the hidden timer window and hand it to `App.start`, which does the rest of this step.
    - Start `NotificationCenter`, `MapPanel`, `Scout`'s event hooks, the focus hook and the tray icon.
-   - Run `restartSubsystems` from nothing running: scan windows, build the `ThumbnailSet`, create and wire `ChatlogMonitor` and `Trackers`, start the chatlog worker, create the `HotkeyManager` and start the tick timer.
+   - Run `restart.run` from nothing running: scan windows, build the `ThumbnailSet`, create and wire `ChatlogMonitor` and `Trackers`, start the chatlog worker, create the `HotkeyManager` and start the tick timer.
    - Queue the character-ID backfill, and move clients if `moveOnStartup` is on.
 8. **Background services:** Install the focus grant (`platform/focus_grant.zig`) and start the update check thread (`update.zig`) unless update checks are disabled.
 9. **Message loop:** With `--config`, open the configuration window, then run the `GetMessageA` loop until the app quits.
@@ -70,13 +70,13 @@ All paths are relative to the exe folder (`main.zig` sets the working directory 
 
 | Field(s) | Lifetime |
 |---|---|
-| `store` (`ProfileStore`), `global_settings`, `character_ids`, `scout`, `roster`, `auto_colors` (`AutoColorStore`), `exclusions`, `auto_move` (`AutoMoveVerifier`), `notifications` (`NotificationCenter`), `intel` (`Intel`), `map_panel` (`MapPanel`), `focus`, `trackers`, `tray_icon` | Whole run, across profile switches and Saves. `store` itself is replaced on a profile switch. |
-| `auto_minimizer` | Whole run; reset when a different profile loads, restarting each client's idle delay. |
-| `hotkey_manager` | Rebuilt by `restartSubsystems` on every reload. |
+| `store` (`ProfileStore`), `global_settings`, `character_ids`, `scout`, `focus`, `trackers`, `tray_icon`, and in `persistent` (`Persistent`): `roster`, `auto_colors` (`AutoColorStore`), `exclusions`, `auto_move` (`AutoMoveVerifier`), `notifications` (`NotificationCenter`), `intel` (`Intel`), `map_panel` (`MapPanel`) | Whole run, across profile switches and Saves. `store` itself is replaced on a profile switch. |
+| `persistent.auto_minimizer` | Whole run; reset when a different profile loads, restarting each client's idle delay. |
+| `rebuilt.hotkey_manager` | Rebuilt by `restart.run` on every reload. |
 | `cycle` | Each cycle hotkey's position; reset whenever the hotkey manager is rebuilt. |
-| `thumbnail_set` | Rebuilt on a profile switch or view-mode change. A Save keeps it and only refills it, since the dialog has already previewed the changes and a rebuild would make every thumbnail flash. |
-| `chatlog_monitor` | Kept across reloads, paused while they run. Rebuilt only when the log folders change, and destroyed when log monitoring is turned off. |
-| `list_window` | Built and torn down with `thumbnail_set`; `ClientList` and `ThumbnailsAndList` modes only. |
+| `rebuilt.thumbnail_set` | Rebuilt on a profile switch or view-mode change. A Save keeps it and only refills it, since the dialog has already previewed the changes and a rebuild would make every thumbnail flash. |
+| `rebuilt.chatlog_monitor` | Kept across reloads, paused while they run. Rebuilt only when the log folders change, and destroyed when log monitoring is turned off. |
+| `rebuilt.list_window` | Built and torn down with `thumbnail_set`; `ClientList` and `ThumbnailsAndList` modes only. |
 
 ### Invariants
 
@@ -92,11 +92,11 @@ All paths are relative to the exe folder (`main.zig` sets the working directory 
 | Call | Trigger | Effect |
 |---|---|---|
 | `requestProfileSwitch` → `WM_SWITCH_PROFILE` → `switchProfile` | Tray, hotkey | Deferred to the next message-loop turn, since the switch tears down subsystems such as the hotkey manager, which may be the caller still running. |
-| `switchProfile` | Protocol link, dialog | Loads the profile into a new store, then runs `restartSubsystems`. |
-| `saveSettings` (`DIALOG_HOST.save`) | Dialog Save | Commits `live` → `saved` on the same store, runs `restartSubsystems` adopting a copy of the global draft, then writes and applies `GlobalConfig`. Does nothing if neither the profile nor the global settings changed. |
+| `switchProfile` | Protocol link, dialog | Loads the profile into a new store, then runs `restart.run`. |
+| `saveSettings` (`DIALOG_HOST.save`) | Dialog Save | Commits `live` → `saved` on the same store, runs `restart.run` adopting a copy of the global draft, then writes and applies `GlobalConfig`. Does nothing if neither the profile nor the global settings changed. |
 | `onLiveProfileEdited` (`DIALOG_HOST.run`) | Every dialog edit | Restyles and reflows; rebuilds the `ThumbnailSet` only on a view-mode change. |
 
-`restartSubsystems` runs both at startup and on every reload. It follows the steps `control/restart_plan.zig` (pure, tested) lays out: which subsystems are kept, paused or rebuilt, in what order, and what to bring back up if a step fails.
+`restart.run` (`control/restart.zig`) runs both at startup and on every reload. It follows the steps `control/restart_plan.zig` (pure, tested) lays out: which subsystems are kept, paused or rebuilt, in what order, and what to bring back up if a step fails.
 
 - If the chatlog worker is kept, it's paused while the new trackers are wired in and it's given the new profile's chat-alert rules (the `apply_monitor_profile` step), then resumed.
 - A new `ProfileStore` is built before anything is torn down, so a load failure leaves the running profile intact.
@@ -156,6 +156,8 @@ Work that runs less often than every tick (every 2 s, every 15 min, ...) is time
 25. adjust tick interval            active scan rate, or the 1 s idle rate
 26. publishState                    rewrite the state file when it changed; only when EVE_MAJ_STATE_FILE is set
 ```
+
+`tick` runs steps 4–11 as `discoverWindows`, 12–19 as `updateThumbnails`, 20 as `ingestLogs`, 21–24 as `updatePanels` and 25 as `scheduleNextTick`.
 
 ## Threads and concurrency
 

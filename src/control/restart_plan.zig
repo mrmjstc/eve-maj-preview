@@ -12,7 +12,7 @@ const RESTORES = [_]Restore{
 /// A step that takes a subsystem down, and the later one that brings it back.
 const Restore = struct { down: Step, up: Step };
 
-/// What App.restartSubsystems runs, in plan order.
+/// What control/restart.zig runs, in plan order.
 pub const Step = enum {
     /// Stops the chatlog worker but keeps the monitor and its scan state, so it must be started again.
     pause_monitor,

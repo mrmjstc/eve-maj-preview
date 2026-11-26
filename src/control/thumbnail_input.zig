@@ -125,7 +125,7 @@ fn raiseTextOverlay(hwnd: win32.HWND) void {
 }
 
 fn handleThumbnailShiftClick(running: *app.App, source_hwnd: win32.HWND) void {
-    const thumbnail_set = running.thumbnail_set orelse return;
+    const thumbnail_set = running.rebuilt.thumbnail_set orelse return;
 
     if (!thumbnail_set.config.exclusion.enableShiftClickExclude) {
         // A plain click rather than swallowing the input.

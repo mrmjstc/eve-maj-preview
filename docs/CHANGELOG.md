@@ -71,6 +71,7 @@
 - Source checks fail on allow-list entries that match nothing
 - Source checks catch stale names and files in ARCHITECTURE.md
 - Receiver style rule sees teardown helpers and writes through captures
+- App tick split into named phases; subsystem restart moved to control/restart.zig; fields grouped by lifetime
 
 ### Fixed
 - Profiles: a queued action drops a leftover restore backup

@@ -12,7 +12,7 @@ const slog = log.Scoped("activation");
 /// Restores the client first if it's minimized.
 pub fn activate(app: *App, source_hwnd: win32.HWND) void {
     if (!win32.isWindow(source_hwnd)) return;
-    const thumbnail_set = app.thumbnail_set orelse return;
+    const thumbnail_set = app.rebuilt.thumbnail_set orelse return;
 
     var placement: win32.WINDOWPLACEMENT = undefined;
     placement.length = @sizeOf(win32.WINDOWPLACEMENT);
@@ -31,7 +31,7 @@ pub fn activate(app: *App, source_hwnd: win32.HWND) void {
     _ = focus.onClientFocused(app, source_hwnd);
 
     // After focus is reconciled above, since that decides which notifications a click dismisses.
-    app.roster.recordClick(source_hwnd, win32.Ticks.now());
+    app.persistent.roster.recordClick(source_hwnd, win32.Ticks.now());
 
     // Rendering now avoids hotkey lag; past a few, the rest wait for the timer so a rare bulk update can't block.
     const max_immediate_renders: usize = 4;
