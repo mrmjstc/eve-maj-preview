@@ -166,7 +166,7 @@ Always log before giving up on a failure. Whether "giving up" means `return err`
 ## 7. Globals and threads
 
 - Keep globals to what Win32 callbacks and singletons need. Everything else goes through a struct.
-- **Deviation: dialog state.** The config window and region select are one-instance, main-thread UIs: each file keeps its scratch state (drags, prompts, the selected tab) in `g_` globals. Settings never live there, since each open re-reads them; per-open scratch state is reset by the file's open/start function, and the rest are run-long caches (cursors, fonts, handles). Don't propose grouping them into a state struct; report only a concrete stale-state bug.
+- **Deviation: dialog state.** The config window and region select are one-instance, main-thread UIs: each file keeps its scratch state (drags, prompts, the selected tab) in `g_` globals. Settings never live there, since each open re-reads them; per-open scratch state is reset by the file's open/start function, and the rest are run-long caches (cursors, fonts, handles). Where that state is large enough that a hand-written reset could miss a variable, keep it in one struct the start function replaces whole (`region_select.zig`'s `Session`). Don't propose this for files whose few globals reset plainly; report only a concrete stale-state bug.
 - Pointer globals set at startup are `?*T = null`, and unwrapped at the use site.
 - Every field that more than one thread can reach has a doc comment naming its owning thread or the mutex that guards it. Declare the mutex next to the fields it guards.
 - Data owned by one thread stays owned by that thread. Hand data over through a queue (`chatlog/queue.zig`) rather than sharing it under a lock.

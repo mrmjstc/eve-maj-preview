@@ -67,6 +67,7 @@
 - Moved off std APIs Zig 0.17 deprecates; style check blocks them
 - Struct literals typed on the left; style check enforces it
 - Speech and sound alerts use the app allocator instead of a memory page per alert
+- Region overlay resets all of its state each time it opens
 
 ### Fixed
 - Dragged panels stay under the cursor instead of lagging behind
