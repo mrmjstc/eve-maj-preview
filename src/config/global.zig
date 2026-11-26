@@ -320,8 +320,6 @@ pub const GlobalConfig = struct {
         if (is_same_profile) return;
 
         const new_profile = try self.allocator.dupe(u8, profile_name);
-        errdefer self.allocator.free(new_profile);
-
         self.allocator.free(self.lastUsedProfile);
         self.lastUsedProfile = new_profile;
 
@@ -443,4 +441,14 @@ fn profileChatlog(arena: std.mem.Allocator, content: []const u8) !?ChatlogConfig
     var section = migrate.profileChatlog(root) orelse return null;
     if (!readable.dropUnreadable(ChatlogConfig.Wire, arena, &section, null)) return null;
     return try std.json.parseFromValueLeaky(ChatlogConfig.Wire, arena, section, readable.PARSE_OPTIONS);
+}
+
+const testing = std.testing;
+
+test "updateLastUsed keeps the new name when the save fails" {
+    var settings = try GlobalConfig.defaults(testing.allocator, .{ .move_error = error.AccessDenied });
+    defer settings.deinit();
+    try testing.expectError(error.UnreadableSettingsKept, settings.updateLastUsed(testing.io, "first"));
+    try testing.expectError(error.UnreadableSettingsKept, settings.updateLastUsed(testing.io, "second"));
+    try testing.expectEqualStrings("second", settings.lastUsedProfile);
 }

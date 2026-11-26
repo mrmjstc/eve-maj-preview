@@ -121,6 +121,7 @@
 - Tray: Minimize and Close Group act on the saved groups, like their hotkeys
 - Update check opens only this app's release pages
 - Intel Panel hides on focus loss after a profile detaches it from the map
+- A failed global settings save no longer corrupts the last-used profile name
 
 ## [1.0.9] - 2026-10-29
 
