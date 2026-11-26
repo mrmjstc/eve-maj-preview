@@ -5,6 +5,10 @@
 ### Added
 - Intel Map: region and New Eden map with live intel, characters, Sov, incursions, storms, jump ranges and search
 - Intel Map layers: zKillboard kills, sov timers, Thera & Turnur, Faction Warfare and Ansiblex gates
+- Intel Map: kills and jumps over 1h, 24h or 7d from Eve Stars
+- Intel Map: Show Route with alternatives
+- Intel Map: NPC delta right away with an Eve Stars token
+- Intel Map: Scroll Out to New Eden setting; a fast scroll-out stops at the whole region
 - Eve Stars: set destinations from the map
 - Chat alerts: keyword and intel alerts for any chat channel, with bundled sounds
 - Cloaked Can't Warp game event
@@ -13,136 +17,87 @@
 - Client List: group by system
 - Client List: optional totals line adding up every client's rates
 - Mining rate per minute or per hour
-- Intel Map: kills and jumps over 1h, 24h or 7d from Eve Stars
-- Intel Map: Show Route with alternatives
-- Intel Map: NPC delta right away with an Eve Stars token
 - Per-character Hide from Client List setting
-- Simulator has its own icon
-- Intel Map: Scroll Out to New Eden setting; a fast scroll-out stops at the whole region
 - Blank thumbnails: turn off the live preview per profile or per character, with a fill color or a dimmed border color
-- End-to-end test suite against simulated clients
-- Config dialog controls named for screen readers and automation
-- Style guide and source checks in the repo, run in CI
 - Manual placement map shows unsaved thumbnails where they are, and follows them live
 - Hide Taskbar Over Clients: taskbar goes behind the active client, even one smaller than the screen
-- Unit tests for the settings importers' parsing
-- Unit tests for alert settings parsing and box geometry
 - Performance tab: Client Speed raises the focused client's priority, lowers background clients' and puts them in efficiency mode
 - Per-character Keep at Full Speed setting
+- Config window controls named for screen readers
+- Releases include a SHA256SUMS.txt
 
 ### Changed
-- Intel Map draws system names several times faster, keeping their full outline while panning
-- Intel Map keeps one buffer for storms, incursions and routes instead of making one each frame
-- Release builds use a faster allocator that reuses freed memory
-- Thumbnail connection maps measure their names only when they change
-- Threads use 1 MB stacks, cutting about 30 MB of committed memory
-- Configuration window state moved out of globals
 - Client List, History and Intel panels redesigned, with collapsible headers and a ⋯ settings menu
 - Panels, map and config window share one look, font, icon set and colours
 - Config window: settings regrouped into Clients, Display, Panels, Input, Alerts and App
+- Config window: Text Overlays, Client List and Alert History previews edit parts from a list under the preview instead of in popovers
+- Config window: font, size and weight share one row
+- Config window: preview popovers match the rest of the dialog
+- Config window: text boxes take IME and dead-key input
 - Notifications are now called alerts
 - Log Monitoring is shared by every profile
+- Profiles: alert, text overlay and intel settings regrouped by feature; older versions reset them
 - Softer default colours for damage, mining and bounty rates
 - Taking Damage cooldown defaults to 60 s
 - Client List rates show their units, like the thumbnails
-- ISK shows billions as `b`
-- Eve Stars: avoided systems come from your Eve Stars saved list, no longer stored in profiles
-- Eve Stars token stored encrypted with Windows DPAPI
-- Config window: preview popovers match the rest of the dialog
-- Hide Thumbnail no longer hides the client list row
-- Rate overlays stay hidden until measured, instead of showing ??
-- Built with Zig 0.17.1
 - Client List rates have their own switches, independent of the thumbnail overlays
 - Client List rate popovers show the averaging, update interval and unit settings shared with thumbnails
+- Client List: stat prefixes spaced as on the thumbnails, e.g. "IN: 412"
+- ISK shows billions as `b`
+- Rate units renamed to m3 Per and ISK Per
+- Rate overlays stay hidden until measured, instead of showing ??
 - Mining overlay settings moved from the Mining tab into the Mining Rate popovers
 - Thumbnail text popovers no longer hide settings behind Advanced Mode
-- Rate units renamed to m3 Per and ISK Per
-- Config window: Text Overlays, Client List and Alert History previews edit parts from a list under the preview instead of in popovers
-- Config window: font, size and weight share one row
-- Systems, Travel Mode jumps and activity readings survive a profile switch
+- Hide Thumbnail no longer hides the client list row
 - Intel panel: its own font, timestamp and merge settings, no longer the History panel's
+- Eve Stars: avoided systems come from your Eve Stars saved list, no longer stored in profiles
+- Eve Stars token stored encrypted with Windows DPAPI
 - Import Settings: Alert Options is its own section, apart from Thumbnail Appearance
-- Profiles: alert, text overlay and intel settings regrouped by feature; older versions reset them
+- Systems, Travel Mode jumps and activity readings survive a profile switch
 - Startup carries on without log monitoring, or with no windows found, when either fails
-- Client List: stat prefixes spaced as on the thumbnails, e.g. "IN: 412"
-- CI checks formatting; map generator moved to `tools/`
-- Release scripts tracked in the repo; Discord webhooks stored encrypted outside it
-- Update check logs a short excerpt of GitHub's reply
-- CI type-checks the simulator
-- Changelog moved to docs/; older versions match their release notes
-- Unit tests for alert history, the notified queue and log interpretation
-- Unit tests for hotkey press handling
-- Unit tests for Intel Map marker and gate colours
-- Style check catches decl literals after `try` and abbreviated constants
-- Moved off std APIs Zig 0.17 deprecates; style check blocks them
-- Struct literals typed on the left; style check enforces it
-- Speech and sound alerts use the app allocator instead of a memory page per alert
-- Region overlay resets all of its state each time it opens
-- Source checks fail on allow-list entries that match nothing
-- Source checks catch stale names and files in ARCHITECTURE.md
-- Receiver style rule sees teardown helpers and writes through captures
-- App tick split into named phases; subsystem restart moved to control/restart.zig; fields grouped by lifetime
-- Releases built in CI from tags, with a SHA256SUMS.txt; release scripts share one module
-- Zig upgrade checklist and a weekly build against Zig nightly; knots patches marked against upstream 0.7.0
-- knots kept as upstream plus exported patches; update script and a source check keep them in step
-- Config window built on knots 0.7.0: text boxes take IME and dead-key input
-- ARCHITECTURE.md tick list includes taskbar marking
 - Ultra Potato Mode moved to the Performance tab, shown outside Advanced Mode
+- Uses about 30 MB less memory
 
 ### Fixed
 - Client List and Alert History previews outline the whole panel when Panel is selected
 - Client List preview: rates line up with pilot names
 - Panel previews show a different unique colour per pilot
+- Same system showing different unique colours across thumbnails
 - Mining price table starts hidden each time the window opens
 - Profile links and hotkeys refuse unknown profile names instead of switching to the default
-- Profiles: a queued action drops a leftover restore backup
 - Dragged panels stay under the cursor instead of lagging behind
+- Thumbnail drags end when another window takes the mouse mid-drag
 - Alert types set only in part in a profile keep their own defaults
 - A newly opened client no longer leaves auto-hidden thumbnails hidden or counts as the last app
-- Blank thumbnails showed black until hovered or moved
-- Panel fills at a canvas edge are clipped instead of skipped
 - Game Events: the Mining Idle and Stopped settings no longer say the mining rate is off while the Client List shows it
+- Game Events hints say held-back alerts still appear in Alert History
+- Alert History lists alerts held back by focus, a click or the cooldown
 - Tray and link commands no longer fail while a Save or profile switch is applied
 - Auto-move still corrects a client that was loading during a profile switch
-- Sound and speech alerts no longer keep a thread running once no alert uses them
 - Client List updates at once when a setting changes
+- Client List: Client 2 sorts before Client 10
+- Client List keeps its own position instead of moving the thumbnails' start position
 - Region edit hint matches the mode it falls back to
 - Config window: a failed Save keeps your edits and stays unsaved, so it can be retried
-- Hotkeys: non-US keys like AZERTY `<` can be bound
-- Same system showing different unique colours across thumbnails
-- Client List: Client 2 sorts before Client 10
-- Characters tab: selection no longer jumps after Discard
-- A briefly locked settings file or profile no longer resets settings or stops the app starting
-- Panels: ⋯ menu no longer falls behind its panel when Keep on Top is turned on
-- Leftover `.tmp` files from interrupted saves are cleaned up at startup
-- Downloads are capped in size, and logged error replies are truncated
-- EVE-O Preview import: RWin hotkeys now fire
-- Messages from other programs can no longer crash the app
-- Intel Map: kill names no longer pile up in memory over long runs
 - Config window: character portraits load a few at a time
-- Game Events: custom sounds on Fleet Follow and Fleet Regrouped no longer crash the app
-- Config window: settings search no longer crashes on the panels' Layout sections
-- Config window: settings search no longer crashes with a preview popover open
-- Map Panel no longer shrinks when moved on a screen above 100% scaling
-- Map Panel: Always on Top pin lights in the accent colour like the other panels'
-- Alert History lists alerts held back by focus, a click or the cooldown
-- Game Events hints say held-back alerts still appear in Alert History
-- Client List keeps its own position instead of moving the thumbnails' start position
+- Config window: settings search no longer crashes on the panels' Layout sections or with a preview popover open
+- Characters tab: selection no longer jumps after Discard
 - Placement tab: Thumbnail Spaces card fits all of a space's settings without scrolling
-- Tray: Minimize and Close Group act on the saved groups, like their hotkeys
-- Update check opens only this app's release pages
-- Intel Panel hides on focus loss after a profile detaches it from the map
-- A failed global settings save no longer corrupts the last-used profile name
+- Hotkeys: non-US keys like AZERTY `<` can be bound
 - Saving or switching profile while recording a hotkey no longer leaves the Win key blocked
 - Holding a hotkey through a suspend, Save or profile switch no longer re-fires it or leaks its release to the game
-- Config window: a profile Save that fails to write stays unsaved instead of looking saved
-- Map Panel no longer flickers while auto-hidden with a menu open
-- Profiles: an action whose profile switch fails reports the failure and stops
-- An unreadable profile that can't be backed up is left untouched instead of saved over with defaults
-- Profiles: a rename whose switch fails is undone
-- Thumbnail drags end when another window takes the mouse mid-drag
 - URL hotkeys open only http and https links
+- A briefly locked settings file or profile no longer resets settings or stops the app starting
+- A failed global settings save no longer corrupts the last-used profile name
+- An unreadable profile that can't be backed up is left untouched instead of saved over with defaults
 - Profiles and global settings too large to load again are no longer saved
+- Profiles: an action whose profile switch fails reports the failure and stops
+- Profiles: a rename whose switch fails is undone
+- EVE-O Preview import: RWin hotkeys now fire
+- Game Events: custom sounds on Fleet Follow and Fleet Regrouped no longer crash the app
+- Messages from other programs can no longer crash the app
+- Tray: Minimize and Close Group act on the saved groups, like their hotkeys
+- Update check opens only this app's release pages
 - Thumbnails recover from a failed window setup on the next try
 
 ## [1.0.9] - 2026-10-29
