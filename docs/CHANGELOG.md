@@ -87,6 +87,7 @@
 - knots kept as upstream plus exported patches; update script and a source check keep them in step
 - Config window built on knots 0.7.0: text boxes take IME and dead-key input
 - ARCHITECTURE.md tick list includes taskbar marking
+- Ultra Potato Mode moved to the Performance tab, shown outside Advanced Mode
 
 ### Fixed
 - Client List and Alert History previews outline the whole panel when Panel is selected

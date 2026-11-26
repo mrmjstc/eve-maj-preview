@@ -25,6 +25,7 @@ const hotkeys_mod = @import("tabs/hotkeys.zig");
 const hotkey_groups_mod = @import("tabs/hotkey_groups.zig");
 const mining_mod = @import("tabs/mining.zig");
 const notification_history_mod = @import("tabs/notification_history.zig");
+const performance_mod = @import("tabs/performance.zig");
 const placement_mod = @import("tabs/placement.zig");
 const system_colors_mod = @import("tabs/system_colors.zig");
 const chips_mod = @import("tabs/thumbnails/chips.zig");
@@ -74,6 +75,7 @@ pub const Window = struct {
     hotkey_groups: hotkey_groups_mod.State = .{},
     mining: mining_mod.State = .{},
     notification_history: notification_history_mod.State = .{},
+    performance: performance_mod.State = .{},
     stage: stage_mod.State = .{},
     window_filters: window_filters_mod.State = .{},
 
@@ -98,6 +100,7 @@ pub const Window = struct {
         self.window_filters.deinit();
         self.hotkey_groups.deinit(self.allocator);
         self.hotkeys.deinit();
+        self.performance.deinit();
         self.client_windows.deinit();
         self.backups.deinit();
         self.update_notice.deinit(self.allocator);
