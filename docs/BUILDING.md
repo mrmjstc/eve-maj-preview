@@ -52,9 +52,11 @@ The build reads the app version from the `VERSION` file at the repo root and emb
 
 ## Dependencies
 
-The configuration window is drawn with [knots](https://github.com/knots-ui/knots), fetched by `zig build` as a `build.zig.zon` dependency. It renders with Vulkan, so the window needs a graphics driver with Vulkan 1.3 support; without one it shows an error instead of opening. knots is MIT-licensed (`licenses/knots-LICENSE.txt`), which ships in release packages and the installer.
+The configuration window is drawn with [knots](https://github.com/knots-ui/knots), vendored in `deps/knots` with local patches listed in `deps/knots/PATCHES.md`. It renders with Vulkan, so the window needs a graphics driver with Vulkan 1.3 support; without one it shows an error instead of opening. knots is MIT-licensed (`licenses/knots-LICENSE.txt`), which ships in release packages and the installer.
 
-Not every Windows install has [Cascadia Code](https://github.com/microsoft/cascadia-code) (v2407.24), so its fonts are bundled from `src/assets/fonts/`. `eve-maj-preview.exe` embeds the static Regular/SemiBold/Mono TTFs and registers them process-privately at startup (`platform/fonts.zig`), and the configuration window draws with the Regular and SemiBold ones. They're licensed under the SIL OFL 1.1 (`licenses/CascadiaCode-LICENSE.txt`), which ships in release packages and the installer; unmodified files keep the Reserved Font Name.
+The fonts are bundled from `src/assets/fonts/`, since Windows doesn't ship them: [Geist](https://github.com/vercel/geist-font) Regular and SemiBold, which the configuration window, panels and thumbnail text use by default, and [Cascadia Code](https://github.com/microsoft/cascadia-code) (v2407.24) Regular, SemiBold and Mono. `eve-maj-preview.exe` embeds the TTFs and registers them process-privately at startup (`platform/fonts.zig`). Both are licensed under the SIL OFL 1.1 (`licenses/Geist-LICENSE.txt`, `licenses/CascadiaCode-LICENSE.txt`), which ship in release packages and the installer; unmodified files keep any Reserved Font Name.
+
+The alert sounds in `sounds/` were made for this app by its author and are covered by its GPL-3.0 licence (`licenses/eve-maj-preview-LICENSE.txt`).
 
 ## Installer
 
