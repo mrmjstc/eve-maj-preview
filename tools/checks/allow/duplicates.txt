@@ -4,23 +4,7 @@
 # COM vtables: every slot is listed in Windows' order, so two interfaces from the same base repeat it.
 notifications/sound.zig const anyopaque  # IMFMediaType/IMFAttributes vtable slots
 
-# The panel previews' row styles share their size and alignment, but their gap and padding differ.
-dialog/knots/tabs/client_list.zig row_style.* = .{  # sampleRow, insets for its clickable parts
-dialog/knots/tabs/notification_history.zig row_style.* = .{  # rows
-
-# The History and Intel panels' windows are set up alike, but each reads its own settings and history.
-panels/history_panel.zig panel: PanelWindow  # window fields
-panels/intel_panel.zig panel: PanelWindow  # window fields
-panels/history_panel.zig self.visibility.note(  # per-tick update
-panels/intel_panel.zig self.visibility.note(  # per-tick update
-
-# Characters and Hotkey Groups each open their list, or one item's page, the same way over different lists.
-dialog/knots/tabs/characters.zig g_open_index  # show
-dialog/knots/tabs/hotkey_groups.zig g_open_index  # show
-
 # The client simulator's window copies the configuration window's chrome, so the dialog's files stay untouched.
-dialog/knots/header.zig style.app_mark  # brand lockup
-sim/view.zig style.app_mark  # brand lockup
 dialog/knots/host.zig fn styleTitleBar(  # app icon and dark title bar
 sim/window.zig fn styleTitleBar(  # app icon and dark title bar
 dialog/knots/host.zig fn setWindowAttribute(  # DWM attribute helper
@@ -33,9 +17,6 @@ dialog/knots/form.zig const root_style = try context.arena().create(ui.Style);  
 sim/view.zig const root_style = try context.arena().create(ui.Style);  # frame root
 dialog/knots/form.zig try sidebar(window, context, offered);  # body row
 sim/view.zig try sidebar(context, controls);  # body row
-
-# The map marks each system in two passes, markers then the rings over every marker, so their loops open alike.
-panels/map/draw.zig const scale = look.markerScale  # addMarkers/addRings preambles
 
 # The map's ESI and EVE-Scout parsers each open by reading their rows into an arena; a helper saved a line apiece.
 map/*.zig std.json.parseFromSliceLeaky([]const Row, arena.allocator(), body  # parse/apply/add preambles
@@ -50,9 +31,6 @@ util/pixel_buffer.zig const steps = mask.depth[pixel_y * mask.width + pixel_x]; 
 dialog/knots/tabs/system_colors.zig widgets.openDetailHeader  # detail
 dialog/knots/tabs/window_filters.zig widgets.openDetailHeader  # filterDetail
 
-# rgbAlpha is alphaSlider plus a picker and a fixed box style; sharing the opening would hide that.
-dialog/knots/bind.zig const key = fieldKey(ref, field).indexed(11);  # alphaSlider/rgbAlpha
-
 # A one-setting row is open, its box, close; rgb and choice differ only in the box.
 dialog/knots/bind.zig const row = try self.widgets.openBinding(context, fieldKey(ref, field), label);  # rgb/choice
 
@@ -61,7 +39,6 @@ dialog/knots/header.zig const actions = Rect{ .key = .src(@src()), .style = &sty
 
 # Each panel tab's Layout section opens with the size row, then its own settings.
 dialog/knots/tabs/map_panel.zig try window.bind.sizeBoxes(context, ref, "width", "height");  # layout
-dialog/knots/tabs/notification_history.zig try window.bind.sizeBoxes(context, ref, "width", "height");  # layout
 
 # Each collapsed panel's summary is its own runs, handed to panel_chrome.drawSummary.
 panels/history_panel.zig panel_chrome.drawSummary  # drawSummary

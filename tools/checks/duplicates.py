@@ -9,7 +9,8 @@ matches are reported: a match is shown if either side is in one of them.
 
 Test blocks, `extern` function declarations, top-level imports and list-like runs are skipped (--tests keeps the tests). A deliberate repeat
 goes in tools/checks/allow/duplicates.txt as `<path glob> <text in the match, or *>  # reason`; a match is
-dropped once both of its sides are covered by entries. Findings make the exit code 1.
+dropped once both of its sides are covered by entries. A run with no options or paths also reports entries that
+cover no match. Findings make the exit code 1.
 
 Same shape isn't proof of duplication: two functions that do one job differently aren't found, and a long
 run of similar declarations (a switch mapping enums to strings) can match without being worth merging.
@@ -21,7 +22,7 @@ import re
 import sys
 from collections import defaultdict
 
-from shared import allowlist, src_path, zig_files
+from shared import allowlist, report, src_path, stale_allowlist, zig_files
 
 # Renamed matching erases names, so it needs a longer run before a match means anything.
 EXACT_MIN_TOKENS = 60
@@ -178,13 +179,10 @@ def line_span(files, place, length):
     return tokens[place[1]].line, tokens[place[1] + length - 1].line
 
 
-def is_covered(entries, path, lines, first_line, last_line):
-    for glob, text in entries:
-        if not fnmatch.fnmatch(path, glob):
-            continue
-        if text == "*" or any(text in line for line in lines[first_line - 1:last_line]):
-            return True
-    return False
+def covering(entries, path, lines, first_line, last_line):
+    """The raw entries that cover this side of a match."""
+    return [raw for glob, text, raw in entries
+            if fnmatch.fnmatch(path, glob) and (text == "*" or any(text in line for line in lines[first_line - 1:last_line]))]
 
 
 def main():
@@ -200,7 +198,8 @@ def main():
     texts = zig_files()
     files = load_files(texts, args.tests, args.renamed)
     wanted = {src_path(os.path.abspath(path)) for path in args.paths}
-    entries = [(path, text.strip() or "*") for path, _, text in (entry.partition(" ") for entry in allowlist("duplicates"))]
+    entries = [(path, text.strip() or "*", entry) for entry in allowlist("duplicates") for path, _, text in [entry.partition(" ")]]
+    used = set()
 
     def lines_of(path):
         return texts[path].split("\n")
@@ -217,15 +216,17 @@ def main():
     for length, first, second in find_matches(files, min_tokens):
         if wanted and first[0] not in wanted and second[0] not in wanted:
             continue
+        first_span = line_span(files, first, length)
+        second_span = line_span(files, second, length)
+        first_entries = covering(entries, first[0], lines_of(first[0]), *first_span)
+        second_entries = covering(entries, second[0], lines_of(second[0]), *second_span)
+        used.update(first_entries, second_entries)
         # A repetitive run (a field list, a third copy) matches itself shifted many times; keep only its longest match.
         if is_mostly_reported(first, length) and is_mostly_reported(second, length):
             continue
         reported[first[0]].append((first[1], first[1] + length))
         reported[second[0]].append((second[1], second[1] + length))
-        first_span = line_span(files, first, length)
-        second_span = line_span(files, second, length)
-        if (is_covered(entries, first[0], lines_of(first[0]), *first_span)
-                and is_covered(entries, second[0], lines_of(second[0]), *second_span)):
+        if first_entries and second_entries:
             continue
         findings.append(f"src/{first[0]}:{first_span[0]}-{first_span[1]} ~ src/{second[0]}:{second_span[0]}-{second_span[1]} ({length} tokens)")
 
@@ -236,7 +237,10 @@ def main():
         print(f"... {len(findings) - len(shown)} more (--top 0 for all)")
     sys.stdout.flush()
     print(f"{len(findings)} match(es)", file=sys.stderr)
-    return 1 if findings else 0
+    # Only a default run over all of src/ sees every match an entry was written for.
+    is_default_run = not (args.paths or args.renamed or args.tests or args.min_tokens)
+    stale_status = report(stale_allowlist("duplicates", used)) if is_default_run else 0
+    return 1 if findings or stale_status else 0
 
 
 if __name__ == "__main__":
