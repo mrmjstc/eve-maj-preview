@@ -128,6 +128,7 @@
 - Map Panel no longer flickers while auto-hidden with a menu open
 - Profiles: an action whose profile switch fails reports the failure and stops
 - An unreadable profile that can't be backed up is left untouched instead of saved over with defaults
+- Profiles: a rename whose switch fails is undone
 
 ## [1.0.9] - 2026-10-29
 

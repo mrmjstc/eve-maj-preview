@@ -264,11 +264,11 @@ fn run(window: *Window, action: Action, name: []const u8, accent: ?u32, unsaved:
             const old_name = try window.allocator.dupe(u8, app_context.store.live.profile_name);
             defer window.allocator.free(old_name);
             try config.renameProfile(window.allocator, app_context.io, old_name, name);
-            app_context.global_settings.retargetProfileSwitches(app_context.io, old_name, name) catch |err| {
-                slog.warn("Failed to point the switch hotkeys of '{s}' at '{s}': {}", .{ old_name, name, err });
+            retargetProfileSwitches(window, old_name, name);
+            window.session.switchProfile(name) catch |err| {
+                undoRename(window, name, old_name);
+                return err;
             };
-            window.session.retargetProfileSwitches(old_name, name);
-            try window.session.switchProfile(name);
             window.status.show(.success, "Renamed profile to '{name}'", .{ .name = displayName(name) });
         },
         .delete => {
@@ -321,6 +321,24 @@ fn run(window: *Window, action: Action, name: []const u8, accent: ?u32, unsaved:
             window.status.show(.success, "Reset profile '{name}' to defaults (kept as a backup)", .{ .name = displayName(name) });
         },
     }
+}
+
+/// Points the running and edited settings' switch hotkeys for profile `from` at `to`.
+fn retargetProfileSwitches(window: *Window, from: []const u8, to: []const u8) void {
+    const app_context = window.session.appContext();
+    app_context.global_settings.retargetProfileSwitches(app_context.io, from, to) catch |err| {
+        slog.warn("Failed to point the switch hotkeys of '{s}' at '{s}': {}", .{ from, to, err });
+    };
+    window.session.retargetProfileSwitches(from, to);
+}
+
+/// After a rename whose switch failed, since the old settings still run, and save, under `old_name`.
+fn undoRename(window: *Window, new_name: []const u8, old_name: []const u8) void {
+    config.renameProfile(window.allocator, window.session.appContext().io, new_name, old_name) catch |err| {
+        slog.err("Failed to rename profile '{s}' back to '{s}' after the switch failed: {}", .{ new_name, old_name, err });
+        return;
+    };
+    retargetProfileSwitches(window, new_name, old_name);
 }
 
 /// A switch drops unsaved changes unless the prompt saves them.
