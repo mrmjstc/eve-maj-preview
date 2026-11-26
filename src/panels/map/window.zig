@@ -32,6 +32,7 @@ const wormholes = @import("../../map/wormholes.zig");
 const security = @import("../../map/security.zig");
 const scout = @import("../../clients/scout.zig");
 const fixed_text = @import("../../util/fixed_text.zig");
+const pixel_buffer = @import("../../util/pixel_buffer.zig");
 const log = @import("../../log.zig");
 
 const Box = layout.Box;
@@ -75,6 +76,8 @@ pub const MapPanelWindow = struct {
     label_font: gdi_overlay.CachedFont = .{},
     /// The systems' names in label_font, each drawn once and blended into every frame after.
     label_sprites: LabelSprites,
+    /// The Painter's mask, made the first frame with a storm, incursion or route.
+    mask: ?pixel_buffer.Mask = null,
     /// For the regions' names beside each region on the map.
     title_font: gdi_overlay.CachedFont = .{},
     /// The cards' and controls' text, in the configuration window's font so they match it.
@@ -131,6 +134,7 @@ pub const MapPanelWindow = struct {
 
     pub fn deinit(self: *MapPanelWindow) void {
         self.label_sprites.deinit();
+        if (self.mask) |*mask| mask.deinit();
         self.label_font.deinit(self.panel.allocator);
         self.title_font.deinit(self.panel.allocator);
         self.ui_font.deinit(self.panel.allocator);
@@ -815,6 +819,7 @@ pub const MapPanelWindow = struct {
             .has_eve_stars = self.hasEveStars(),
             .menu = if (self.state.menu) |*menu| .{ .menu = menu, .context = self.menuContext(scene.destinations, menu.system) } else null,
             .label_sprites = &self.label_sprites,
+            .mask = &self.mask,
         };
         const title = paint.titleText(&self.state);
         if (fonts) |loaded| self.state.chrome = measureChrome(dc, loaded, areas, .{

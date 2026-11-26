@@ -139,8 +139,10 @@ pub const Painter = struct {
     menu: ?OpenMenu,
     /// The window's; draws the names on the map.
     label_sprites: *LabelSprites,
+    /// The window's; shapes the storms, incursions and routes, kept between frames.
+    mask: *?pixel_buffer.Mask,
 
-    /// With `bitmap` begun and the panel's font selected; `allocator` is for the areas' and routes' masks, each freed before this returns.
+    /// With `bitmap` begun and the panel's font selected; `allocator` makes `mask` when it's missing or the wrong size.
     pub fn draw(self: *const Painter, allocator: std.mem.Allocator, bitmap: *const gdi_overlay.OverlayBitmap, scene: Scene, fonts: ?MapFonts, intel_entries: []const history.Entry, now_ms: u64, measured: Measured) void {
         const dc = bitmap.mem_dc;
         const canvas = bitmap.canvas();
@@ -814,29 +816,28 @@ pub const Painter = struct {
     fn drawAreas(self: *const Painter, allocator: std.mem.Allocator, canvas: pixel_buffer.Canvas, scene: Scene, scale: f32) void {
         // The legends list what reaches the map, and most regions have nothing to mask.
         if (self.stormLegend(scene) == null and self.incursionLegend(scene) == null) return;
-        var mask = pixel_buffer.Mask.init(allocator, canvas.width, canvas.height) catch |err| {
+        const mask = pixel_buffer.Mask.ensureSize(self.mask, allocator, canvas.width, canvas.height) catch |err| {
             slog.warn("Failed to draw storm and incursion areas: {}", .{err});
             return;
         };
-        defer mask.deinit();
         const radius = look.areaRadius(scale);
         if (scene.shownStorms(self.config)) |storms| {
             for (storms.slice()) |*storm| {
                 const shade = look.stormColor(storm.kind);
-                self.fillMaskWith(&mask, &storm.covered, radius);
-                look.drawArea(canvas, &mask, shade);
-                self.fillMaskWith(&mask, &storm.core, radius);
-                look.drawAreaCore(canvas, &mask, shade);
+                self.fillMaskWith(mask, &storm.covered, radius);
+                look.drawArea(canvas, mask, shade);
+                self.fillMaskWith(mask, &storm.core, radius);
+                look.drawAreaCore(canvas, mask, shade);
             }
         }
         if (scene.shownIncursions(self.config)) |incursions| {
             for (incursions.slice()) |*incursion| {
-                self.fillMaskWith(&mask, &incursion.infested, radius);
-                look.drawArea(canvas, &mask, look.INCURSION);
+                self.fillMaskWith(mask, &incursion.infested, radius);
+                look.drawArea(canvas, mask, look.INCURSION);
                 mask.clear();
                 const index = self.state.layout.nodeOf(incursion.staging) orelse continue;
                 mask.addDisc(self.state.layout.nodes[index].x, self.state.layout.nodes[index].y, radius);
-                look.drawAreaCore(canvas, &mask, look.INCURSION);
+                look.drawAreaCore(canvas, mask, look.INCURSION);
             }
         }
     }
@@ -844,21 +845,20 @@ pub const Painter = struct {
     /// Each planned route as a band along its gates here, the others faint under the one hovered in the card, or else the fastest.
     fn drawRoutes(self: *const Painter, allocator: std.mem.Allocator, canvas: pixel_buffer.Canvas, scene: Scene, scale: f32) void {
         const routes = if (scene.destinations.routes) |*shown| shown else return;
-        var mask = pixel_buffer.Mask.init(allocator, canvas.width, canvas.height) catch |err| {
+        const mask = pixel_buffer.Mask.ensureSize(self.mask, allocator, canvas.width, canvas.height) catch |err| {
             slog.warn("Failed to draw the planned routes: {}", .{err});
             return;
         };
-        defer mask.deinit();
         const radius = look.routeRadius(scale);
         const lit_index = self.state.hoveredIndex(.route_row) orelse 0;
         for (routes.slice(), 0..) |*route, index| {
             if (index == lit_index) continue;
-            self.fillRouteMask(&mask, route, radius);
-            look.drawRoute(canvas, &mask, false);
+            self.fillRouteMask(mask, route, radius);
+            look.drawRoute(canvas, mask, false);
         }
         if (lit_index >= routes.count) return;
-        self.fillRouteMask(&mask, &routes.slice()[lit_index], radius);
-        look.drawRoute(canvas, &mask, true);
+        self.fillRouteMask(mask, &routes.slice()[lit_index], radius);
+        look.drawRoute(canvas, mask, true);
     }
 
     /// Replaces what `mask` held with the route's jumps between systems here, along a gate's curve where there's one, else straight.

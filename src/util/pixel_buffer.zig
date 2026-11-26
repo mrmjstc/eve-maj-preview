@@ -44,6 +44,20 @@ pub const Mask = struct {
         self.allocator.free(self.row_spans);
     }
 
+    /// Kept while its size stays, so a frame needn't make and zero a whole one; returned empty.
+    pub fn ensureSize(mask: *?Mask, allocator: std.mem.Allocator, width: usize, height: usize) !*Mask {
+        if (mask.*) |*kept| {
+            if (kept.width == width and kept.height == height) {
+                kept.clear();
+                return kept;
+            }
+            kept.deinit();
+            mask.* = null;
+        }
+        mask.* = try .init(allocator, width, height);
+        return &mask.*.?;
+    }
+
     pub fn clear(self: *Mask) void {
         if (self.isEmpty()) return;
         for (self.top..self.bottom) |pixel_y| {
@@ -678,6 +692,19 @@ test "clearing a mask empties all it touched, and a disc off it touches nothing"
     mask.clear();
     for (mask.depth) |depth| try testing.expectEqual(@as(u8, 0), depth);
     try testing.expectEqual(@as(usize, 0), mask.right);
+}
+
+test "ensureSize keeps a mask of the same size, emptied, and remakes one of another" {
+    var kept: ?Mask = null;
+    defer if (kept) |*mask| mask.deinit();
+    const first = try Mask.ensureSize(&kept, testing.allocator, 8, 8);
+    first.addDisc(3, 3, 2);
+    const depth = first.depth.ptr;
+    const second = try Mask.ensureSize(&kept, testing.allocator, 8, 8);
+    try testing.expectEqual(depth, second.depth.ptr);
+    for (second.depth) |value| try testing.expectEqual(@as(u8, 0), value);
+    const resized = try Mask.ensureSize(&kept, testing.allocator, 6, 4);
+    try testing.expectEqual(@as(usize, 6 * 4), resized.depth.len);
 }
 
 test "a mask with nothing in it clears and paints as nothing" {
