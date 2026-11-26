@@ -70,6 +70,7 @@
 - Region overlay resets all of its state each time it opens
 
 ### Fixed
+- Profiles: a queued action drops a leftover restore backup
 - Dragged panels stay under the cursor instead of lagging behind
 - Alert types set only in part in a profile keep their own defaults
 - A newly opened client no longer leaves auto-hidden thumbnails hidden or counts as the last app

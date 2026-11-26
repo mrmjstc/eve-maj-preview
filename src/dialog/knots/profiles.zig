@@ -62,7 +62,7 @@ var g_action: ?Action = null;
 /// The profile file name the pending action is about; owned, freed by runPending or clearPending.
 var g_name: ?[]u8 = null;
 var g_accent: ?u32 = null;
-/// The backup file a pending restore reads; owned, taken by the restore actions, or freed by clearPending.
+/// The backup file a pending restore reads; owned, taken by the restore actions, or freed by the next request or clearPending.
 var g_backup: ?[]u8 = null;
 /// Set while the pending action waits on the unsaved-changes prompt, whose modal clears it to cancel.
 var g_is_awaiting_choice: bool = false;
@@ -99,17 +99,7 @@ pub fn accents() []const u32 {
 
 /// Queues `action` on `name` (a profile file name); a request made while another is pending replaces it.
 pub fn request(action: Action, name: []const u8, accent: ?u32) void {
-    const owned = g_allocator.dupe(u8, name) catch |err| {
-        slog.err("Failed to queue a profile action for '{s}': {}", .{ name, err });
-        return;
-    };
-    if (g_name) |old| g_allocator.free(old);
-    g_name = owned;
-    g_action = action;
-    g_accent = accent;
-    g_is_awaiting_choice = false;
-    g_unsaved = null;
-    g_schedule();
+    queue(action, name, accent, null);
 }
 
 /// Restores `backup` (a backup file name) as the profile `name`; `action` is .restore or .replace_with_backup.
@@ -118,9 +108,7 @@ pub fn requestRestore(action: Action, name: []const u8, backup: []const u8, acce
         slog.err("Failed to queue restoring backup '{s}': {}", .{ backup, err });
         return;
     };
-    if (g_backup) |old| g_allocator.free(old);
-    g_backup = owned;
-    request(action, name, accent);
+    queue(action, name, accent, owned);
 }
 
 /// The profile a pending action would switch to, while it waits on the unsaved-changes prompt; borrows from this module.
@@ -331,6 +319,21 @@ fn shownName(action: Action, name: []const u8) []const u8 {
         .delete_backup => config.parseBackupName(name).name,
         .switch_to, .create, .copy, .rename, .delete, .reset, .back_up, .restore, .replace_with_backup, .import_new, .import_running => displayName(name),
     };
+}
+
+/// Takes ownership of `backup`, freeing it on failure; replaces the pending action and its backup whole.
+fn queue(action: Action, name: []const u8, accent: ?u32, backup: ?[]u8) void {
+    const owned = g_allocator.dupe(u8, name) catch |err| {
+        slog.err("Failed to queue a profile action for '{s}': {}", .{ name, err });
+        if (backup) |unused| g_allocator.free(unused);
+        return;
+    };
+    clearPending();
+    g_name = owned;
+    g_backup = backup;
+    g_action = action;
+    g_accent = accent;
+    g_schedule();
 }
 
 /// The pending restore's backup file name; owned by the caller.
