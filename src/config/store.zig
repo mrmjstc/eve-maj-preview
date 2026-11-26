@@ -72,11 +72,13 @@ pub const ProfileStore = struct {
         return toggle.is_member;
     }
 
+    /// Leaves `saved` as it was if the write fails, so the edits stay unsaved.
     pub fn commit(self: *ProfileStore) !void {
-        const fresh = try self.live.clone(self.live.allocator);
+        var fresh = try self.live.clone(self.live.allocator);
+        errdefer fresh.deinit();
+        try self.saveConfig(&fresh);
         self.saved.deinit();
         self.saved = fresh;
-        try self.save();
     }
 
     /// Makes `live` what was last saved, dropping unsaved dialog edits; callers refresh whatever borrowed from the old `live`.
@@ -102,16 +104,16 @@ pub const ProfileStore = struct {
     }
 
     fn persist(self: *ProfileStore) void {
-        self.save() catch |err| {
+        self.saveConfig(&self.saved) catch |err| {
             slog.err("Failed to save profile '{s}': {}", .{ self.saved.profile_name, err });
         };
     }
 
-    fn save(self: *ProfileStore) !void {
-        const allocator = self.saved.allocator;
-        const path = try profiles.path(allocator, self.saved.profile_name);
+    fn saveConfig(self: *const ProfileStore, config: *const Config) !void {
+        const allocator = config.allocator;
+        const path = try profiles.path(allocator, config.profile_name);
         defer allocator.free(path);
-        try profiles.save(&self.saved, allocator, self.io, path);
+        try profiles.save(config, allocator, self.io, path);
     }
 };
 
