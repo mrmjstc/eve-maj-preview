@@ -99,7 +99,16 @@ def test_the_error_log_level_leaves_out_info_lines(session):
 @fresh({"lastUsedProfile": "gone.json"})
 def test_a_missing_last_profile_falls_back_to_the_default(session):
     wait_for("the default profile", lambda: session.profile_name() == "default.json", details=session.profile_name)
-    check(session.log_lines("not found, falling back"), "no log line about the missing profile")
+    check(session.log_lines("Failed to load profile 'gone.json', falling back"), "no log line about the missing profile")
+
+
+def test_a_link_to_an_unknown_profile_leaves_the_current_one_running(session):
+    session.use()
+    current = session.profile_name()
+    session.protocol("evemajpreview://profile/gone.json")
+    wait_for("a log line refusing the unknown profile", lambda: session.log_lines("Failed to switch to profile 'gone.json'"),
+             details=lambda: session.log_text()[-600:])
+    check(session.profile_name() == current, f"the profile changed from '{current}' to '{session.profile_name()}'")
 
 
 def test_an_unreadable_profile_is_backed_up_and_runs_on_defaults(session):
