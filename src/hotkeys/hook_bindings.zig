@@ -208,8 +208,13 @@ pub const HookBindings = struct {
         request.hook_change = .installed;
     }
 
+    /// A pin, a hold or a binding keeps the hook installed.
+    fn isInUse(self: *const HookBindings) bool {
+        return self.is_pinned or self.hold_count > 0 or !self.isEmpty();
+    }
+
     fn uninstallIfUnused(self: *HookBindings, request: *ChangeRequest) void {
-        if (self.is_pinned or self.hold_count > 0 or !self.isEmpty()) return;
+        if (self.isInUse()) return;
         self.uninstall(request);
     }
 
@@ -250,4 +255,55 @@ pub fn isRepeat(lParam: win32.LPARAM) bool {
 
 fn storeFocusFilter(filter: *FocusFilter) void {
     g_focus_filter = filter.*;
+}
+
+const testing = std.testing;
+
+fn testProc(_: c_int, _: win32.WPARAM, _: win32.LPARAM) callconv(.c) win32.LRESULT {
+    return 0;
+}
+
+fn testOnUninstall() void {}
+
+/// Never installed, so applying a change touches no hook.
+fn testBindings() HookBindings {
+    var bindings: HookBindings = .{ .hook_type = 0, .proc = testProc, .name = "test", .on_uninstall = testOnUninstall };
+    bindings.setAllocator(testing.allocator);
+    return bindings;
+}
+
+test "a hold keeps the hook in use with nothing bound until it's released" {
+    var bindings = testBindings();
+    defer bindings.map.?.deinit();
+    var request: HookBindings.ChangeRequest = .{ .bindings = &bindings, .change = .hold };
+    try testing.expect(!bindings.isInUse());
+
+    try bindings.apply(.hold, &request);
+    try bindings.apply(.unregister_all, &request);
+    try testing.expect(bindings.isInUse());
+
+    try bindings.apply(.release_hold, &request);
+    try testing.expect(!bindings.isInUse());
+}
+
+test "holds nest, and an unmatched release leaves the count at zero" {
+    var bindings = testBindings();
+    defer bindings.map.?.deinit();
+    var request: HookBindings.ChangeRequest = .{ .bindings = &bindings, .change = .hold };
+
+    try bindings.apply(.hold, &request);
+    try bindings.apply(.hold, &request);
+    try bindings.apply(.release_hold, &request);
+    try testing.expect(bindings.isInUse());
+    try bindings.apply(.release_hold, &request);
+    try bindings.apply(.release_hold, &request);
+    try testing.expectEqual(@as(u32, 0), bindings.hold_count);
+    try testing.expect(!bindings.isInUse());
+}
+
+test "a binding keeps the hook in use without a hold" {
+    var bindings = testBindings();
+    defer bindings.map.?.deinit();
+    try bindings.map.?.put(0x41, 7);
+    try testing.expect(bindings.isInUse());
 }

@@ -58,6 +58,7 @@ test {
     _ = @import("drag/snap_math.zig");
     _ = @import("hotkeys/bindings.zig");
     _ = @import("hotkeys/cycle_order.zig");
+    _ = @import("hotkeys/hook_bindings.zig");
     _ = @import("hotkeys/paste_upload.zig");
     _ = @import("hotkeys/plan.zig");
     _ = @import("hotkeys/press_rules.zig");
@@ -118,6 +119,7 @@ test {
     _ = @import("panels/popup_look.zig");
     _ = @import("panels/segmented.zig");
     _ = @import("platform/virtual_keys.zig");
+    _ = @import("platform/win32.zig");
     _ = @import("protocol/url.zig");
     _ = @import("sim/journal.zig");
     _ = @import("sim/lines.zig");

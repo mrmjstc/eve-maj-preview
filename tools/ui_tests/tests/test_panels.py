@@ -241,6 +241,16 @@ def make_focus_test(panel: Panel):
     return test
 
 
+def test_the_map_stays_hidden_when_eve_loses_focus_with_a_menu_open(session):
+    map_panel = PANELS[3]
+    window = open_panel(session, map_panel, with_client=True, hideWhenNoEveFocus=True, hideDebounceMs=0)
+    session.click(*window.point(0.5, 0.5), button="right")
+    session.start_bystander()
+    wait_for("the map to hide once EVE loses focus", lambda: window_of(session, map_panel) is None)
+    # Its menu's redraw timer once kept showing it again.
+    stays("the map to stay hidden", lambda: window_of(session, map_panel) is None, 2.0)
+
+
 def make_toggle_test(panel: Panel):
     @covers(f"HotkeysConfig.{panel.toggle_hotkey}")
     def test(session):

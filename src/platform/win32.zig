@@ -1891,3 +1891,12 @@ pub const WHEEL_DELTA = 120;
 pub inline fn getWheelDelta(mouse_data: DWORD) i16 {
     return @bitCast(@as(u16, @truncate(mouse_data >> 16)));
 }
+
+test "isWebUrl takes http and https links in any case, and nothing else" {
+    try std.testing.expect(isWebUrl("https://adashboard.info/intel"));
+    try std.testing.expect(isWebUrl("HTTP://example.com"));
+    try std.testing.expect(!isWebUrl("opened.cmd"));
+    try std.testing.expect(!isWebUrl("file:///C:/Windows/notepad.exe"));
+    try std.testing.expect(!isWebUrl("C:\\Windows\\notepad.exe"));
+    try std.testing.expect(!isWebUrl("https:"));
+}

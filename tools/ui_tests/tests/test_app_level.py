@@ -1,12 +1,16 @@
 """App-wide behaviour: hotkeys for other apps and URLs, the log level, and how profiles load."""
 
-from harness import ALPHA, BYSTANDER_EXES, VK_F13, check, covers, fresh, stays, wait_for
+import json
+
+from harness import ALPHA, BYSTANDER_EXES, VK_F13, check, covers, fresh, stays, wait_for, write_json
 
 TO_BYSTANDER, TO_ONLOOKER, NEXT_APP, PREVIOUS_APP, LAST_APP, OPEN_URL = (VK_F13 + i for i in range(6))
 BYSTANDER, ONLOOKER = "Bystander", "Onlooker"
-# Run by the URL hotkey from the app's folder, the sandbox: it leaves OPENED_MARKER beside itself.
+# What the URL hotkey would run from the app's folder, the sandbox, if it opened files: it leaves OPENED_MARKER beside itself.
 URL_SCRIPT = "opened.cmd"
 OPENED_MARKER = "opened.txt"
+# Past the 300 KB the app reads of a settings file.
+OVERSIZED_PADDING = 310 * 1024
 
 
 def key(virtual_key: int) -> str:
@@ -64,7 +68,7 @@ def test_the_return_key_goes_back_to_the_last_app_before_eve(session):
 
 
 @covers("UrlHotkeyConfig.hotkey", "UrlHotkeyConfig.url")
-def test_a_url_hotkey_opens_its_url(session):
+def test_a_url_hotkey_opens_only_web_links(session):
     session.use()
     marker = session.dir / OPENED_MARKER
     marker.unlink(missing_ok=True)
@@ -72,7 +76,9 @@ def test_a_url_hotkey_opens_its_url(session):
     session.start_client(ALPHA)
     session.switch_to(ALPHA)
     session.press(OPEN_URL)
-    wait_for("the URL to be opened", marker.exists, timeout_s=8.0)
+    wait_for("a log line refusing the local file", lambda: session.log_lines("only http:// and https:// links open"),
+             details=lambda: session.log_text()[-600:])
+    stays("the local file not to run", lambda: not marker.exists(), 1.0)
 
 
 # Logging
@@ -120,3 +126,31 @@ def test_an_unreadable_profile_is_backed_up_and_runs_on_defaults(session):
     backups = lambda: list((session.dir / "profiles" / "backup").glob("*_broken.json"))
     wait_for("a backup of the broken profile", backups)
     check(backups()[0].read_text(encoding="utf-8") == broken, "the backup doesn't hold the broken file's words")
+
+
+@fresh()
+def test_an_unreadable_profile_that_cant_be_backed_up_is_left_alone(session):
+    session.use()
+    current = session.profile_name()
+    broken = "{ this isn't json"
+    profiles = session.dir / "profiles"
+    (profiles / "broken.json").write_text(broken, encoding="utf-8", newline="")
+    # A file where the backup folder goes, so the backup can't be made.
+    (profiles / "backup").write_text("", encoding="utf-8", newline="")
+    session.protocol("evemajpreview://profile/broken.json")
+    wait_for("a log line about the failed backup", lambda: session.log_lines("Failed to back up unreadable profile 'broken.json'"),
+             details=lambda: session.log_text()[-600:])
+    stays(f"'{current}' to keep running", lambda: session.profile_name() == current, 1.0, details=session.profile_name)
+    check((profiles / "broken.json").read_text(encoding="utf-8") == broken, "the unreadable profile was overwritten")
+
+
+@fresh()
+def test_a_last_profile_too_large_to_read_falls_back_to_the_default(session):
+    profiles = session.dir / "profiles"
+    write_json(profiles / "big.json", {"padding": "x" * OVERSIZED_PADDING})
+    settings_path = profiles / "global.settings.json"
+    settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    write_json(settings_path, {**settings, "lastUsedProfile": "big.json"})
+    session.restart()
+    wait_for("the default profile", lambda: session.profile_name() == "default.json", details=session.profile_name)
+    check(session.log_lines("Failed to load profile 'big.json', falling back"), "no log line about the oversized profile")

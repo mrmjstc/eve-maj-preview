@@ -260,6 +260,27 @@ def test_saved_positions_show_outlines_while_dragging(session):
         check(seen == [shows], f"showGhostPositionBorders={shows}: outlines {'shown' if seen[0] else 'hidden'} mid-drag")
 
 
+def cancel_mode(session):
+    """WM_CANCELMODE, which Windows sends when it takes the mouse away, e.g. for a UAC prompt; DefWindowProc releases capture."""
+    for class_name in ("EVE_THUMBNAIL_CLASS", "EVE_TEXT_OVERLAY_CLASS"):
+        for window in session.app_windows(class_name):
+            ctypes.windll.user32.SendMessageW(window.hwnd, 0x001F, 0, 0)
+
+
+def test_losing_the_mouse_mid_drag_ends_the_drag(session):
+    use(session, ghost_profile())
+    start(session, ALPHA)
+    seen = []
+
+    def lose_capture():
+        cancel_mode(session)
+        time.sleep(0.2)
+        seen.append(bool(session.app_windows("EVE_GHOST_OVERLAY_CLASS")))
+
+    session.drag_thumbnail(ALPHA, (900, 700), while_held=lose_capture)
+    check(seen == [False], "the drag's outlines stayed after the thumbnail lost the mouse")
+
+
 def minimize_animation() -> int:
     """Windows' own minimize-animation setting (SPI_GETANIMATION)."""
     info = (ctypes.c_uint * 2)(8, 0)

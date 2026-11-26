@@ -4,7 +4,7 @@ import json
 import time
 
 from harness import ALPHA, TestFailure, check, top_level_windows, wait_for
-from uia import Dialog
+from uia import Dialog, UiaError
 
 # Advanced Mode shows every tab's advanced settings.
 GLOBAL_SETTINGS = {"advancedMode": True}
@@ -70,6 +70,42 @@ def save(session, dialog: Dialog, before: dict) -> dict:
             return after
         time.sleep(0.1)
     return before
+
+
+def invoke_when_ready(dialog: Dialog, name: str):
+    """Presses `name` once the dialog has drawn it; a window just opened may not have yet."""
+    def pressed():
+        try:
+            dialog.invoke(name)
+            return True
+        except UiaError:
+            return False
+    wait_for(f"'{name}' in the dialog", pressed)
+
+
+def test_a_save_that_fails_to_write_can_be_retried(session):
+    session.use(PROFILE)
+    path = session.dir / "profiles" / session.profile_name()
+    dialog = open_dialog(session)
+    try:
+        invoke_when_ready(dialog, "Appearance")
+        switches = wait_for("the tab's switches", lambda: dialog.controls("CheckBox"))
+        position = next(position for position, switch in enumerate(switches) if switch["name"] and switch["name"] not in SKIPPED_SWITCHES)
+        was_on = switches[position].get("toggled")
+        dialog.toggle(position)
+        wait_for("the switch to flip", lambda: dialog.controls("CheckBox")[position].get("toggled") != was_on)
+        # A frame for the dialog to see the edit, as Save does nothing while the profile looks unchanged.
+        time.sleep(0.3)
+        before = saved(session)
+        # Held open without delete sharing, as a scanner or sync tool might, so the save can't replace it.
+        with open(path, "rb"):
+            dialog.invoke("Save")
+            wait_for("a log line about the failed save", lambda: session.log_lines("Failed to save the configuration"),
+                     details=lambda: session.log_text()[-600:])
+        # A failed save once marked the profile saved, so this one wrote nothing.
+        check(save(session, dialog, before) != before, "the retried Save wrote nothing")
+    finally:
+        close_dialog(session, dialog)
 
 
 def make_switch_test(tab: str):

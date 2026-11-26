@@ -107,6 +107,19 @@ def test_the_suspend_key_stops_other_hotkeys_until_pressed_again(session):
     wait_for("every client to be minimized", lambda: minimized(session, ALPHA, BRAVO))
 
 
+def test_holding_the_suspend_key_toggles_it_once(session):
+    session.use({"hotkeys": {"hotkeySuspend": key(KEY)}})
+    start(session, ALPHA)
+    session.switch_to(ALPHA)
+    # Re-registering on suspend once forgot the held key, so each repeat toggled it again.
+    for _ in range(4):
+        session.key_down(KEY)
+        time.sleep(0.15)
+    session.key_up(KEY)
+    wait_for("hotkeys to be suspended", lambda: (session.state() or {}).get("are_hotkeys_suspended"))
+    stays("hotkeys to stay suspended", lambda: (session.state() or {}).get("are_hotkeys_suspended"), 1.0)
+
+
 @covers("HotkeysConfig.hotkeyExitApp")
 def test_the_exit_key_quits_the_app(session):
     session.use(bound("hotkeyExitApp"))
