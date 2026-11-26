@@ -63,6 +63,7 @@ const Tab = enum {
     characters,
     hotkey_groups,
     client_windows,
+    performance,
     appearance,
     placement,
     mining,
@@ -74,7 +75,6 @@ const Tab = enum {
     chat_alerts,
     notification_history,
     general,
-    performance,
     backups,
     about,
 
@@ -102,11 +102,11 @@ const Tab = enum {
 
     fn category(self: Tab) Category {
         return switch (self) {
-            .characters, .hotkey_groups, .client_windows => .clients,
+            .characters, .hotkey_groups, .client_windows, .performance => .clients,
             .appearance, .placement, .mining, .map_panel => .display,
             .hotkeys, .mouse => .input,
             .notifications, .event_alerts, .chat_alerts, .notification_history => .alerts,
-            .about, .backups, .general, .performance => .app,
+            .about, .backups, .general => .app,
         };
     }
 
