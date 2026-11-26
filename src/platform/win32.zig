@@ -1378,8 +1378,14 @@ pub fn shellOpen(target: [*:0]const u8, working_directory: ?[*:0]const u8) bool 
     return @intFromPtr(result) > 32;
 }
 
-/// shellOpen for an unterminated URL; false if it's too long to terminate or the shell refuses it.
+/// Whether `url` is http(s), so the shell opens it in a browser rather than running a file or another handler.
+pub fn isWebUrl(url: []const u8) bool {
+    return std.ascii.startsWithIgnoreCase(url, "https://") or std.ascii.startsWithIgnoreCase(url, "http://");
+}
+
+/// shellOpen for an unterminated web URL; false if it isn't isWebUrl, is too long to terminate, or the shell refuses it.
 pub fn shellOpenUrl(url: []const u8) bool {
+    if (!isWebUrl(url)) return false;
     var buffer: [1024]u8 = undefined;
     const terminated_url = std.mem.printSentinel(&buffer, "{s}", .{url}, 0) catch return false;
     return shellOpen(terminated_url.ptr, null);

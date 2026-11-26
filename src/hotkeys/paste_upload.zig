@@ -107,7 +107,7 @@ fn uploadAndOpen(allocator: std.mem.Allocator, url: []const u8, text: []const u8
     if (!win32.setClipboardText(response.url)) {
         slog.warn("Failed to copy paste URL '{s}' to the clipboard", .{response.url});
     }
-    if (!win32.shellOpen(response.url.ptr, null)) {
+    if (!win32.shellOpenUrl(response.url)) {
         slog.err("Failed to open uploaded paste URL '{s}'", .{response.url});
     }
 }

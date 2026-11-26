@@ -868,7 +868,7 @@ A window must pass both lists; a filter with both empty matches nothing. Non-EVE
 | `hotkeyReturnToLastApp` | keys | | Focus the last non-EVE window. |
 | `appHotkeys` | `[{hotkey, executableName}]` | `[]` | Focus the frontmost window of that executable; nothing if not running. |
 | `hotkeyCycleAppsForward`, `hotkeyCycleAppsBackward` | keys | | Step through running `appHotkeys` apps in list order. |
-| `urlHotkeys` | `[{hotkey, url, uploadClipboard}]` | `[]` | Open `url` in the default browser. |
+| `urlHotkeys` | `[{hotkey, url, uploadClipboard}]` | `[]` | Open `url` in the default browser; only `http://` and `https://` links open. |
 | `urlHotkeys[].uploadClipboard` | bool | `false` | POST clipboard text to `url` as form field `Paste anything`, put the result URL on the clipboard and open it; falls back to opening `url`. For `adashboard.info`. |
 | `oreTable` | `[{name, price}]` | `[]` | ISK/unit overrides, 0–1e12. A name also covers its grade variants (`Veldspar` → `Veldspar II-Grade`). Others use built-in Jita prices. |
 | `orePricesFetchedAtSeconds` | int | `0` | Unix time of the last Fetch Prices. |

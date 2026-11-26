@@ -78,6 +78,10 @@ pub fn openUrl(allocator: std.mem.Allocator, global_settings: *const config.Glob
         slog.debug("Open URL hotkey pressed - no URL set", .{});
         return;
     }
+    if (!win32.isWebUrl(url_hotkey.url)) {
+        slog.warn("Failed to open URL '{s}': only http:// and https:// links open", .{url_hotkey.url});
+        return;
+    }
 
     if (url_hotkey.uploadClipboard) {
         slog.info("Open URL hotkey pressed (uploading clipboard): {s}", .{url_hotkey.url});

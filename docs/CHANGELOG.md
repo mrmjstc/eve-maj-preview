@@ -130,6 +130,7 @@
 - An unreadable profile that can't be backed up is left untouched instead of saved over with defaults
 - Profiles: a rename whose switch fails is undone
 - Thumbnail drags end when another window takes the mouse mid-drag
+- URL hotkeys open only http and https links
 
 ## [1.0.9] - 2026-10-29
 
