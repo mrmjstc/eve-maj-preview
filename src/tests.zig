@@ -32,6 +32,7 @@ test {
     _ = @import("config/import/values.zig");
     _ = @import("config/key_list.zig");
     _ = @import("config/migrate.zig");
+    _ = @import("config/notifications.zig");
     _ = @import("config/patch.zig");
     _ = @import("config/profiles.zig");
     _ = @import("config/ranges.zig");
@@ -127,6 +128,7 @@ test {
     _ = @import("thumbnail/state.zig");
     _ = @import("travel/stragglers.zig");
     _ = @import("util/atomic_file.zig");
+    _ = @import("util/box.zig");
     _ = @import("util/color.zig");
     _ = @import("util/fixed_text.zig");
     _ = @import("util/format.zig");

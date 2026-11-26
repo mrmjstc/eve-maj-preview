@@ -26,6 +26,7 @@
 - Manual placement map shows unsaved thumbnails where they are, and follows them live
 - Hide Taskbar Over Clients: taskbar goes behind the active client, even one smaller than the screen
 - Unit tests for the settings importers' parsing
+- Unit tests for alert settings parsing and box geometry
 
 ### Changed
 - Client List, History and Intel panels redesigned, with collapsible headers and a ⋯ settings menu

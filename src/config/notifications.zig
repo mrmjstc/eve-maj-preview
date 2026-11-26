@@ -208,3 +208,79 @@ pub const NotificationConfig = struct {
 
     pub const Wire = wire.Wire(NotificationConfig);
 };
+
+const testing = std.testing;
+
+/// Parsed as loading parses it, then decoded into configs the caller frees with deinit.
+fn parseTestConfigs(arena: std.mem.Allocator, text: []const u8) !NotificationTypeConfigs {
+    const value = try std.json.parseFromSliceLeaky(std.json.Value, arena, text, .{});
+    const saved = try std.json.parseFromValueLeaky(NotificationTypeConfigs.Wire, arena, value, .{ .ignore_unknown_fields = true });
+    return NotificationTypeConfigs.fromWire(saved, testing.allocator);
+}
+
+test "a type's left-out fields take that type's defaults, not the general ones" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    var configs = try parseTestConfigs(arena_state.allocator(),
+        \\{"ProfileSwitch":{"enabled":false},"TakingDamage":{"tts_enabled":true},"ChatKeyword":{"show_border":true},"FleetInvite":{"flash_border":true}}
+    );
+    defer configs.deinit(testing.allocator);
+    const profile_switch = configs.get(.ProfileSwitch);
+    try testing.expect(!profile_switch.enabled);
+    try testing.expectEqual(@as(u32, 3000), profile_switch.duration_ms);
+    try testing.expectEqual(@as(u32, 0), profile_switch.throttle_ms);
+    try testing.expect(configs.get(.TakingDamage).tts_enabled);
+    try testing.expectEqual(TAKING_DAMAGE_THROTTLE_MS, configs.get(.TakingDamage).throttle_ms);
+    try testing.expectEqual(@as(u32, 0), configs.get(.ChatKeyword).throttle_ms);
+    try testing.expectEqual(@as(u32, 10000), configs.get(.FleetInvite).throttle_ms);
+}
+
+test "a type the file leaves out keeps its own defaults" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    var configs = try parseTestConfigs(arena_state.allocator(), "{\"FleetInvite\":{\"enabled\":false}}");
+    defer configs.deinit(testing.allocator);
+    try testing.expect(!configs.get(.FleetInvite).enabled);
+    try testing.expect(configs.get(.Decloak).enabled);
+    try testing.expectEqual(@as(u32, 3000), configs.get(.HotkeySuspend).duration_ms);
+    try testing.expectEqual(TAKING_DAMAGE_THROTTLE_MS, configs.get(.TakingDamage).throttle_ms);
+}
+
+test "saved strings survive the per-type parse's arena" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    var configs = try parseTestConfigs(arena_state.allocator(),
+        \\{"Decloak":{"sound_path":"C:\\sounds\\decloak.wav","custom_text":"{character} decloaked","custom_text_alt":"Cloak back up"}}
+    );
+    defer configs.deinit(testing.allocator);
+    const decloak = configs.get(.Decloak);
+    try testing.expectEqualStrings("C:\\sounds\\decloak.wav", decloak.sound_path.?);
+    try testing.expectEqualStrings("{character} decloaked", decloak.custom_text.?);
+    try testing.expectEqualStrings("Cloak back up", decloak.custom_text_alt.?);
+}
+
+test "unknown alert types are skipped and a non-object leaves every default" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    var unknown = try parseTestConfigs(arena, "{\"RemovedType\":{\"enabled\":false},\"Docking\":{\"enabled\":false}}");
+    defer unknown.deinit(testing.allocator);
+    try testing.expect(!unknown.get(.Docking).enabled);
+    try testing.expect(unknown.get(.FleetInvite).enabled);
+    var not_object = try parseTestConfigs(arena, "[]");
+    defer not_object.deinit(testing.allocator);
+    try testing.expectEqual(@as(u32, 3000), not_object.get(.ProfileSwitch).duration_ms);
+    try testing.expect(not_object.get(.Docking).enabled);
+}
+
+test "toWire then fromWire keeps every type's settings" {
+    var original: NotificationTypeConfigs = .{};
+    original.set(.CargoFull, .{ .enabled = false, .duration_ms = 4500, .border_color = 0xFF112233 });
+    var copy = try NotificationTypeConfigs.fromWire(original.toWire(), testing.allocator);
+    defer copy.deinit(testing.allocator);
+    const cargo = copy.get(.CargoFull);
+    try testing.expect(!cargo.enabled);
+    try testing.expectEqual(@as(u32, 4500), cargo.duration_ms);
+    try testing.expectEqual(@as(u32, 0xFF112233), cargo.border_color.?);
+    try testing.expectEqual(@as(u32, 0), copy.get(.ProfileSwitch).throttle_ms);
+}
