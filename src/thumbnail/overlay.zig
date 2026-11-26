@@ -66,6 +66,39 @@ const MeasuredText = struct {
     }
 };
 
+/// A connection map's label sizes, as measuring them is most of laying the map out.
+const ConnectionLabels = struct {
+    /// Of the font and every label's text, in order; null until measured.
+    signature: ?u64 = null,
+    node_widths: [connections_mod.CAPACITY]i32 = undefined,
+    exit_widths: [layout_mod.MAX_EXITS]i32 = undefined,
+    line_height: i32 = 0,
+
+    /// Measures again only when the font or a label's text changes.
+    fn measure(self: *ConnectionLabels, layout: *Layout, font: win32.HFONT, map: *const layout_mod.Layout, settings: RenderSettings) void {
+        const text_style = settings.system_name_style;
+        var hasher: std.hash.Wyhash = .init(0);
+        hasher.update(text_style.font_name);
+        hasher.update(std.mem.asBytes(&text_style.font_size));
+        hasher.update(std.mem.asBytes(&text_style.font_weight));
+        for (map.nodes[0..map.node_count]) |node| hashLabel(&hasher, universe.systemName(node.system));
+        for (map.exits[0..map.exit_count]) |exit| hashLabel(&hasher, exitLabel(exit, settings));
+        const signature = hasher.final();
+        if (self.signature == signature) return;
+
+        self.line_height = 0;
+        for (map.nodes[0..map.node_count], 0..) |node, index| {
+            const label = layout.measureRun(font, universe.systemName(node.system));
+            self.node_widths[index] = @intCast(label.width);
+            self.line_height = @max(self.line_height, @as(i32, @intCast(label.height)));
+        }
+        for (map.exits[0..map.exit_count], 0..) |exit, index| {
+            self.exit_widths[index] = @intCast(layout.measureRun(font, exitLabel(exit, settings)).width);
+        }
+        self.signature = signature;
+    }
+};
+
 /// Which of the overlay's texts a line is.
 pub const Element = enum {
     character_name,
@@ -139,6 +172,7 @@ pub const RenderCache = struct {
     character_name: MeasuredText = .{},
     system_name: MeasuredText = .{},
     group_badge: MeasuredText = .{},
+    connection_labels: ConnectionLabels = .{},
 
     /// Also drops font-name slices borrowed from config, which a preview edit may have freed.
     pub fn invalidate(self: *RenderCache) void {
@@ -146,6 +180,7 @@ pub const RenderCache = struct {
         self.character_name = .{};
         self.system_name = .{};
         self.group_badge = .{};
+        self.connection_labels = .{};
     }
 
     pub fn deinit(self: *const RenderCache) void {
@@ -329,7 +364,7 @@ pub fn renderOverlay(font_cache: *FontCache, cache: *RenderCache, target_hwnd: w
         try addPing(&layout, fonts, config, stats, settings);
     }
     var connection_map: layout_mod.Layout = .{};
-    const connection_font = try layoutConnectionMap(&connection_map, &layout, fonts, settings);
+    const connection_font = try layoutConnectionMap(&connection_map, &layout, fonts, &cache.connection_labels, settings);
     const notifications = try layoutNotifications(&layout, fonts, settings);
 
     const lines = layout.lines[0..layout.line_count];
@@ -608,7 +643,7 @@ fn addPing(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, stat
 }
 
 /// Fills `map` and returns its labels' font; null while the plain system name shows instead.
-fn layoutConnectionMap(map: *layout_mod.Layout, layout: *Layout, fonts: Fonts, settings: RenderSettings) !?win32.HFONT {
+fn layoutConnectionMap(map: *layout_mod.Layout, layout: *Layout, fonts: Fonts, labels: *ConnectionLabels, settings: RenderSettings) !?win32.HFONT {
     const connections = settings.connections.slice();
     if (!settings.show_system_name or connections.len == 0) return null;
     const text_style = settings.system_name_style;
@@ -629,17 +664,7 @@ fn layoutConnectionMap(map: *layout_mod.Layout, layout: *Layout, fonts: Fonts, s
     };
     map.buildAround(systems[0..connections.len], area);
 
-    var node_widths: [connections_mod.CAPACITY]i32 = undefined;
-    var line_height: i32 = 0;
-    for (map.nodes[0..map.node_count], 0..) |node, index| {
-        const label = layout.measureRun(font, universe.systemName(node.system));
-        node_widths[index] = @intCast(label.width);
-        line_height = @max(line_height, @as(i32, @intCast(label.height)));
-    }
-    var exit_widths: [layout_mod.MAX_EXITS]i32 = undefined;
-    for (map.exits[0..map.exit_count], 0..) |exit, index| {
-        exit_widths[index] = @intCast(layout.measureRun(font, exitLabel(exit, settings)).width);
-    }
+    labels.measure(layout, font, map, settings);
 
     var connection_order: [connections_mod.CAPACITY]u16 = undefined;
     var node_order: [connections_mod.CAPACITY]u16 = undefined;
@@ -648,8 +673,14 @@ fn layoutConnectionMap(map: *layout_mod.Layout, layout: *Layout, fonts: Fonts, s
         node_order[node_order_count] = map.nodeOf(connections[connection_index].system) orelse continue;
         node_order_count += 1;
     }
-    map.placeLabelsInOrder(node_order[0..node_order_count], &node_widths, &exit_widths, line_height);
+    map.placeLabelsInOrder(node_order[0..node_order_count], &labels.node_widths, &labels.exit_widths, labels.line_height);
     return font;
+}
+
+/// Ended by a 0, so one label's end can't pass for the next's start.
+fn hashLabel(hasher: *std.hash.Wyhash, text: []const u8) void {
+    hasher.update(text);
+    hasher.update(&.{0});
 }
 
 fn hasIntel(connection: ?connections_mod.Connection) bool {
