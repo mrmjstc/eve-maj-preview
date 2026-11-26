@@ -1,5 +1,6 @@
 //! Entry point: process setup, the single-instance check, loading and starting the App, and the hidden timer window whose messages drive it.
 const std = @import("std");
+const builtin = @import("builtin");
 const build_options = @import("build_options");
 const win32 = @import("platform/win32.zig");
 const gdi_overlay = @import("platform/gdi_overlay.zig");
@@ -58,7 +59,8 @@ pub fn main(init: std.process.Init) void {
 }
 
 fn mainImpl(init: std.process.Init) !void {
-    const allocator = init.gpa;
+    // Release builds swap the leak-checking default for one that reuses freed memory, so a long session doesn't creep up.
+    const allocator = if (builtin.mode == .debug) init.gpa else std.heap.smp_allocator;
     tts.setup(init.io, allocator);
     sound.setup(init.io, allocator);
     config.setEnvironMap(init.environ_map);

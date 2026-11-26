@@ -31,6 +31,7 @@
 ### Changed
 - Intel Map draws system names several times faster, keeping their full outline while panning
 - Intel Map keeps one buffer for storms, incursions and routes instead of making one each frame
+- Release builds use a faster allocator that reuses freed memory
 - Threads use 1 MB stacks, cutting about 30 MB of committed memory
 - Configuration window state moved out of globals
 - Client List, History and Intel panels redesigned, with collapsible headers and a ⋯ settings menu
