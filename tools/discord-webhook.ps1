@@ -7,14 +7,18 @@
 #   .\tools\discord-webhook.ps1 -Channel dev
 # Remove one:
 #   .\tools\discord-webhook.ps1 -Channel dev -Remove
+# Copy a saved one into the repository secret the Release workflow reads
+# (DISCORD_WEBHOOK_RELEASE or DISCORD_WEBHOOK_DEV), through gh:
+#   .\tools\discord-webhook.ps1 -Channel release -UploadToGitHub
 #
-# build-release.ps1 and build-release-dev.ps1 dot-source this file for
-# Get-DiscordWebhook; dot-sourced without -Channel it only defines the functions.
+# tools\release\publish.ps1 dot-sources this file for Get-DiscordWebhook when run
+# locally; dot-sourced without -Channel it only defines the functions.
 
 param(
     [ValidateSet("release", "dev")]
     [string]$Channel,
-    [switch]$Remove
+    [switch]$Remove,
+    [switch]$UploadToGitHub
 )
 
 function Get-DiscordWebhookPath([string]$Channel) {
@@ -37,6 +41,28 @@ function Get-DiscordWebhook([string]$Channel) {
 if (-not $Channel) { return }
 
 $path = Get-DiscordWebhookPath $Channel
+if ($UploadToGitHub) {
+    $url = Get-DiscordWebhook $Channel
+    if (-not $url) {
+        Write-Host "ERROR: no $Channel Discord webhook is saved; save one first with -Channel $Channel" -ForegroundColor Red
+        exit 1
+    }
+    $secretName = "DISCORD_WEBHOOK_$($Channel.ToUpperInvariant())"
+    # gh won't guess between origin and the backup remote, so name origin's repo.
+    if ((git remote get-url origin) -notmatch 'github\.com[:/]([^/]+/[^/]+?)(\.git)?$') {
+        Write-Host "ERROR: origin isn't a GitHub repository" -ForegroundColor Red
+        exit 1
+    }
+    $repo = $matches[1]
+    # Piped in, so the URL never appears on a command line.
+    $url | gh secret set $secretName --repo $repo
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "ERROR: gh secret set failed" -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "Saved the $Channel Discord webhook as $repo's repository secret $secretName" -ForegroundColor Green
+    return
+}
 if ($Remove) {
     if (Test-Path $path) { Remove-Item $path -Force }
     Write-Host "Removed the $Channel Discord webhook" -ForegroundColor Green

@@ -60,7 +60,7 @@ Not every Windows install has [Cascadia Code](https://github.com/microsoft/casca
 
 `installer\eve-maj-preview.iss` is an [Inno Setup](https://jrsoftware.org/isinfo.php) script that packages `zig-out\bin` into a Windows installer with Start Menu shortcuts, an optional desktop icon, and toggles on the finish page to launch the app and/or open its configuration window. Upgrades delete the separate `config.exe` and the `WebView2Loader.dll` older versions shipped. It always installs per-user under `%LocalAppData%\Programs` (no admin, never Program Files) since the app reads/writes its profiles, settings, and log file next to the exe.
 
-`build-release.ps1` builds it automatically if `ISCC.exe` (the Inno Setup compiler) is on `PATH` or in its default install location, and attaches the resulting setup exe to the GitHub release alongside the zip. To build it manually:
+A release builds it automatically if `ISCC.exe` (the Inno Setup compiler) is on `PATH` or in its default install location, and attaches the resulting setup exe to the GitHub release alongside the zip. To build it manually:
 
 ```powershell
 iscc /DMyAppVersion=0.95.0 installer\eve-maj-preview.iss
@@ -68,11 +68,15 @@ iscc /DMyAppVersion=0.95.0 installer\eve-maj-preview.iss
 
 ## Releasing
 
-`build-release.ps1` bumps the version, builds, packages and publishes a draft GitHub release, then announces it on Discord; `build-release-dev.ps1` does the same for a prerelease from the `dev` branch. `update-winget.ps1` submits the winget manifest once a release is published.
+Releases are built in CI. `build-release.ps1` runs the unit tests, bumps the version, promotes the changelog's `[Unreleased]` section, commits, tags `vX.Y.Z` and pushes. `build-release-dev.ps1` tags the `dev` branch's head `vX.Y.Z-dev.N` and pushes. The tag starts the Release workflow (`.github/workflows/release.yml`), which runs the CI checks, then `tools/release/publish.ps1`: it builds, packages the zip and installer with a `SHA256SUMS.txt`, creates the GitHub release (a draft for `vX.Y.Z`, a prerelease for a dev tag) and announces it on Discord. Publish the draft on GitHub, then run `update-winget.ps1` to submit the winget manifest.
 
-The Discord webhook URLs aren't in the repo. Save each once per machine; it's stored encrypted to your Windows account under `%LOCALAPPDATA%`, and a release without one skips the announcement:
+Both scripts take `-DryRun`, which builds and packages the next version locally and prints the release and announcement without changing or pushing anything. If the workflow fails, re-run it from the Actions tab, run it by hand there with the tag, or run `.\tools\release\publish.ps1 -Tag <tag>` locally; a tag that already has a release is skipped.
+
+The Discord webhook URLs aren't in the repo. The workflow reads them from the repository secrets `DISCORD_WEBHOOK_RELEASE` and `DISCORD_WEBHOOK_DEV`; a release without one skips the announcement. For local runs, save each once per machine (stored encrypted to your Windows account under `%LOCALAPPDATA%`), and copy a saved one into its secret with `-UploadToGitHub`:
 
 ```powershell
 .\tools\discord-webhook.ps1 -Channel release
 .\tools\discord-webhook.ps1 -Channel dev
+.\tools\discord-webhook.ps1 -Channel release -UploadToGitHub
+.\tools\discord-webhook.ps1 -Channel dev -UploadToGitHub
 ```
