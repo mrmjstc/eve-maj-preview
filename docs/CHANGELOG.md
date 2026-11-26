@@ -122,6 +122,7 @@
 - Update check opens only this app's release pages
 - Intel Panel hides on focus loss after a profile detaches it from the map
 - A failed global settings save no longer corrupts the last-used profile name
+- Saving or switching profile while recording a hotkey no longer leaves the Win key blocked
 
 ## [1.0.9] - 2026-10-29
 

@@ -20,6 +20,8 @@ const Restart = struct {
     global_draft: ?*config.GlobalConfig,
     /// Borrows Scout's windows, from rescan_windows on.
     eve_windows: []const scout.EveWindow = &.{},
+    /// Whether the replaced hotkey manager was paused for the dialog recording a hotkey.
+    is_recording_hotkey: bool = false,
 };
 
 /// Takes ownership of `replacement`, which becomes the running store.
@@ -68,7 +70,8 @@ fn runStep(app: *App, step: restart_plan.Step, restart: *Restart) !void {
         },
         .adopt_global_draft => if (restart.global_draft) |draft| app.global_settings.adopt(draft),
         .destroy_hotkey_manager => {
-            if (app.rebuilt.hotkey_manager == null) return;
+            const manager = app.rebuilt.hotkey_manager orelse return;
+            restart.is_recording_hotkey = manager.is_dialog_suspended;
             app.destroyHotkeyManager();
             slog.debug("Cleaned up hotkey manager", .{});
         },
@@ -119,7 +122,7 @@ fn runStep(app: *App, step: restart_plan.Step, restart: *Restart) !void {
             slog.info("Started chatlog monitoring", .{});
         },
         .create_hotkey_manager => {
-            createHotkeyManager(app, restart.timer_hwnd) catch |err| {
+            createHotkeyManager(app, restart.timer_hwnd, restart.is_recording_hotkey) catch |err| {
                 slog.err("Failed to create hotkey manager: {}", .{err});
                 return err;
             };
@@ -153,7 +156,7 @@ fn rescanWindows(app: *App) []const scout.EveWindow {
 }
 
 /// A hotkey registration failure is logged, not fatal.
-fn createHotkeyManager(app: *App, timer_hwnd: win32.HWND) !void {
+fn createHotkeyManager(app: *App, timer_hwnd: win32.HWND, is_recording_hotkey: bool) !void {
     // Before anything can fail, so group cycling always matches the saved groups.
     app.cycle.reset(app.allocator, app.store.saved.hotkeyGroups.items.len);
     const manager = try app.allocator.create(HotkeyManager);
@@ -162,9 +165,11 @@ fn createHotkeyManager(app: *App, timer_hwnd: win32.HWND) !void {
         .global_settings = &app.global_settings,
         .timer_hwnd = timer_hwnd,
     });
+    // Stays paused, so the dialog's resume releases the Win key capture it armed and registers the hotkeys.
+    manager.is_dialog_suspended = is_recording_hotkey;
     app.rebuilt.hotkey_manager = manager;
 
-    manager.registerHotkeys(timer_hwnd) catch |err| {
+    if (!is_recording_hotkey) manager.registerHotkeys(timer_hwnd) catch |err| {
         slog.warn("Failed to register hotkeys, continuing without hotkey support: {}", .{err});
     };
     manager.syncFocusFilter(app.scout.getWindows());
