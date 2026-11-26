@@ -66,6 +66,10 @@ pub const Session = struct {
         self.appHost().run(request);
     }
 
+    pub fn switchProfile(self: *const Session, profile_name: []const u8) !void {
+        try self.appHost().switch_profile(profile_name);
+    }
+
     /// Starts over from what's saved; called as the window opens.
     pub fn begin(self: *Session) !void {
         self.global_draft = try self.appContext().global_settings.clone(self.context.allocator);

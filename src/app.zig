@@ -69,6 +69,7 @@ pub const DIALOG_HOST: dialog_host.Host = .{
     .notifier = currentNotifier,
     .timer_window = currentTimerWindow,
     .save = saveDialogSettings,
+    .switch_profile = switchDialogProfile,
     .run = runDialogRequest,
 };
 
@@ -851,12 +852,16 @@ fn saveDialogSettings(save: dialog_host.Save) !void {
     try app.saveSettings(save);
 }
 
+fn switchDialogProfile(profile_name: []const u8) !void {
+    const app = g_app orelse return error.MissingApp;
+    try app.reloadWithProfile(profile_name);
+}
+
 /// For the configuration window, which reaches App only through DIALOG_HOST.
 fn runDialogRequest(request: dialog_host.Request) void {
     const app = g_app orelse return;
     switch (request) {
         .live_profile_edited => |layout| app.onLiveProfileEdited(layout),
-        .switch_profile => |profile_name| app.switchProfile(profile_name),
         .suspend_hotkeys_for_recording => if (app.rebuilt.hotkey_manager) |manager| manager.dialogSuspendHotkeys(),
         .resume_hotkeys_for_recording => {
             const manager = app.rebuilt.hotkey_manager orelse return;

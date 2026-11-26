@@ -466,7 +466,7 @@ Immediate-mode (`knots` on Vulkan), main thread, with a nested message loop so t
 - Direct calls, no event bus. Code is handed `*App` or just what it needs.
 - Win32 callbacks have no context pointer: window procs and hooks read `app.g_app` (or `app.currentThumbnailSet()`) and pass it down; modules below them never read the global. `Scout` keeps a private pointer for its own hooks so it stays testable. The dialog does the same with `g_host`, read only in `host.zig`.
 - A panel finds its own struct from the `hwnd`: its owner attaches it with `PanelWindow.attachOwner`, and the window proc reads it back with `panel_window.ownerOf`. Panels reach `App` only through `PANEL_HOST` (the Map Panel through `MapPanel.host`, set by `App.init`).
-- The dialog reaches `App` only through `dialog/dialog_host.zig`: `host.init` takes App's `Context` (allocator, io, store, global settings, Scout, character IDs) and `DIALOG_HOST` (thumbnail set, notifier, timer window, save, requests), and hands back `DialogHooks`. `import_cycles.py` fails if `dialog/` imports `app.zig`.
+- The dialog reaches `App` only through `dialog/dialog_host.zig`: `host.init` takes App's `Context` (allocator, io, store, global settings, Scout, character IDs) and `DIALOG_HOST` (thumbnail set, notifier, timer window, save, profile switch, requests), and hands back `DialogHooks`. `import_cycles.py` fails if `dialog/` imports `app.zig`.
 - `platform/` depends on nothing app-specific: outside itself it imports only `log.zig` and `util/`. Win32 declarations live in `platform/win32.zig`, which never logs.
 - Pure logic is split into its own file (marked "no I/O" in its header) and tested.
 

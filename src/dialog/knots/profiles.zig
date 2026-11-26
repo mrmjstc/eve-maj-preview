@@ -246,17 +246,17 @@ fn run(window: *Window, action: Action, name: []const u8, accent: ?u32, unsaved:
     };
     switch (action) {
         .switch_to => {
-            window.session.run(.{ .switch_profile = name });
+            try window.session.switchProfile(name);
             window.status.show(.success, "Switched to profile '{name}'", .{ .name = displayName(name) });
         },
         .create => {
             try config.createProfile(window.allocator, app_context.io, name, accent);
-            window.session.run(.{ .switch_profile = name });
+            try window.session.switchProfile(name);
             window.status.show(.success, "Created profile '{name}'", .{ .name = displayName(name) });
         },
         .copy => {
             try config.copyProfile(window.allocator, app_context.io, app_context.store.live.profile_name, name, accent);
-            window.session.run(.{ .switch_profile = name });
+            try window.session.switchProfile(name);
             window.status.show(.success, "Copied to profile '{name}'", .{ .name = displayName(name) });
         },
         .rename => {
@@ -268,13 +268,13 @@ fn run(window: *Window, action: Action, name: []const u8, accent: ?u32, unsaved:
                 slog.warn("Failed to point the switch hotkeys of '{s}' at '{s}': {}", .{ old_name, name, err });
             };
             window.session.retargetProfileSwitches(old_name, name);
-            window.session.run(.{ .switch_profile = name });
+            try window.session.switchProfile(name);
             window.status.show(.success, "Renamed profile to '{name}'", .{ .name = displayName(name) });
         },
         .delete => {
             // Checked before any switch, which a refused delete mustn't cause.
             try config.checkProfileDeletable(name);
-            if (std.mem.eql(u8, name, app_context.store.live.profile_name)) window.session.run(.{ .switch_profile = config.DEFAULT_PROFILE });
+            if (std.mem.eql(u8, name, app_context.store.live.profile_name)) try window.session.switchProfile(config.DEFAULT_PROFILE);
             try config.deleteProfileToBackup(window.allocator, app_context.io, name);
             window.status.show(.success, "Deleted profile '{name}' (kept as a backup)", .{ .name = displayName(name) });
         },
@@ -282,14 +282,14 @@ fn run(window: *Window, action: Action, name: []const u8, accent: ?u32, unsaved:
             const backup = try takeBackup(window);
             defer window.allocator.free(backup);
             try config.restoreProfileBackup(window.allocator, app_context.io, backup, name, accent);
-            window.session.run(.{ .switch_profile = name });
+            try window.session.switchProfile(name);
             window.status.show(.success, "Restored profile '{name}'", .{ .name = displayName(name) });
         },
         .replace_with_backup => {
             const backup = try takeBackup(window);
             defer window.allocator.free(backup);
             try config.replaceProfileWithBackup(window.allocator, app_context.io, backup, name, accent);
-            window.session.run(.{ .switch_profile = name });
+            try window.session.switchProfile(name);
             window.status.show(.success, "Replaced profile '{name}' with the backup", .{ .name = displayName(name) });
         },
         .delete_backup => {
@@ -298,7 +298,7 @@ fn run(window: *Window, action: Action, name: []const u8, accent: ?u32, unsaved:
         },
         .import_new => {
             try config.createProfile(window.allocator, app_context.io, name, accent);
-            window.session.run(.{ .switch_profile = name });
+            try window.session.switchProfile(name);
             try import_dialog.applyImport(window);
             try window.host.saveChanges();
             window.status.show(.success, "Imported into new profile '{name}'", .{ .name = displayName(name) });
@@ -317,7 +317,7 @@ fn run(window: *Window, action: Action, name: []const u8, accent: ?u32, unsaved:
         .reset => {
             try config.backUpProfile(window.allocator, app_context.io, name);
             try config.writeDefaultProfile(window.allocator, app_context.io, name, null);
-            if (std.mem.eql(u8, name, app_context.store.live.profile_name)) window.session.run(.{ .switch_profile = name });
+            if (std.mem.eql(u8, name, app_context.store.live.profile_name)) try window.session.switchProfile(name);
             window.status.show(.success, "Reset profile '{name}' to defaults (kept as a backup)", .{ .name = displayName(name) });
         },
     }

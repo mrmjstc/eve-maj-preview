@@ -31,8 +31,6 @@ pub const Context = struct {
 /// What the window asks App to do.
 pub const Request = union(enum) {
     live_profile_edited: LiveLayout,
-    /// Done before returning, unlike a hotkey's switch; borrowed for the call.
-    switch_profile: []const u8,
     /// While the window records a hotkey.
     suspend_hotkeys_for_recording,
     resume_hotkeys_for_recording,
@@ -55,6 +53,8 @@ pub const Host = struct {
     timer_window: *const fn () ?win32.HWND,
     /// Commits the profile, restarts what reads settings only at setup, then writes and applies the global settings.
     save: *const fn (save: Save) anyerror!void,
+    /// Done before returning, unlike a hotkey's switch; `profile_name` is borrowed for the call.
+    switch_profile: *const fn (profile_name: []const u8) anyerror!void,
     run: *const fn (request: Request) void,
 };
 
