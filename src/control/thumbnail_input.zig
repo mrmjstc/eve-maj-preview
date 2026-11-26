@@ -170,7 +170,8 @@ fn handleSharedMessage(hwnd: win32.HWND, msg: win32.UINT, lParam: win32.LPARAM, 
         win32.WM_LBUTTONDOWN => handleLButtonDown(hwnd),
         win32.WM_LBUTTONUP => release(hwnd),
         win32.WM_RBUTTONDOWN => if (app.currentThumbnailSet()) |thumbnail_set| thumbnail_drag.start(thumbnail_set, hwnd, lParam),
-        win32.WM_RBUTTONUP => {
+        // Capture lost mid-drag, e.g. to UAC or Win+L, ends it where it got to; end ignores the one ReleaseCapture sends.
+        win32.WM_RBUTTONUP, win32.WM_CAPTURECHANGED => {
             // A drag started on the text overlay still saves the thumbnail's position.
             const thumbnail_hwnd = (if (is_text_overlay) win32.linkedWindow(hwnd) else hwnd) orelse return 0;
             const thumbnail_set = app.currentThumbnailSet() orelse return 0;

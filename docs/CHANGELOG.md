@@ -129,6 +129,7 @@
 - Profiles: an action whose profile switch fails reports the failure and stops
 - An unreadable profile that can't be backed up is left untouched instead of saved over with defaults
 - Profiles: a rename whose switch fails is undone
+- Thumbnail drags end when another window takes the mouse mid-drag
 
 ## [1.0.9] - 2026-10-29
 
