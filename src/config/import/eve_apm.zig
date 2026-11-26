@@ -83,7 +83,7 @@ pub const Ini = struct {
 
 pub fn anchorName(index: ?f64) ?[]const u8 {
     const position = index orelse return null;
-    if (position < 0 or position >= POSITIONS_IN_ORDER.len) return null;
+    if (std.math.isNan(position) or position < 0 or position >= POSITIONS_IN_ORDER.len) return null;
     return POSITIONS_IN_ORDER[@intFromFloat(position)];
 }
 
@@ -670,5 +670,6 @@ test "anchorName maps indices in TextPosition order and rejects the rest" {
     try testing.expectEqualStrings("BottomRight", anchorName(8).?);
     try testing.expect(anchorName(9) == null);
     try testing.expect(anchorName(-1) == null);
+    try testing.expect(anchorName(std.math.nan(f64)) == null);
     try testing.expect(anchorName(null) == null);
 }
