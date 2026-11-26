@@ -3,7 +3,7 @@
 
 [![CI](https://github.com/mrmjstc/eve-maj-preview/actions/workflows/ci.yml/badge.svg)](https://github.com/mrmjstc/eve-maj-preview/actions/workflows/ci.yml)
 
-![EVE-Maj Preview screenshot](http://i.mjst.cc/D7eaOmFdmd.png)
+![EVE-Maj Preview screenshot](http://i.mjst.cc/vu8k3B8w9p.png)
 ![EVE-Maj Preview thumbnails](http://i.mjst.cc/BGIojpNJon.gif)
 
 A *very* lightweight Windows tool for displaying DWM-based thumbnail previews of EVE Online client windows with customizable borders, text overlays, and advanced configuration options.
